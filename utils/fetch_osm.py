@@ -53,11 +53,17 @@ s
         response = requests.get(url, params={"data": query})
         response.raise_for_status()
         osm_data = response.json()
-
+        # with open('osm.json', 'a') as file:
+        #     file.write(json.dumps(osm_data))
+        # print("Saved osm.json")
         geojson_features = []
         node_locations = {}
         
         geojson_data = osm2geojson.json2geojson(osm_data)
+        # with open('fetched.geojson', 'a') as file:
+        #     file.write(json.dumps(geojson_data))
+        # print("Saved fetched.geojson")
+
         return geojson_data
 
     except requests.exceptions.RequestException as e:

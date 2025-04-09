@@ -28,10 +28,12 @@ def filter_buildings(geojson_data, process_feature):
 
     
     buildings = shapely.MultiLineString(shapely.union_all([polygon_to_lines(g) for g in buildings]))
-    buildings = buildings.difference(countour_mask)
+    buildings = list(buildings.difference(countour_mask).geoms)
 
     
     return {
-        "geometry": flatten([buildings, [polygon_to_lines(g) for g in mask] ]),
-        "mask":mask
+        # "geometry": flatten([buildings, [polygon_to_lines(g) for g in mask] ]),
+                "geometry": flatten([buildings, [polygon_to_lines(g) for g in mask] ]),
+
+        "mask": shapely.MultiPolygon(mask)
         }  # Ensure that flatten works as expected
