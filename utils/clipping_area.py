@@ -1,12 +1,13 @@
 import shapely
 import pprint
+import numpy as np
 from utils.ops import  flatten
 def clipping_area(params):
-    rectangle = shapely.Polygon([(params["buffer"], params["buffer"]),
-                                (params["buffer"], params["height_mm"]-params["buffer"]),
-                                (params["width_mm"]-params["buffer"], params["height_mm"]-params["buffer"]),
-                                (params["width_mm"]-params["buffer"], params["buffer"]),
-                                (params["buffer"], params["buffer"])
+    rectangle = shapely.Polygon([(params["padding"], params["padding"]),
+                                (params["padding"], params["height_mm"]-params["padding"]),
+                                (params["width_mm"]-params["padding"], params["height_mm"]-params["padding"]),
+                                (params["width_mm"]-params["padding"], params["padding"]),
+                                (params["padding"], params["padding"])
                                 ])      
     return rectangle
 
@@ -31,25 +32,17 @@ def clip_by(to_clip, clipper):
     """
     Clip a geometry by another geometry.
     """
-    lines = []
-    if isinstance(to_clip, (list, tuple)):
-        for geom in flatten(to_clip):
-            lines += to_lines(geom)   
-    else:
-        lines += to_lines(geom)
-    
-    return list(shapely.MultiLineString(shapely.union_all(lines)).intersection(clipper).geoms)
+    # output = flatten([g.intersection(shapely.union_all(clipper)) for g in flatten(to_clip)])
+    # output = [g for g in output if isinstance(g, shapely.geometry.base.BaseGeometry) and not g.is_empty and g.is_valid]
+    output =  flatten(shapely.MultiLineString(to_clip).intersection(shapely.union_all(clipper)).geoms)
+    return output
 
 def cut_by(to_clip, clipper):
     """
-    Cut a geometry by another geometry.
+    Clip a geometry by another geometry.
     """
-    lines = []
-    if isinstance(to_clip, (list, tuple)):
-        for geom in flatten(to_clip):
-            lines += to_lines(geom)   
-    else:
-        lines += to_lines(geom)
-    
-    return list(shapely.MultiLineString(shapely.union_all(lines)).difference(clipper).geoms)
+    # output = flatten([g.difference(clipper) for g in flatten(to_clip)])
+    # output = [g for g in output if isinstance(g, shapely.geometry.base.BaseGeometry) and not g.is_empty and g.is_valid]
+    output =  flatten(shapely.MultiLineString(to_clip).difference(shapely.union_all(clipper)).geoms)
 
+    return output

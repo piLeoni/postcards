@@ -1,4 +1,4 @@
-from utils.ops import polygon_to_lines, flatten, to_lines
+from utils.ops import polygons_to_linestrings, flatten, geometry_to_linestrings
 import shapely
 from shapely.geometry import MultiPolygon
 import pprint
@@ -25,10 +25,10 @@ def filter_roads(geojson_data, process_feature):
     buffered = []
     for road in roads:
         if isinstance(road, shapely.LineString):
-            buffered.append(road.buffer(0.25))
+            buffered.append(road.buffer(0.2))
         if isinstance(road, shapely.MultiLineString):
             for segment in road.geoms:
-                buffered.append(segment.buffer(0.25))
+                buffered.append(segment.buffer(0.2))
         if isinstance(road, shapely.Polygon):
             buffered.append(road)
         if isinstance(road, shapely.MultiPolygon):
@@ -44,7 +44,7 @@ def filter_roads(geojson_data, process_feature):
 
     
     return {
-        "geometry": flatten(to_lines(roads)),
+        "geometry": flatten(geometry_to_linestrings(roads)),
 
         "mask":roads
         }  # Ensure that flatten works as expected

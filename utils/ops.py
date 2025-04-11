@@ -1,10 +1,10 @@
 import shapely
-from shapely.geometry import Polygon, MultiPolygon, GeometryCollection, LineString, MultiLineString
-from shapely.ops import unary_union
-import concurrent.futures
 
 
-def to_lines(geom):
+
+
+
+def geometry_to_linestrings(geom):
     if isinstance(geom, shapely.geometry.LineString):
         return [geom]
     elif isinstance(geom, shapely.geometry.MultiLineString):
@@ -16,27 +16,41 @@ def to_lines(geom):
     elif isinstance(geom, shapely.geometry.MultiPolygon):
         lines = []
         for poly in geom.geoms:
-            lines.extend(to_lines(poly))
+            lines.extend(geometry_to_linestrings(poly))
         return lines
     else:
         raise TypeError(f"Unsupported geometry type: {type(geom)}")
 
 
-def polygon_to_lines(geom):
-    if geom.geom_type in ("LineString", "MultiLineString"):
-        return geom
-    elif geom.geom_type in ("Polygon", "MultiPolygon"):
-        return geom.boundary  # Includes exterior and interior (holes)
+def polygons_to_linestrings(geom):
+    if geom.geom_type in ("Polygon", "MultiPolygon"):
+        return geometry_to_linestrings(geom) 
     else:
-        return None  # or raise ValueError(f"Unsupported geometry type: {geom.geom_type}"
+        return geom
     
+def multilinestring_to_linestrings(geom):
+    if isinstance(geom, shapely.geometry.MultiLineString):
+        return geometry_to_linestrings(geom) 
+    else:
+         return geom
+     
+def multipolygon_to_polygons(geom):
+    if isinstance(geom, shapely.geometry.MultiPolygon):
+        result = []
+        for g in geom.geoms:
+            result.extend(flatten(g))
+        return result
+    else:
+        return geom
+
+
 def flatten(obj):
-    if isinstance(obj, (list, tuple, set)):
+    if isinstance(obj, (list, tuple, set, shapely.geometry.base.GeometrySequence)):
         result = []
         for item in obj:
             result.extend(flatten(item))
         return result
-    elif isinstance(obj, (shapely.geometry.MultiPolygon, shapely.geometry.GeometryCollection)):
+    elif isinstance(obj, shapely.geometry.GeometryCollection):
         result = []
         for geom in obj.geoms:
             result.extend(flatten(geom))

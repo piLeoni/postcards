@@ -4,29 +4,13 @@ from scipy.spatial import distance_matrix
 import fast_tsp
 import shapely
 from shapely.geometry import Point, LineString, Polygon, MultiLineString, MultiPolygon
+from utils.ops import flatten, geometry_to_linestrings, polygons_to_linestrings, multilinestring_to_linestrings, multipolygon_to_polygons
+from ortools.constraint_solver import pywrapcp
+from ortools.constraint_solver import routing_enums_pb2
+import math
 
-def join_consecutive_geometries(geometries, threshold):
-    """Joins consecutive geometries if their distance is below the threshold."""
-    joined_geometries = []
-    current_geom = geometries[0]
 
-    for i in range(1, len(geometries)):
-        next_geom = geometries[i]
-        # Calculate the distance between the current and next geometry
-        dist = current_geom.distance(next_geom)
-        
-        if dist < threshold:
-            # If the distance is below the threshold, we merge the two geometries
-            current_geom = shapely.ops.unary_union([current_geom, next_geom])
-        else:
-            # If the distance is above the threshold, add the current geometry to the result
-            joined_geometries.append(current_geom)
-            current_geom = next_geom
-    
-    # Add the last geometry in case it's not already added
-    joined_geometries.append(current_geom)
 
-    return joined_geometries
 
 
 def shapely_to_coordinates(geometries):
@@ -80,3 +64,58 @@ def order_geometries_tsp(geometries):
 
     return ordered_geometries
 
+
+
+
+
+def compute_distance_matrix(geometries):
+    num_geometries = len(geometries)
+    distance_matrix = np.zeros((num_geometries, num_geometries))
+
+    for g in range(num_geometries):
+        for n in range(num_geometries):
+            s_s = math.dist(geometries[g][0], geometries[n][0])
+            s_e = math.dist(geometries[g][0], geometries[n][-1])
+            e_s = math.dist(geometries[g][-1], geometries[n][0])
+            e_e = math.dist(geometries[g][-1], geometries[n][-1])
+
+            # Use the minimum distance (taking into account potential reversal)
+            distance_matrix[g, n] = min(s_s, s_e, e_s, e_e)
+    
+    return distance_matrix
+
+
+def connect_nearby_paths(paths, tolerance):
+    """
+    Connects nearby paths (LineStrings) within a given tolerance.
+
+    Args:
+        paths: A list of Shapely LineString objects or a MultiLineString.
+        tolerance: The maximum distance between endpoints to consider them "nearby".
+
+    Returns:
+        A Shapely MultiLineString containing the connected paths.
+    """
+    print("optimize")
+    geometries = flatten([geometry_to_linestrings(path) for path in paths])
+
+    optimized = []
+    coordinates = []
+    for i, g in enumerate(geometries):
+        if i > 0:
+            if math.dist(g.coords[0], geometries[i-1].coords[-1]) < tolerance:
+                coordinates += g.coords
+            # elif math.dist(g.coords[0], geometries[i-1].coords[0]) < tolerance:
+            #     coordinates += g.coords[::-1]
+
+            else:
+                optimized.append(LineString(coordinates))
+                coordinates = []
+                coordinates += g.coords
+        else:
+            coordinates += g.coords
+    
+    # print("optimized", distances)
+    print(len(geometries),len(optimized))
+    return optimized
+     
