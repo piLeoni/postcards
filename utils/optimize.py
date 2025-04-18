@@ -55,14 +55,17 @@ def solve_tsp_cartesian_indices(points):
 def order_geometries_tsp(geometries):
     # Convert Shapely geometries to coordinates
     coordinates = shapely_to_coordinates(geometries)
-    # Solve TSP and get optimal order of indices
-    optimal_indices = solve_tsp_cartesian_indices(coordinates)
-    # Return ordered geometries based on optimal indices
-    ordered_geometries = [geometries[i] for i in optimal_indices]
-    # ordered_geometries = join_consecutive_geometries(ordered_geometries, threshold=5)
-    # ordered_geometries = shapely.ops.unary_union(ordered_geometries)
+    if len(coordinates) > 2:
+        # Solve TSP and get optimal order of indices
+        optimal_indices = solve_tsp_cartesian_indices(coordinates)
+        # Return ordered geometries based on optimal indices
+        ordered_geometries = [geometries[i] for i in optimal_indices]
+        # ordered_geometries = join_consecutive_geometries(ordered_geometries, threshold=5)
+        # ordered_geometries = shapely.ops.unary_union(ordered_geometries)
 
-    return ordered_geometries
+        return ordered_geometries
+    else:
+        return geometries
 
 
 
@@ -96,7 +99,6 @@ def connect_nearby_paths(paths, tolerance):
     Returns:
         A Shapely MultiLineString containing the connected paths.
     """
-    print("optimize")
     geometries = flatten([geometry_to_linestrings(path) for path in paths])
 
     optimized = []
@@ -115,7 +117,5 @@ def connect_nearby_paths(paths, tolerance):
         else:
             coordinates += g.coords
     
-    # print("optimized", distances)
-    print(len(geometries),len(optimized))
     return optimized
      

@@ -1,0 +1,40 @@
+Command: python3 __init__.py --lat 19.753683 --lng 96.1339 --output './exports/Naypyidaw.svg'
+
+stdout:
+Fetch OSM data from Overpass API
+Saved osm.json
+Saved fetched.geojson
+Saved params.json
+coastline []
+
+
+stderr:
+concurrent.futures.process._RemoteTraceback: 
+"""
+Traceback (most recent call last):
+  File "/usr/lib/python3.12/concurrent/futures/process.py", line 263, in _process_worker
+    r = call_item.fn(*call_item.args, **call_item.kwargs)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/pleoni/Projects/postcards/utils/filters/buildings.py", line 94, in process_buildings
+    geometry = buildings["geometry"]()
+               ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/pleoni/Projects/postcards/utils/filters/buildings.py", line 75, in geometry
+    buildings_details = order_geometries_tsp(connect_nearby_paths(list(buildings_lines.difference(countour_mask).geoms), 0.35))
+                                                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'LineString' object has no attribute 'geoms'. Did you mean: '_geom'?
+"""
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/home/pleoni/Projects/postcards/__init__.py", line 66, in <module>
+    project_geojson_to_svg(parse_args())
+  File "/home/pleoni/Projects/postcards/__init__.py", line 34, in project_geojson_to_svg
+    building_geometry, building_patterns = future_buildings.result()
+                                           ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/concurrent/futures/_base.py", line 456, in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/concurrent/futures/_base.py", line 401, in __get_result
+    raise self._exception
+AttributeError: 'LineString' object has no attribute 'geoms'

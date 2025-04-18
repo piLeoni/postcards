@@ -1,90 +1,66 @@
 from utils.process_feature_factory import process_feature_factory
-from utils.transformer_factory import transformer_factory # ensure that this function is updated to take two parameters
-from utils.fetch_osm import fetch_osm
 from utils.geometry_to_svg import save_svg
-from utils.ops import  flatten, multipolygon_to_polygons
-from utils.filters.buildings import filter_buildings
-from utils.filters.roads import filter_roads
+from utils.filters.buildings import filter_buildings, process_buildings
+from utils.filters.roads import filter_roads, process_roads
+from utils.filters.parks import filter_parks, process_parks
+from utils.filters.water import filter_water, process_water
+from utils.patterns.waves import waves_pattern
+from utils.cli_parser import parse_args
+from utils.clipping_area import clipping_area, clip_by, cut_fast_by
 from utils.filters.parks import filter_parks
+from concurrent.futures import ProcessPoolExecutor, as_completed
 
-from utils.patterns.lines import lines_pattern
-from utils.patterns.dots import dots_pattern
+import time
 
-from utils.clipping_area import clipping_area, clip_by, cut_by
-from utils.optimize import order_geometries_tsp, connect_nearby_paths
-import shapely
-import json
-import pprint
-from utils.filters.parks import filter_parks
-import traceback
+
 
 def project_geojson_to_svg(params):
     """
     Projects GeoJSON features to an SVG drawing using parameters from a dictionary.
     """
+
+    
+    # process_feature = process_feature_factory( params["trasformer"], **params)
+    
+    start = time.time()    
+    
+   
+    with ProcessPoolExecutor(max_workers=8) as executor:
+        future_buildings = executor.submit(process_buildings, params)
+        future_roads = executor.submit(process_roads, params)
+        future_parks = executor.submit(process_parks, params)
+        future_water = executor.submit(process_water, params)
+
+        building_geometry, building_patterns = future_buildings.result()
+        parks_geometry, parks_patterns = future_parks.result()
+        road_geometry = future_roads.result()
+        water_geometry, water_patterns = future_water.result()
+
+    
+    end = time.time()
+    print(f"Elapsed time: {end - start:.4f} seconds")
+
+ 
     
     drawing_area = clipping_area(params)
-    
-    process_feature = process_feature_factory( params["trasformer"], **params)
-    
-    buildings = filter_buildings(params['geojson_data'], process_feature)
-    ordered_buildings_details = order_geometries_tsp(connect_nearby_paths(buildings["internal_details"], 0.35))
-    ordered_buildings_outlines = order_geometries_tsp(buildings["outlines"])
-    buildings_pattern = clip_by(lines_pattern(params, 0.5, 45), buildings["mask"])
-    # pprint.pprint(buildings["mask"])
-
-    
-    parks = filter_parks(params['geojson_data'], process_feature) 
-    ordered_parks = order_geometries_tsp(connect_nearby_paths(parks["geometry"], 0.35))
-    # ordered_parks_outlines = order_geometries_tsp(parks["outlines"])
-    parks_pattern = clip_by(dots_pattern(params, 0.5, 45), parks["mask"])
-    parks_pattern = cut_by(parks_pattern, buildings["mask"])
-
-    roads = filter_roads(params['geojson_data'], process_feature)
-    # pprint.pprint(roads)
-    clipped_roads = cut_by(roads["geometry"], buildings["mask"] )
-    clipped_roads = cut_by(clipped_roads, parks["mask"])
-    ordered_roads = order_geometries_tsp(connect_nearby_paths(clipped_roads, 0.35))
-    parks_pattern = cut_by(parks_pattern, clipped_roads)
-
-    
-    
-    
-    # toPrint = clip_by(pattern, drawing_area)
-    
-    # pprint.pprint(clipped_roads)
-
     toPrint = clip_by(
                         []
-                      + ordered_buildings_outlines 
-                      + ordered_buildings_details 
-                      + buildings_pattern
-                      
-                      + ordered_parks 
-                      + parks_pattern
-                      + ordered_roads 
-                      , drawing_area)
+                    + building_geometry
+                    + parks_geometry
+                    + road_geometry
+                    + water_geometry
+                    
+                    + building_patterns
+                    + parks_patterns
+                    + water_patterns
+              
+                    , drawing_area)
     
-    save_svg(toPrint, params, True)
-        
+    save_svg(toPrint, params)
+
    
-# Example usage:
-_params = {
-    # 'center_coords': (-122.4579532, 37.7778219),
-    # 'center_coords': (12.3380226, 45.4365404),
-    # 'center_coords': (9.1909641, 45.4641617),
-    # 'center_coords': (-73.9736543, 40.7644734),
-    'center_coords': (-73.9764881, 40.7637373),
-    'width_mm': 152.4,
-    'height_mm': 101.6,
-    'scale': "1:10000",
-    'projection': "utm",
-    "svg_filename": "postcard.svg",
-    'padding': 3
-}
-
-_params['geojson_data'] = fetch_osm(_params, cached=True)
-_params['trasformer'] = transformer_factory(_params)
 
 
-project_geojson_to_svg(_params)
+
+
+project_geojson_to_svg(parse_args())

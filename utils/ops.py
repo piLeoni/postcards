@@ -2,21 +2,24 @@ import shapely
 
 
 
-
-
 def geometry_to_linestrings(geom):
     if isinstance(geom, shapely.geometry.LineString):
         return [geom]
     elif isinstance(geom, shapely.geometry.MultiLineString):
         return list(geom.geoms)
     elif isinstance(geom, shapely.geometry.Polygon):
-        return [shapely.geometry.LineString(geom.exterior.coords)] + [
-            shapely.geometry.LineString(interior.coords) for interior in geom.interiors
-        ]
+        lines = [shapely.LineString(geom.exterior)]
+        lines.extend(shapely.LineString(ring) for ring in geom.interiors)
+        return lines
     elif isinstance(geom, shapely.geometry.MultiPolygon):
         lines = []
         for poly in geom.geoms:
             lines.extend(geometry_to_linestrings(poly))
+        return lines
+    elif isinstance(geom, shapely.geometry.GeometryCollection):
+        lines = []
+        for g in geom.geoms:
+            lines.extend(geometry_to_linestrings(g))
         return lines
     else:
         raise TypeError(f"Unsupported geometry type: {type(geom)}")

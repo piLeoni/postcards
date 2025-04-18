@@ -41,11 +41,17 @@ def geometry_to_svg(geometry, svg_drawing, stroke_params):
         x, y = geometry.coords[0]
         svg_drawing.add(svg_drawing.circle(center=(x, y), r=1,  **stroke_params))
 
-def save_svg(features, params, lerp = True):
+def save_svg(features, params, lerp = False):
     """
     Saves the SVG drawing to a file, coloring features based on their order.
     """
-    svg_drawing = svgwrite.Drawing(params["svg_filename"], size=(f"{params['width_mm']}mm", f"{params['height_mm']}mm"), viewBox=(f"0 0 {params['width_mm']} {params['height_mm']}"))
+    svg_drawing = svgwrite.Drawing(
+        params["output"],
+        size=(f"{params['width_mm']}mm", f"{params['height_mm']}mm"),
+        viewBox=(f"0 0 {params['width_mm']} {params['height_mm']}"),
+        style="background-color: white;"  # Set the background color here
+    )
+
     
     # Prepare stroke parameters that are passed to each geometry
     stroke_width = 0.1

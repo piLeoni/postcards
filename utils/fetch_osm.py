@@ -4,7 +4,7 @@ import geojson
 import json
 import osm2geojson
 
-def fetch_osm(params, cached=False):    
+def fetch_osm(params, forceFetch=False):    
     """
     Fetches OSM data as GeoJSON within a bounding box, using parameters from a dictionary.
 s
@@ -18,7 +18,15 @@ s
     Returns:
         GeoJSON FeatureCollection, or None if an error occurs.
     """
-    if cached:
+    old_params = {}
+    try:
+        with open(".cache/params.json", "r", encoding='utf-8') as file:
+            old_params = geojson.load(file)
+            
+    except FileNotFoundError:
+        print("No previouse params file cached.")
+
+    if old_params == params and not forceFetch:
         try:
             with open('.cache/fetched.geojson', 'r', encoding='utf-8') as file:
                 geojson_data = geojson.load(file)
@@ -27,7 +35,8 @@ s
         except FileNotFoundError as e:
             print(f"Cache file not found: {e}")
             return None
-     
+        
+
     else:
         try:
             center_coords = params['center_coords']
@@ -49,6 +58,23 @@ s
             east = east_point.longitude
             west = west_point.longitude
             print("Fetch OSM data from Overpass API")
+            # query = f"""
+            # [out:json];
+            # (
+            #   node({south},{west},{north},{east});
+            #   way({south},{west},{north},{east});
+            #   relation({south},{west},{north},{east});
+            # );
+            # out body;
+            # >;
+            # out skel qt;
+            # """
+            
+            # import osmnx as ox
+
+            # gdf = ox.features_from_bbox([east, south, west, north], tags={"building": True})            
+            # print("gdf",gdf.to_json())
+           
             query = f"""
             [out:json];
             (
@@ -56,15 +82,15 @@ s
               way({south},{west},{north},{east});
               relation({south},{west},{north},{east});
             );
+            (._;>;>;);
             out body;
-            >;
-            out skel qt;
             """
             url = "http://overpass-api.de/api/interpreter"
             response = requests.get(url, params={"data": query}, timeout=10)
             response.raise_for_status()
             osm_data = response.json()
-            with open('.cache/osm.json', 'a', encoding='utf-8') as file:
+            
+            with open('.cache/osm.json', 'w', encoding='utf-8') as file:
                 file.write(json.dumps(osm_data))
             print("Saved osm.json")
 
@@ -72,6 +98,12 @@ s
             with open('.cache/fetched.geojson', 'w', encoding='utf-8') as file:
                 file.write(json.dumps(geojson_data))
             print("Saved fetched.geojson")
+            
+            with open(".cache/params.json", "w", encoding='utf-8') as file:
+                file.write(json.dumps(params))
+            print("Saved params.json")
+
+
 
             return geojson_data
 
