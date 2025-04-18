@@ -1,6 +1,7 @@
 import svgwrite
 import matplotlib.pyplot as plt
 from shapely.geometry import MultiPolygon, Polygon, LineString, MultiLineString, Point
+import xml.etree.ElementTree as ET
 
 def lerp_color(t):
     # Create a colormap with a spectrum from red to blue
@@ -78,3 +79,58 @@ def save_svg(features, params, lerp = False):
     
     # Save the generated SVG file
     svg_drawing.save()
+    
+    
+    
+def gdf_to_svg(gdf, params, lerp=False):
+    # Create the SVG header
+    svg_content = f'''<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+    <svg width="{params['width_mm']}mm" height="{params['height_mm']}mm" 
+     viewBox="0 0 {params['width_mm']} {params['height_mm']}"
+     xmlns="http://www.w3.org/2000/svg"
+     style="background-color: white;">
+    <g stroke="black" fill="none" stroke-width="0.1">\n
+'''
+    
+    # Add styling if needed
+    # svg_content += '<style type="text/css">\n  path { stroke: black; fill: none; stroke-width: 0.1; }\n</style>\n'
+    
+    # Add each geometry's SVG content
+    for geom in gdf.geometry:
+        if geom.is_empty:
+            continue
+        
+        # Get the SVG representation and add it
+        svg_element = geom.svg().replace('\n', '')
+        if svg_element:
+            svg_content += svg_element + '\n'
+    
+    # Close the SVG tag
+    svg_content += '</g>\n</svg>'
+    
+    # Write to file
+    with open(params["output"], 'w') as f:
+        f.write(svg_content)
+
+
+def shapely_geom_to_path(geom):
+    if geom.geom_type == "Polygon":
+        exterior = geom.exterior.coords
+        path_d = f"M {exterior[0][0]},{-exterior[0][1]}"
+        for x, y in exterior[1:]:
+            path_d += f" L{x},{-y}"
+        path_d += " Z"
+        return path_d
+
+    elif geom.geom_type == "LineString":
+        coords = list(geom.coords)
+        path_d = f"M {coords[0][0]},{-coords[0][1]}"
+        for x, y in coords[1:]:
+            path_d += f" L{x},{-y}"
+        return path_d
+
+    elif geom.geom_type == "Point":
+        # Handle as a circle instead of path
+        return None
+
+    return None

@@ -57,6 +57,7 @@ s
             south = south_point.latitude
             east = east_point.longitude
             west = west_point.longitude
+            
             print("Fetch OSM data from Overpass API")
             # query = f"""
             # [out:json];

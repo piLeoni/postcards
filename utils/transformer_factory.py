@@ -1,7 +1,7 @@
 import math
 from pyproj import Transformer
 
-def get_utm_zone(lon, lat):
+def get_utm_zone(lon):
     """Calculates the UTM zone number for given coordinates."""
     zone_number = int((math.floor((lon + 180) / 6) % 60) + 1)
     return zone_number
@@ -9,7 +9,7 @@ def get_utm_zone(lon, lat):
 def transformer_factory(params):
     if params["projection"] == "utm":
         lon, lat = params["center_coords"]
-        zone_number = get_utm_zone(lon, lat)
+        zone_number = get_utm_zone(lon)
         output_crs = f"+proj=utm +zone={zone_number} +ellps=WGS84 +datum=WGS84 +units=m +no_defs"
         input_crs = 'EPSG:4326'
     elif params["projection"] == "gnomic":
