@@ -16,7 +16,9 @@ with open("data/addresses.json", "r") as file:
 
 # Loop through and run commands one by one
 for lat, lng, label in coords:
+    # command = f"python3 __init__.py --lat {lat} --lng {lng} --output './exports/{sanitize_filename(label)}.svg'"
     command = f"python3 __init__.py --lat {lat} --lng {lng} --output './exports/{sanitize_filename(label)}.svg'"
+
     print(f"Running: {label}", command)
     
     try:
