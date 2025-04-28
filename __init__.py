@@ -79,18 +79,23 @@ def project_geojson_to_svg(params):
     cl_a = clipping_area(params)
     composer = SVG_composer(params)
     
-    composer.add_gdf(buildings['outlines'].clip(cl_a), optimize_order="Base")
-    composer.add_gdf(buildings['details'].clip(cl_a), optimize_order="Advanced", merge_close_paths="Base", merge_tolerance=0.25, min_length = 0.35)
-    composer.add_gdf(buildings['filling'].clip(cl_a), optimize_order="Advanced", merge_close_paths="Base", merge_tolerance=0.55, min_length = 0.35)
+    # print("above_ground_mask", roads['above_ground_mask'])
+    building_mask = buildings['mask'].difference(roads['mask'])
+    # composer.add_gdf(building_mask)
+    # composer.add_gdf(roads['above_ground_mask'])
 
-    composer.add_gdf(roads['outlines'].difference(buildings['mask']).clip(cl_a))
-    composer.add_gdf(roads['details'].difference(buildings['mask']).clip(cl_a), optimize_order="Advanced", merge_close_paths="Base", merge_tolerance=0.25, min_length = 0.35)
+    composer.add_gdf(buildings['outlines'].clip(cl_a).difference(roads['mask']), optimize_order="Base")
+    composer.add_gdf(buildings['details'].clip(cl_a).clip(building_mask), optimize_order="Advanced", merge_close_paths="Base", merge_tolerance=0.25, min_length = 0.35)
+    composer.add_gdf(buildings['filling'].clip(building_mask).clip(cl_a), optimize_order="Advanced", merge_close_paths="Base", merge_tolerance=0.55, min_length = 0.35)
 
-    composer.add_gdf(parks['outlines'].difference(buildings["mask"]).difference(roads["mask"]).clip(cl_a))
-    composer.add_gdf(parks['filling'].difference(buildings["mask"]).difference(roads["mask"]).clip(cl_a))
+    composer.add_gdf(roads['outlines'].clip(cl_a))
+    composer.add_gdf(roads['details'].clip(cl_a), optimize_order="Advanced", merge_close_paths="Base", merge_tolerance=0.25, min_length = 0.35)
+
+    composer.add_gdf(parks['outlines'].difference(building_mask).difference(roads["mask"]).clip(cl_a))
+    composer.add_gdf(parks['filling'].difference(building_mask).difference(roads["mask"]).clip(cl_a))
     
-    composer.add_gdf(water['outlines'].difference(buildings["mask"]).difference(roads["mask"]).clip(cl_a))
-    composer.add_gdf(water['filling'].difference(buildings["mask"]).difference(roads["mask"]).clip(cl_a), optimize_order="Advanced", min_length = 0.35)
+    composer.add_gdf(water['outlines'].difference(building_mask).difference(roads["mask"]).clip(cl_a))
+    composer.add_gdf(water['filling'].difference(building_mask).difference(roads["mask"]).clip(cl_a), optimize_order="Advanced", min_length = 0.35)
 
     composer.colorize_elements()
     composer.save_svg(params["output"])

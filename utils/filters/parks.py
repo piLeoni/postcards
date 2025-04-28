@@ -20,25 +20,13 @@ def filter_parks(gdf, params):
     ]
 
     projected_gdf = gdf_projector(gdf, params)
-    # if 'building' in gdf.columns:
-    #     gdf = gdf[gdf['building'].notna()] 
-
     projected_gdf = gdf_remove_points(projected_gdf)
     projected_gdf = gdf_remove_below_ground(projected_gdf)
 
     
     def geometry():
-        outlines = projected_gdf.copy().dissolve(by=None, aggfunc='first')
-        print()
-        # outlines_mask = gdf_polygons_to_lines(outlines).buffer(0.1)
-        
-        # details = shapely.union_all(gdf_to_all_linestrings(projected_gdf).geometry)
-        # details = gpd.GeoDataFrame([details], columns=['geometry'], crs=projected_gdf.crs).difference(outlines_mask)
-        # details = gpd.GeoDataFrame(geometry=details, crs=projected_gdf.crs)
-        
+        outlines = projected_gdf.copy().dissolve(by=None, aggfunc='first')        
         filling = gpd.GeoDataFrame(geometry = dots_pattern(params, 0.75, 45),  crs=projected_gdf.crs).clip(outlines).dissolve(by=None, aggfunc='first')
-        
-
         return {"outlines": gdf_polygons_to_lines(outlines), "details": outlines, "filling": filling, "mask": outlines}
 
     

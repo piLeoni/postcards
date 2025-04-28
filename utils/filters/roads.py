@@ -244,13 +244,16 @@ def filter_roads(gdf, params):
 
     if 'highway' not in gdf.columns:
         print("No 'water' column found in gdf")
+        empty = gpd.GeoDataFrame(geometry=[], crs=gdf.crs)
         return {
-            "geometry": lambda: {"outlines": gpd.GeoDataFrame(geometry=[], crs=gdf.crs),
-                                 "details": gpd.GeoDataFrame(geometry=[], crs=gdf.crs),
-                                 "filling": gpd.GeoDataFrame(geometry=[], crs=gdf.crs),
-                                 "mask": gpd.GeoDataFrame(geometry=[], crs=gdf.crs)},
-            "raw": gdf,
-            "projected": gdf
+            "geometry": lambda: {"outlines": empty,
+                                 "details": empty,
+                                 "filling": empty,
+                                 "mask": empty,
+                                 "above_ground_mask": empty,
+                                 },
+            "raw": gpd.GeoDataFrame(geometry=[], crs=gdf.crs),
+            "projected": gpd.GeoDataFrame(geometry=[], crs=gdf.crs)
         }
     
     
@@ -277,6 +280,8 @@ def filter_roads(gdf, params):
         local_factor = get_local_units_factor(params)
         buffered_layers = defaultdict(list)  # Dictionary: {layer_name: [geometries]}
         end_circles = []
+        end_circles_layers = defaultdict(list)  # Dictionary: {layer_name: [geometries]}
+
 
         
         for i in range(len(base)): 
@@ -284,7 +289,6 @@ def filter_roads(gdf, params):
                 layer = get_layer(base.iloc[i])
                                 
                 width = establish_width(base.iloc[i], local_factor)
-                # end_circles.append(base.iloc[i].)
                 end_circles.append(shapely.geometry.Point(base.iloc[i].geometry.coords[0]).buffer(width* scale_ratio))
                 end_circles.append(shapely.geometry.Point(base.iloc[i].geometry.coords[-1]).buffer(width* scale_ratio))
 
@@ -292,39 +296,59 @@ def filter_roads(gdf, params):
 
                 buffered.append(buffered_highway)
                 buffered_layers[layer].append(buffered_highway)
+                end_circles_layers[layer].append(shapely.geometry.Point(base.iloc[i].geometry.coords[0]).buffer(width* scale_ratio))
+                end_circles_layers[layer].append(shapely.geometry.Point(base.iloc[i].geometry.coords[-1]).buffer(width* scale_ratio))
+
+
+        # try:
+        mask = merge_polygons(buffered)
+        details_mask = mask.buffer(-0.1)
+        mask = gpd.GeoDataFrame([mask], columns=['geometry'], crs=projected_gdf.crs)
+        outlines = mask.copy().dissolve(by=None, aggfunc='first')
+
+
+        buffered_layers = {k: buffered_layers[k] for k in sorted(buffered_layers.keys()) if k >= 1}
+
+        end_circles_layers = {k: end_circles_layers[k] for k in sorted(end_circles_layers.keys()) if k >= 1}
+        
+        for layer, geometries in buffered_layers.items():
+            buffered_layers[layer] = merge_polygons(geometries)
+        buffered_layers = list(buffered_layers.values())
+        above_ground_layers = buffered_layers[1:]
+        above_ground_mask = gpd.GeoDataFrame([merge_polygons(above_ground_layers)], columns=['geometry'], crs=projected_gdf.crs)
+
+        for layer, geometries in end_circles_layers.items():
+            end_circles_layers[layer] = merge_polygons(geometries)
+        end_circles_layers = list(end_circles_layers.values())
+
+        
+        for i, layer in enumerate(buffered_layers):
+            for n in range(i+1, len(buffered_layers)):
+                buffered_layers[i] = buffered_layers[i].difference(buffered_layers[n])
+            # buffered_layers[i] =shapely.union_all(geometry_to_linestrings(layer))
+            # .difference(shapely.union_all(end_circles_layers[n]).buffer(0.1))
+        details = []        
+        
+        for i, layer in enumerate(buffered_layers):
+            temp = shapely.union_all(geometry_to_linestrings(buffered_layers[i])).difference(shapely.union_all(end_circles_layers[i]).buffer(0.005))
+            
+            details.extend(geometry_to_linestrings(temp))
+        # details = shapely.union_all(details).difference(shapely.union_all(end_circles).buffer(0.1))
+        # details = shapely.geometry.MultiLineString(details).difference(shapely.union_all(end_circles).buffer(0.1))
+
+        details = gpd.GeoDataFrame(geometry=details,  crs=projected_gdf.crs)
+        details = gdf_to_all_linestrings(details ).dissolve(by=None, aggfunc='first')
         
         
+        return {"outlines": gdf_polygons_to_lines(outlines), 
+                "details": details,  
+                "mask": mask,
+                "above_ground_mask":above_ground_mask
+                }
 
-        try:
-            mask = merge_polygons(buffered)
-            details_mask = mask.buffer(-0.1)
-            mask = gpd.GeoDataFrame([mask], columns=['geometry'], crs=projected_gdf.crs)
-            outlines = mask.copy().dissolve(by=None, aggfunc='first')
-
-
-            buffered_layers = {k: buffered_layers[k] for k in sorted(buffered_layers.keys()) if k >= 1}
-
-            for layer, geometries in buffered_layers.items():
-                buffered_layers[layer] = merge_polygons(geometries)
-            buffered_layers = list(buffered_layers.values())
-            
-            for i in range(len(buffered_layers)):
-                for n in range(i+1, len(buffered_layers)):
-                    buffered_layers[i] = buffered_layers[i].difference(buffered_layers[n])
-            
-            details = []        
-            for layer in buffered_layers:
-                details.extend(geometry_to_linestrings(layer))
-            details = shapely.union_all(details).difference(shapely.union_all(end_circles).buffer(0.1))
-            details = gpd.GeoDataFrame(geometry=geometry_to_linestrings(shapely.union_all(details)),  crs=projected_gdf.crs)
-            details = gdf_to_all_linestrings(details).clip(details_mask).dissolve(by=None, aggfunc='first')
-            
-            
-            return {"outlines": gdf_polygons_to_lines(outlines), "details": details,  "mask": mask}
-
-        except Exception as e:
-            print(f"Error while creating union of buffered geometries: {e}")
-            return None
+        # except Exception as e:
+        #     print(f"Error while creating union of buffered geometries: {e}")
+        #     return None
     
     return {
         "geometry": geometry,
