@@ -151,5 +151,5 @@ def fully_flatten_gdf(gdf):
             new_row = row.copy()
             new_row.geometry = geom
             records.append(new_row)
-    return gpd.GeoDataFrame(records, crs=gdf.crs)
+    return gpd.GeoDataFrame(records)
 

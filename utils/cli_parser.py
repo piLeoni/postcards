@@ -54,6 +54,7 @@ def parse_args():
     center_coords = [0, 0]
 
     if args.address:
+        print("Fetching coordinates for address:", args.address)
         center_coords =  ox.geocoder.geocode(args.address)[::-1]
     
     if (args.lat and args.lng):

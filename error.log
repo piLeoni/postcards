@@ -1,11 +1,30 @@
-2025-04-25 13:34:03 Retrieved response from cache file 'cache/aa05b989af15d7ef229e848ecf3cf2b0a321e6d8.json'
-2025-04-25 13:34:03 Geocoded 'Columbus Circle, New York' to (40.7684119, -73.9819811)
-2025-04-25 13:34:03 Projected GeoDataFrame to 'EPSG:32618 / WGS 84 / UTM zone 18N'
-2025-04-25 13:34:03 Projected GeoDataFrame to 'EPSG:4326 / WGS 84'
-2025-04-25 13:34:03 Requesting data from API in 1 request(s)
-2025-04-25 13:34:03 Retrieved response from cache file 'cache/704e01efba78aed503cb836f713e92b1aac07b8e.json'
-2025-04-25 13:34:03 Retrieved 21,551 elements from API in 1 request(s)
-2025-04-25 13:34:04 Built r-tree spatial index for 5,457 geometries
-2025-04-25 13:34:04 Accelerating r-tree with 4 quadrats
-2025-04-25 13:34:04 Identified 5,306 geometries inside polygon
-2025-04-25 13:34:04 5,306 features in the final GeoDataFrame
+/home/pleoni/Projects/postcards/.venv/lib/python3.12/site-packages/geopandas/geodataframe.py:1750: UserWarning: Boolean Series key will be reindexed to match DataFrame index.
+  result = super().__getitem__(key)
+Traceback (most recent call last):
+  File "/home/pleoni/Projects/postcards/__init__.py", line 149, in <module>
+    project_geojson_to_svg(parse_args())
+  File "/home/pleoni/Projects/postcards/__init__.py", line 72, in project_geojson_to_svg
+    parks = filter_parks(gdf, params)["geometry"]()
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/pleoni/Projects/postcards/utils/filters/parks.py", line 110, in geometry
+  File "/home/pleoni/Projects/postcards/.venv/lib/python3.12/site-packages/geopandas/geodataframe.py", line 2585, in clip
+    return geopandas.clip(self, mask=mask, keep_geom_type=keep_geom_type, sort=sort)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/pleoni/Projects/postcards/.venv/lib/python3.12/site-packages/geopandas/tools/clip.py", line 203, in clip
+    clipped = _clip_gdf_with_mask(gdf, combined_mask, sort=sort)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/pleoni/Projects/postcards/.venv/lib/python3.12/site-packages/geopandas/tools/clip.py", line 76, in _clip_gdf_with_mask
+    gdf_sub.geometry.values[non_point_mask].intersection(mask)
+  File "/home/pleoni/Projects/postcards/.venv/lib/python3.12/site-packages/geopandas/array.py", line 766, in intersection
+    self._binary_method("intersection", self, other), crs=self.crs
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/pleoni/Projects/postcards/.venv/lib/python3.12/site-packages/geopandas/array.py", line 699, in _binary_method
+    return getattr(shapely, op)(left._data, right, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/pleoni/Projects/postcards/.venv/lib/python3.12/site-packages/shapely/decorators.py", line 77, in wrapped
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/pleoni/Projects/postcards/.venv/lib/python3.12/site-packages/shapely/set_operations.py", line 131, in intersection
+    return lib.intersection(a, b, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+KeyboardInterrupt

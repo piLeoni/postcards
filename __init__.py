@@ -1,9 +1,9 @@
 from utils.process_feature_factory import process_feature_factory
 from utils.svg_tools import  SVG_composer
 from utils.filters.buildings import filter_buildings
-from utils.filters.roads import filter_roads, process_roads
-from utils.filters.parks import filter_parks, process_parks
-from utils.filters.water import filter_water, process_water
+from utils.filters.roads import filter_roads
+from utils.filters.parks import filter_parks
+from utils.filters.water import filter_water
 from utils.patterns.waves import waves_pattern
 from utils.cli_parser import parse_args
 from utils.clipping_area import clipping_area, clip_by, cut_fast_by
@@ -39,15 +39,15 @@ def project_geojson_to_svg(params):
     tags = {
         "building": True,
         "highway": True,
+        "railway": True,
         "natural": True,
         "water": True, 
         "landuse": True,
         "amenity": True,
         "leisure": True,
-        "man_made": True,
-        "waterway": True,
-        "railway": True,
-        "power": True
+        # "man_made": True,
+        # "waterway": True,
+        # "power": True
     }
     # tags = { "building": True }
 
@@ -55,7 +55,7 @@ def project_geojson_to_svg(params):
         gdf = ox.features_from_polygon(generate_rectangle_polygon(params), tags=tags)
     except ox._errors.InsufficientResponseError:
         print("No data found in this region or request timed out")
-        # Maybe try with specific tags instead
+
         gdf = gpd.GeoDataFrame(
             data=[],
             columns=['geometry'],
@@ -63,71 +63,40 @@ def project_geojson_to_svg(params):
             crs="EPSG:4326"  # WGS84, the coordinate system used by OSM
         )
 
+    print(f"Fetching time: {time.time() - start:.4f} seconds")
 
 
     
     buildings = filter_buildings(gdf, params)["geometry"]()
-    # with ProcessPoolExecutor(max_workers=8) as executor:
-        # future_buildings = executor.submit(process_buildings, params)
-        # future_roads = executor.submit(process_roads, params)
-        # future_parks = executor.submit(process_parks, params)
-        # future_water = executor.submit(process_water, params)
+    roads = filter_roads(gdf, params)["geometry"]()
+    parks = filter_parks(gdf, params)["geometry"]()
+    water = filter_water(gdf, params)["geometry"]()
 
-        # building_geometry, building_patterns = future_buildings.result()
-        # parks_geometry, parks_patterns = future_parks.result()
-        # road_geometry = future_roads.result()
-        # water_geometry, water_patterns = future_water.result()
+  
+    
+    print(f"Conversion time: {time.time() - start:.4f} seconds")
 
-    
-    # end = time.time()
-    # print(f"Elapsed time: {end - start:.4f} seconds")
-
- 
-    
-    # drawing_area = clipping_area(params)
-    # toPrint = clip_by(
-    #                     []
-    #                 + building_geometry
-    #                 + parks_geometry
-    #                 + road_geometry
-    #                 + water_geometry
-                    
-    #                 + building_patterns
-    #                 + parks_patterns
-    #                 + water_patterns
-              
-    #                 , drawing_area)
-    
-    
     cl_a = clipping_area(params)
-    print(buildings['details'].clip(cl_a))
     composer = SVG_composer(params)
-    # composer.add_gdf(buildings['outlines'].clip(cl_a))
-    composer.add_gdf(buildings['details'].clip(cl_a), optimize_order=True, merge_close_paths=True, merge_tolerance=0.5)
-    # composer.add_gdf(buildings['filling'].clip(cl_a))
+    
+    composer.add_gdf(buildings['outlines'].clip(cl_a), optimize_order="Base")
+    composer.add_gdf(buildings['details'].clip(cl_a), optimize_order="Advanced", merge_close_paths="Base", merge_tolerance=0.25, min_length = 0.35)
+    composer.add_gdf(buildings['filling'].clip(cl_a), optimize_order="Advanced", merge_close_paths="Base", merge_tolerance=0.55, min_length = 0.35)
+
+    composer.add_gdf(roads['outlines'].difference(buildings['mask']).clip(cl_a))
+    composer.add_gdf(roads['details'].difference(buildings['mask']).clip(cl_a), optimize_order="Advanced", merge_close_paths="Base", merge_tolerance=0.25, min_length = 0.35)
+
+    composer.add_gdf(parks['outlines'].difference(buildings["mask"]).difference(roads["mask"]).clip(cl_a))
+    composer.add_gdf(parks['filling'].difference(buildings["mask"]).difference(roads["mask"]).clip(cl_a))
+    
+    composer.add_gdf(water['outlines'].difference(buildings["mask"]).difference(roads["mask"]).clip(cl_a))
+    composer.add_gdf(water['filling'].difference(buildings["mask"]).difference(roads["mask"]).clip(cl_a), optimize_order="Advanced", min_length = 0.35)
+
     composer.colorize_elements()
-    # composer.apply_global_styles(start_color='#FF0000', end_color='#0000FF', stroke_width=0.3, fill='none') 
-    # composer.generate_final_svg()
     composer.save_svg(params["output"])
-    # import pprint
-    # from utils.gdf_ops import fully_flatten_gdf
-    # pprint.pprint(fully_flatten_gdf(buildings['filling'].clip(cl_a)))
-    # save_svg(buildings["mask"], params)
-    # gdf_to_svg(buildings['outlines'], params)   
-    # all_geometries = gpd.pd.concat([
-    #     # buildings['outlines'],
-    #     buildings['details'],
-    #     # buildings['filling']
-    # ]).dropna() # Drop any NaN values that might arise
+    print(f"Composing time: {time.time() - start:.4f} seconds")
 
-    # if not all_geometries.empty:
-    #     combined_all_gdf = gpd.GeoDataFrame(geometry=all_geometries)
-    #     gdf_to_svg(combined_all_gdf, params)
-    # else:
-    #     print("No valid geometries to combine.")
-
-
-   
+  
 
 
 

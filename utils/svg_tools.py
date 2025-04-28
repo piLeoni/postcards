@@ -2,6 +2,9 @@ import re
 from utils.gdf_ops import fully_flatten_gdf
 import xml.etree.ElementTree as ET
 import matplotlib.colors as mcolors
+from utils.gdf_optimizer import gdf_optimize_paths, merge_consecutive_paths_by_distance, merge_paths_by_distance, tsp_order
+import geopandas as gpd
+
 
 class SVG_composer:
     def __init__(self, params):
@@ -16,7 +19,13 @@ class SVG_composer:
                      viewBox="0 0 {self.params['width_mm']} {self.params['height_mm']}"
                      xmlns="http://www.w3.org/2000/svg"
                      style="background-color: white;">
-
+                       <style>
+                        * {{
+                          fill: none;
+                          stroke: black;
+                          stroke-width: 0.1;
+                        }}
+                         </style>
                      \n
                     '''
             output += "\n".join(self.svg_elements)
@@ -25,20 +34,37 @@ class SVG_composer:
             f.write(output)
         return self
     
-    def add_gdf(self, gdf, optimize_order=False, merge_close_paths=False, merge_tolerance=0.5):
-        
-        fatten = fully_flatten_gdf(gdf)
-        for geom in fatten.geometry:
+    def add_gdf(self, gdf, optimize_order=False, merge_close_paths=False, merge_tolerance=0.5, min_length=0):
+        if isinstance(gdf, gpd.GeoSeries):
+            gdf = gpd.GeoDataFrame(geometry=gdf)
+        if not isinstance(gdf, gpd.GeoDataFrame) or gdf.empty:
+            print("empty gdf")
+            return self
+
+        gdf= fully_flatten_gdf(gdf)
+
+        if optimize_order == "Base":
+            gdf= tsp_order(gdf)
+        if optimize_order == "Advanced":
+            gdf= gdf_optimize_paths(gdf)
+
+        if merge_close_paths == "Base":
+            gdf = merge_consecutive_paths_by_distance(gdf, merge_tolerance)
+        if merge_close_paths == "Advanced":
+            gdf = merge_paths_by_distance(gdf, merge_tolerance)
+
+        if min_length > 0:
+            gdf =  gdf[gdf.geometry.length >= min_length].copy()
+
+
+        for geom in gdf.geometry:
             if geom.is_empty:
                 continue
             element  = ET.fromstring(geom.svg())
-            element.set('fill', 'none')
-            element.set('stroke', 'black')
-            element.set('stroke-width', '0.1')
-            # del element.attrib['fill']
-            # del element.attrib['stroke']
-            # del element.attrib['stroke-width']
-            # del element.attrib['opacity']
+            del element.attrib['fill']
+            del element.attrib['stroke']
+            del element.attrib['stroke-width']
+            del element.attrib['opacity']
             self.svg_elements.append(ET.tostring(element, encoding='unicode'))
    
         return self
@@ -58,7 +84,7 @@ class SVG_composer:
             element = ET.fromstring(element_str)
             t = i / (total_elements - 1) if total_elements > 1 else 0
             lerped_color = self.lerp_color(start_color, end_color, t)
-            element.set('stroke', lerped_color)
+            element.set('style', f"stroke:{lerped_color}")
             
             self.svg_elements[i] = ET.tostring(element, encoding='unicode')
             
