@@ -26,7 +26,7 @@ def filter_parks(gdf, params):
     
     def geometry():
         outlines = projected_gdf.copy().dissolve(by=None, aggfunc='first')        
-        filling = gpd.GeoDataFrame(geometry = dots_pattern(params, 0.75, 45),  crs=projected_gdf.crs).clip(outlines).dissolve(by=None, aggfunc='first')
+        filling = gpd.GeoDataFrame(geometry = dots_pattern(params, 0.5, 45),  crs=projected_gdf.crs).clip(outlines).dissolve(by=None, aggfunc='first')
         return {"outlines": gdf_polygons_to_lines(outlines), "details": outlines, "filling": filling, "mask": outlines}
 
     

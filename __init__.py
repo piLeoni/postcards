@@ -18,7 +18,7 @@ ox.settings.use_cache = True
 ox.settings.log_console = True
 ox.settings.max_query_area_size = 1000 * 1000 * 1000  # 50 sq km
 
-
+# https://osmdata.openstreetmap.de/info/formats.html#
 import geopandas as gpd
 
 import time
@@ -81,24 +81,25 @@ def project_geojson_to_svg(params):
     
     # print("above_ground_mask", roads['above_ground_mask'])
     building_mask = buildings['mask'].difference(roads['mask'])
-    # composer.add_gdf(building_mask)
-    # composer.add_gdf(roads['above_ground_mask'])
 
-    composer.add_gdf(buildings['outlines'].clip(cl_a).difference(roads['mask']), optimize_order="Base")
-    composer.add_gdf(buildings['details'].clip(cl_a).clip(building_mask), optimize_order="Advanced", merge_close_paths="Base", merge_tolerance=0.25, min_length = 0.35)
-    composer.add_gdf(buildings['filling'].clip(building_mask).clip(cl_a), optimize_order="Advanced", merge_close_paths="Base", merge_tolerance=0.55, min_length = 0.35)
+    # composer.add_gdf(roads['outlines'].clip(cl_a), optimize_order="Advanced", merge_close_paths="Base", merge_tolerance=0.25, min_length = 0.75)
+    # composer.add_gdf(roads['details'].clip(cl_a), optimize_order="Advanced", merge_close_paths="Base", merge_tolerance=0.25, min_length = 0.75)
 
-    composer.add_gdf(roads['outlines'].clip(cl_a))
-    composer.add_gdf(roads['details'].clip(cl_a), optimize_order="Advanced", merge_close_paths="Base", merge_tolerance=0.25, min_length = 0.35)
+    # composer.add_gdf(buildings['outlines'].clip(cl_a).difference(roads['mask']), optimize_order="Base")
+    # composer.add_gdf(buildings['details'].clip(cl_a).clip(building_mask), optimize_order="Advanced", merge_close_paths="Base", merge_tolerance=0.25, min_length = 0.75)
+    # composer.add_gdf(buildings['filling'].clip(building_mask).clip(cl_a), optimize_order="Advanced", merge_close_paths="Base", merge_tolerance=0.55, min_length = 0.75)
 
-    composer.add_gdf(parks['outlines'].difference(building_mask).difference(roads["mask"]).clip(cl_a))
-    composer.add_gdf(parks['filling'].difference(building_mask).difference(roads["mask"]).clip(cl_a))
+    # composer.add_gdf(parks['outlines'].difference(building_mask).difference(roads["mask"]).clip(cl_a))
+    # composer.add_gdf(parks['filling'].difference(building_mask).difference(roads["mask"]).clip(cl_a))
     
-    composer.add_gdf(water['outlines'].difference(building_mask).difference(roads["mask"]).clip(cl_a))
-    composer.add_gdf(water['filling'].difference(building_mask).difference(roads["mask"]).clip(cl_a), optimize_order="Advanced", min_length = 0.35)
+    print(gdf.crs, water['outlines'].crs, building_mask.crs, roads['mask'].crs)
+    # composer.add_gdf(water['outlines'].difference(building_mask).difference(roads["mask"]).clip(cl_a))
+    # composer.add_gdf(water['details'].difference(building_mask).difference(roads["mask"]).clip(cl_a))
+    # composer.add_gdf(water['filling'].difference(building_mask).difference(roads["mask"]).clip(cl_a), optimize_order="Advanced", min_length = 0.35)
 
-    composer.colorize_elements()
-    composer.save_svg(params["output"])
+
+    # composer.colorize_elements()
+    # composer.save_svg(params["output"])
     print(f"Composing time: {time.time() - start:.4f} seconds")
 
   

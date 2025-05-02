@@ -1,97 +1,3 @@
-# from utils.ops import flatten, geometry_to_linestrings, multipolygon_to_polygons
-# from utils.clipping_area import  cut_fast_by
-# from utils.process_feature_factory import process_feature_factory
-# from utils.optimize import order_geometries_tsp, connect_nearby_paths
-
-# import shapely
-# from shapely.geometry import MultiPolygon
-# import pprint
-
-
-
-# def filter_roads(params):
-#     """
-#     Filters roads from GeoJSON data.
-    
-#     Args:
-#         geojson_data (dict): The GeoJSON data containing features.
-        
-#     Returns:
-#         list: A list of filtered roads features.
-#     """
-    
-    
-#     width_index = {
-#         "motorway": 25,          # Range 15-30m, 25 is a reasonable average
-#         "motorway_link": 10,     # Range 7-12m, 10 is a reasonable average
-#         "trunk": 18,             # Range 10-25m, 18 is a reasonable average
-#         "trunk_link": 8,         # Range 6-10m, 8 is a reasonable average
-#         "primary": 12,           # Range 7-15m, 12 is a reasonable average
-#         "primary_link": 8,       # Range 6-10m, 8 is a reasonable average
-#         "secondary": 9,          # Range 6-12m, 9 is a reasonable average
-#         "secondary_link": 7,     # Range 5-8m, 7 is a reasonable average
-#         "tertiary": 7,           # Range 5-10m, 7 is a reasonable average
-#         "tertiary_link": 6,      # Range 5-7m, 6 is a reasonable average
-#         "residential": 4,        # Range 4-8m, 6 is a reasonable average
-#         "living_street": 4,      # Range 3-6m, 4 is a reasonable average
-#         "service": 4,            # Range 3-6m, 4 is a reasonable average
-#         "pedestrian": 5,         # Range 3-10m, 5 is a reasonable average
-#         "footway": 1.5,          # Range 1-2m, 1.5 is a reasonable average
-#         "cycleway": 2,           # Range 1.5-3m, 2 is a reasonable average
-#         "bridleway": 2.5,        # Range 2-3m, 2.5 is a reasonable average
-#         "path": 1.5,             # Range 1-2m, 1.5 is a reasonable average
-#         "steps": 1,              # Roughly 1m
-#         "unclassified": 6,       # Range 4-8m, 6 is a reasonable average
-#         "construction": 5,       # Highly variable; assuming average 5m
-#         "elevator": 1.5,         # Not a road, but minimal width (~1.5m)
-#     }
-    
-#     process_feature = process_feature_factory( params["trasformer"], **params)
-#     roads = []
-#     scale_ratio = 1/(int(params["scale"].split(":")[1])/1000) *1.25
-#     buffered = []
-#     types = set()
-#     # Process the features into the buildings list
-#     for feature in params["geojson_data"]['features']:
-#         tags = feature.get('properties', {}).get('tags', {})
-#         if (
-#             'highway' in tags 
-#             and feature.get('geometry', {}).get('type') != "Point"
-#             and not (tags.get('highway') == 'footway' and tags.get('footway') == 'crossing')
-#         ):
-#             shape = process_feature(feature) 
-#             types.add(feature["properties"]["tags"]["highway"])
-#             if isinstance(shape, shapely.LineString):
-#                 buffered.append(shape.buffer(width_index.get(feature["properties"]["tags"]["highway"], 10) * scale_ratio))
-#             if isinstance(shape, shapely.MultiLineString):
-#                 for segment in shape.geoms:
-#                     buffered.append(segment.buffer(width_index.get(feature["properties"]["tags"]["highway"], 10) * scale_ratio))
-#             # if isinstance(shape, shapely.Polygon):
-#             #     buffered.append(shape)
-#             # if isinstance(shape, shapely.MultiPolygon):
-#             #     buffered.append(shape)
-            
-#     roads = shapely.union_all(buffered)
-    
-#     from utils.filters.buildings import filter_buildings
-#     from utils.filters.parks import filter_parks
-    
-#     def geometry():
-#         clipped = cut_fast_by(flatten(geometry_to_linestrings(roads)), filter_buildings(params)["mask"] )
-#         # clipped = cut_fast_by(clipped, filter_parks(params)["mask"] )   
-#         return order_geometries_tsp(connect_nearby_paths(clipped, 0.35))
-
-    
-#     return {
-#         "geometry": geometry,
-#         "mask":roads
-#         }  # Ensure that flatten works as expected
-
-# def process_roads(params):
-#     return filter_roads(params)["geometry"]()
-
-
-
 import shapely
 import geopandas as gpd
 from utils.ops import geometry_to_linestrings
@@ -115,26 +21,26 @@ def get_country_from_coordinates(lon, lat):
 imperial_countries = ["United States", "Canada", "Liberia", "Myanmar"]
 
 width_index = {
-        "motorway": 20,          # Range 15-30m, 25 is a reasonable average
-        "motorway_link": 10,     # Range 7-12m, 10 is a reasonable average
-        "trunk": 18,             # Range 10-25m, 18 is a reasonable average
-        "trunk_link": 8,         # Range 6-10m, 8 is a reasonable average
-        "primary": 12,           # Range 7-15m, 12 is a reasonable average
-        "primary_link": 8,       # Range 6-10m, 8 is a reasonable average
-        "secondary": 9,          # Range 6-12m, 9 is a reasonable average
-        "secondary_link": 7,     # Range 5-8m, 7 is a reasonable average
-        "tertiary": 7,           # Range 5-10m, 7 is a reasonable average
-        "tertiary_link": 6,      # Range 5-7m, 6 is a reasonable average
-        "residential": 6,        # Range 4-8m, 6 is a reasonable average
-        "living_street": 4,      # Range 3-6m, 4 is a reasonable average
-        "service": 4,            # Range 3-6m, 4 is a reasonable average
-        "pedestrian": 5,         # Range 3-10m, 5 is a reasonable average
-        "footway": 1.5,          # Range 1-2m, 1.5 is a reasonable average
-        "cycleway": 2,           # Range 1.5-3m, 2 is a reasonable average
-        "bridleway": 2.5,        # Range 2-3m, 2.5 is a reasonable average
-        "path": 1.5,             # Range 1-2m, 1.5 is a reasonable average
+        "motorway": 15,          # Range 15-30m, 25 is a reasonable average
+        "motorway_link": 7,     # Range 7-12m, 10 is a reasonable average
+        "trunk": 10,             # Range 10-25m, 18 is a reasonable average
+        "trunk_link": 6,         # Range 6-10m, 8 is a reasonable average
+        "primary": 7,           # Range 7-15m, 12 is a reasonable average
+        "primary_link": 6,       # Range 6-10m, 8 is a reasonable average
+        "secondary": 6,          # Range 6-12m, 9 is a reasonable average
+        "secondary_link": 5,     # Range 5-8m, 7 is a reasonable average
+        "tertiary": 5,           # Range 5-10m, 7 is a reasonable average
+        "tertiary_link": 5,      # Range 5-7m, 6 is a reasonable average
+        "residential": 4,        # Range 4-8m, 6 is a reasonable average
+        "living_street": 3,      # Range 3-6m, 4 is a reasonable average
+        "service": 3,            # Range 3-6m, 4 is a reasonable average
+        "pedestrian": 3,         # Range 3-10m, 5 is a reasonable average
+        "footway": 1,          # Range 1-2m, 1.5 is a reasonable average
+        "cycleway": 1.5,           # Range 1.5-3m, 2 is a reasonable average
+        "bridleway": 2,        # Range 2-3m, 2.5 is a reasonable average
+        "path": 1,             # Range 1-2m, 1.5 is a reasonable average
         "steps": 1,              # Roughly 1m
-        "unclassified": 6,       # Range 4-8m, 6 is a reasonable average
+        "unclassified": 4,       # Range 4-8m, 6 is a reasonable average
         "construction": 5,       # Highly variable; assuming average 5m
         "elevator": 1.5,         # Not a road, but minimal width (~1.5m)
     }
@@ -298,6 +204,9 @@ def filter_roads(gdf, params):
                 buffered_layers[layer].append(buffered_highway)
                 end_circles_layers[layer].append(shapely.geometry.Point(base.iloc[i].geometry.coords[0]).buffer(width* scale_ratio))
                 end_circles_layers[layer].append(shapely.geometry.Point(base.iloc[i].geometry.coords[-1]).buffer(width* scale_ratio))
+                
+            elif (base.iloc[i].geometry.geom_type == "Polygon" or base.iloc[i].geometry.geom_type == "MultiPolygon"):
+                buffered.append(base.iloc[i].geometry)
 
 
         # try:
@@ -314,8 +223,8 @@ def filter_roads(gdf, params):
         for layer, geometries in buffered_layers.items():
             buffered_layers[layer] = merge_polygons(geometries)
         buffered_layers = list(buffered_layers.values())
-        above_ground_layers = buffered_layers[1:]
-        above_ground_mask = gpd.GeoDataFrame([merge_polygons(above_ground_layers)], columns=['geometry'], crs=projected_gdf.crs)
+        # above_ground_layers = buffered_layers[1:]
+        # above_ground_mask = gpd.GeoDataFrame([merge_polygons(above_ground_layers)], columns=['geometry'], crs=projected_gdf.crs)
 
         for layer, geometries in end_circles_layers.items():
             end_circles_layers[layer] = merge_polygons(geometries)
@@ -343,7 +252,7 @@ def filter_roads(gdf, params):
         return {"outlines": gdf_polygons_to_lines(outlines), 
                 "details": details,  
                 "mask": mask,
-                "above_ground_mask":above_ground_mask
+                # "above_ground_mask":above_ground_mask
                 }
 
         # except Exception as e:

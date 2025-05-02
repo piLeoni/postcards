@@ -53,7 +53,7 @@ def gdf_to_all_linestrings(gdf):
     line_list = []
     attributes = []
 
-    for index, row in gdf.iterrows():
+    for _, row in gdf.iterrows():
         geom = row['geometry']
         attrs = row.drop('geometry').to_dict()
 
@@ -112,7 +112,7 @@ def gdf_remove_below_ground(gdf):
             try:
                 filtered_gdf[col] = pd.to_numeric(filtered_gdf[col], errors="coerce")
                 filtered_gdf = filtered_gdf[~(filtered_gdf[col] < 0)]
-            except Exception:
+            except (ValueError, TypeError):
                 # Handle cases where the column might not be numeric
                 pass
 
@@ -145,11 +145,13 @@ def flatten_geometry(geom):
 # Apply to a GeoDataFrame
 def fully_flatten_gdf(gdf):
     records = []
-    for idx, row in gdf.iterrows():
+    for _, row in gdf.iterrows():
         geometries = flatten_geometry(row.geometry)
         for geom in geometries:
-            new_row = row.copy()
-            new_row.geometry = geom
-            records.append(new_row)
-    return gpd.GeoDataFrame(records)
+            record = row.drop('geometry').to_dict()
+            record['geometry'] = geom
+            records.append(record)
+    if not records:
+        return gpd.GeoDataFrame(geometry=[], crs=gdf.crs)
+    return gpd.GeoDataFrame(records, crs=gdf.crs)
 

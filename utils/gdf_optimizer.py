@@ -46,7 +46,7 @@ def calculate_distance_sq(p1, p2):
     return dx*dx + dy*dy
 
 def gdf_optimize_paths(gdf):
-    """
+    """ 
     Optimizes the drawing order of geometries in a GeoDataFrame for a pen plotter.
 
     Minimizes travel distance by reordering paths and potentially reversing
