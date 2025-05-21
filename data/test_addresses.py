@@ -11,16 +11,16 @@ def sanitize_filename(name):
     return sanitized
 
 # Load coordinates
-# with open("data/capitals.json", "r") as file:
-#     capitals = json.load(file)["capitals"]
-with open("data/italy.json", "r") as file:
+with open("data/capitals.json", "r") as file:
     cities = json.load(file)
+# with open("data/italy.json", "r") as file:
+#     cities = json.load(file)
 
 # Loop through and run commands one by one
 for c in cities:
     # command = f"python3 __init__.py --lat {lat} --lng {lng} --output './exports/{sanitize_filename(label)}.svg'"
     # command = f"python3 __init__.py --address \"{c["capital"]}, {' '.join(c["country"].split(',')[::-1])}\"  --output './exports/svg/{sanitize_filename(c["capital"])}.svg'"
-    command = f"python3 __init__.py --address \"{c["city"]}, {' '.join(c["state"].split(',')[::-1])}\"  --output './exports/svg/{c["state"]}/{sanitize_filename(c["city"])}.svg'"
+    command = f"python3 __init__.py --address \"{c["city"]}, {' '.join(c["state"].split(',')[::-1])}\"  --output './exports/svg/{sanitize_filename(c["city"])}.svg'"
 
     print(f"Running: {c["city"]}, {c["state"]} ", command)
     

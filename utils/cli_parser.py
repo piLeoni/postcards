@@ -3,6 +3,7 @@ from pint import UnitRegistry
 from utils.transformer_factory import transformer_factory # ensure that this function is updated to take two parameters
 from utils.fetch_osm import fetch_osm
 import osmnx as ox
+from utils.generate_bounds import generate_rectangle_polygon, generate_bounds
 
 # Set up unit registry
 ureg = UnitRegistry()
@@ -72,8 +73,7 @@ def parse_args():
         "padding": args.padding,
         "address": args.address
     }
-    # params['geojson_data'] = fetch_osm(params)
-    params['trasformer'] = transformer_factory(params)
-
+    params["polygon"] = generate_rectangle_polygon(params)
+    params["bounds"] = generate_bounds(params)
 
     return params

@@ -1,10 +1,7 @@
 import shapely
 import geopandas as gpd
 from utils.ops import geometry_to_linestrings
-from utils.gdf_ops import gdf_polygons_to_lines, gdf_remove_points, gdf_remove_below_ground, gdf_to_all_linestrings, fully_flatten_gdf
-from utils.patterns.lines import lines_pattern
-from utils.gdf_projector import gdf_projector
-import numpy as np
+from utils.gdf_ops import gdf_polygons_to_lines, gdf_remove_points, gdf_remove_below_ground, gdf_to_all_linestrings
 import pandas as pd  # Make sure pandas is imported
 import re
 from collections import defaultdict
@@ -83,16 +80,6 @@ def parse_width(value):
 
     return None
 
-# def establish_width(row, local_factor):
-#     width = row["width"]
-#     if pd.isna(width):
-#         if not pd.isna(row["lanes"]):
-#             return float(row["lanes"]) * 3
-#         else:
-#             return width_index.get(row["highway"], 10) 
-#     else:
-#         return parse_width(width) * local_factor
-
 def establish_width(row, local_factor):
     # Try to get the width safely
     width = row.get("width", None)
@@ -158,8 +145,8 @@ def filter_roads(gdf, params):
                                  "mask": empty,
                                  "above_ground_mask": empty,
                                  },
-            "raw": gpd.GeoDataFrame(geometry=[], crs=gdf.crs),
-            "projected": gpd.GeoDataFrame(geometry=[], crs=gdf.crs)
+            "raw": empty,
+            "projected": empty
         }
     
     
@@ -168,19 +155,17 @@ def filter_roads(gdf, params):
         gdf = gdf[gdf['footway'] != 'crossing']
         gdf = gdf[gdf['footway'] != 'sidewalk']
 
-    projected_gdf = gdf_projector(gdf, params)
     
 
  
     # buildings = gdf[gdf['building'].notna()] 
-    projected_gdf = gdf_remove_points(projected_gdf)
-    projected_gdf = gdf_remove_below_ground(projected_gdf)
+    gdf = gdf_remove_points(gdf)
+    gdf = gdf_remove_below_ground(gdf)
 
-    projected_gdf = gdf_projector(gdf, params)
 
     def geometry():
         
-        base = projected_gdf.copy()
+        base = gdf.copy()
         scale_ratio = 1/(int(params["scale"].split(":")[1])/1000) *1.25
         buffered = []
         local_factor = get_local_units_factor(params)
@@ -201,7 +186,7 @@ def filter_roads(gdf, params):
                 buffered_highway =  base.iloc[i].geometry.buffer(width * scale_ratio)
 
                 buffered.append(buffered_highway)
-                buffered_layers[layer].append(buffered_highway)
+                buffered_layers[layer].append(buffered_highway) 
                 end_circles_layers[layer].append(shapely.geometry.Point(base.iloc[i].geometry.coords[0]).buffer(width* scale_ratio))
                 end_circles_layers[layer].append(shapely.geometry.Point(base.iloc[i].geometry.coords[-1]).buffer(width* scale_ratio))
                 
@@ -211,8 +196,7 @@ def filter_roads(gdf, params):
 
         # try:
         mask = merge_polygons(buffered)
-        details_mask = mask.buffer(-0.1)
-        mask = gpd.GeoDataFrame([mask], columns=['geometry'], crs=projected_gdf.crs)
+        mask = gpd.GeoDataFrame([mask], columns=['geometry'], crs=gdf.crs)
         outlines = mask.copy().dissolve(by=None, aggfunc='first')
 
 
@@ -223,8 +207,6 @@ def filter_roads(gdf, params):
         for layer, geometries in buffered_layers.items():
             buffered_layers[layer] = merge_polygons(geometries)
         buffered_layers = list(buffered_layers.values())
-        # above_ground_layers = buffered_layers[1:]
-        # above_ground_mask = gpd.GeoDataFrame([merge_polygons(above_ground_layers)], columns=['geometry'], crs=projected_gdf.crs)
 
         for layer, geometries in end_circles_layers.items():
             end_circles_layers[layer] = merge_polygons(geometries)
@@ -234,34 +216,24 @@ def filter_roads(gdf, params):
         for i, layer in enumerate(buffered_layers):
             for n in range(i+1, len(buffered_layers)):
                 buffered_layers[i] = buffered_layers[i].difference(buffered_layers[n])
-            # buffered_layers[i] =shapely.union_all(geometry_to_linestrings(layer))
-            # .difference(shapely.union_all(end_circles_layers[n]).buffer(0.1))
         details = []        
         
         for i, layer in enumerate(buffered_layers):
             temp = shapely.union_all(geometry_to_linestrings(buffered_layers[i])).difference(shapely.union_all(end_circles_layers[i]).buffer(0.005))
-            
             details.extend(geometry_to_linestrings(temp))
-        # details = shapely.union_all(details).difference(shapely.union_all(end_circles).buffer(0.1))
-        # details = shapely.geometry.MultiLineString(details).difference(shapely.union_all(end_circles).buffer(0.1))
 
-        details = gpd.GeoDataFrame(geometry=details,  crs=projected_gdf.crs)
+        details = gpd.GeoDataFrame(geometry=details,  crs=gdf.crs)
         details = gdf_to_all_linestrings(details ).dissolve(by=None, aggfunc='first')
         
         
         return {"outlines": gdf_polygons_to_lines(outlines), 
                 "details": details,  
                 "mask": mask,
-                # "above_ground_mask":above_ground_mask
                 }
-
-        # except Exception as e:
-        #     print(f"Error while creating union of buffered geometries: {e}")
-        #     return None
     
     return {
         "geometry": geometry,
         "raw": gdf,
-        "projected": projected_gdf
+        "projected": gdf
         } 
 
