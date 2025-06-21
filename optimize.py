@@ -47,18 +47,23 @@ if __name__ == "__main__":
     args += 'trim 3mm 3mm'.split()
     # args +=  *"--config vpype.toml".split(),
     # Common parameters
+    linesnap_tol = '0.05mm'
     linesimplify_tol = '0.1mm'
+    deduplicate_tol = '0.1mm'
     linemerge_tol = '0.3mm'
     filter_minlen = '0.3mm'
     linesort_passes = '1000'
     linesort_t = '-t'
     
-    # args += 'deduplicate -t 0.1mm'.split()
+    # args += 'snap -t 0.1mm'.split()
 
     if outlines is not None:
+        print("optimizing outlines")
         args += [
+            *f'snap -l {str(outlines)} {linesnap_tol}'.split(),
             *f'linesimplify -l {str(outlines)} -t {linesimplify_tol}'.split(),
-            *f'linemerge -l {str(outlines)} -t {linemerge_tol}'.split(),
+            # *f'deduplicate --layer {str(outlines)} -k -t {deduplicate_tol}'.split(),
+            *f'linemerge --layer {str(outlines)} -t {linemerge_tol}'.split(),
             *f'filter -l {str(outlines)} -m {filter_minlen}'.split(),
             *f'linesort -l {str(outlines)} {linesort_t} -p {linesort_passes}'.split(),
         ]
@@ -83,7 +88,7 @@ if __name__ == "__main__":
     if buildings_filling is not None:
         args += [
             *f'linesimplify -l {str(buildings_filling)} -t {linesimplify_tol}'.split(),
-            *f'linemerge -l {str(buildings_filling)} -t 0.65mm'.split(),
+            *f'linemerge -l {str(buildings_filling)} -t 1mm'.split(),
             *f'filter -l {str(buildings_filling)} -m {filter_minlen}'.split(),
             *f'linesort -l {str(buildings_filling)} {linesort_t} -p {linesort_passes}'.split(),
         ]
@@ -109,24 +114,18 @@ if __name__ == "__main__":
             *f'linesort -l {str(parks)} {linesort_t} -p {linesort_passes}'.split(),
         ]
     if parks_filling is not None:
+        args += [
+            *f'linesort -l {str(parks_filling)} -f'.split(),
+        ]
         # Add any processing steps for parks_filling here if needed
         pass
     
-    # if outlines is not None:
-    #     args += ['lmove', str(outlines), '0']
-    # if roads is not None:
-    #     args += ['lmove', str(roads), '0']
-    # if buildings is not None:
-    #     args += ['lmove', str(buildings), '0']
-    # if water is not None:
-    #     args += ['lmove', str(water), '0']
-    # if parks is not None:
-    #     args += ['lmove', str(parks), '0']
+   
 
     # args += 'deduplicate -t 0.1mm'.split()
-
-    args += ['write', f'{output}.svg']
-    args += [*'gwrite --profile plotter'.split(), f'{output}.gcode']
+    args += f'penwidth 0.1mm'.split()
+    args += f'write -m layer {output}.svg'.split()
+    args += f'gwrite --profile plotter {output}.gcode'.split()
 
     result = subprocess.run(args, check=True)
     print("saved", output)

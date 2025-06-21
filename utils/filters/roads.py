@@ -136,7 +136,7 @@ def merge_polygons(polygons):
 def filter_roads(gdf, params):
 
     if 'highway' not in gdf.columns:
-        print("No 'water' column found in gdf")
+        print("No 'highway' column found in gdf")
         empty = gpd.GeoDataFrame(geometry=[], crs=gdf.crs)
         return {
             "geometry": lambda: {"outlines": empty,

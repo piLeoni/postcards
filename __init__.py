@@ -12,6 +12,7 @@ from utils.timer import Timer
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from utils.generate_bounds import generate_rectangle_polygon
 from utils.gdf_projector import gdf_projector, gdf_projector_webmercator
+from shapely_polyskel import StraightSkeleton
 
 import osmnx as ox
 
@@ -24,6 +25,25 @@ ox.settings.max_query_area_size = 1000 * 1000 * 1000  # 50 sq km
 import geopandas as gpd
 
 
+import shapely
+
+
+def create_skeleton(geometry):
+    """Create skeleton from polygon or multipolygon geometry"""
+    if geometry.geom_type == 'MultiPolygon':
+        skeletons = []
+        for polygon in geometry.geoms:
+            try:
+                skeleton = StraightSkeleton(polygon=polygon).straight_skeleton
+                skeletons.append(skeleton)
+            except:
+                continue
+        return shapely.ops.unary_union(skeletons) if skeletons else geometry
+    else:
+        try:
+            return StraightSkeleton(polygon=geometry).straight_skeleton
+        except:
+            return geometry
 
 
 def project_geojson_to_svg(params):
@@ -106,29 +126,42 @@ def project_geojson_to_svg(params):
     
     
     
-    composer.add_gdf_to_layer(roads['outlines'], "roads")
-    composer.add_gdf_to_layer(roads['details'], "roads")
-    # timer.log("Adding roads")
-    building_mask = buildings['mask'].difference(roads['mask'])
-    timer.log("Creating building mask")
-    composer.add_gdf(buildings['outlines'].difference(roads['mask']), "buildings")
-    timer.log("Adding builings outline")
-    composer.add_gdf(buildings['details'].clip(building_mask), "buildings")
-    timer.log("Adding builings details")
-    composer.add_gdf(buildings['filling'].clip(building_mask), "buildings_filling")
+    # composer.add_gdf_to_layer(roads['outlines'], "outlines")
+    # composer.add_gdf_to_layer(roads['details'], "outlines")
+    # # timer.log("Adding roads")
+    # building_mask = buildings['mask'].difference(roads['mask'])
+    # timer.log("Creating building mask")
+    # composer.add_gdf(buildings['outlines'].difference(roads['mask']), "outlines")
+    # timer.log("Adding builings outline")
+    # composer.add_gdf(buildings['details'].clip(building_mask), "outlines")
+    # timer.log("Adding builings details")
+    # composer.add_gdf(buildings['filling'].clip(building_mask), "buildings_filling")
 
-    composer.add_gdf(water['outlines'].difference(building_mask).difference(roads["mask"]), "water")
-    composer.add_gdf(water['filling'].difference(building_mask).difference(roads["mask"]), "water_filling")
+    # composer.add_gdf(water['outlines'].difference(building_mask).difference(roads["mask"]), "outlines")
+    # composer.add_gdf(water['filling'].difference(building_mask).difference(roads["mask"]), "water_filling")
 
-    composer.add_gdf(parks['outlines'].difference(building_mask).difference(roads["mask"]).difference(water["mask"]), "parks")
-    composer.add_gdf(parks['filling'].difference(building_mask).difference(roads["mask"]).difference(water["mask"]), "parks_filling")
+    # composer.add_gdf(parks['outlines'].difference(building_mask).difference(roads["mask"]).difference(water["mask"]), "outlines")
+    # composer.add_gdf(parks['filling'].difference(building_mask).difference(roads["mask"]).difference(water["mask"]), "parks_filling")
     
 
+            
+   
+    roads_mask = roads['mask'].buffer(0.1)
+    building_mask = buildings['mask'].difference(roads_mask)
+    
+    outlines = [roads['outlines'],
+                roads['details'],
+                buildings['outlines'].difference(roads_mask),
+                buildings['details'].clip(building_mask), 
+                water['outlines'].difference(building_mask).difference(roads_mask),
+                parks['outlines'].difference(building_mask).difference(roads_mask).difference(water["mask"])
+                ]
 
- 
-    # composer.add_gdf_to_layer(buildings['filling'], "buildings", optimize_order="Advanced", merge_close_paths="Base", merge_tolerance=0.55, min_length = 0.75)
+    composer.add_gdf_to_layer(outlines, "outlines")
+    composer.add_gdf_to_layer(buildings['filling'].clip(building_mask), "buildings_filling")
+    composer.add_gdf_to_layer(water['filling'].difference(building_mask).difference(roads_mask),"water_filling")
+    composer.add_gdf_to_layer(parks['filling'].difference(building_mask).difference(roads_mask).difference(water["mask"]), "parks_filling")
 
-    # composer.colorize_elements_spectrum()
     composer.save_svg(params["output"])
     timer.log("Saving svg")
 

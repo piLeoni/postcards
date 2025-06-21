@@ -5,7 +5,32 @@ from shapely.ops import transform
 import numpy as np
 import warnings
 import networkx as nx
+from shapely.geometry import shape
 
+def extract_geometries(item):
+    # GeoDataFrame
+    if hasattr(item, 'geometry') and hasattr(item.geometry, '__iter__'):
+        return list(item.geometry)
+    # GeoSeries
+    if hasattr(item, 'geom_type') and not hasattr(item, '__iter__'):
+        return [item]
+    # List of geometries
+    if isinstance(item, list):
+        geoms = []
+        for subitem in item:
+            geoms.extend(extract_geometries(subitem))
+        return geoms
+    # GeoJSON FeatureCollection
+    if isinstance(item, dict) and item.get('type') == 'FeatureCollection':
+        return [shape(f['geometry']) for f in item['features']]
+    # GeoJSON Feature
+    if isinstance(item, dict) and item.get('type') == 'Feature':
+        return [shape(item['geometry'])]
+    # Shapely geometry
+    if hasattr(item, 'geom_type'):
+        return [item]
+    return []
+        
 def get_start_end_points(geometry):
     """Extracts start and end points from LineString or Polygon."""
     if isinstance(geometry, LineString):

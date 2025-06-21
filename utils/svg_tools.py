@@ -2,8 +2,9 @@ import re
 from utils.gdf_ops import fully_flatten_gdf
 import xml.etree.ElementTree as ET
 import matplotlib.colors as mcolors
-from utils.gdf_optimizer import gdf_optimize_paths, merge_consecutive_paths_by_distance, merge_paths_by_distance, tsp_order
+from utils.gdf_optimizer import extract_geometries, gdf_optimize_paths, merge_consecutive_paths_by_distance, merge_paths_by_distance, tsp_order
 import geopandas as gpd
+import pandas as pd
 
 
 class SVG_composer:
@@ -71,14 +72,15 @@ class SVG_composer:
                 index += 1
         return None
 
-
-
     def add_gdf(self, gdf, layer_name="default", optimize_order=False, merge_close_paths=False, merge_tolerance=0.5, min_length=0):
-        if isinstance(gdf, gpd.GeoSeries):
-            gdf = gpd.GeoDataFrame(geometry=gdf)
-        if not isinstance(gdf, gpd.GeoDataFrame) or gdf.empty:
-            print("empty gdf")
+ 
+
+        # Flatten and extract all valid geometries
+        flat_geoms = extract_geometries(gdf)
+        if not flat_geoms:
+            print("empty gdf or no valid geometries found")
             return self
+        gdf = gpd.GeoDataFrame(geometry=flat_geoms)
 
         gdf = fully_flatten_gdf(gdf)
 
