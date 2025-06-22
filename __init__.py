@@ -4,6 +4,8 @@ from utils.filters.buildings import filter_buildings
 from utils.filters.roads import filter_roads
 from utils.filters.parks import filter_parks
 from utils.filters.water import filter_water
+from utils.filters.test_grid import filter_test_grid
+
 from utils.patterns.waves import waves_pattern
 from utils.cli_parser import parse_args
 from utils.clipping_area import clipping_area, clip_by, cut_fast_by
@@ -28,22 +30,6 @@ import geopandas as gpd
 import shapely
 
 
-def create_skeleton(geometry):
-    """Create skeleton from polygon or multipolygon geometry"""
-    if geometry.geom_type == 'MultiPolygon':
-        skeletons = []
-        for polygon in geometry.geoms:
-            try:
-                skeleton = StraightSkeleton(polygon=polygon).straight_skeleton
-                skeletons.append(skeleton)
-            except:
-                continue
-        return shapely.ops.unary_union(skeletons) if skeletons else geometry
-    else:
-        try:
-            return StraightSkeleton(polygon=geometry).straight_skeleton
-        except:
-            return geometry
 
 
 def project_geojson_to_svg(params):
@@ -101,50 +87,8 @@ def project_geojson_to_svg(params):
     timer.log("Generating water")
 
   
-
-    # cl_a = gpd.GeoDataFrame(geometry=[clipping_area(params)], crs=gdf_projected.crs)
-    # cl_a = clipping_area(params)
-
     composer = SVG_composer(params)
     
-
-    # composer.add_gdf(roads['outlines'].clip(cl_a), optimize_order="Advanced", merge_close_paths="Base", merge_tolerance=0.25, min_length = 0.75)
-    # composer.add_gdf(roads['details'].clip(cl_a), optimize_order="Advanced", merge_close_paths="Base", merge_tolerance=0.25, min_length = 0.75)
-
-    # building_mask = buildings['mask'].difference(roads['mask'])
-    
-    # composer.add_gdf(buildings['outlines'].clip(cl_a).difference(roads['mask']), optimize_order="Base")
-    # composer.add_gdf(buildings['details'].clip(cl_a).clip(building_mask), optimize_order="Advanced", merge_close_paths="Base", merge_tolerance=0.25, min_length = 0.75)
-    # composer.add_gdf(buildings['filling'].clip(building_mask).clip(cl_a), optimize_order="Advanced", merge_close_paths="Base", merge_tolerance=0.55, min_length = 0.75)
-
-    # composer.add_gdf(water['outlines'].difference(building_mask).difference(roads["mask"]).clip(cl_a))
-    # composer.add_gdf(water['filling'].difference(building_mask).difference(roads["mask"]).clip(cl_a), optimize_order="Advanced", min_length = 0.35)
-
-    # composer.add_gdf(parks['outlines'].difference(building_mask).difference(roads["mask"]).difference(water["mask"]).clip(cl_a))
-    # composer.add_gdf(parks['filling'].difference(building_mask).difference(roads["mask"]).difference(water["mask"]).clip(cl_a))
-    
-    
-    
-    
-    # composer.add_gdf_to_layer(roads['outlines'], "outlines")
-    # composer.add_gdf_to_layer(roads['details'], "outlines")
-    # # timer.log("Adding roads")
-    # building_mask = buildings['mask'].difference(roads['mask'])
-    # timer.log("Creating building mask")
-    # composer.add_gdf(buildings['outlines'].difference(roads['mask']), "outlines")
-    # timer.log("Adding builings outline")
-    # composer.add_gdf(buildings['details'].clip(building_mask), "outlines")
-    # timer.log("Adding builings details")
-    # composer.add_gdf(buildings['filling'].clip(building_mask), "buildings_filling")
-
-    # composer.add_gdf(water['outlines'].difference(building_mask).difference(roads["mask"]), "outlines")
-    # composer.add_gdf(water['filling'].difference(building_mask).difference(roads["mask"]), "water_filling")
-
-    # composer.add_gdf(parks['outlines'].difference(building_mask).difference(roads["mask"]).difference(water["mask"]), "outlines")
-    # composer.add_gdf(parks['filling'].difference(building_mask).difference(roads["mask"]).difference(water["mask"]), "parks_filling")
-    
-
-            
    
     roads_mask = roads['mask'].buffer(0.1)
     building_mask = buildings['mask'].difference(roads_mask)
