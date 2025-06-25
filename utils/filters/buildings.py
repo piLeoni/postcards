@@ -2,7 +2,6 @@ import shapely
 import geopandas as gpd
 from utils.gdf_ops import gdf_polygons_to_lines, gdf_remove_points, gdf_remove_below_ground, gdf_to_all_linestrings, fully_flatten_gdf
 from utils.patterns.lines import lines_pattern
-from utils.gdf_projector import gdf_projector
 
 def filter_buildings(gdf, params):
     

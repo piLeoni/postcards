@@ -4,7 +4,6 @@ from utils.filters.buildings import filter_buildings
 from utils.filters.roads import filter_roads
 from utils.filters.parks import filter_parks
 from utils.filters.water import filter_water
-from utils.filters.test_grid import filter_test_grid
 
 from utils.patterns.waves import waves_pattern
 from utils.cli_parser import parse_args
@@ -39,10 +38,6 @@ def project_geojson_to_svg(params):
 
     timer = Timer()
     
-    # process_feature = process_feature_factory( params["trasformer"], **params)
-    
-
-    # gdf = ox.features_from_polygon(generate_rectangle_polygon(params), tags={"building": True}) 
     tags = {
         "building": True,
         "highway": True,

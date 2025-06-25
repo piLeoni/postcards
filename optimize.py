@@ -49,8 +49,8 @@ if __name__ == "__main__":
     # Common parameters
     linesnap_tol = '0.05mm'
     linesimplify_tol = '0.1mm'
-    deduplicate_tol = '0.1mm'
-    linemerge_tol = '0.3mm'
+    deduplicate_tol = '0.15mm'
+    linemerge_tol = '0.4mm'
     filter_minlen = '0.3mm'
     linesort_passes = '1000'
     linesort_t = '-t'
@@ -59,10 +59,11 @@ if __name__ == "__main__":
 
     if outlines is not None:
         print("optimizing outlines")
+        print(f"Layer ID for outlines: {outlines}")
         args += [
             *f'snap -l {str(outlines)} {linesnap_tol}'.split(),
             *f'linesimplify -l {str(outlines)} -t {linesimplify_tol}'.split(),
-            # *f'deduplicate --layer {str(outlines)} -k -t {deduplicate_tol}'.split(),
+            *f'deduplicate  -l {str(outlines)} -p -t {deduplicate_tol}'.split(),
             *f'linemerge --layer {str(outlines)} -t {linemerge_tol}'.split(),
             *f'filter -l {str(outlines)} -m {filter_minlen}'.split(),
             *f'linesort -l {str(outlines)} {linesort_t} -p {linesort_passes}'.split(),
@@ -102,9 +103,9 @@ if __name__ == "__main__":
     if water_filling is not None:
         args += [
             *f'linesimplify -l {str(water_filling)} -t 0.02mm'.split(),
-            *f'linemerge -l {str(water_filling)} -t 1mm'.split(),
+            # *f'linemerge -l {str(water_filling)} -t 1mm'.split(),
             *f'filter -l {str(water_filling)} -m {filter_minlen}'.split(),
-            *f'linesort -l {str(water_filling)} {linesort_t} -p {linesort_passes}'.split(),
+            *f'linesort -l {str(water_filling)} -f {linesort_t} -p {linesort_passes}'.split(),
         ]
     if parks is not None:
         args += [
