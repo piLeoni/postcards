@@ -3,6 +3,7 @@ import shapely.affinity
 import shapely.geometry
 import math
 from typing import Callable, List, Tuple, Union, Optional
+from shapely.geometry import LineString
 from enum import Enum
 from poisson_disc import Bridson_sampling
 import numpy as np
@@ -191,39 +192,6 @@ def get_alignment_offset(
     else:
         return (0, 0)
 
-def default_geometry_fn(
-    point: Tuple[float, float],
-    scale: float = 1.0,
-    rotation: float = 0.0,
-    align: ElementAlign = ElementAlign.CENTER,
-    offset: Tuple[float, float] = (0, 0)
-) -> shapely.geometry.LineString:
-    """
-    Default geometry: a short horizontal line centered (or aligned) at the point.
-    """
-    x, y = point
-    dx = 0.5 * scale
-    line = shapely.geometry.LineString([(x - dx, y), (x + dx, y)])
-    
-    # Calculate the actual bounding box of the line for proper alignment
-    minx, miny, maxx, maxy = line.bounds
-    element_width = maxx - minx
-    element_height = maxy - miny
-    
-    # Apply alignment offset based on actual geometry size
-    align_offset = get_alignment_offset(align, (element_width, element_height))
-    if align_offset != (0, 0):
-        line = shapely.affinity.translate(line, xoff=align_offset[0], yoff=align_offset[1])
-    
-    # Element rotation
-    if rotation != 0.0:
-        line = shapely.affinity.rotate(line, rotation, origin=(x, y))
-    
-    # Element offset
-    if offset != (0, 0):
-        line = shapely.affinity.translate(line, xoff=offset[0], yoff=offset[1])
-    
-    return line
 
 def elements_pattern(
     polygon: PolygonLike,
@@ -232,7 +200,7 @@ def elements_pattern(
     origin: Tuple[float, float] = None,
     rotation: float = 0.0,
     grid_offset: Tuple[float, float] = (0, 0),
-    geometry: Union[shapely.geometry.base.BaseGeometry, Callable] = default_geometry_fn,
+    geometry: Union[shapely.geometry.base.BaseGeometry, Callable] = LineString([(-0.1,0), (0.1,0)]),
     element_rotation: Union[float, List[float]] = 0.0,
     element_scale: Union[float, List[float]] = 1.0,
     element_align: Union[ElementAlign, List[ElementAlign]] = ElementAlign.CENTER,
@@ -327,12 +295,14 @@ def elements_pattern(
                 sequence_fns.append(g)
 
     # Prepare polygon for clipping if needed
-    if isinstance(polygon, shapely.geometry.Polygon):
-        clip_poly = polygon
-    elif isinstance(polygon, shapely.geometry.MultiPolygon):
-        clip_poly = polygon
-    else:
-        clip_poly = shapely.geometry.MultiPolygon(polygon)
+    clip_poly = None
+    if clip_elements:
+        if isinstance(polygon, shapely.geometry.Polygon):
+            clip_poly = polygon
+        elif isinstance(polygon, shapely.geometry.MultiPolygon):
+            clip_poly = polygon
+        else:
+            clip_poly = shapely.geometry.MultiPolygon(polygon)
 
     geoms = []
     for i, pt in enumerate(points):
@@ -351,7 +321,7 @@ def elements_pattern(
         }
         geom = fn(context)
         # Optionally clip each element to the polygon
-        if clip_elements:
+        if clip_elements and clip_poly is not None:
             try:
                 geom = geom.intersection(clip_poly)
                 if geom.is_empty:
@@ -359,6 +329,8 @@ def elements_pattern(
             except:
                 continue
         geoms.append(geom)
+    # Remove Point and MultiPoint geometries from the result before returning
+    geoms = [g for g in geoms if not g.is_empty and g.geom_type not in ("Point", "MultiPoint")]
     return geoms
 
 # Example usage:
