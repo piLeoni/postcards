@@ -1,0 +1,95 @@
+# Project settings (map + plotter). Swap file / pass --config for another machine.
+# Used by: __init__.py (map), optimize.py, export_gcode.py, vpype gwrite.
+
+# --- postcard / map (SVG generation) ----------------------------------------
+[map]
+# Physical card size (mm or with unit: "6in", "152.4mm").
+width = "6in"
+height = "4in"
+scale = "1:10000"
+bearing = 0
+projection = "utm"
+# Margin inside the card (mm). Keep in sync with [optimize].trim for now.
+padding_mm = 3
+# Optional default location; CLI --address / --lat/--lng overrides.
+# address = "1730 Highland Pl, Berkeley, CA 94709"
+# lat = 37.8771145
+# lng = -122.256196
+
+# --- path optimization (vpype) ----------------------------------------------
+[optimize]
+trim = "3mm"
+penwidth = "0.1mm"
+snap = "0.05mm"
+simplify = "0.1mm"
+linemerge = "0.25mm"
+fill_merge = "0.3mm"
+filter_min = "0.15mm"
+linesort_passes = 1000
+# Two-opt linesort (shorter travel). Set false for faster / less reorder.
+linesort_two_opt = true
+
+# --- bed placement (SVG page → machine coords) ------------------------------
+[placement]
+# Usable bed after home (mm).
+bed_width_mm = 200.0
+bed_height_mm = 140.0
+# Where the SVG page top-left corner goes in machine space.
+origin_x_mm = 0.0
+origin_y_mm = 140.0
+# SVG +Y is down; machine +Y is toward home (north). Flip before shift.
+flip_y = true
+# "page" keeps postcard padding; "content" packs ink to the origin (eats margin).
+anchor = "page"
+# Drop consecutive G0/G1 moves shorter than this (mm) when scrubbing output.
+scrub_min_mm = 0.15
+# Write one G-code file per SVG layer (same detail, smaller files FluidNC can open).
+split_layers = true
+# Further split any file over this many lines (0 = off). Keeps all geometry.
+max_lines_per_file = 8000
+# Append $SD/Run=/<job>/part_N+1.gcode at end of each part (FluidNC job nesting).
+chain_parts = true
+
+# --- feeds (mm/min and Z heights) — declare once, referenced as $name below --
+[feeds]
+travel_xy = 8000   # G0 between strokes
+pen_z = 2000       # pen up/down (use G1 so F is honored)
+draw_xy = 3500     # ink on paper
+pen_up = 4         # Z when pen is up
+pen_down = 0       # Z when drawing
+
+# --- gcode writer (vpype-gcode profile) --------------------------------------
+# NOT FluidNC config. vpype-gcode fills {x}/{y}; export expands $feeds names
+# first, then hands the result to vpype. Output is normal Grbl/FluidNC G-code.
+[gwrite.plotter]
+unit = "mm"
+invert_y = false
+
+document_start = """G21
+G90
+G94
+G10 L2 P1 X0 Y0 Z0
+G92.1
+$HZ
+$H
+G1 Z$pen_up F$pen_z
+"""
+
+layer_start = ""
+line_start = ""
+
+segment_first = """G0 X{x:.4f} Y{y:.4f} F$travel_xy
+G1 Z$pen_down F$pen_z
+"""
+segment = """G1 X{x:.4f} Y{y:.4f} F$draw_xy
+"""
+line_end = """G1 Z$pen_up F$pen_z
+"""
+
+document_end = """G1 Z$pen_up F$pen_z
+G10 L2 P1 X0 Y0 Z0
+G92.1
+$HZ
+$H
+G1 Z$pen_up F$pen_z
+"""

@@ -1,29 +1,40 @@
-import sys
-import xml.etree.ElementTree as ET
+#!/usr/bin/env python3
+"""Optimize multilayer postcard SVG using tolerances from a plotter config."""
+
+from __future__ import annotations
+
+import argparse
 import subprocess
+import xml.etree.ElementTree as ET
+from pathlib import Path
+
+from utils.plot_config import DEFAULT_CONFIG, load_plot_config, optimize_section
 
 
-def get_id(target_id, svg_file):
+def get_id(target_id: str, svg_file: str) -> int | None:
     tree = ET.parse(svg_file)
     root = tree.getroot()
-
     index = 1
     for elem in root.iter():
-        if elem.tag.endswith('g') and 'id' in elem.attrib:
-            if elem.attrib['id'] == target_id:
+        if elem.tag.endswith("g") and "id" in elem.attrib:
+            if elem.attrib["id"] == target_id:
                 return index
             index += 1
     return None
 
 
-# Example usage:
-if __name__ == "__main__":
-    svg_file = sys.argv[1]
-    output = sys.argv[2]
+def build_vpype_args(svg_file: str, output: str, cfg_path: Path, opt: dict) -> list[str]:
+    snap = str(opt.get("snap", "0.05mm"))
+    simplify = str(opt.get("simplify", "0.1mm"))
+    linemerge = str(opt.get("linemerge", "0.25mm"))
+    fill_merge = str(opt.get("fill_merge", "0.3mm"))
+    filter_min = str(opt.get("filter_min", "0.15mm"))
+    trim = str(opt.get("trim", "3mm"))
+    penwidth = str(opt.get("penwidth", "0.1mm"))
+    passes = int(opt.get("linesort_passes", 1000))
+    two_opt = bool(opt.get("linesort_two_opt", True))
+    linesort_t = "-t" if two_opt else ""
 
-    # Call as needed:
-    print(svg_file)
-    
     outlines = get_id("outlines", svg_file)
     roads = get_id("roads", svg_file)
     buildings = get_id("buildings", svg_file)
@@ -32,105 +43,95 @@ if __name__ == "__main__":
     water_filling = get_id("water_filling", svg_file)
     parks = get_id("parks", svg_file)
     parks_filling = get_id("parks_filling", svg_file)
-    
-    
-    # print("roads", roads)
-    # print("buildings", buildings)
-    # print("buildings_filling", buildings_filling)
-    # print("water", water)
-    # print("water_filling", water_filling)
-    # print("parks", parks)
-    # print("parks_filling", parks_filling)
-    # print("buildings", buildings)
-    args = ['vpype', '--config', 'vpype.toml']
-    args += ['read', svg_file]
-    args += 'trim 3mm 3mm'.split()
-    # args +=  *"--config vpype.toml".split(),
-    # Common parameters
-    linesnap_tol = '0.05mm'
-    linesimplify_tol = '0.1mm'
-    deduplicate_tol = '0.15mm'
-    linemerge_tol = '0.4mm'
-    filter_minlen = '0.3mm'
-    linesort_passes = '1000'
-    linesort_t = '-t'
-    
-    # args += 'snap -t 0.1mm'.split()
+
+    args = ["vpype", "--config", str(cfg_path), "read", svg_file, "trim", trim, trim]
+
+    def linesort(layer: int, two_opt_flag: bool = two_opt) -> list[str]:
+        cmd = ["linesort", "-l", str(layer)]
+        if two_opt_flag:
+            cmd.append("-t")
+        cmd += ["-p", str(passes)]
+        return cmd
 
     if outlines is not None:
-        print("optimizing outlines")
-        print(f"Layer ID for outlines: {outlines}")
+        print("optimizing outlines", outlines)
         args += [
-            *f'snap -l {str(outlines)} {linesnap_tol}'.split(),
-            *f'linesimplify -l {str(outlines)} -t {linesimplify_tol}'.split(),
-            *f'deduplicate  -l {str(outlines)} -p -t {deduplicate_tol}'.split(),
-            *f'linemerge --layer {str(outlines)} -t {linemerge_tol}'.split(),
-            *f'filter -l {str(outlines)} -m {filter_minlen}'.split(),
-            *f'linesort -l {str(outlines)} {linesort_t} -p {linesort_passes}'.split(),
+            "snap", "-l", str(outlines), snap,
+            "linesimplify", "-l", str(outlines), "-t", simplify,
+            # Never use vpype `deduplicate` here: that plugin ignores -l and
+            # merges all layers into layer 1 (wipes fillings).
+            "linemerge", "--layer", str(outlines), "-t", linemerge,
+            "filter", "-l", str(outlines), "-m", filter_min,
+            *linesort(outlines),
         ]
     if roads is not None:
         args += [
-            *f'linesimplify -l {str(roads)} -t {linesimplify_tol}'.split(),
-            *f'linemerge -l {str(roads)} -t {linemerge_tol}'.split(),
-            *f'filter -l {str(roads)} -m {filter_minlen}'.split(),
-            *f'linesort -l {str(roads)} {linesort_t} -p {linesort_passes}'.split(),
+            "linesimplify", "-l", str(roads), "-t", simplify,
+            "linemerge", "-l", str(roads), "-t", linemerge,
+            "filter", "-l", str(roads), "-m", filter_min,
+            *linesort(roads),
         ]
     if buildings is not None:
         args += [
-            *f'linesimplify -l {str(buildings)} -t {linesimplify_tol}'.split(),
-            *f'linemerge -l {str(buildings)} -t {linemerge_tol}'.split(),
-            *f'filter -l {str(buildings)} -m {filter_minlen}'.split(),
-            *f'linesort -l {str(buildings)} {linesort_t} -p {linesort_passes}'.split(),
-            *f'linesimplify -l {str(buildings)} -t {linesimplify_tol}'.split(),
-            *f'linemerge -l {str(buildings)} -t {linemerge_tol}'.split(),
-            *f'filter -l {str(buildings)} -m {filter_minlen}'.split(),
-            *f'linesort -l {str(buildings)} {linesort_t} -p {linesort_passes}'.split(),
+            "linesimplify", "-l", str(buildings), "-t", simplify,
+            "linemerge", "-l", str(buildings), "-t", linemerge,
+            "filter", "-l", str(buildings), "-m", filter_min,
+            *linesort(buildings),
         ]
     if buildings_filling is not None:
         args += [
-            *f'linesimplify -l {str(buildings_filling)} -t {linesimplify_tol}'.split(),
-            *f'linemerge -l {str(buildings_filling)} -t 1mm'.split(),
-            *f'filter -l {str(buildings_filling)} -m {filter_minlen}'.split(),
-            *f'linesort -l {str(buildings_filling)} {linesort_t} -p {linesort_passes}'.split(),
+            "linesimplify", "-l", str(buildings_filling), "-t", simplify,
+            "linemerge", "-l", str(buildings_filling), "-t", fill_merge,
+            "filter", "-l", str(buildings_filling), "-m", filter_min,
+            *linesort(buildings_filling),
         ]
     if water is not None:
         args += [
-            *f'linesimplify -l {str(water)} -t {linesimplify_tol}'.split(),
-            *f'linemerge -l {str(water)} -t {linemerge_tol}'.split(),
-            *f'filter -l {str(water)} -m {filter_minlen}'.split(),
-            *f'linesort -l {str(water)} {linesort_t} -p {linesort_passes}'.split(),
+            "linesimplify", "-l", str(water), "-t", simplify,
+            "linemerge", "-l", str(water), "-t", linemerge,
+            "filter", "-l", str(water), "-m", filter_min,
+            *linesort(water),
         ]
     if water_filling is not None:
         args += [
-            *f'linesimplify -l {str(water_filling)} -t 0.02mm'.split(),
-            # *f'linemerge -l {str(water_filling)} -t 1mm'.split(),
-            *f'filter -l {str(water_filling)} -m {filter_minlen}'.split(),
-            *f'linesort -l {str(water_filling)} -f {linesort_t} -p {linesort_passes}'.split(),
+            "linesimplify", "-l", str(water_filling), "-t", simplify,
+            "filter", "-l", str(water_filling), "-m", filter_min,
+            "linesort", "-l", str(water_filling), "-f",
+            *(["-t"] if two_opt else []),
+            "-p", str(passes),
         ]
     if parks is not None:
         args += [
-            *f'linesimplify -l {str(parks)} -t {linesimplify_tol}'.split(),
-            *f'linemerge -l {str(parks)} -t {linemerge_tol}'.split(),
-            *f'filter -l {str(parks)} -m {filter_minlen}'.split(),
-            *f'linesort -l {str(parks)} {linesort_t} -p {linesort_passes}'.split(),
+            "linesimplify", "-l", str(parks), "-t", simplify,
+            "linemerge", "-l", str(parks), "-t", linemerge,
+            "filter", "-l", str(parks), "-m", filter_min,
+            *linesort(parks),
         ]
     if parks_filling is not None:
-        args += [
-            *f'linesort -l {str(parks_filling)} -f'.split(),
-        ]
-        # Add any processing steps for parks_filling here if needed
-        pass
-    
-   
+        args += ["linesort", "-l", str(parks_filling), "-f"]
 
-    # args += 'deduplicate -t 0.1mm'.split()
-    args += f'penwidth 0.1mm'.split()
-    args += f'write -m layer {output}.svg'.split()
-    args += f'gwrite --profile plotter {output}.gcode'.split()
+    args += ["penwidth", penwidth, "write", "-m", "layer", f"{output}.svg"]
+    return args
 
-    result = subprocess.run(args, check=True)
-    print("saved", output)
 
-    
-    
-    
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("svg")
+    parser.add_argument("output", help="output prefix (writes <output>.svg)")
+    parser.add_argument(
+        "--config",
+        type=Path,
+        default=DEFAULT_CONFIG,
+        help=f"plotter profile TOML (default: {DEFAULT_CONFIG})",
+    )
+    args = parser.parse_args()
+
+    cfg = load_plot_config(args.config)
+    opt = optimize_section(cfg)
+    vp_args = build_vpype_args(args.svg, args.output, cfg["_path"], opt)
+    subprocess.run(vp_args, check=True)
+    print("saved", args.output)
+
+
+if __name__ == "__main__":
+    main()

@@ -1,19 +1,11 @@
+# Deprecated — export uses configs/fluidnc.toml (feeds expanded at runtime).
+# Kept only so a bare `vpype gwrite` still has a plotter profile.
+
 [gwrite.plotter]
 unit = "mm"
-document_start = "M3 G21\n"
-layer_start = "(Start Layer)\n"
-line_start = "(Start Block)\n"
-segment_first = """G00 Z5
-G00 X{x:.4f} Y{y:.4f}
-M3 S1000
-G4 P0.3
-G01 Z1 F3500
-"""
-segment = """G01 X{x:.4f} Y{y:.4f} Z1\n"""
-line_end = """G00 Z 5.0000
-M5 S0
-G4 P0.5\n"""
-document_end = """M5
-G00 X0.0000 Y0.0000
-M2"""
-invert_y = true
+invert_y = false
+document_start = "G21\nG90\nG94\n"
+segment_first = "G0 X{x:.4f} Y{y:.4f}\nG0 Z0\n"
+segment = "G1 X{x:.4f} Y{y:.4f} F3500\n"
+line_end = "G0 Z4\n"
+document_end = "G0 Z4\n"
