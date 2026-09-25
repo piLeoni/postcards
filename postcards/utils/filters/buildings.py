@@ -39,19 +39,24 @@ def _fill_settings(params: dict) -> dict:
         return {}
 
 
-def _fill_geometry(outlines: gpd.GeoDataFrame, params: dict) -> gpd.GeoDataFrame:
-    """The hatch for the dissolved building footprint, by the configured method."""
+def _fill_geometry(building_geoms, crs, params: dict) -> gpd.GeoDataFrame:
+    """Hatch each building footprint with the configured fill algorithm.
+
+    Footprints are filled one at a time (not after dissolve): merging adjacent
+    buildings into one outline creates courtyard-like notches that shatter the
+    zigzag bands even when each building alone would serpentine cleanly.
+    """
     settings = _fill_settings(params)
-    region = shapely.union_all(outlines.geometry)
-    if region.is_empty:
-        return empty_gdf(outlines.crs)
+    geoms = [g for g in building_geoms if g is not None and not g.is_empty]
+    if not geoms:
+        return empty_gdf(crs)
 
     if not settings:
-        # No configuration: keep the original card-wide hatch, so a profile
-        # written before fills existed produces the same drawing.
+        # No configuration: keep the original card-wide hatch.
+        outlines = as_gdf(geoms, crs)
         inner = outlines.buffer(-LEGACY_INSET_MM)
         filling = as_gdf(
-            lines_pattern(params, 0.5, 45, bounds=outlines.total_bounds), outlines.crs
+            lines_pattern(params, 0.5, 45, bounds=outlines.total_bounds), crs
         )
         return filling.clip(inner)
 
@@ -67,8 +72,11 @@ def _fill_geometry(outlines: gpd.GeoDataFrame, params: dict) -> gpd.GeoDataFrame
         options["inset_mm"] = inset_mm
     options.update(_algorithm_options(params, algorithm))
 
-    lines = get_fill(algorithm)(region, spacing, **options)
-    return as_gdf(lines, outlines.crs)
+    filler = get_fill(algorithm)
+    lines = []
+    for geom in geoms:
+        lines.extend(filler(geom, spacing, **options))
+    return as_gdf(lines, crs)
 
 
 def _algorithm_options(params: dict, algorithm: str) -> dict:
@@ -113,6 +121,6 @@ def filter_buildings(gdf: gpd.GeoDataFrame, params: dict) -> LayerParts:
     return LayerParts(
         outlines=gdf_polygons_to_lines(outlines),
         details=details,
-        filling=_fill_geometry(outlines, params),
+        filling=_fill_geometry(gdf.geometry, gdf.crs, params),
         mask=as_gdf(outlines, gdf.crs),
     )

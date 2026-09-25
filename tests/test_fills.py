@@ -151,6 +151,18 @@ def test_multi_polygon_input_is_filled_but_not_bridged(algorithm):
 
 # --- comparison ------------------------------------------------------------
 
+def test_zigzag_joins_both_walls_of_a_ring():
+    """A courtyard must not shatter the hatch into one stroke per scan line."""
+    region = FIXTURES["ring"]
+    zigzag = measure(fill(region, SPACING, algorithm="zigzag"), region, "zigzag")
+    none = measure(
+        fill(region, SPACING, algorithm="zigzag", connector="none"), region, "none"
+    )
+    # Two walls + maybe a few breaks, not ~one lift per scan fragment.
+    assert zigzag.lifts < none.lifts * 0.5
+    assert zigzag.outside == 0
+
+
 def test_zigzag_reduces_lifts_where_it_is_meant_to():
     """The core claim: joining lines cuts pen lifts on a convex footprint."""
     region = FIXTURES["square"]

@@ -60,7 +60,9 @@ def fill_<name>(region, spacing, **options) -> list[LineString]
 ```
 
 - `region` is already in page millimetres (Polygon or MultiPolygon)
-- strokes stay inside the region, inset by ~`spacing / 2`
+- strokes stay inside the region, inset by ~`spacing / 2` — the inset is
+  **part of the algorithm**, not a post-clip in composition. Re-clipping
+  afterwards (the old card-wide hatch habit) shatters zigzag connectors
 - holes are respected — nothing crosses a courtyard
 - MultiPolygons are filled per part; no bridge between buildings
 

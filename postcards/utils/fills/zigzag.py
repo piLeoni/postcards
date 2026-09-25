@@ -109,27 +109,36 @@ def _bands(fragments: list[LineString], spacing: float) -> list[list[int]]:
     for i in range(n):
         groups.setdefault(find(i), []).append(i)
 
-    # Within a union-find group, split into monotonic runs: walk top-to-bottom
-    # and start a new run when x-overlap with the previous fragment fails. That
-    # separates the two walls of a ring even when both walls share a top/bottom
-    # bar in the same union component.
+    # Within a union-find group, grow one column per vertical stack. The old
+    # walk sorted every fragment by (y, x) and compared each to the previous
+    # in that list — so a left+right pair on the same scan line broke the run
+    # (no x-overlap across the courtyard), and the next left then compared
+    # against the right and started yet another run. Result: a ring became
+    # hundreds of singleton "bands" and the hatch looked like plain
+    # rectilinear. Only extend a column from its tip on the previous scan.
     runs: list[list[int]] = []
     for members in groups.values():
         ordered = sorted(members, key=lambda i: (_y(fragments[i]), spans[i][0]))
-        current: list[int] = []
+        columns: list[list[int]] = []
         for i in ordered:
-            if not current:
-                current = [i]
-                continue
-            lo_a, hi_a = spans[current[-1]]
-            lo_b, hi_b = spans[i]
-            if min(hi_a, hi_b) - max(lo_a, lo_b) >= need:
-                current.append(i)
-            else:
-                runs.append(current)
-                current = [i]
-        if current:
-            runs.append(current)
+            placed = False
+            yi = _y(fragments[i])
+            lo_i, hi_i = spans[i]
+            for col in columns:
+                last = col[-1]
+                y_last = _y(fragments[last])
+                if yi <= y_last + 1e-9:
+                    continue  # same scan (or above) — open a new column
+                if yi - y_last > spacing * 1.5:
+                    continue
+                lo_a, hi_a = spans[last]
+                if min(hi_a, hi_i) - max(lo_a, lo_i) >= need:
+                    col.append(i)
+                    placed = True
+                    break
+            if not placed:
+                columns.append([i])
+        runs.extend(columns)
 
     return sorted(runs, key=lambda run: (_y(fragments[run[0]]), spans[run[0]][0]))
 

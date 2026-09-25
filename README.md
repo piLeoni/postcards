@@ -120,7 +120,9 @@ with `postcards fills`.
 ## How it fits together
 
 [`docs/pipeline.md`](docs/pipeline.md) covers the layer contract, adding a theme,
-and what each stage guarantees. Machine limits and the failure modes they guard
+and what each stage guarantees. Building fills are in
+[`docs/fills.md`](docs/fills.md); road width, bridges and stacking in
+[`docs/roads.md`](docs/roads.md). Machine limits and the failure modes they guard
 against are in [`docs/machine_specs.md`](docs/machine_specs.md) and
 [`docs/fluidnc_limits.md`](docs/fluidnc_limits.md).
 

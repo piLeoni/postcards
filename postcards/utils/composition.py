@@ -7,7 +7,9 @@ higher layers' masks from it. A theme therefore only ever gets clipped by
 things drawn on top of it, and each rule is stated once.
 
 Inside a single layer the same idea applies to its own parts: a theme's
-``filling`` is cut by its ``outlines`` so the hatch does not touch the border.
+``filling`` is produced already inset by the fill algorithm (or by the legacy
+hatch clip), so composition does not clip it again — only occludes it against
+layers drawn above.
 """
 
 from __future__ import annotations
@@ -45,17 +47,6 @@ def _subtract(gdf: gpd.GeoDataFrame, cutters: list[shapely.geometry.base.BaseGeo
     return _drop_empty(out, crs)
 
 
-def _clip_to(gdf: gpd.GeoDataFrame, area: shapely.geometry.base.BaseGeometry, crs):
-    """Keep only what falls inside ``area``."""
-    if gdf.empty or area.is_empty:
-        return gdf
-    out = gdf.copy()
-    out["geometry"] = out.geometry.apply(
-        lambda g: g.intersection(area) if g is not None and not g.is_empty else g
-    )
-    return _drop_empty(out, crs)
-
-
 def compose_layers(parts: dict) -> dict[str, gpd.GeoDataFrame]:
     """Turn per-theme :class:`LayerParts` into ordered, non-overlapping layers.
 
@@ -82,11 +73,12 @@ def compose_layers(parts: dict) -> dict[str, gpd.GeoDataFrame]:
 
         own_mask = layer.mask_union()
 
-        # Within the theme: hatch and details stop at the outline.
-        if layer.filling.empty:
-            filling = layer.filling
-        else:
-            filling = _clip_to(layer.filling, own_mask.buffer(-0.1), crs)
+        # Filling algorithms (and the legacy hatch) already inset themselves so
+        # strokes clear the outline. Re-clipping with buffer(-0.1) here used to
+        # shatter zigzag connectors that sat near mitred corners — the hatch
+        # looked like plain rectilinear on some buildings and serpentine on
+        # others. Trust the fill; only occlude against layers drawn above.
+        filling = layer.filling
 
         for suffix in PART_ORDER:
             geoms = filling if suffix == "filling" else getattr(layer, suffix)
