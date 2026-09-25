@@ -38,6 +38,20 @@ def placement_section(cfg: dict[str, Any]) -> dict[str, Any]:
     return dict(cfg.get("placement") or {})
 
 
+def layers_section(cfg: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
+    """Per-layer vpype pipelines from ``[layers.<name>]``.
+
+    Returns ``{layer_name: [ {name, ...}, ... ]}`` with the op list copied so
+    callers can mutate it freely.
+    """
+    raw = cfg.get("layers") or {}
+    out: dict[str, list[dict[str, Any]]] = {}
+    for name, section in raw.items():
+        ops = (section or {}).get("ops") or []
+        out[name] = [dict(op) for op in ops]
+    return out
+
+
 def feeds_section(cfg: dict[str, Any]) -> dict[str, Any]:
     defaults = {
         "travel_xy": 8000,

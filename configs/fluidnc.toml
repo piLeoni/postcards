@@ -17,6 +17,7 @@ padding_mm = 3
 # lng = -122.256196
 
 # --- path optimization (vpype) ----------------------------------------------
+# Shared defaults. A layer may override any of these in its [layers.*] section.
 [optimize]
 trim = "3mm"
 penwidth = "0.1mm"
@@ -28,6 +29,99 @@ filter_min = "0.15mm"
 linesort_passes = 1000
 # Two-opt linesort (shorter travel). Set false for faster / less reorder.
 linesort_two_opt = true
+
+# --- per-layer vpype pipelines ----------------------------------------------
+# Each layer lists the vpype operations to run on it, in order, by name.
+# Adding a layer to the map means adding a section here — no code change.
+#
+# Available ops: snap | linesimplify | linemerge | filter | linesort
+#   linesimplify / linemerge / filter accept a tolerance: "0.1mm"
+#   linesort accepts -t (two-opt) and -f (follow / no reorder of first point)
+#
+# Never use vpype `deduplicate` on a multi-layer document: it ignores -l and
+# merges every layer into layer 1, wiping the fillings.
+
+[layers.outlines]
+ops = [
+  { name = "snap", tolerance = "0.05mm" },
+  { name = "linesimplify", tolerance = "0.1mm" },
+  { name = "linemerge", tolerance = "0.25mm" },
+  { name = "filter", tolerance = "0.15mm" },
+  { name = "linesort", two_opt = true },
+]
+
+[layers.roads_outlines]
+ops = [
+  { name = "linesimplify", tolerance = "0.1mm" },
+  { name = "linemerge", tolerance = "0.25mm" },
+  { name = "filter", tolerance = "0.15mm" },
+  { name = "linesort", two_opt = true },
+]
+
+[layers.roads_details]
+ops = [
+  { name = "linesimplify", tolerance = "0.1mm" },
+  { name = "linemerge", tolerance = "0.25mm" },
+  { name = "filter", tolerance = "0.15mm" },
+  { name = "linesort", two_opt = true },
+]
+
+[layers.buildings_outlines]
+ops = [
+  { name = "linesimplify", tolerance = "0.1mm" },
+  { name = "linemerge", tolerance = "0.25mm" },
+  { name = "filter", tolerance = "0.15mm" },
+  { name = "linesort", two_opt = true },
+]
+
+[layers.buildings_details]
+ops = [
+  { name = "linesimplify", tolerance = "0.1mm" },
+  { name = "linemerge", tolerance = "0.25mm" },
+  { name = "filter", tolerance = "0.15mm" },
+  { name = "linesort", two_opt = true },
+]
+
+[layers.buildings_filling]
+ops = [
+  { name = "linesimplify", tolerance = "0.1mm" },
+  # Fill hatch merges more aggressively so the diagonals read as one stroke.
+  { name = "linemerge", tolerance = "0.3mm" },
+  { name = "filter", tolerance = "0.15mm" },
+  { name = "linesort", two_opt = true },
+]
+
+[layers.parks_outlines]
+ops = [
+  { name = "linesimplify", tolerance = "0.1mm" },
+  { name = "linemerge", tolerance = "0.25mm" },
+  { name = "filter", tolerance = "0.15mm" },
+  { name = "linesort", two_opt = true },
+]
+
+# Dots are independent marks: sorting them reorders the whole grid, so follow
+# order (no -t) and skip merging, which would stitch marks into streaks.
+[layers.parks_filling]
+ops = [
+  { name = "filter", tolerance = "0.15mm" },
+  { name = "linesort", two_opt = false, follow = true },
+]
+
+[layers.water_outlines]
+ops = [
+  { name = "linesimplify", tolerance = "0.1mm" },
+  { name = "linemerge", tolerance = "0.25mm" },
+  { name = "filter", tolerance = "0.15mm" },
+  { name = "linesort", two_opt = true },
+]
+
+# Waves are already continuous polylines; merging them is wasteful.
+[layers.water_filling]
+ops = [
+  { name = "linesimplify", tolerance = "0.1mm" },
+  { name = "filter", tolerance = "0.15mm" },
+  { name = "linesort", two_opt = true, follow = true },
+]
 
 # --- bed placement (SVG page → machine coords) ------------------------------
 [placement]

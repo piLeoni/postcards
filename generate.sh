@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Generate postcard SVG → optimize → G-code using a plotter profile TOML.
+# Generate postcard: map SVG → optimize → G-code, using a plotter profile TOML.
 #
 # Usage:
 #   ./generate.sh "1730 Highland Pl, Berkeley, CA 94709"
@@ -18,7 +18,7 @@ CONFIG="${PLOT_CONFIG:-configs/fluidnc.toml}"
 if [[ ! -x .venv/bin/python ]]; then
   echo "Missing .venv — create it and install deps first:" >&2
   echo "  python3.12 -m venv .venv && source .venv/bin/activate" >&2
-  echo "  pip install -r requirements.txt vpype vpype-gcode shapely_polyskel" >&2
+  echo "  pip install -r requirements.txt" >&2
   exit 1
 fi
 
@@ -38,7 +38,7 @@ echo "==> address: $ADDRESS"
 echo "==> config:  $CONFIG"
 echo "==> job dir: $JOB_DIR"
 echo "==> 1/3 map SVG → $RAW"
-"$PY" __init__.py --config "$CONFIG" --address "$ADDRESS" --output "$RAW"
+"$PY" make_map.py --config "$CONFIG" --address "$ADDRESS" --output "$RAW"
 
 echo "==> 2/3 optimize paths → ${OPT}.svg"
 "$PY" optimize.py "$RAW" "$OPT" --config "$CONFIG"

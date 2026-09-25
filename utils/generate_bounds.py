@@ -1,85 +1,66 @@
+"""Turn card dimensions and scale into a geographic query area.
+
+A card of ``width_mm`` at scale ``1:N`` covers ``width_mm / 1000 * N`` metres of
+ground. Because the earth is not flat, the corners are found by walking that
+distance from the centre along compass bearings, so a wide card at high latitude
+still spans the right number of metres on each edge.
+"""
+
+from __future__ import annotations
+
 from geopy.distance import geodesic
 from shapely.geometry import Polygon
 
-def generate_bounds(params):
-    center_coords = params['center_coords']
-    width_mm = params['width_mm']
-    height_mm = params['height_mm']
-    scale = params['scale']
-    lon, lat = center_coords
-    scale_ratio = int(scale.split(":")[1])
-    width_m = width_mm / 1000.0 * scale_ratio
-    height_m = height_mm / 1000.0 * scale_ratio
-    center_point = (lat, lon)
-    north_point = geodesic(meters=height_m / 2).destination(center_point, 0)
-    south_point = geodesic(meters=height_m / 2).destination(center_point, 180)
-    east_point = geodesic(meters=width_m / 2).destination(center_point, 90)
-    west_point = geodesic(meters=width_m / 2).destination(center_point, 270)
-    
-    north = north_point.latitude
-    south = south_point.latitude
-    east = east_point.longitude
-    west = west_point.longitude
-    
-    return {"north":north, "south":south, "east": east, "west":west}
 
-def generate_rectangle_polygon(params):
+def _ground_size(params: dict) -> tuple[float, float]:
+    """Card size in real-world metres."""
+    scale_ratio = int(str(params["scale"]).split(":")[1])
+    width_m = params["width_mm"] / 1000.0 * scale_ratio
+    height_m = params["height_mm"] / 1000.0 * scale_ratio
+    return width_m, height_m
+
+
+def generate_bounds(params: dict) -> dict[str, float]:
+    """Lat/lon bounding box of the card area, ignoring bearing."""
+    lon, lat = params["center_coords"]
+    width_m, height_m = _ground_size(params)
+    center = (lat, lon)
+
+    return {
+        "north": geodesic(meters=height_m / 2).destination(center, 0).latitude,
+        "south": geodesic(meters=height_m / 2).destination(center, 180).latitude,
+        "east": geodesic(meters=width_m / 2).destination(center, 90).longitude,
+        "west": geodesic(meters=width_m / 2).destination(center, 270).longitude,
+    }
+
+
+def generate_rectangle_polygon(params: dict) -> Polygon:
+    """The query polygon of the card, rotated by ``bearing`` if set.
+
+    Built from the centre rather than from two opposite corners so the sides stay
+    the requested ground distance apart even when rotated.
     """
-    Generate a rectangular polygon based on center coordinates, dimensions and optional bearing.
-    
-    Args:
-        params: Dictionary containing:
-            center_coords: Tuple of (longitude, latitude)
-            width_mm: Width in millimeters 
-            height_mm: Height in millimeters
-            scale: Scale as string (e.g. "1:10000")
-            bearing: Optional rotation angle in degrees (clockwise from north)
-    
-    Returns:
-        Shapely Polygon representing the rectangle
-    """
-    center_coords = params['center_coords']
-    width_mm = params['width_mm']
-    height_mm = params['height_mm']
-    scale = params['scale']
-    bearing = params.get('bearing', 0)  # Default to 0 if not provided
-    
-    # Parse scale and convert dimensions to meters
-    scale_ratio = int(scale.split(":")[1])
-    width_m = width_mm / 1000.0 * scale_ratio
-    height_m = height_mm / 1000.0 * scale_ratio
-    
-    # Note: center_coords is (lon, lat) but geopy expects (lat, lon)
-    lon, lat = center_coords
-    center_point = (lat, lon)
-    
-    # Calculate the four corners
-    # First, get the North point (rotated by bearing)
-    north = geodesic(meters=height_m/2).destination(center_point, bearing)
-    south = geodesic(meters=height_m/2).destination(center_point, (bearing + 180) % 360)
-    
-    # Then calculate east and west points from the north point
-    # (perpendicular to the north-south line)
+    lon, lat = params["center_coords"]
+    width_m, height_m = _ground_size(params)
+    bearing = params.get("bearing", 0)
+    center = (lat, lon)
+
+    north = geodesic(meters=height_m / 2).destination(center, bearing)
+    south = geodesic(meters=height_m / 2).destination(center, (bearing + 180) % 360)
     east_bearing = (bearing + 90) % 360
     west_bearing = (bearing + 270) % 360
-    
-    # From center
-    east_point = geodesic(meters=width_m/2).destination(center_point, east_bearing)
-    west_point = geodesic(meters=width_m/2).destination(center_point, west_bearing)
-    
-    # Calculate the corners by combining offsets
-    ne_point = geodesic(meters=width_m/2).destination(north, east_bearing)
-    nw_point = geodesic(meters=width_m/2).destination(north, west_bearing)
-    se_point = geodesic(meters=width_m/2).destination(south, east_bearing)
-    sw_point = geodesic(meters=width_m/2).destination(south, west_bearing)
-    
-    # Create polygon coordinates (lon, lat) for shapely
-    coords = [
-        (ne_point.longitude, ne_point.latitude),
-        (nw_point.longitude, nw_point.latitude),
-        (sw_point.longitude, sw_point.latitude),
-        (se_point.longitude, se_point.latitude),
-        (ne_point.longitude, ne_point.latitude)  # Close the ring
-    ]
-    
-    return Polygon(coords)
+
+    ne = geodesic(meters=width_m / 2).destination(north, east_bearing)
+    nw = geodesic(meters=width_m / 2).destination(north, west_bearing)
+    se = geodesic(meters=width_m / 2).destination(south, east_bearing)
+    sw = geodesic(meters=width_m / 2).destination(south, west_bearing)
+
+    return Polygon(
+        [
+            (ne.longitude, ne.latitude),
+            (nw.longitude, nw.latitude),
+            (sw.longitude, sw.latitude),
+            (se.longitude, se.latitude),
+            (ne.longitude, ne.latitude),
+        ]
+    )

@@ -1,39 +1,40 @@
-import shapely
-import shapely.affinity
-import numpy as np
+"""Sine-wave hatch, used to fill water."""
+
+from __future__ import annotations
+
 import math
 
-def waves_pattern(params, interval=0.5, angle=0):
-    """
-    Generates a pattern of sine-wavy lines across a rectangle,
-    optionally rotated by a specified angle.
-    Amplitude is proportional to the interval.
-    Every even line is inverted (start and end points are swapped).
-    """
-    width = params['width_mm']
-    height = params['height_mm']
-    diagonal = math.sqrt(width**2 + height**2)
+import numpy as np
+import shapely
+import shapely.affinity
+
+from utils.patterns._common import Bounds, _sweep_area
+
+# Sampling step along X, in mm. Fine enough to read as a smooth wave.
+_STEP = 0.1
+
+
+def waves_pattern(
+    params: dict,
+    interval: float = 0.5,
+    angle: float = 0,
+    bounds: Bounds | None = None,
+) -> list[shapely.LineString]:
+    """Wavy lines ``interval`` mm apart; amplitude scales with the interval."""
+    x0, y0, w, h = _sweep_area(params, bounds, margin=interval)
+
+    wavelength = interval / 4
+    frequency_scale = math.pi / wavelength / 8
 
     lines = []
-    wavelength = interval / 4  # You can tweak this
-    frequency_scale = math.pi / wavelength  / 8
-
-    
-    for iy, y in enumerate(np.arange(0, diagonal, interval)):
-        coords = []
-        for ix, x in enumerate(np.arange(0, diagonal, 0.1)):
-            coords.append([x, y + np.sin(x*frequency_scale)*wavelength])
-        line = shapely.LineString(coords)
-        lines.append(line)
-
-    lines = [
-        shapely.affinity.translate(line, xoff = -(diagonal / 2 - width / 2), yoff = -(diagonal / 2 - height / 2))
-        for line in lines
-    ] 
+    for y in np.arange(y0, y0 + h, interval):
+        coords = [
+            (x, y + math.sin(x * frequency_scale) * wavelength)
+            for x in np.arange(x0, x0 + w, _STEP)
+        ]
+        lines.append(shapely.LineString(coords))
 
     if angle != 0:
-        lines = [
-            shapely.affinity.rotate(line, angle, origin=(width/2, height/2))
-            for line in lines
-        ]
+        origin = (x0 + w / 2, y0 + h / 2)
+        lines = [shapely.affinity.rotate(line, angle, origin=origin) for line in lines]
     return lines

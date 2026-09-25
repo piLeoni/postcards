@@ -55,18 +55,44 @@ G94
 """
 
 
+def _point_xy(point) -> tuple[float, float]:
+    """Extract (x, y) from a vpype point.
+
+    vpype stores coordinates as complex numbers (real = x, imag = y), but tests
+    and callers may hand us an ``[x, y]`` pair instead. Both are accepted.
+    """
+    if np.iscomplexobj(point):
+        return float(np.real(point)), float(np.imag(point))
+    return float(point[0]), float(point[1])
+
+
+def _segment_length(p0, p1) -> float:
+    """Euclidean distance between two points."""
+    x0, y0 = _point_xy(p0)
+    x1, y1 = _point_xy(p1)
+    return ((x1 - x0) ** 2 + (y1 - y0) ** 2) ** 0.5
+
+
 def clean_line(line: np.ndarray, min_seg: float) -> np.ndarray | None:
+    """Drop consecutive points closer than ``min_seg``.
+
+    Two-point lines are kept as-is when the two points differ at all: those are
+    intentional dabs (park dots, building marks) and are meant to be shorter than
+    ``min_seg``. Zero-length two-point lines are dropped, since a pen-down at the
+    same coordinate as the previous move draws nothing.
+    """
     if line is None or len(line) == 0:
         return None
-    # Keep intentional 2-point dabs (park/building dots) even when shorter than min_seg.
-    # scrub_gcode collapses consecutive G1s; it must not delete G0→G1 dabs.
+
     if len(line) == 2:
-        return line if abs(line[0] - line[1]) > 1e-9 else None
+        return line if _segment_length(line[0], line[1]) > 1e-9 else None
+
     out = [line[0]]
     for pt in line[1:]:
-        if abs(pt - out[-1]) < min_seg:
+        if _segment_length(pt, out[-1]) < min_seg:
             continue
         out.append(pt)
+
     if len(out) < 2:
         return None
     return np.asarray(out, dtype=line.dtype)
@@ -83,8 +109,37 @@ def clean_document(doc: vp.Document, min_seg: float) -> None:
         doc.layers[layer_id] = new_lc
 
 
+def document_bounds(doc: vp.Document) -> tuple[float, float, float, float] | None:
+    """Bounding envelope of every point in the document, in page units.
+
+    Equivalent to ``doc.bounds()`` but computed here explicitly, so the bed check
+    in :func:`place_document` does not depend on vpype's internal representation.
+    vpype stores a line as a flat array of complex numbers — ``real`` is x,
+    ``imag`` is y — and every coordinate is inspected rather than any subset.
+    """
+    xs_min = ys_min = None
+    xs_max = ys_max = None
+
+    for layer in doc.layers.values():
+        for line in layer:
+            if line is None or len(line) == 0:
+                continue
+            xs, ys = line.real, line.imag
+            x_lo, x_hi = float(np.min(xs)), float(np.max(xs))
+            y_lo, y_hi = float(np.min(ys)), float(np.max(ys))
+
+            xs_min = x_lo if xs_min is None else min(xs_min, x_lo)
+            xs_max = x_hi if xs_max is None else max(xs_max, x_hi)
+            ys_min = y_lo if ys_min is None else min(ys_min, y_lo)
+            ys_max = y_hi if ys_max is None else max(ys_max, y_hi)
+
+    if xs_min is None:
+        return None
+    return (xs_min, ys_min, xs_max, ys_max)
+
+
 def place_document(doc: vp.Document, placement: dict) -> None:
-    if doc.bounds() is None:
+    if document_bounds(doc) is None:
         raise SystemExit("empty document — nothing to export")
 
     bed_w = float(vp.convert_length(f"{placement.get('bed_width_mm', 200)}mm"))
@@ -104,12 +159,12 @@ def place_document(doc: vp.Document, placement: dict) -> None:
     if anchor == "page":
         doc.translate(origin_x, origin_y)
     elif anchor == "content":
-        xmin, ymin, xmax, ymax = doc.bounds()
+        xmin, ymin, xmax, ymax = document_bounds(doc)
         doc.translate(origin_x - xmin, origin_y - ymax)
     else:
         raise SystemExit(f"unknown placement.anchor={anchor!r} (use page|content)")
 
-    xmin, ymin, xmax, ymax = doc.bounds()
+    xmin, ymin, xmax, ymax = document_bounds(doc)
     eps = 1e-3
     if xmin < -eps or ymin < -eps or xmax > bed_w + eps or ymax > bed_h + eps:
         raise SystemExit(

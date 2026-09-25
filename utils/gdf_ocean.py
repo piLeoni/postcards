@@ -4,18 +4,20 @@ import os
 import pandas as pd
 import numpy as np
 
-def load_ocean_tiles_by_polygon(selector_polygon, tile_dir="tiles/ocean_10deg", tile_suffix=".gpkg", clip=True):
+def load_ocean_tiles_by_polygon(selector_polygon, crs=None, tile_dir="tiles/ocean_10deg", tile_suffix=".gpkg", clip=True):
     """
     Loads and merges 10x10 degree ocean tiles intersecting a polygon.
 
     Parameters:
         selector_polygon (shapely.geometry.Polygon): Input polygon in EPSG:4326.
+        crs: CRS of the map frame being built. Tiles are read in EPSG:4326 and
+            reprojected to it so the ocean joins the water layer seamlessly.
         tile_dir (str): Folder with ocean tiles named like ocean_<lat>_<lon>.gpkg.
         tile_suffix (str): File extension, e.g., '.gpkg'.
         clip (bool): Whether to clip merged result to the selector polygon.
 
     Returns:
-        GeoDataFrame: Merged ocean geometry.
+        GeoDataFrame: Merged ocean geometry, in ``crs``.
     """
 
     if not selector_polygon.is_valid:
@@ -47,5 +49,8 @@ def load_ocean_tiles_by_polygon(selector_polygon, tile_dir="tiles/ocean_10deg", 
 
     if clip:
         merged = merged.clip(selector_polygon)
+
+    if crs is not None and merged.crs is not None and not merged.crs.equals(crs):
+        merged = merged.to_crs(crs)
 
     return merged

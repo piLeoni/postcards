@@ -1,239 +1,235 @@
-import shapely
-import geopandas as gpd
-from utils.ops import geometry_to_linestrings
-from utils.gdf_ops import gdf_polygons_to_lines, gdf_remove_points, gdf_remove_below_ground, gdf_to_all_linestrings
-import pandas as pd  # Make sure pandas is imported
+"""Roads: outlines, kerb/level detail lines, and nothing to fill.
+
+Roads are modelled as the area the carriageway actually covers. Each way is
+buffered by half its real width, so the drawn edges land where the street is.
+Widths come from OSM in priority order: the ``width`` tag, then ``lanes``, then
+a per-highway-type average.
+
+Roads carrying a positive ``layer`` tag (bridges, overpasses) are handled
+separately: each layer is subtracted from the ones below it so a bridge reads as
+crossing over the street underneath, and the resulting seams become the
+``details`` strokes.
+"""
+
+from __future__ import annotations
+
 import re
 from collections import defaultdict
 
+import geopandas as gpd
+import pandas as pd
+import shapely
 from geopy.geocoders import Nominatim
 
-def get_country_from_coordinates(lon, lat):
-    geolocator = Nominatim(user_agent="test@gmail.com")
+from utils.gdf_ops import (
+    gdf_polygons_to_lines,
+    gdf_remove_below_ground,
+    gdf_remove_points,
+    gdf_to_all_linestrings,
+)
+from utils.layers import LayerParts, as_gdf
+from utils.ops import geometry_to_linestrings
+
+# Typical carriageway width in metres, by OSM highway value. Used only when the
+# way carries neither a width nor a lane count.
+WIDTH_BY_TYPE = {
+    "motorway": 15,
+    "motorway_link": 7,
+    "trunk": 10,
+    "trunk_link": 6,
+    "primary": 7,
+    "primary_link": 6,
+    "secondary": 6,
+    "secondary_link": 5,
+    "tertiary": 5,
+    "tertiary_link": 5,
+    "residential": 4,
+    "living_street": 3,
+    "service": 3,
+    "pedestrian": 3,
+    "footway": 1,
+    "cycleway": 1.5,
+    "bridleway": 2,
+    "path": 1,
+    "steps": 1,
+    "unclassified": 4,
+    "construction": 5,
+    "elevator": 1.5,
+}
+
+# Countries whose OSM data is in feet rather than metres.
+IMPERIAL_COUNTRIES = {"United States", "Canada", "Liberia", "Myanmar"}
+
+DEFAULT_WIDTH_M = 6.0
+LANE_WIDTH_M = 3.0
+# Roads are widened slightly so neighbouring ways visibly touch on the card.
+BUFFER_FUDGE = 1.25
+
+
+def _country_at(lon: float, lat: float) -> str | None:
+    geolocator = Nominatim(user_agent="postcards")
     location = geolocator.reverse((lat, lon), exactly_one=True)
-    if location and 'country' in location.raw['address']:
-        return location.raw['address']['country']
+    if location and "country" in location.raw.get("address", {}):
+        return location.raw["address"]["country"]
     return None
 
-imperial_countries = ["United States", "Canada", "Liberia", "Myanmar"]
 
-width_index = {
-        "motorway": 15,          # Range 15-30m, 25 is a reasonable average
-        "motorway_link": 7,     # Range 7-12m, 10 is a reasonable average
-        "trunk": 10,             # Range 10-25m, 18 is a reasonable average
-        "trunk_link": 6,         # Range 6-10m, 8 is a reasonable average
-        "primary": 7,           # Range 7-15m, 12 is a reasonable average
-        "primary_link": 6,       # Range 6-10m, 8 is a reasonable average
-        "secondary": 6,          # Range 6-12m, 9 is a reasonable average
-        "secondary_link": 5,     # Range 5-8m, 7 is a reasonable average
-        "tertiary": 5,           # Range 5-10m, 7 is a reasonable average
-        "tertiary_link": 5,      # Range 5-7m, 6 is a reasonable average
-        "residential": 4,        # Range 4-8m, 6 is a reasonable average
-        "living_street": 3,      # Range 3-6m, 4 is a reasonable average
-        "service": 3,            # Range 3-6m, 4 is a reasonable average
-        "pedestrian": 3,         # Range 3-10m, 5 is a reasonable average
-        "footway": 1,          # Range 1-2m, 1.5 is a reasonable average
-        "cycleway": 1.5,           # Range 1.5-3m, 2 is a reasonable average
-        "bridleway": 2,        # Range 2-3m, 2.5 is a reasonable average
-        "path": 1,             # Range 1-2m, 1.5 is a reasonable average
-        "steps": 1,              # Roughly 1m
-        "unclassified": 4,       # Range 4-8m, 6 is a reasonable average
-        "construction": 5,       # Highly variable; assuming average 5m
-        "elevator": 1.5,         # Not a road, but minimal width (~1.5m)
-    }
-
-def get_local_units_factor(params):
-    country = get_country_from_coordinates(*params["center_coords"])
-    if country in imperial_countries:
-        return 0.3048
-    else:
+def _local_units_factor(params: dict) -> float:
+    """Metres per local ``width`` unit (1.0 unless the address is imperial)."""
+    try:
+        country = _country_at(*params["center_coords"])
+    except Exception:
         return 1.0
-    
+    return 0.3048 if country in IMPERIAL_COUNTRIES else 1.0
 
-def parse_width(value):
+
+def _parse_width(value) -> float | None:
+    """Parse an OSM width: number, ``a;b``, or feet-inches like ``8'3"``."""
     if isinstance(value, (int, float)):
         return float(value)
-    if isinstance(value, str):
-        value = value.strip()
+    if not isinstance(value, str):
+        return None
 
-        # Handle multiple values like "15.2;18.6" — pick the maximum
-        if ";" in value:
-            parts = value.split(";")
-            parsed_parts = [parse_width(part) for part in parts]
-            parsed_parts = [p for p in parsed_parts if p is not None]
-            if parsed_parts:
-                return max(parsed_parts)
+    value = value.strip()
 
-        # Handle feet-inches like 8'3"
-        match = re.match(r"(\d+)'\s*(\d+)?", value)
-        if match:
-            feet = int(match.group(1))
-            inches = int(match.group(2)) if match.group(2) else 0
-            total_feet = feet + (inches / 12)
-            return float(total_feet)
+    if ";" in value:
+        parsed = [_parse_width(part) for part in value.split(";")]
+        parsed = [p for p in parsed if p is not None]
+        return max(parsed) if parsed else None
 
-        # Try parsing as a simple float
-        try:
-            return float(value)
-        except ValueError:
-            pass
+    match = re.match(r"(\d+)'\s*(\d+)?", value)
+    if match:
+        feet = int(match.group(1))
+        inches = int(match.group(2)) if match.group(2) else 0
+        return feet + inches / 12
 
-    return None
+    try:
+        return float(value)
+    except ValueError:
+        return None
 
-def establish_width(row, local_factor):
-    # Try to get the width safely
+
+def _road_width_m(row, local_factor: float) -> float:
     width = row.get("width", None)
-
     if pd.notna(width):
-        parsed_width = parse_width(width)
-        if parsed_width is not None:
-            return parsed_width * local_factor
+        parsed = _parse_width(width)
+        if parsed is not None:
+            return parsed * local_factor
 
-    # If width is missing, fallback to estimate from lanes
     lanes = row.get("lanes", None)
     if pd.notna(lanes):
         try:
-            lanes_count = float(str(lanes).split(";")[0])  # handle cases like "2;3"
-            return lanes_count * 3   # assume each lane is 3.5 meters
+            return float(str(lanes).split(";")[0]) * LANE_WIDTH_M
         except (ValueError, TypeError):
             pass
 
-    # If no width and no lanes, fallback based on highway type
     highway = row.get("highway", None)
-    if highway in width_index:
-        return width_index[highway] 
+    if highway in WIDTH_BY_TYPE:
+        return float(WIDTH_BY_TYPE[highway])
 
-    # As last resort, fallback to a default
-    return 6 * local_factor  # 6 meters default
+    return DEFAULT_WIDTH_M * local_factor
 
 
-def get_layer(row):
-    layer = row.get("layer", 0)  # Default to 0 if missing
-
+def _road_layer(row) -> int:
+    layer = row.get("layer", 0)
     if pd.isna(layer):
         return 0
-
     if isinstance(layer, str):
         try:
-            layer = int(layer)
+            return int(layer)
         except ValueError:
-            layer = 0
+            return 0
+    try:
+        return int(layer)
+    except (TypeError, ValueError):
+        return 0
 
-    return layer
 
-def merge_polygons(polygons):
-    merged = shapely.ops.unary_union(polygons)
-    # If the result is a GeometryCollection, apply unary_union again
+def _merge_polygons(geoms: list) -> shapely.geometry.base.BaseGeometry:
+    merged = shapely.union_all(geoms)
     if isinstance(merged, shapely.geometry.GeometryCollection):
-        merged = shapely.ops.unary_union([geom for geom in merged])
-    # Ensure that the merged result is always a MultiPolygon or Polygon
+        merged = shapely.union_all(list(merged.geoms))
     if isinstance(merged, (shapely.geometry.Polygon, shapely.geometry.MultiPolygon)):
         return merged
-    else:
-        # If the result is still not a Polygon or MultiPolygon, return a MultiPolygon of the individual geometries
-        return shapely.geometry.MultiPolygon([geom for geom in merged.geoms])
+    if isinstance(merged, shapely.geometry.base.BaseGeometry) and merged.is_empty:
+        return shapely.geometry.Polygon()
+    return shapely.geometry.MultiPolygon(
+        [g for g in getattr(merged, "geoms", []) if not g.is_empty]
+    )
 
-def filter_roads(gdf, params):
 
-    if 'highway' not in gdf.columns:
+def filter_roads(gdf: gpd.GeoDataFrame, params: dict) -> LayerParts:
+    if "highway" not in gdf.columns:
         print("No 'highway' column found in gdf")
-        empty = gpd.GeoDataFrame(geometry=[], crs=gdf.crs)
-        return {
-            "geometry": lambda: {"outlines": empty,
-                                 "details": empty,
-                                 "filling": empty,
-                                 "mask": empty,
-                                 "above_ground_mask": empty,
-                                 },
-            "raw": empty,
-            "projected": empty
-        }
-    
-    
-    gdf = gdf[gdf['highway'].notna()] 
-    if 'footway' in gdf.columns:
-        gdf = gdf[gdf['footway'] != 'crossing']
-        gdf = gdf[gdf['footway'] != 'sidewalk']
+        return LayerParts()
 
-    
+    gdf = gdf[gdf["highway"].notna()]
+    if "footway" in gdf.columns:
+        gdf = gdf[~gdf["footway"].isin(["crossing", "sidewalk"])]
 
- 
-    # buildings = gdf[gdf['building'].notna()] 
     gdf = gdf_remove_points(gdf)
     gdf = gdf_remove_below_ground(gdf)
+    if gdf.empty:
+        return LayerParts()
 
+    local_factor = _local_units_factor(params)
+    # Card mm per ground metre, so a 6 m street has a real-world-consistent width.
+    scale_ratio = 1 / (int(params["scale"].split(":")[1]) / 1000) * BUFFER_FUDGE
 
-    def geometry():
-        
-        base = gdf.copy()
-        scale_ratio = 1/(int(params["scale"].split(":")[1])/1000) *1.25
-        buffered = []
-        local_factor = get_local_units_factor(params)
-        buffered_layers = defaultdict(list)  # Dictionary: {layer_name: [geometries]}
-        end_circles = []
-        end_circles_layers = defaultdict(list)  # Dictionary: {layer_name: [geometries]}
+    buffered: list = []
+    by_layer: dict[int, list] = defaultdict(list)
+    endpoints_by_layer: dict[int, list] = defaultdict(list)
 
+    for _, row in gdf.iterrows():
+        geom = row.geometry
+        if geom.geom_type in ("LineString", "MultiLineString"):
+            width = _road_width_m(row, local_factor) * scale_ratio
+            layer = _road_layer(row)
+            parts = geom.geoms if geom.geom_type == "MultiLineString" else [geom]
+            for part in parts:
+                piece = part.buffer(width)
+                buffered.append(piece)
+                if layer >= 1:
+                    by_layer[layer].append(piece)
+                    endpoints_by_layer[layer].append(
+                        shapely.Point(part.coords[0]).buffer(width)
+                    )
+                    endpoints_by_layer[layer].append(
+                        shapely.Point(part.coords[-1]).buffer(width)
+                    )
+        elif geom.geom_type in ("Polygon", "MultiPolygon"):
+            # Pedestrian squares etc. are already areas.
+            buffered.append(geom)
 
-        
-        for i in range(len(base)): 
-            if(base.iloc[i].geometry.geom_type == "LineString") or base.iloc[i].geometry.geom_type == "MultiLineString":
-                layer = get_layer(base.iloc[i])
-                                
-                width = establish_width(base.iloc[i], local_factor)
-                end_circles.append(shapely.geometry.Point(base.iloc[i].geometry.coords[0]).buffer(width* scale_ratio))
-                end_circles.append(shapely.geometry.Point(base.iloc[i].geometry.coords[-1]).buffer(width* scale_ratio))
+    if not buffered:
+        return LayerParts()
 
-                buffered_highway =  base.iloc[i].geometry.buffer(width * scale_ratio)
+    mask = as_gdf(_merge_polygons(buffered), gdf.crs)
+    outlines = mask.copy().dissolve(by=None, aggfunc="first")
 
-                buffered.append(buffered_highway)
-                buffered_layers[layer].append(buffered_highway) 
-                end_circles_layers[layer].append(shapely.geometry.Point(base.iloc[i].geometry.coords[0]).buffer(width* scale_ratio))
-                end_circles_layers[layer].append(shapely.geometry.Point(base.iloc[i].geometry.coords[-1]).buffer(width* scale_ratio))
-                
-            elif (base.iloc[i].geometry.geom_type == "Polygon" or base.iloc[i].geometry.geom_type == "MultiPolygon"):
-                buffered.append(base.iloc[i].geometry)
+    # Walk the bridge layers from lowest to highest and cut each by the ones above.
+    layer_ids = sorted(k for k in by_layer if k >= 1)
+    merged_layers = [_merge_polygons(by_layer[k]) for k in layer_ids]
+    merged_endpoints = [_merge_polygons(endpoints_by_layer[k]) for k in layer_ids]
+    for i in range(len(merged_layers)):
+        for n in range(i + 1, len(merged_layers)):
+            merged_layers[i] = merged_layers[i].difference(merged_layers[n])
 
+    details: list = []
+    for i, layer_geom in enumerate(merged_layers):
+        seams = shapely.union_all(geometry_to_linestrings(layer_geom))
+        caps = merged_endpoints[i].buffer(0.005)
+        seams = seams.difference(caps)
+        details.extend(geometry_to_linestrings(seams))
 
-        # try:
-        mask = merge_polygons(buffered)
-        mask = gpd.GeoDataFrame([mask], columns=['geometry'], crs=gdf.crs)
-        outlines = mask.copy().dissolve(by=None, aggfunc='first')
+    details_gdf = as_gdf(details, gdf.crs)
+    if not details_gdf.empty:
+        details_gdf = gdf_to_all_linestrings(details_gdf).dissolve(
+            by=None, aggfunc="first"
+        )
 
-
-        buffered_layers = {k: buffered_layers[k] for k in sorted(buffered_layers.keys()) if k >= 1}
-
-        end_circles_layers = {k: end_circles_layers[k] for k in sorted(end_circles_layers.keys()) if k >= 1}
-        
-        for layer, geometries in buffered_layers.items():
-            buffered_layers[layer] = merge_polygons(geometries)
-        buffered_layers = list(buffered_layers.values())
-
-        for layer, geometries in end_circles_layers.items():
-            end_circles_layers[layer] = merge_polygons(geometries)
-        end_circles_layers = list(end_circles_layers.values())
-
-        
-        for i, layer in enumerate(buffered_layers):
-            for n in range(i+1, len(buffered_layers)):
-                buffered_layers[i] = buffered_layers[i].difference(buffered_layers[n])
-        details = []        
-        
-        for i, layer in enumerate(buffered_layers):
-            temp = shapely.union_all(geometry_to_linestrings(buffered_layers[i])).difference(shapely.union_all(end_circles_layers[i]).buffer(0.005))
-            details.extend(geometry_to_linestrings(temp))
-
-        details = gpd.GeoDataFrame(geometry=details,  crs=gdf.crs)
-        details = gdf_to_all_linestrings(details ).dissolve(by=None, aggfunc='first')
-        
-        
-        return {"outlines": gdf_polygons_to_lines(outlines), 
-                "details": details,  
-                "mask": mask,
-                }
-    
-    return {
-        "geometry": geometry,
-        "raw": gdf,
-        "projected": gdf
-        } 
-
+    return LayerParts(
+        outlines=gdf_polygons_to_lines(outlines),
+        details=details_gdf,
+        mask=mask,
+    )

@@ -1,3 +1,25 @@
-.venv
-cache
-exports
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Editors / OS
+.swp
+*.swo
+*~
+.DS_Store
+
+# Caches
+cache/
+.cache/
+
+# Generated artifacts
+exports/
+_raw/
+*.tif
+
+# Inkscape / editor backups
+svg_backup/
+.pytest_cache/

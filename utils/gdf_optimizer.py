@@ -1,409 +1,262 @@
-import geopandas as gpd
-import pandas as pd
-from shapely.geometry import Point, LineString, Polygon
-from shapely.ops import transform
-import numpy as np
-import warnings
-import networkx as nx
-from shapely.geometry import shape
+"""Path ordering for pen plotting.
 
-def extract_geometries(item):
-    # GeoDataFrame
-    if hasattr(item, 'geometry') and hasattr(item.geometry, '__iter__'):
+Three strategies, from cheapest to best:
+
+:func:`tsp_order`
+    Treats each geometry's start point as a node and solves a TSP. Fast and
+    good for many small marks (dots, dashes).
+:func:`merge_consecutive_paths_by_distance`
+    Joins runs of consecutive paths whose endpoints are already close. Cheap,
+    but only merges what is already adjacent in the current order.
+:func:`merge_paths_by_distance`
+    Greedy endpoint merge over the whole set, regardless of current order.
+
+The production pipeline normally lets ``vpype linesort`` do this instead; these
+exist for previews and for cases where vpype is not in the loop.
+"""
+
+from __future__ import annotations
+
+import warnings
+
+import geopandas as gpd
+import numpy as np
+import shapely
+from scipy.spatial import distance_matrix
+from shapely.geometry import LineString, Point
+
+import fast_tsp
+
+# Distances are scaled to integers before handing them to fast_tsp, which wants
+# integer costs. 1000 keeps sub-millimetre differences meaningful.
+_TSP_SCALE = 1000
+
+
+def extract_geometries(item) -> list:
+    """Pull a flat list of Shapely geometries out of almost anything.
+
+    Accepts a GeoDataFrame, GeoSeries, list/nested list of geometries, a GeoJSON
+    Feature or FeatureCollection, or a bare geometry.
+    """
+    if hasattr(item, "geometry") and hasattr(item.geometry, "__iter__"):
         return list(item.geometry)
-    # GeoSeries
-    if hasattr(item, 'geom_type') and not hasattr(item, '__iter__'):
+    if hasattr(item, "geom_type") and not hasattr(item, "__iter__"):
         return [item]
-    # List of geometries
     if isinstance(item, list):
         geoms = []
-        for subitem in item:
-            geoms.extend(extract_geometries(subitem))
+        for sub in item:
+            geoms.extend(extract_geometries(sub))
         return geoms
-    # GeoJSON FeatureCollection
-    if isinstance(item, dict) and item.get('type') == 'FeatureCollection':
-        return [shape(f['geometry']) for f in item['features']]
-    # GeoJSON Feature
-    if isinstance(item, dict) and item.get('type') == 'Feature':
-        return [shape(item['geometry'])]
-    # Shapely geometry
-    if hasattr(item, 'geom_type'):
+    if isinstance(item, dict) and item.get("type") == "FeatureCollection":
+        from shapely.geometry import shape
+
+        return [shape(f["geometry"]) for f in item["features"]]
+    if isinstance(item, dict) and item.get("type") == "Feature":
+        from shapely.geometry import shape
+
+        return [shape(item["geometry"])]
+    if hasattr(item, "geom_type"):
         return [item]
     return []
-        
-def get_start_end_points(geometry):
-    """Extracts start and end points from LineString or Polygon."""
-    if isinstance(geometry, LineString):
-        # Ensure it's not just a point masquerading as a line
-        if len(geometry.coords) < 2:
-             warnings.warn(f"Geometry {geometry.wkt} has fewer than 2 coordinates, treating as point.")
-             return geometry.coords[0], geometry.coords[0] # Start and end are the same
-        return geometry.coords[0], geometry.coords[-1]
-    elif isinstance(geometry, Polygon):
-        # For polygons, start and end are the same (first point of exterior ring)
-        # Check if exterior exists and has coordinates
-        if geometry.exterior is None or len(geometry.exterior.coords) == 0:
-             warnings.warn(f"Polygon {geometry.wkt} has no exterior or coordinates, skipping.")
-             return None, None # Cannot process
-        return geometry.exterior.coords[0], geometry.exterior.coords[0]
-    else:
-        warnings.warn(f"Unsupported geometry type: {type(geometry)}. Only LineString and Polygon are supported.")
-        return None, None # Indicate unsupported type
 
 
-def reverse_geom(geometry):
-    """Reverses the coordinates of a LineString."""
-    if isinstance(geometry, LineString):
-        if len(geometry.coords) < 2: # Cannot reverse a point or single-coord line
-            return geometry
-        return LineString(list(geometry.coords)[::-1])
-    # Polygons are not reversed as start/end are the same
-    return geometry
+def endpoints(geom) -> tuple:
+    """Start and end points of a geometry. Polygons are closed, so both match."""
+    if isinstance(geom, LineString):
+        if len(geom.coords) < 2:
+            warnings.warn("LineString with fewer than 2 coords treated as a point")
+            return geom.coords[0], geom.coords[0]
+        return geom.coords[0], geom.coords[-1]
+    if isinstance(geom, shapely.Polygon):
+        if geom.exterior is None or len(geom.exterior.coords) == 0:
+            warnings.warn("Polygon with no exterior, skipping")
+            return None, None
+        return geom.exterior.coords[0], geom.exterior.coords[0]
+    warnings.warn(f"Unsupported geometry type: {type(geom)}, skipping")
+    return None, None
 
-def calculate_distance_sq(p1, p2):
-    """Calculates squared Euclidean distance between two points (tuples)."""
-    # Using squared distance avoids sqrt, making comparisons faster.
-    # The actual distance value isn't needed, only which is smaller.
+
+def reverse_geom(geom):
+    """Reverse a LineString; anything else is returned unchanged."""
+    if isinstance(geom, LineString) and len(geom.coords) >= 2:
+        return LineString(list(geom.coords)[::-1])
+    return geom
+
+
+def _distance_sq(p1, p2) -> float:
+    """Squared distance, since only comparisons matter — no sqrt needed."""
     if p1 is None or p2 is None:
-        return float('inf') # Cannot calculate distance involving None
-    dx = p1[0] - p2[0]
-    dy = p1[1] - p2[1]
-    return dx*dx + dy*dy
+        return float("inf")
+    dx, dy = p1[0] - p2[0], p1[1] - p2[1]
+    return dx * dx + dy * dy
 
-def gdf_optimize_paths(gdf):
-    """ 
-    Optimizes the drawing order of geometries in a GeoDataFrame for a pen plotter.
 
-    Minimizes travel distance by reordering paths and potentially reversing
-    LineStrings. Polygons are kept in their original orientation.
+def gdf_optimize_paths(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
+    """Reorder paths by nearest neighbour, reversing lines when that is closer.
 
-    Args:
-        gdf (geopandas.GeoDataFrame): Input GeoDataFrame with LineString
-                                      and Polygon geometries.
-
-    Returns:
-        geopandas.GeoDataFrame: A new GeoDataFrame with geometries sorted and
-                                potentially reversed for optimized plotting,
-                                preserving original columns. Returns an empty
-                                GDF if the input is empty or invalid.
-                                Returns the original GDF if only one valid
-                                geometry exists.
+    Polygons keep their orientation because their start and end coincide.
     """
     if not isinstance(gdf, gpd.GeoDataFrame) or gdf.empty:
-        print("Input is not a valid GeoDataFrame or is empty.")
-        return gpd.GeoDataFrame(geometry=[], crs=gdf.crs)
+        return gpd.GeoDataFrame(geometry=[], crs=getattr(gdf, "crs", None))
 
-    # 1. Pre-process: Extract info and filter valid geometries
-    original_indices = []
-    start_points = []
-    end_points = []
-    geom_types = []
-    geometries = []
-    original_data = [] # To store other column data
-
-    # Create a copy to avoid modifying the original GDF's index if we drop rows
-    gdf_copy = gdf.copy()
-    valid_indices = []
-
-    for index, row in gdf_copy.iterrows():
+    geometries, starts, ends, types, extra = [], [], [], [], []
+    for _, row in gdf.iterrows():
         geom = row.geometry
         if geom is None or geom.is_empty:
-            warnings.warn(f"Skipping empty geometry at index {index}")
             continue
-
-        start, end = get_start_end_points(geom)
-        if start is None: # Handle unsupported types or invalid polygons
-            warnings.warn(f"Skipping invalid or unsupported geometry at index {index}")
+        start, end = endpoints(geom)
+        if start is None:
             continue
-
-        original_indices.append(index)
-        start_points.append(start)
-        end_points.append(end)
-        geom_types.append(type(geom))
         geometries.append(geom)
-        # Store other data associated with the row, keyed by the original index
-        original_data.append(row.drop('geometry').to_dict())
-        valid_indices.append(len(original_indices) - 1) # Index within our filtered lists
+        starts.append(start)
+        ends.append(end)
+        types.append(type(geom))
+        extra.append(row.drop("geometry").to_dict())
 
-    num_geoms = len(original_indices)
-    if num_geoms == 0:
-        print("No valid LineString or Polygon geometries found.")
+    if not geometries:
         return gpd.GeoDataFrame(geometry=[], crs=gdf.crs)
-    if num_geoms == 1:
-        print("Only one valid geometry, no optimization needed.")
-        # Reconstruct the single-row GDF
-        single_row_data = original_data[0]
-        single_row_data['geometry'] = geometries[0]
-        return gpd.GeoDataFrame([single_row_data], crs=gdf.crs)
+    if len(geometries) == 1:
+        extra[0]["geometry"] = geometries[0]
+        return gpd.GeoDataFrame([extra[0]], crs=gdf.crs)
+
+    unvisited = np.ones(len(geometries), dtype=bool)
+    order: list[tuple[int, bool]] = [(0, False)]
+    unvisited[0] = False
+    position = ends[0]
+
+    while unvisited.any():
+        best_dist = float("inf")
+        best_idx, best_reverse = -1, False
+        for idx in np.where(unvisited)[0]:
+            to_start = _distance_sq(position, starts[idx])
+            if to_start < best_dist:
+                best_dist, best_idx, best_reverse = to_start, idx, False
+            # Only lines can be drawn backwards and still end somewhere useful.
+            if types[idx] is LineString:
+                to_end = _distance_sq(position, ends[idx])
+                if to_end < best_dist:
+                    best_dist, best_idx, best_reverse = to_end, idx, True
+
+        order.append((best_idx, best_reverse))
+        unvisited[best_idx] = False
+        position = starts[best_idx] if best_reverse else ends[best_idx]
+
+    rows = []
+    for idx, reversed_flag in order:
+        data = extra[idx].copy()
+        data["geometry"] = reverse_geom(geometries[idx]) if reversed_flag else geometries[idx]
+        rows.append(data)
+    return gpd.GeoDataFrame(rows, crs=gdf.crs)
 
 
-    # 2. Nearest Neighbor Algorithm
-    unvisited_mask = np.ones(num_geoms, dtype=bool)
-    optimized_indices_order = [] # Stores tuples: (list_index, reversed_flag)
-    current_list_idx = 0 # Start with the first valid geometry in our list
+def merge_consecutive_paths_by_distance(
+    gdf: gpd.GeoDataFrame, distance_threshold: float
+) -> gpd.GeoDataFrame:
+    """Join runs of adjacent paths whose gap is within ``distance_threshold``."""
+    output: list = []
+    partial: list[LineString] = []
 
-    # Optional: Find a better starting point (e.g., closest to origin 0,0)
-    # min_dist_to_origin_sq = float('inf')
-    # start_node = 0
-    # for i in range(num_geoms):
-    #     dist_sq = calculate_distance_sq((0,0), start_points[i])
-    #     if dist_sq < min_dist_to_origin_sq:
-    #         min_dist_to_origin_sq = dist_sq
-    #         start_node = i
-    # current_list_idx = start_node
-    # print(f"Starting optimization from geometry index {original_indices[current_list_idx]}")
-
-
-    # Initial state: Add the starting geometry (never reversed initially)
-    optimized_indices_order.append((current_list_idx, False))
-    unvisited_mask[current_list_idx] = False
-    current_pos = end_points[current_list_idx] # Position after drawing the first shape
-
-    while np.any(unvisited_mask):
-        min_dist_sq = float('inf')
-        best_next_list_idx = -1
-        reverse_next = False
-
-        # Find the closest reachable point among remaining geometries
-        for next_list_idx in np.where(unvisited_mask)[0]:
-            geom_type = geom_types[next_list_idx]
-            next_start_pt = start_points[next_list_idx]
-            next_end_pt = end_points[next_list_idx]
-
-            # Option 1: Travel to the start point of the next geometry
-            dist_sq_to_start = calculate_distance_sq(current_pos, next_start_pt)
-            if dist_sq_to_start < min_dist_sq:
-                min_dist_sq = dist_sq_to_start
-                best_next_list_idx = next_list_idx
-                reverse_next = False # Draw it forward
-
-            # Option 2 (Only for LineStrings): Travel to the end point
-            if geom_type is LineString:
-                dist_sq_to_end = calculate_distance_sq(current_pos, next_end_pt)
-                if dist_sq_to_end < min_dist_sq:
-                    min_dist_sq = dist_sq_to_end
-                    best_next_list_idx = next_list_idx
-                    reverse_next = True # Draw it reversed
-
-        # Add the best found geometry to the optimized order
-        optimized_indices_order.append((best_next_list_idx, reverse_next))
-        unvisited_mask[best_next_list_idx] = False
-
-        # Update current position for the next iteration
-        if reverse_next:
-            # If reversed, we end at its original start point
-            current_pos = start_points[best_next_list_idx]
-        else:
-            # If not reversed, we end at its original end point
-            current_pos = end_points[best_next_list_idx]
-
-        current_list_idx = best_next_list_idx # Keep track (though not strictly needed anymore)
-
-
-    # 3. Construct the new GeoDataFrame
-    optimized_geoms = []
-    new_data = []
-    original_index_order = []
-
-    for list_idx, reversed_flag in optimized_indices_order:
-        geom = geometries[list_idx]
-        if reversed_flag:
-            optimized_geom = reverse_geom(geom) # reverse_geom handles non-LineStrings safely
-        else:
-            optimized_geom = geom
-
-        optimized_geoms.append(optimized_geom)
-        # Retrieve the original associated data using the list_idx
-        new_data.append(original_data[list_idx])
-        # Keep track of the original gdf index for reference if needed
-        original_index_order.append(original_indices[list_idx])
-
-
-    # Create the final GeoDataFrame
-    # Combine the geometry with the other data
-    final_df_data = []
-    for i in range(len(optimized_geoms)):
-        row_data = new_data[i].copy() # Start with non-geometry data
-        row_data['geometry'] = optimized_geoms[i] # Add the (potentially reversed) geometry
-        # Optionally add the original index and reversal flag if desired
-        # row_data['original_gdf_index'] = original_index_order[i]
-        # row_data['was_reversed'] = optimized_indices_order[i][1]
-        final_df_data.append(row_data)
-
-    optimized_gdf = gpd.GeoDataFrame(final_df_data, crs=gdf.crs)
-
-    return optimized_gdf
-
-def merge_consecutive_paths_by_distance(gdf, distance_threshold):
-    output = []
-    partial = []
-    
-    def flush_partial():
+    def flush():
         nonlocal partial
-        if(len(partial) > 0):
+        if partial:
             output.append(LineString([pt for line in partial for pt in line.coords]))
             partial = []
-            
-    for i in range(len(gdf)):  
-        if isinstance(gdf.iloc[i].geometry, LineString):
-            if(len(partial) > 0):
-                if(calculate_distance_sq(gdf.iloc[i].geometry.coords[0], partial[-1].coords[-1]) > distance_threshold):
-                    flush_partial()
-            partial.append(gdf.iloc[i].geometry)
+
+    for i in range(len(gdf)):
+        geom = gdf.iloc[i].geometry
+        if isinstance(geom, LineString):
+            if partial and _distance_sq(geom.coords[0], partial[-1].coords[-1]) > distance_threshold:
+                flush()
+            partial.append(geom)
         else:
-            flush_partial()
-            partial = []
-            output.append(gdf.iloc[i].geometry)
-            
-    flush_partial()
+            flush()
+            output.append(geom)
 
-    return  gpd.GeoDataFrame(geometry=output)
+    flush()
+    return gpd.GeoDataFrame(geometry=output, crs=gdf.crs)
 
-def merge_paths_by_distance(gdf, tolerance):
-    """
-    Merge LineStrings in a GeoDataFrame that have start or end points within a certain distance.
 
-    Parameters:
-    - gdf: GeoDataFrame with LineStrings
-    - tolerance: maximum distance to consider two lines connected
-
-    Returns:
-    - GeoDataFrame with merged lines
-    """
-    # Make a copy to avoid modifying the original
+def merge_paths_by_distance(
+    gdf: gpd.GeoDataFrame, tolerance: float
+) -> gpd.GeoDataFrame:
+    """Greedily merge LineStrings whose endpoints are within ``tolerance``."""
     gdf = gdf.copy()
-
-    # Create a list of (start_point, end_point) for each line
-    endpoints = []
+    ends = []
     for geom in gdf.geometry:
         if isinstance(geom, LineString):
             coords = list(geom.coords)
-            endpoints.append((Point(coords[0]), Point(coords[-1])))
+            ends.append((Point(coords[0]), Point(coords[-1])))
         else:
-            endpoints.append((None, None))
+            ends.append((None, None))
 
-    merged = []
-    used = set()
+    merged: list = []
+    used: set[int] = set()
 
-    for idx, (start, end) in enumerate(endpoints):
-        if idx in used:
+    for idx, (start, end) in enumerate(ends):
+        if idx in used or start is None:
             continue
-        current_line = gdf.geometry.iloc[idx]
+        current = gdf.geometry.iloc[idx]
         changed = True
-        
         while changed:
             changed = False
-            for j, (other_start, other_end) in enumerate(endpoints):
-                if j in used or j == idx:
+            for j, other in enumerate(ends):
+                if j in used or j == idx or other[0] is None:
+                    continue
+                candidates = [
+                    (start.distance(other[0]), "start", "start"),
+                    (start.distance(other[1]), "start", "end"),
+                    (end.distance(other[0]), "end", "start"),
+                    (end.distance(other[1]), "end", "end"),
+                ]
+                min_dist, this_side, other_side = min(candidates, key=lambda c: c[0])
+                if min_dist > tolerance:
                     continue
 
-                # Check distances between endpoints
-                dists = [
-                    (start.distance(other_start), 'start', 'start'),
-                    (start.distance(other_end), 'start', 'end'),
-                    (end.distance(other_start), 'end', 'start'),
-                    (end.distance(other_end), 'end', 'end')
-                ]
-                min_dist, this_end, other_end_type = min(dists, key=lambda x: x[0])
+                other_coords = list(gdf.geometry.iloc[j].coords)
+                if other_side == "end":
+                    other_coords = other_coords[::-1]
 
-                if min_dist <= tolerance:
-                    # Merge the lines
-                    other_line = gdf.geometry.iloc[j]
-                    if other_end_type == 'start':
-                        new_other = list(other_line.coords)
-                    else:  # if matching to the end, reverse
-                        new_other = list(other_line.coords)[::-1]
-
-                    if this_end == 'start':
-                        new_coords = new_other + list(current_line.coords)
-                    else:
-                        new_coords = list(current_line.coords) + new_other
-
-                    current_line = LineString(new_coords)
-                    start = Point(current_line.coords[0])
-                    end = Point(current_line.coords[-1])
-
-                    used.add(j)
-                    changed = True
-                    break  # restart looking
-
-        merged.append(current_line)
+                coords = list(current.coords)
+                new_coords = other_coords + coords if this_side == "start" else coords + other_coords
+                current = LineString(new_coords)
+                start = Point(current.coords[0])
+                end = Point(current.coords[-1])
+                used.add(j)
+                changed = True
+                break
+        merged.append(current)
         used.add(idx)
+
     return gpd.GeoDataFrame(geometry=merged, crs=gdf.crs)
 
 
-
-def representative_point(geom):
-    """Get a representative point for different geometry types."""
-    if geom.geom_type == 'Point':
-        return geom
-    elif geom.geom_type == 'LineString':
-        return Point(geom.coords[0])  # start point
-    elif geom.geom_type == 'Polygon':
-        return geom.centroid
-    else:
-        return geom.representative_point()
-
-import fast_tsp
-from scipy.spatial import distance_matrix
-
-
-def shapely_to_coordinates(geometries):
-    """Convert Shapely geometries to coordinates (x, y), using the first coordinate."""
-    coordinates = []
+def _start_points(geometries) -> list[tuple[float, float]]:
+    """One representative point per geometry, for TSP node construction."""
+    coords = []
     for geom in geometries:
-        if geom.geom_type == 'Point':
-            coordinates.append((geom.x, geom.y))  # Use point itself
-        elif geom.geom_type == 'LineString':
-            # Use the first coordinate of the LineString
-            coordinates.append((geom.coords[0][0], geom.coords[0][1]))
-        elif geom.geom_type == 'Polygon':
-            # Use the first coordinate of the Polygon's exterior
-            coordinates.append((geom.exterior.coords[0][0], geom.exterior.coords[0][1]))
+        if geom.geom_type == "Point":
+            coords.append((geom.x, geom.y))
+        elif geom.geom_type == "LineString":
+            coords.append((geom.coords[0][0], geom.coords[0][1]))
+        elif geom.geom_type == "Polygon":
+            coords.append((geom.exterior.coords[0][0], geom.exterior.coords[0][1]))
         else:
-            # Handle other geometry types (take first coordinate)
-            coordinates.append((geom.representative_point().x, geom.representative_point().y))
-    return coordinates
+            point = geom.representative_point()
+            coords.append((point.x, point.y))
+    return coords
 
-def solve_tsp_cartesian_indices(points):
-    """Solve TSP by calculating a distance matrix and using fast_tsp."""
+
+def solve_tsp_cartesian_indices(points) -> list[int]:
+    """Nearest-tour order over ``points`` via fast_tsp."""
     points = np.array(points)
-    # Calculate the distance matrix
-    distance_mat = distance_matrix(points, points)
-    # Scale the distance matrix to avoid small values becoming equal
-    scaling_factor = 1000  # Adjust as needed for your problem
-    scaled_distance_mat = distance_mat * scaling_factor
-    # Convert the scaled distances to integers
-    scaled_distance_mat = scaled_distance_mat.astype(int)
-    # Convert the NumPy array to a list of lists
-    distance_mat_list = scaled_distance_mat.tolist()
-    # Solve the TSP using the fast_tsp solver
-    path = fast_tsp.find_tour(distance_mat_list)
-    return path
+    scaled = (distance_matrix(points, points) * _TSP_SCALE).astype(int)
+    return list(fast_tsp.find_tour(scaled.tolist()))
 
-def tsp_order(gdf):
-    """
-    Reorder geometries in a GeoDataFrame to minimize the travel distance using TSP.
 
-    Parameters:
-    - gdf: GeoDataFrame with mixed geometries (Points, LineStrings, Polygons, etc.)
-
-    Returns:
-    - Reordered GeoDataFrame
-    """
-    # Step 1: Convert geometries to coordinates
-    coordinates = shapely_to_coordinates(gdf.geometry)
-    
-    if len(coordinates) > 2:
-        # Step 2: Solve TSP and get optimal order of indices
-        optimal_indices = solve_tsp_cartesian_indices(coordinates)
-        
-        # Step 3: Reorder geometries in GeoDataFrame
-        ordered_geometries = [gdf.geometry.iloc[i] for i in optimal_indices]
-        
-        # Step 4: Return ordered GeoDataFrame
-        ordered_gdf = gdf.iloc[optimal_indices].reset_index(drop=True)
-        return ordered_gdf
-    else:
-        # If there are fewer than 3 geometries, no need to reorder
+def tsp_order(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
+    """Reorder geometries by solving a TSP over their start points."""
+    if len(gdf) < 3:
         return gdf
+    coords = _start_points(list(gdf.geometry))
+    indices = solve_tsp_cartesian_indices(coords)
+    return gdf.iloc[indices].reset_index(drop=True)

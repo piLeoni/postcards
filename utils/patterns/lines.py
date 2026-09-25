@@ -1,29 +1,30 @@
+"""Parallel hatch lines, used to fill building footprints."""
+
+from __future__ import annotations
+
+import numpy as np
 import shapely
 import shapely.affinity
-import numpy as np
-import math
 
-def lines_pattern(params, interval=0.5, angle=0):
-    """
-    Generates a pattern of parallel lines across a rectangle,
-    optionally rotated by a specified angle.
-    Every even line is inverted (start and end points are swapped).
-    """
-    diagonal = math.sqrt(params['width_mm']**2 + params['height_mm']**2)
+from utils.patterns._common import Bounds, _sweep_area
+
+
+def lines_pattern(
+    params: dict,
+    interval: float = 0.5,
+    angle: float = 0,
+    bounds: Bounds | None = None,
+) -> list[shapely.LineString]:
+    """Hatch lines ``interval`` mm apart, alternating direction as they go."""
+    x0, y0, w, h = _sweep_area(params, bounds, margin=interval)
     lines = []
-    for idx, i in enumerate(np.arange(0, diagonal, interval)):
-        line = shapely.LineString([
-            (params["width_mm"] / 2 - diagonal/2, params['height_mm'] / 2 - diagonal/2 + i),
-            (params["width_mm"] / 2 + diagonal/2, params['height_mm'] / 2 - diagonal/2 + i)
-        ])
+    for idx, i in enumerate(np.arange(0, h, interval)):
+        line = shapely.LineString([(x0, y0 + i), (x0 + w, y0 + i)])
         if idx % 2 == 0:
-            # Reverse the line if index is even
             line = shapely.LineString(list(line.coords)[::-1])
         lines.append(line)
 
     if angle != 0:
-        lines = [
-            shapely.affinity.rotate(line, angle, origin=(params["width_mm"]/2, params["height_mm"]/2))
-            for line in lines
-        ]
+        origin = (x0 + w / 2, y0 + h / 2)
+        lines = [shapely.affinity.rotate(line, angle, origin=origin) for line in lines]
     return lines

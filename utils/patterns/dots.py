@@ -1,29 +1,30 @@
-import shapely
-import shapely.affinity
-import numpy as np
-import math
+"""Short-dash pattern: a grid of small marks, used to fill parks."""
 
-def dots_pattern(params, interval=0.5, angle=0, mark = 0.05):
-    """
-    Generates a pattern of parallel lines across a rectangle,
-    optionally rotated by a specified angle.
-    Every even line is inverted (start and end points are swapped).
-    """
-    diagonal = math.sqrt(params['width_mm']**2 + params['height_mm']**2)
+from __future__ import annotations
+
+import numpy as np
+import shapely
+
+from utils.patterns._common import Bounds, _sweep_area
+
+
+def dots_pattern(
+    params: dict,
+    interval: float = 0.5,
+    angle: float = 0,
+    mark: float = 0.05,
+    bounds: Bounds | None = None,
+) -> list[shapely.LineString]:
+    """Marks on a square grid of ``interval`` mm, each ``mark`` mm long."""
+    x0, y0, w, h = _sweep_area(params, bounds, margin=interval)
     lines = []
-    shiftX = -params['width_mm'] / 2 + diagonal/2
-    shiftY = -params['height_mm'] / 2 + diagonal/2
-    for idy, y in enumerate(np.arange(0, diagonal, interval)):
-        for idx, x in enumerate(np.arange(0, diagonal, interval)):
-            line = shapely.LineString([
-                (x-mark/2 - shiftX, y - shiftY),
-                (x+mark/2 - shiftX, y - shiftY)
-            ])
-            lines.append(line)
+    for y in np.arange(y0, y0 + h, interval):
+        for x in np.arange(x0, x0 + w, interval):
+            lines.append(
+                shapely.LineString([(x - mark / 2, y), (x + mark / 2, y)])
+            )
 
     if angle != 0:
-        lines = [
-            shapely.affinity.rotate(line, angle, origin=(params["width_mm"]/2, params["height_mm"]/2))
-            for line in lines
-        ]
+        origin = (x0 + w / 2, y0 + h / 2)
+        lines = [shapely.affinity.rotate(line, angle, origin=origin) for line in lines]
     return lines
