@@ -110,11 +110,11 @@ ops = [
   { name = "linesort", two_opt = true },
 ]
 
-# Dots are independent marks: sorting them reorders the whole grid, so follow
-# order (no -t) and skip merging, which would stitch marks into streaks.
+# Dots are independent ~0.05mm dabs. Do NOT filter them (filter_min 0.15mm
+# would wipe the whole layer), and do not linemerge (would stitch marks into
+# streaks). Sort with follow only so the grid order stays a raster scan.
 [layers.parks_filling]
 ops = [
-  { name = "filter", tolerance = "0.15mm" },
   { name = "linesort", two_opt = false, follow = true },
 ]
 

@@ -1,15 +1,14 @@
 """Layer stacking order and occlusion rules.
 
-Map themes overlap: a road crosses a building footprint, a park sits under a
-river. Rather than clipping every theme against every other theme, composition
-walks the layers **bottom-up** and, for each one, subtracts the union of the
-higher layers' masks from it. A theme therefore only ever gets clipped by
-things drawn on top of it, and each rule is stated once.
+Map themes overlap: a road crosses a park, a building sits on a street. Rather
+than clipping every theme against every other theme, composition walks the
+layers **bottom-up** and, for each one, subtracts the union of the higher
+layers' masks from it. A theme therefore only ever gets clipped by things drawn
+on top of it, and each rule is stated once.
 
-Inside a single layer the same idea applies to its own parts: a theme's
-``filling`` is produced already inset by the fill algorithm (or by the legacy
-hatch clip), so composition does not clip it again — only occludes it against
-layers drawn above.
+Parks and water sit under roads so a drive through Golden Gate Park (or a bridge
+over a lake) still has its carriageway. Buildings sit on top so footprints punch
+roads out underneath.
 """
 
 from __future__ import annotations
@@ -17,9 +16,9 @@ from __future__ import annotations
 import geopandas as gpd
 import shapely
 
-# Bottom-most first. Each name maps to the SVG group id written by the composer
-# and to the theme key returned by the filters.
-STACK_ORDER = ("roads", "buildings", "parks", "water")
+# Bottom-most first. Parks/water are the ground plane; roads cross them; buildings
+# occlude roads.
+STACK_ORDER = ("parks", "water", "roads", "buildings")
 
 # Parts written for every theme, in draw order within the theme.
 PART_ORDER = ("outlines", "details", "filling")

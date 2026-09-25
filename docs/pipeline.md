@@ -31,9 +31,9 @@ def filter_<theme>(gdf: gpd.GeoDataFrame, params: dict) -> LayerParts
 no optional keys, so callers never guard with `if "filling" in result`.
 
 `mask` is the area the theme covers. `postcards/utils/composition.py` uses the masks to
-stack the themes: walking bottom-up, each theme is clipped against everything
-drawn above it, so a road is cut where a river crosses it without either filter
-knowing about the other.
+stack the themes: walking bottom-up (`parks`, `water`, `roads`, `buildings`), each
+theme is clipped against everything drawn above it. Roads therefore cross parks
+and water; buildings punch holes in roads underneath.
 
 Building *filling* strokes come from `postcards/utils/fills/`, chosen in the
 profile with `[fill.buildings]` (algorithm, spacing, angle). Continuity is

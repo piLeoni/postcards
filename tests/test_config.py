@@ -38,6 +38,8 @@ def test_fill_layers_are_configured_for_their_texture(plot_config):
     for name in ("parks_filling", "water_filling"):
         ops = [op["name"] for op in pipelines[name]]
         assert "linemerge" not in ops, f"{name} should not linemerge"
+    # Park dots are ~0.05–0.2mm dabs; a 0.15mm filter would erase the layer.
+    assert "filter" not in [op["name"] for op in pipelines["parks_filling"]]
 
 
 def test_feeds_expand_into_gwrite_templates(plot_config):

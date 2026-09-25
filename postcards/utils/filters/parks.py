@@ -33,7 +33,11 @@ def filter_parks(gdf: gpd.GeoDataFrame, params: dict) -> LayerParts:
         return LayerParts()
 
     outlines = gdf.dissolve(by=None, aggfunc="first")
-    filling = as_gdf(dots_pattern(params, 0.5, 45, bounds=gdf.total_bounds), gdf.crs)
+    # mark=0.2mm: long enough to read on-screen and to survive a 0.15mm scrub,
+    # short enough to still look like stipple at 0.5mm spacing.
+    filling = as_gdf(
+        dots_pattern(params, 0.5, 45, mark=0.2, bounds=gdf.total_bounds), gdf.crs
+    )
     filling = filling.clip(outlines)
 
     return LayerParts(
