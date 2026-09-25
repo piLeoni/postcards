@@ -87,6 +87,47 @@ def gwrite_plotter(cfg: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+def fill_section(cfg: dict[str, Any], theme: str) -> dict[str, Any]:
+    """``[fill.<theme>]`` settings, with lengths resolved to millimetres.
+
+    Returns an empty dict when the theme has no section, which the building
+    filter reads as "use the defaults" — so existing profiles keep working
+    unchanged. Lengths accept the same units as the rest of the config
+    (``"0.5mm"``, ``0.5``, ``"0.02in"``).
+    """
+    section = (cfg.get("fill") or {}).get(theme)
+    if not section:
+        return {}
+
+    out = dict(section)
+    # A nested table like [fill.buildings.zigzag] carries per-algorithm options
+    # and must survive verbatim; only the scalar lengths are converted.
+    for key in ("spacing", "inset"):
+        if key in out and not isinstance(out[key], dict):
+            out[key] = parse_mm(out[key])
+    return out
+
+
+def fill_options(cfg: dict[str, Any], theme: str, algorithm: str) -> dict[str, Any]:
+    """Options for one algorithm, from ``[fill.<theme>.<algorithm>]``."""
+    section = (cfg.get("fill") or {}).get(theme) or {}
+    options = section.get(algorithm)
+    return dict(options) if isinstance(options, dict) else {}
+
+
+def parse_mm(value: Any) -> float:
+    """A length from the config, in millimetres.
+
+    Numbers are millimetres already; strings go through pint, so ``"0.5mm"``
+    and ``"0.02in"`` both work.
+    """
+    if isinstance(value, (int, float)):
+        return float(value)
+    from postcards.utils.cli_parser import parse_dimension
+
+    return parse_dimension(value)
+
+
 def _toml_escape_multiline(s: str) -> str:
     return s.replace("\\", "\\\\").replace('"""', r"\"\"\"")
 

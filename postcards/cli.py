@@ -184,6 +184,11 @@ def build_parser() -> argparse.ArgumentParser:
     add_config(p)
     p.set_defaults(func=cmd_check)
 
+    # fills: render and measure the fill algorithms on a fixture shape.
+    from postcards.fills import add_parser as add_fills_parser
+
+    add_fills_parser(sub)
+
     return parser
 
 

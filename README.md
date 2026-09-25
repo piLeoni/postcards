@@ -69,6 +69,7 @@ python -m postcards upload exports/1730_highland_pl_berkeley_ca_94709 --host 10.
 | `gcode` | Stage 3 only: `opt.svg` → `part_*.gcode` |
 | `upload` | Stage 4: push a job folder and start it |
 | `check` | Validate G-code against the bed, without the machine |
+| `fills` | Render and measure area-fill algorithms on a fixture |
 
 `python -m postcards <command> --help` explains the flags. Coordinates work
 anywhere an address does, as do card size, scale, rotation and projection:
@@ -96,6 +97,7 @@ pass `--config`.
 | `postcards/export_gcode.py` | Stage 3: placement, validation, part splitting |
 | `postcards/upload_fluidnc.py` | Stage 4: WebDAV upload and job start |
 | `postcards/utils/filters/` | One module per map theme |
+| `postcards/utils/fills/` | Interchangeable area-fill algorithms |
 | `postcards/utils/layers.py` | The `LayerParts` contract |
 | `postcards/utils/composition.py` | Layer stacking and occlusion |
 | `postcards/utils/projection.py` | UTM and Web Mercator projection to card mm |

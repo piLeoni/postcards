@@ -16,6 +16,17 @@ padding_mm = 3
 # lat = 37.8771145
 # lng = -122.256196
 
+# --- area fills (optional; omit to keep the historical card-wide hatch) ------
+# See docs/fills.md. Algorithms:
+#   rectilinear | concentric | zigzag | spiral | grid | honeycomb | hilbert
+[fill.buildings]
+algorithm = "zigzag"
+spacing = "0.5mm"
+angle = 45
+# Optional per-algorithm options:
+# [fill.buildings.zigzag]
+# connector = "band"       # band | boundary | none
+
 # --- path optimization (vpype) ----------------------------------------------
 # Shared defaults. A layer may override any of these in its [layers.*] section.
 [optimize]
