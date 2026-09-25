@@ -8,8 +8,8 @@ import geopandas as gpd
 import pytest
 from shapely.geometry import LineString, Polygon
 
-from utils.filter_registry import FILTERS, build_layers, layer_names
-from utils.layers import LayerParts, as_gdf
+from postcards.utils.filter_registry import FILTERS, build_layers, layer_names
+from postcards.utils.layers import LayerParts, as_gdf
 
 
 def _street_frame() -> gpd.GeoDataFrame:

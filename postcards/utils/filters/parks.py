@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import geopandas as gpd
 
-from utils.gdf_ops import gdf_polygons_to_lines, gdf_remove_below_ground, gdf_remove_points
-from utils.layers import LayerParts, as_gdf
-from utils.patterns.dots import dots_pattern
+from postcards.utils.gdf_ops import gdf_polygons_to_lines, gdf_remove_below_ground, gdf_remove_points
+from postcards.utils.layers import LayerParts, as_gdf
+from postcards.utils.patterns.dots import dots_pattern
 
 PARK_FILTER = (
     ("landuse", "grass"),

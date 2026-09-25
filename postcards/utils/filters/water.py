@@ -10,11 +10,11 @@ from __future__ import annotations
 import geopandas as gpd
 import pandas as pd
 
-from utils.gdf_ops import gdf_polygons_to_lines
-from utils.gdf_ocean import load_ocean_tiles_by_polygon
-from utils.layers import LayerParts, as_gdf, empty_gdf
-from utils.patterns.waves import waves_pattern
-from utils.projection import project
+from postcards.utils.gdf_ops import gdf_polygons_to_lines
+from postcards.utils.gdf_ocean import load_ocean_tiles_by_polygon
+from postcards.utils.layers import LayerParts, as_gdf, empty_gdf
+from postcards.utils.patterns.waves import waves_pattern
+from postcards.utils.projection import project
 
 
 def filter_water(gdf: gpd.GeoDataFrame, params: dict) -> LayerParts:

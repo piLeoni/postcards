@@ -7,7 +7,7 @@ import pytest
 import shapely
 from shapely.geometry import Point
 
-from utils.projection import project
+from postcards.utils.projection import project
 
 
 def _frame(*coords) -> gpd.GeoDataFrame:

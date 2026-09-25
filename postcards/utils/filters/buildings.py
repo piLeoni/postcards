@@ -5,14 +5,14 @@ from __future__ import annotations
 import geopandas as gpd
 import shapely
 
-from utils.gdf_ops import (
+from postcards.utils.gdf_ops import (
     gdf_polygons_to_lines,
     gdf_remove_below_ground,
     gdf_remove_points,
     gdf_to_all_linestrings,
 )
-from utils.layers import LayerParts, as_gdf, empty_gdf
-from utils.patterns.lines import lines_pattern
+from postcards.utils.layers import LayerParts, as_gdf, empty_gdf
+from postcards.utils.patterns.lines import lines_pattern
 
 
 def filter_buildings(gdf: gpd.GeoDataFrame, params: dict) -> LayerParts:

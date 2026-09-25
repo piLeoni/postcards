@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 import vpype as vp
 
-import export_gcode as eg
+from postcards import export_gcode as eg
 
 PX_TO_MM = eg.PX_TO_MM
 

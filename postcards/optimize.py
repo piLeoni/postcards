@@ -8,19 +8,19 @@ from the SVG itself, so the pipelines apply to whatever the composer emitted.
 Layers with no config section are passed through untouched.
 
 Usage:
-    python optimize.py map.svg opt --config configs/fluidnc.toml
+    python -m postcards optimize map.svg opt --config configs/fluidnc.toml
     # writes opt.svg
 """
 
 from __future__ import annotations
 
-import argparse
+import re
 import subprocess
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any
 
-from utils.plot_config import (
+from postcards.utils.plot_config import (
     DEFAULT_CONFIG,
     layers_section,
     load_plot_config,
@@ -93,30 +93,58 @@ def build_vpype_args(
     return args
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("svg")
-    parser.add_argument("output", help="output prefix (writes <output>.svg)")
-    parser.add_argument(
-        "--config",
-        type=Path,
-        default=DEFAULT_CONFIG,
-        help=f"plotter profile TOML (default: {DEFAULT_CONFIG})",
-    )
-    args = parser.parse_args()
+def restore_layer_names(svg_path: Path, names: dict[str, int]) -> int:
+    """Rename vpype's ``layerN`` groups back to the original layer ids.
 
-    cfg = load_plot_config(args.config)
+    vpype reads the ``<g id>`` names but writes ``<g id="layerN">``, so the
+    mapping established on read is reapplied here on the way out. ``names`` maps
+    layer id to vpype layer number, exactly as :func:`layer_ids` returned it.
+
+    Inkscape's layer panel shows the ``inkscape:label`` attribute rather than the
+    id, so that is updated too — otherwise every layer still reads as a bare
+    number in the editor.
+
+    Returns the number of groups renamed.
+    """
+    by_number = {number: name for name, number in names.items()}
+    tree = ET.parse(svg_path)
+    root = tree.getroot()
+    renamed = 0
+    for elem in root.iter():
+        if not (elem.tag.endswith("g") and "id" in elem.attrib):
+            continue
+        match = re.fullmatch(r"layer(\d+)", elem.attrib["id"])
+        if not (match and int(match.group(1)) in by_number):
+            continue
+        name = by_number[int(match.group(1))]
+        elem.attrib["id"] = name
+        for key in list(elem.attrib):
+            if key.endswith("label"):
+                elem.attrib[key] = name
+        renamed += 1
+    if renamed:
+        tree.write(svg_path, encoding="utf-8", xml_declaration=True)
+    return renamed
+
+
+def run_optimize(svg_path: Path, output: Path, config_path: Path) -> Path:
+    """Run the configured vpype pipeline and write ``<output>.svg``.
+
+    Returns the path written.
+    """
+    cfg = load_plot_config(config_path)
     defaults = optimize_section(cfg)
     pipelines = layers_section(cfg)
     if not pipelines:
-        raise SystemExit(f"no [layers.*] pipelines defined in {args.config}")
+        raise SystemExit(f"no [layers.*] pipelines defined in {config_path}")
 
-    vp_args = build_vpype_args(
-        args.svg, args.output, cfg["_path"], pipelines, defaults
-    )
+    names = layer_ids(str(svg_path))
+    vp_args = build_vpype_args(str(svg_path), str(output), cfg["_path"], pipelines, defaults)
     subprocess.run(vp_args, check=True)
-    print(f"saved {args.output}.svg")
+    result = Path(f"{output}.svg")
 
-
-if __name__ == "__main__":
-    main()
+    renamed = restore_layer_names(result, names)
+    if renamed:
+        print(f"restored {renamed} layer name(s): {', '.join(sorted(names))}")
+    print(f"saved {result}")
+    return result

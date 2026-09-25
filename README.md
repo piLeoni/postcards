@@ -1,14 +1,32 @@
 # postcards
 
 Turn any address into a pen-plotted postcard. OpenStreetMap data is fetched,
-projected to a 6×4 inch card at 1:10000, rendered into distinct graphic layers
-(buildings hatched at 45°, parks dotted, water waved, roads drawn to their real
-width) and exported as G-code for a FluidNC plotter.
+projected onto the card, rendered into distinct graphic layers (buildings
+hatched, parks dotted, water waved, roads drawn to their real width) and turned
+into G-code for a FluidNC plotter.
+
+## The pipeline
+
+Four stages, three of which you normally never call individually. vpype is a
+first-class part of the pipeline, not a postscript: it owns path cleanup and it
+emits the G-code.
 
 ```
-address ──► make_map.py ──► optimize.py ──► export_gcode.py ──► upload_fluidnc.py
-              map.svg        opt.svg         part_*.gcode        SD card + run
+address
+   │
+   ├─ 1. map       OSM ──► map.svg          layered geometry, nothing else
+   │
+   ├─ 2. optimize  ─────► opt.svg           vpype: snap, merge, sort, simplify
+   │
+   ├─ 3. gcode     ─────► part_*.gcode      vpype-gcode + FluidNC placement
+   │
+   └─ 4. upload    ─────► SD card, running  WebDAV, then $SD/Run
 ```
+
+The split matters. This project decides **what** is drawn; vpype decides how
+paths are cleaned; vpype-gcode decides what the machine does. Nothing here
+reimplements path sorting, because that would only create a second opinion that
+disagrees with vpype's.
 
 ## Setup
 
@@ -16,11 +34,8 @@ address ──► make_map.py ──► optimize.py ──► export_gcode.py �
 python3.12 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-pip install vpype vpype-gcode
+pip install vpype vpype-gcode     # CLI tools, shelled out to rather than imported
 ```
-
-`vpype` and `vpype-gcode` are CLI tools the pipeline shells out to, so they are
-installed separately from the pinned `requirements.txt`.
 
 ## Use
 
@@ -28,64 +43,75 @@ installed separately from the pinned `requirements.txt`.
 ./generate.sh "1730 Highland Pl, Berkeley, CA 94709"
 ```
 
-That writes everything for the address into `exports/<slug>/`:
+That is shorthand for `python -m postcards make --address "..."`, and writes:
 
 ```
 exports/1730_highland_pl_berkeley_ca_94709/
-├── map.svg            # multi-layer map
-├── opt.svg            # after path optimization
-├── part_01.gcode       # … part_NN.gcode, chained via $SD/Run
+├── map.svg           # layered map, straight from OSM
+├── opt.svg           # after vpype path optimization
+├── part_01.gcode     # … part_NN.gcode, chained via $SD/Run
 └── part_02.gcode
 ```
 
-Then send it to the plotter:
+Send it to the plotter:
 
 ```bash
-./upload_fluidnc.py exports/1730_highland_pl_berkeley_ca_94709 --host 10.0.0.131 --run
+python -m postcards upload exports/1730_highland_pl_berkeley_ca_94709 --host 10.0.0.131 --run
 ```
 
-### Without an address
+### Commands
 
-Coordinates work too, as do card size, scale, rotation and projection:
+| Command | Does |
+|---|---|
+| `make` | Stages 1-3 in one go, into `exports/<slug>/` |
+| `map` | Stage 1 only: any location → `map.svg` |
+| `optimize` | Stage 2 only: `map.svg` → `opt.svg` |
+| `gcode` | Stage 3 only: `opt.svg` → `part_*.gcode` |
+| `upload` | Stage 4: push a job folder and start it |
+| `check` | Validate G-code against the bed, without the machine |
+
+`python -m postcards <command> --help` explains the flags. Coordinates work
+anywhere an address does, as do card size, scale, rotation and projection:
 
 ```bash
-.venv/bin/python make_map.py --lat 37.8771145 --lng -122.256196 --output map.svg
-.venv/bin/python make_map.py --address "..." --width 8in --scale 1:5000 --bearing 25
-.venv/bin/python make_map.py --address "..." --projection webmercator
+python -m postcards map --lat 37.8771145 --lng -122.256196 --output map.svg
+python -m postcards map --address "..." --width 8in --scale 1:5000 --bearing 25
+python -m postcards map --address "..." --projection webmercator
 ```
 
 ## Configuration
 
-`configs/fluidnc.toml` is the single source of truth for both the map and the
-machine: card size and scale, per-layer vpype pipelines, bed placement, feed
-rates, and the G-code templates. Copy it for another plotter and pass
-`--config` (or set `PLOT_CONFIG`).
-
-## How it fits together
-
-See [`docs/pipeline.md`](docs/pipeline.md) for the layer contract, how to add a
-theme, and what each stage guarantees. Machine limits and the failure modes they
-guard against are in [`docs/machine_specs.md`](docs/machine_specs.md) and
-[`docs/fluidnc_limits.md`](docs/fluidnc_limits.md).
+`configs/fluidnc.toml` is the single source of truth for both the drawing and
+the machine: card size and scale, the vpype pipeline applied to each layer, bed
+placement, feed rates, and the G-code templates. Copy it for another plotter and
+pass `--config`.
 
 ## Layout
 
 | Path | Role |
 |---|---|
-| `make_map.py` | Stage 1: address → multi-layer `map.svg` |
-| `optimize.py` | Stage 2: vpype path cleanup, driven by the config |
-| `export_gcode.py` | Stage 3: placement, validation, G-code parts |
-| `upload_fluidnc.py` | Stage 4: WebDAV upload and job start |
-| `utils/filters/` | One module per map theme |
-| `utils/layers.py` | The `LayerParts` contract |
-| `utils/composition.py` | Layer stacking and occlusion |
-| `utils/projection.py` | UTM and Web Mercator projection to card mm |
-| `utils/plot_config.py` | Config loading, feed placeholder expansion |
+| `postcards/cli.py` | The command line entry point |
+| `postcards/make_map.py` | Stage 1: address → multi-layer `map.svg` |
+| `postcards/optimize.py` | Stage 2: builds and runs the vpype pipeline |
+| `postcards/export_gcode.py` | Stage 3: placement, validation, part splitting |
+| `postcards/upload_fluidnc.py` | Stage 4: WebDAV upload and job start |
+| `postcards/utils/filters/` | One module per map theme |
+| `postcards/utils/layers.py` | The `LayerParts` contract |
+| `postcards/utils/composition.py` | Layer stacking and occlusion |
+| `postcards/utils/projection.py` | UTM and Web Mercator projection to card mm |
+| `postcards/utils/plot_config.py` | Config loading, feed placeholder expansion |
 | `experiments/` | Exploratory scripts, not part of the pipeline |
 | `tests/` | Projection, placement and G-code safety tests |
+
+## How it fits together
+
+[`docs/pipeline.md`](docs/pipeline.md) covers the layer contract, adding a theme,
+and what each stage guarantees. Machine limits and the failure modes they guard
+against are in [`docs/machine_specs.md`](docs/machine_specs.md) and
+[`docs/fluidnc_limits.md`](docs/fluidnc_limits.md).
 
 ## Tests
 
 ```bash
-.venv/bin/python -m pytest
+python -m pytest
 ```

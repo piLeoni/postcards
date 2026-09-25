@@ -22,7 +22,7 @@ import numpy as np
 import vpype as vp
 from vpype.io import read_multilayer_svg, write_svg
 
-from utils.plot_config import (
+from postcards.utils.plot_config import (
     DEFAULT_CONFIG,
     feeds_section,
     gwrite_plotter,
@@ -434,24 +434,3 @@ def export(
         shutil.rmtree(work, ignore_errors=True)
         vpype_cfg.unlink(missing_ok=True)
 
-
-def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("svg", type=Path)
-    parser.add_argument("gcode", type=Path, help="path whose stem becomes the job folder name")
-    parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
-    parser.add_argument("--split-layers", action="store_true")
-    parser.add_argument("--no-split-layers", action="store_true")
-    args = parser.parse_args()
-
-    split: bool | None = None
-    if args.split_layers:
-        split = True
-    elif args.no_split_layers:
-        split = False
-
-    export(args.svg, args.gcode, args.config, split_layers=split)
-
-
-if __name__ == "__main__":
-    main()

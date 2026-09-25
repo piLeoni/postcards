@@ -5,16 +5,15 @@ Creates the SD directory (WebDAV MKCOL), then PUTs each part_*.gcode.
 Multipart /upload into a missing folder silently fails on FluidNC — do not use it.
 
 Usage:
-  ./upload_fluidnc.py exports/1730_highland_pl_berkeley_ca_94709 --host 10.0.0.131
-  ./upload_fluidnc.py exports/1730_highland_pl_berkeley_ca_94709 --host 10.0.0.131 --run
-  FLUIDNC_HOST=10.0.0.131 ./upload_fluidnc.py exports/my_job --run
+  python -m postcards upload exports/1730_highland_pl_berkeley_ca_94709 --host 10.0.0.131
+  python -m postcards upload exports/1730_highland_pl_berkeley_ca_94709 --host 10.0.0.131 --run
+  FLUIDNC_HOST=10.0.0.131 python -m postcards upload exports/my_job --run
 """
 
 from __future__ import annotations
 
 import argparse
 import os
-import sys
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -74,8 +73,9 @@ def send_command(host: str, command: str, timeout: float = 30.0) -> str:
         return resp.read().decode("utf-8", errors="replace")
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
+def upload_job(argv: list[str] | None = None) -> int:
+    """Upload a job folder, and optionally start it. Returns a shell exit code."""
+    parser = argparse.ArgumentParser(description="Upload a postcard job to FluidNC.")
     parser.add_argument("job_dir", type=Path, help="local folder with part_*.gcode")
     parser.add_argument(
         "--host",
@@ -89,15 +89,17 @@ def main() -> None:
     )
     parser.add_argument("--run", action="store_true", help="start part_01 after upload")
     parser.add_argument("--no-upload", action="store_true", help="only --run (skip upload)")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     job_dir = args.job_dir.resolve()
     if not job_dir.is_dir():
-        raise SystemExit(f"not a directory: {job_dir}")
+        print(f"error: not a directory: {job_dir}")
+        return 1
 
     parts = sorted(job_dir.glob("part_*.gcode"))
     if not parts:
-        raise SystemExit(f"no part_*.gcode in {job_dir}")
+        print(f"error: no part_*.gcode in {job_dir}")
+        return 1
 
     sd_name = (args.sd_dir or job_dir.name).strip("/")
     sd_dir = "/" + sd_name
@@ -108,9 +110,8 @@ def main() -> None:
         try:
             mkcol(host, sd_name)
         except urllib.error.URLError as e:
-            raise SystemExit(
-                f"cannot reach FluidNC at http://{host} ({e}). Set --host or FLUIDNC_HOST."
-            ) from e
+            print(f"error: cannot reach FluidNC at http://{host} ({e}). Set --host or FLUIDNC_HOST.")
+            return 1
 
         for i, path in enumerate(parts, start=1):
             sd_path = f"{sd_dir}/{path.name}"
@@ -118,16 +119,20 @@ def main() -> None:
             try:
                 put_file(host, path, sd_path)
             except urllib.error.HTTPError as e:
-                raise SystemExit(f"PUT failed HTTP {e.code}: {e.reason}") from e
+                print(f"error: PUT failed HTTP {e.code}: {e.reason}")
+                return 1
             except urllib.error.URLError as e:
-                raise SystemExit(f"PUT failed ({e})") from e
+                print(f"error: PUT failed ({e})")
+                return 1
 
         listing = list_sd(host, sd_name)
         missing = [p.name for p in parts if p.name not in listing]
         if missing:
-            raise SystemExit(
-                f"upload reported ok but SD listing is missing: {', '.join(missing)}\n{listing[:500]}"
+            print(
+                f"error: upload reported ok but SD listing is missing: "
+                f"{', '.join(missing)}\n{listing[:500]}"
             )
+            return 1
         print(f"upload ok — {len(parts)} files visible in {sd_dir}/")
 
     first = f"{sd_dir}/{parts[0].name}"
@@ -139,16 +144,17 @@ def main() -> None:
             if out.strip():
                 print(out.strip())
         except urllib.error.HTTPError as e:
-            raise SystemExit(
-                f"start failed HTTP {e.code}. Upload ok — run in WebUI: {cmd}"
-            ) from e
+            print(f"error: start failed HTTP {e.code}. Upload ok — run in WebUI: {cmd}")
+            return 1
         except urllib.error.URLError as e:
-            raise SystemExit(f"start failed ({e}). Upload ok — run in WebUI: {cmd}") from e
+            print(f"error: start failed ({e}). Upload ok — run in WebUI: {cmd}")
+            return 1
         print("job started (chained parts follow via $SD/Run)")
     else:
         print(f"to start:  $SD/Run={first}")
-        print(f"or:        {sys.argv[0]} {job_dir} --host {host} --no-upload --run")
+        print(f"or:        python -m postcards upload {job_dir} --host {host} --no-upload --run")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(upload_job())

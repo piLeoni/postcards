@@ -21,14 +21,14 @@ import pandas as pd
 import shapely
 from geopy.geocoders import Nominatim
 
-from utils.gdf_ops import (
+from postcards.utils.gdf_ops import (
     gdf_polygons_to_lines,
     gdf_remove_below_ground,
     gdf_remove_points,
     gdf_to_all_linestrings,
 )
-from utils.layers import LayerParts, as_gdf
-from utils.ops import geometry_to_linestrings
+from postcards.utils.layers import LayerParts, as_gdf
+from postcards.utils.geometry import geometry_to_linestrings
 
 # Typical carriageway width in metres, by OSM highway value. Used only when the
 # way carries neither a width nor a lane count.

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from utils.plot_config import (
+from postcards.utils.plot_config import (
     expand_feed_placeholders,
     feeds_section,
     gwrite_plotter,

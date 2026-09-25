@@ -13,11 +13,11 @@ from typing import Callable
 
 import geopandas as gpd
 
-from utils.filters.buildings import filter_buildings
-from utils.filters.parks import filter_parks
-from utils.filters.roads import filter_roads
-from utils.filters.water import filter_water
-from utils.layers import LayerParts
+from postcards.utils.filters.buildings import filter_buildings
+from postcards.utils.filters.parks import filter_parks
+from postcards.utils.filters.roads import filter_roads
+from postcards.utils.filters.water import filter_water
+from postcards.utils.layers import LayerParts
 
 # Order here is the order themes are *computed*; draw order lives in
 # utils/composition.STACK_ORDER.

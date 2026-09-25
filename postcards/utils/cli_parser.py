@@ -16,8 +16,8 @@ from pathlib import Path
 import osmnx as ox
 from pint import UnitRegistry
 
-from utils.generate_bounds import generate_bounds, generate_rectangle_polygon
-from utils.plot_config import DEFAULT_CONFIG, load_plot_config, map_section
+from postcards.utils.generate_bounds import generate_bounds, generate_rectangle_polygon
+from postcards.utils.plot_config import DEFAULT_CONFIG, load_plot_config, map_section
 
 ureg = UnitRegistry()
 logger = logging.getLogger(__name__)
@@ -106,7 +106,12 @@ def build_parser(config: Path, defaults: dict) -> argparse.ArgumentParser:
 
 
 def resolve_center(args: argparse.Namespace) -> list[float]:
-    """Return ``[lon, lat]``, geocoding the address if one was given."""
+    """Return ``[lon, lat]``, geocoding the address if one was given.
+
+    Note that ``osmnx.geocode`` returns ``(lat, lon)``, the reverse of what the
+    rest of the pipeline expects, so the tuple is flipped here rather than at
+    every call site.
+    """
     has_address = bool(args.address)
     has_coords = args.lat is not None and args.lng is not None
 
@@ -119,7 +124,7 @@ def resolve_center(args: argparse.Namespace) -> list[float]:
 
     if has_address:
         logger.info("Fetching coordinates for address: %s", args.address)
-        lon, lat = ox.geocode(args.address)
+        lat, lon = ox.geocode(args.address)
         return [lon, lat]
     return [args.lng, args.lat]
 

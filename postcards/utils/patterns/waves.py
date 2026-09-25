@@ -8,7 +8,7 @@ import numpy as np
 import shapely
 import shapely.affinity
 
-from utils.patterns._common import Bounds, _sweep_area
+from postcards.utils.patterns._common import Bounds, sweep_area
 
 # Sampling step along X, in mm. Fine enough to read as a smooth wave.
 _STEP = 0.1
@@ -21,7 +21,7 @@ def waves_pattern(
     bounds: Bounds | None = None,
 ) -> list[shapely.LineString]:
     """Wavy lines ``interval`` mm apart; amplitude scales with the interval."""
-    x0, y0, w, h = _sweep_area(params, bounds, margin=interval)
+    x0, y0, w, h = sweep_area(params, bounds, margin=interval, angle=angle)
 
     wavelength = interval / 4
     frequency_scale = math.pi / wavelength / 8

@@ -22,8 +22,8 @@ BERKELEY = {"lng": -122.256196, "lat": 37.8771145}
 @pytest.fixture
 def base_params():
     """Minimal params for a 6x4 inch card at 1:10000."""
-    from utils.generate_bounds import generate_bounds, generate_rectangle_polygon
-    from utils.plot_config import load_plot_config, map_section
+    from postcards.utils.generate_bounds import generate_bounds, generate_rectangle_polygon
+    from postcards.utils.plot_config import load_plot_config, map_section
 
     cfg = load_plot_config(CONFIG)
     section = map_section(cfg)
@@ -46,6 +46,6 @@ def base_params():
 
 @pytest.fixture
 def plot_config():
-    from utils.plot_config import load_plot_config
+    from postcards.utils.plot_config import load_plot_config
 
     return load_plot_config(CONFIG)

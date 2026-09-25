@@ -4,30 +4,33 @@ One address in, plotted G-code out. Four stages, each runnable on its own, each
 configured from a single TOML profile.
 
 ```
-address ──► make_map.py ──► optimize.py ──► export_gcode.py ──► upload_fluidnc.py
-              map.svg        opt.svg         part_*.gcode        SD card + run
+address ──► postcards make ──► postcards upload
+              map.svg  opt.svg  part_*.gcode  SD card + run
 ```
 
-`./generate.sh "an address"` runs the first three. Add the fourth on the command
+`python -m postcards make --address "an address"` (or `./generate.sh "an address"`)
+runs the first three stages. `make` is a convenience wrapper; each stage is also
+its own subcommand — `map`, `optimize`, `gcode`, `upload` — plus `check`, which
+validates a job folder without touching the machine. Add the fourth on the command
 line when the plotter is reachable.
 
-## 1. `make_map.py` — geometry to SVG
+## 1. `postcards make_map` — geometry to SVG
 
 Takes an address or lat/lng, works out the ground rectangle for a card of the
 requested size and scale, fetches OSM features inside it, projects everything to
 millimetres on the page, and renders each theme into its own SVG layer.
 
-Themes live in `utils/filters/`. Each one implements the same contract:
+Themes live in `postcards/utils/filters/`. Each one implements the same contract:
 
 ```python
 def filter_<theme>(gdf: gpd.GeoDataFrame, params: dict) -> LayerParts
 ```
 
-`LayerParts` (`utils/layers.py`) always carries four GeoDataFrames — `outlines`,
+`LayerParts` (`postcards/utils/layers.py`) always carries four GeoDataFrames — `outlines`,
 `details`, `filling`, `mask` — even when some are empty. There are no lambdas and
 no optional keys, so callers never guard with `if "filling" in result`.
 
-`mask` is the area the theme covers. `utils/composition.py` uses the masks to
+`mask` is the area the theme covers. `postcards/utils/composition.py` uses the masks to
 stack the themes: walking bottom-up, each theme is clipped against everything
 drawn above it, so a road is cut where a river crosses it without either filter
 knowing about the other.
@@ -38,14 +41,14 @@ Layers written to the SVG: `roads_outlines`, `roads_details`,
 
 ### Adding a theme
 
-1. Write `filter_<name>(gdf, params) -> LayerParts` in `utils/filters/`.
-2. Register it in `utils/filter_registry.FILTERS`.
-3. Add `"<name>"` to `STACK_ORDER` in `utils/composition.py`, bottom-most first.
+1. Write `filter_<name>(gdf, params) -> LayerParts` in `postcards/utils/filters/`.
+2. Register it in `postcards/utils/filter_registry.FILTERS`.
+3. Add `"<name>"` to `STACK_ORDER` in `postcards/utils/composition.py`, bottom-most first.
 4. Add a `[layers.<name>_outlines]` section to the plot config.
 
 No other file changes.
 
-## 2. `optimize.py` — path cleanup
+## 2. `postcards optimize` — path cleanup
 
 Runs `vpype` over the SVG. Which operations each layer gets is declared in the
 plot config, not in code:
@@ -66,7 +69,7 @@ Layers with no section pass through untouched.
 Never add vpype's `deduplicate` to a layer pipeline: it ignores `-l` and merges
 every layer into layer 1, destroying the fillings. There is a test for this.
 
-## 3. `export_gcode.py` — SVG to machine G-code
+## 3. `postcards export_gcode` — SVG to machine G-code
 
 The most delicate stage. It:
 
@@ -85,7 +88,7 @@ Placement modes:
 | `page` | Pins the SVG page to the origin, keeping the card margin. |
 | `content` | Packs the ink itself to the origin, consuming the margin. |
 
-## 4. `upload_fluidnc.py` — to the machine
+## 4. `postcards upload_fluidnc` — to the machine
 
 Creates the SD directory over WebDAV, uploads each `part_*.gcode`, verifies the
 SD listing, and optionally runs `part_01`. Multipart `/upload` silently fails on
@@ -104,7 +107,7 @@ head into the frame.
 ## Tests
 
 ```
-.venv/bin/python -m pytest
+python -m pytest
 ```
 
 Coverage focuses on the things that break the machine: the projection's scale,

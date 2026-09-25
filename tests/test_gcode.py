@@ -10,7 +10,7 @@ import re
 
 import pytest
 
-import export_gcode as eg
+from postcards import export_gcode as eg
 
 REQUIRED_PREAMBLE = ["G21", "G90", "G94", "G10 L2 P1 X0 Y0 Z0", "G92.1", "$HZ", "$H"]
 XY = re.compile(r"([XY])(-?\d+\.?\d*)")

@@ -1,5 +1,5 @@
 # Project settings (map + plotter). Swap file / pass --config for another machine.
-# Used by: __init__.py (map), optimize.py, export_gcode.py, vpype gwrite.
+# Used by: postcards/make_map.py, optimize.py, export_gcode.py, vpype gwrite.
 
 # --- postcard / map (SVG generation) ----------------------------------------
 [map]

@@ -7,9 +7,8 @@ multi-layer SVG. Layers are named so downstream steps can treat them
 individually — see docs/pipeline.md.
 
 Usage:
-    python make_map.py --address "1730 Highland Pl, Berkeley, CA 94709" --output map.svg
-    python make_map.py --lat 37.87 --lng -122.25 --output map.svg
-    python make_map.py --config configs/fluidnc.toml --address "..." --output map.svg
+    python -m postcards map --address "1730 Highland Pl, Berkeley, CA 94709" --output map.svg
+    python -m postcards map --lat 37.87 --lng -122.25 --output map.svg
 """
 
 from __future__ import annotations
@@ -17,12 +16,12 @@ from __future__ import annotations
 import geopandas as gpd
 import osmnx as ox
 
-from utils.cli_parser import parse_args
-from utils.composition import compose_layers
-from utils.filter_registry import build_layers, layer_names
-from utils.projection import project
-from utils.svg_tools import SVG_composer
-from utils.timer import Timer
+from postcards.utils.cli_parser import parse_args
+from postcards.utils.composition import compose_layers
+from postcards.utils.filter_registry import build_layers, layer_names
+from postcards.utils.projection import project
+from postcards.utils.svg_tools import SVG_composer
+from postcards.utils.timer import Timer
 
 ox.settings.timeout = 300  # seconds
 ox.settings.use_cache = True
@@ -57,7 +56,7 @@ def fetch_features(params: dict) -> gpd.GeoDataFrame:
         )
 
 
-def project_geojson_to_svg(params: dict) -> None:
+def build_map(params: dict) -> None:
     """Project OSM features onto a drawn SVG page."""
     timer = Timer()
 
@@ -81,7 +80,7 @@ def project_geojson_to_svg(params: dict) -> None:
 
 
 def main() -> None:
-    project_geojson_to_svg(parse_args())
+    build_map(parse_args())
     print(f"layers: {', '.join(layer_names())}")
 
 

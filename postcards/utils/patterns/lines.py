@@ -6,7 +6,7 @@ import numpy as np
 import shapely
 import shapely.affinity
 
-from utils.patterns._common import Bounds, _sweep_area
+from postcards.utils.patterns._common import Bounds, sweep_area
 
 
 def lines_pattern(
@@ -16,7 +16,7 @@ def lines_pattern(
     bounds: Bounds | None = None,
 ) -> list[shapely.LineString]:
     """Hatch lines ``interval`` mm apart, alternating direction as they go."""
-    x0, y0, w, h = _sweep_area(params, bounds, margin=interval)
+    x0, y0, w, h = sweep_area(params, bounds, margin=interval, angle=angle)
     lines = []
     for idx, i in enumerate(np.arange(0, h, interval)):
         line = shapely.LineString([(x0, y0 + i), (x0 + w, y0 + i)])

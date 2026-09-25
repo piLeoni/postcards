@@ -1,7 +1,7 @@
-"""Geometry type conversions and clipping helpers.
+"""Plain-Shapely geometry helpers.
 
-Everything here works on plain Shapely geometries or lists of them; the
-GeoDataFrame-flavoured helpers live in :mod:`utils.gdf_ops`.
+Everything here takes and returns Shapely geometries or plain lists of them.
+The GeoDataFrame-flavoured helpers live in :mod:`postcards.utils.gdf_ops`.
 """
 
 from __future__ import annotations
@@ -10,7 +10,7 @@ import shapely
 
 
 def geometry_to_linestrings(geom) -> list[shapely.LineString]:
-    """Flatten any geometry into its constituent LineStrings (rings included)."""
+    """Flatten any geometry into its constituent LineStrings, rings included."""
     if geom is None:
         return []
     if isinstance(geom, shapely.LineString):
@@ -35,7 +35,13 @@ def geometry_to_linestrings(geom) -> list[shapely.LineString]:
 
 
 def flatten(obj) -> list:
-    """Recursively expand lists/tuples/multi-geometries into a flat list."""
+    """Recursively expand nested lists and multi-geometries into a flat list.
+
+    The single general-purpose flattener for this codebase; ``gdf_ops`` relies
+    on it for its GeoDataFrame-level equivalents.
+    """
+    if obj is None:
+        return []
     if isinstance(obj, (list, tuple, set, shapely.geometry.base.GeometrySequence)):
         result = []
         for item in obj:
@@ -49,36 +55,33 @@ def flatten(obj) -> list:
     return [obj]
 
 
-def clip_by(to_clip, clipper) -> list:
-    """Keep only the parts of ``to_clip`` that fall inside ``clipper``.
+def is_drawable(geom) -> bool:
+    """True for geometries that can actually be drawn: valid and non-empty."""
+    return (
+        isinstance(geom, shapely.geometry.base.BaseGeometry)
+        and not geom.is_empty
+        and geom.is_valid
+    )
 
-    Returns a flat list of valid, non-empty geometries (lines, as this is used
-    for stroke work).
+
+def clip_by(to_clip, clipper) -> list:
+    """Keep only the parts of ``to_clip`` inside ``clipper``.
+
+    Returns a flat list of valid, non-empty geometries; the result may be mixed
+    types because an intersection can produce them.
     """
-    clipper_union = shapely.union_all(clipper)
+    clipper_union = shapely.union_all(flatten(clipper))
+    if clipper_union.is_empty:
+        return []
     parts = flatten([geometry_to_linestrings(g) for g in flatten(to_clip)])
-    output = [g.intersection(clipper_union) for g in parts]
-    return _valid_lines(output)
+    return [g for g in (p.intersection(clipper_union) for p in parts) if is_drawable(g)]
 
 
 def cut_by(to_clip, clipper) -> list:
     """Remove the parts of ``to_clip`` covered by ``clipper``."""
-    clipper_union = shapely.union_all(clipper)
+    clipper_union = shapely.union_all(flatten(clipper))
     parts = flatten([geometry_to_linestrings(g) for g in flatten(to_clip)])
-    output = [g.difference(clipper_union) for g in parts]
-    return _valid_lines(output)
-
-
-def _valid_lines(geoms: list) -> list:
-    """Flatten intersections/differences and drop empties and invalid results."""
-    flat = flatten(geoms)
-    return [
-        g
-        for g in flat
-        if isinstance(g, shapely.geometry.base.BaseGeometry)
-        and not g.is_empty
-        and g.is_valid
-    ]
+    return [g for g in (p.difference(clipper_union) for p in parts) if is_drawable(g)]
 
 
 def clipping_rectangle(params: dict) -> shapely.Polygon:
