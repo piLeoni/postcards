@@ -1,8 +1,9 @@
-"""Orthogonal grid: horizontal and vertical hatch at ``spacing``.
+"""Orthogonal grid: two serpentines at right angles.
 
-The classic slicer ``grid`` infill. Twice the ink of a single hatch, but the
-crosses read as a solid fill from a distance and need no connectors — every
-stroke is already a full scan line clipped to the region.
+Not two sets of disconnected hatch fragments — that would leave joining to
+``linesort``, which can route outside the footprint. Each direction is a
+``zigzag`` traversal, so the pen finishes one orientation as a handful of
+continuous strokes before starting the other.
 """
 
 from __future__ import annotations
@@ -10,7 +11,7 @@ from __future__ import annotations
 from shapely.geometry import LineString
 
 from postcards.utils.fills._common import as_region, default_inset
-from postcards.utils.fills.rectilinear import fill_rectilinear
+from postcards.utils.fills.zigzag import fill_zigzag
 
 
 def fill_grid(
@@ -18,15 +19,16 @@ def fill_grid(
     spacing: float,
     angle: float = 0.0,
     inset_mm: float | None = None,
+    connector: str = "band",
     **options,
 ) -> list[LineString]:
-    """Two orthogonal hatches, ``spacing`` apart, at ``angle`` and ``angle+90``."""
+    """Zigzag at ``angle``, then zigzag at ``angle+90``, same spacing."""
     geo = as_region(region)
     if geo.is_empty or spacing <= 0:
         return []
 
     amount = default_inset(spacing) if inset_mm is None else inset_mm
-    # Reuse rectilinear twice so the inset and clip contract stay identical.
-    a = fill_rectilinear(geo, spacing, angle=angle, inset_mm=amount)
-    b = fill_rectilinear(geo, spacing, angle=angle + 90.0, inset_mm=amount)
+    kwargs = dict(inset_mm=amount, connector=connector)
+    a = fill_zigzag(geo, spacing, angle=angle, **kwargs)
+    b = fill_zigzag(geo, spacing, angle=angle + 90.0, **kwargs)
     return a + b

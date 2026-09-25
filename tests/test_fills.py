@@ -183,3 +183,13 @@ def test_connector_none_is_just_ordered_fragments():
     plain = fill(region, SPACING, algorithm="rectilinear")
     none = fill(region, SPACING, algorithm="zigzag", connector="none")
     assert len(none) == len(plain)
+
+
+def test_grid_is_two_connected_serpentines_not_loose_hatches():
+    """Grid must not dump 2× the rectilinear fragment count."""
+    region = FIXTURES["square"]
+    hatch = fill(region, SPACING, algorithm="rectilinear")
+    grid = fill(region, SPACING, algorithm="grid")
+    # Two zigzags on a square → a couple of paths, not ~50 fragments.
+    assert len(grid) < len(hatch)
+    assert len(grid) <= 4

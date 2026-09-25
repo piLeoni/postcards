@@ -1,9 +1,8 @@
-"""Honeycomb (hexagonal) fill.
+"""Honeycomb fill: three serpentines at 60° to each other.
 
-Three sets of parallel lines at 0°, 60° and 120°, spaced so they form a
-hexagonal lattice. Classic slicer ``honeycomb`` / ``triangles`` look; denser
-than a single hatch, and the three directions give it a woven texture under a
-pen.
+Same idea as ``grid`` — do not emit disconnected hatch fragments and hope
+``linesort`` stitches them. Each direction is a ``zigzag`` path inside the
+region; the three passes form the hexagonal lattice when overlaid.
 """
 
 from __future__ import annotations
@@ -11,7 +10,7 @@ from __future__ import annotations
 from shapely.geometry import LineString
 
 from postcards.utils.fills._common import as_region, default_inset
-from postcards.utils.fills.rectilinear import fill_rectilinear
+from postcards.utils.fills.zigzag import fill_zigzag
 
 
 def fill_honeycomb(
@@ -19,11 +18,12 @@ def fill_honeycomb(
     spacing: float,
     angle: float = 0.0,
     inset_mm: float | None = None,
+    connector: str = "band",
     **options,
 ) -> list[LineString]:
-    """Three hatches at ``angle``, ``angle+60``, ``angle+120``.
+    """Zigzag at ``angle``, ``angle+60``, ``angle+120``.
 
-    The line spacing is ``spacing * √3 / 2`` so the intersections form regular
+    Line spacing is ``spacing · √3 / 2`` so the intersections form regular
     hexagons of apothem ≈ ``spacing / 2``.
     """
     geo = as_region(region)
@@ -31,14 +31,11 @@ def fill_honeycomb(
         return []
 
     amount = default_inset(spacing) if inset_mm is None else inset_mm
-    # Slightly wider than ``spacing`` so the three directions do not pile up
-    # into a near-solid black at the intersections.
     line_spacing = spacing * (3**0.5) / 2
+    kwargs = dict(inset_mm=amount, connector=connector)
     out: list[LineString] = []
     for offset in (0.0, 60.0, 120.0):
         out.extend(
-            fill_rectilinear(
-                geo, line_spacing, angle=angle + offset, inset_mm=amount
-            )
+            fill_zigzag(geo, line_spacing, angle=angle + offset, **kwargs)
         )
     return out

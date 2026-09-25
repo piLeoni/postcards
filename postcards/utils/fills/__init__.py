@@ -39,7 +39,7 @@ FILLS: "OrderedDict[str, FillFn]" = OrderedDict(
 )
 
 # Algorithms whose output is a genuine traversal, in draw order.
-TRAVERSALS = frozenset({"zigzag", "spiral", "hilbert"})
+TRAVERSALS = frozenset({"zigzag", "spiral", "hilbert", "grid", "honeycomb"})
 
 
 def fill_names() -> list[str]:

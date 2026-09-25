@@ -35,6 +35,11 @@ stack the themes: walking bottom-up, each theme is clipped against everything
 drawn above it, so a road is cut where a river crosses it without either filter
 knowing about the other.
 
+Building *filling* strokes come from `postcards/utils/fills/`, chosen in the
+profile with `[fill.buildings]` (algorithm, spacing, angle). Continuity is
+decided there — not left to vpype `linesort`. Details in
+[`docs/fills.md`](fills.md). Parks and water still use the older pattern helpers.
+
 Layers written to the SVG: `roads_outlines`, `roads_details`,
 `buildings_outlines`, `buildings_details`, `buildings_filling`,
 `parks_outlines`, `parks_filling`, `water_outlines`, `water_filling`.

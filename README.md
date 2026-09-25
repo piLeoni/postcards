@@ -87,6 +87,18 @@ the machine: card size and scale, the vpype pipeline applied to each layer, bed
 placement, feed rates, and the G-code templates. Copy it for another plotter and
 pass `--config`.
 
+Building fills are selected there too:
+
+```toml
+[fill.buildings]
+algorithm = "zigzag"    # rectilinear | concentric | zigzag | spiral | grid | honeycomb | hilbert
+spacing = "0.5mm"
+angle = 45
+```
+
+See [`docs/fills.md`](docs/fills.md) for the algorithms and how to compare them
+with `postcards fills`.
+
 ## Layout
 
 | Path | Role |
