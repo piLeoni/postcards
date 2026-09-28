@@ -1,21 +1,65 @@
-# Fills: interchangeable area-filling algorithms
+# Fills & strokes: theme styling in the plot profile
 
-Status: **implemented** for buildings. Algorithms live under
-`postcards/utils/fills/`; selection is per theme in the plot profile.
+Themes still decide **what** geometry exists (parks from OSM tags, buildings
+from footprints, …). The profile decides **how** that geometry is drawn:
+which fill algorithm, spacing, angle, and whether outlines are solid, dashed,
+or dotted.
 
-## Why
+## Area fills
 
-The old building fill generated a card-wide hatch and clipped it to each
-footprint afterwards. That works, but the clip is what creates the fragments:
-a concave building becomes dozens of short strokes, and only vpype's
-`linesort` reorders them later. Sorting is not joining — travel moves still
-lift the pen, and a post-hoc merge can route outside the polygon.
+Algorithms live under `postcards/utils/fills/`. Selection is per theme:
 
-Fills invert that: they generate paths **inside** the region and join nearby
-scan lines themselves, so continuity is part of the geometry, not left to
-chance downstream.
+```toml
+[fill.buildings]
+algorithm = "zigzag"
+spacing = "0.5mm"
+angle = 45
 
-## Algorithms
+[fill.water]
+algorithm = "waves"
+spacing = "0.75mm"
+angle = 0
+
+[fill.parks]
+algorithm = "dots"
+angle = 45
+mark = "0.2mm"
+spacing = "0.50mm"
+leftover = "wood"
+
+# Each kind can pick its own algorithm — not just a denser/sparser dots grid.
+[fill.parks.kinds.garden]
+algorithm = "dots"
+spacing = "0.25mm"
+
+[fill.parks.kinds.park]
+spacing = "0.45mm"
+
+[fill.parks.kinds.wood]
+algorithm = "waves"
+spacing = "0.70mm"
+angle = 0
+
+[fill.parks.kinds.grass]
+algorithm = "rectilinear"
+spacing = "0.85mm"
+angle = 30
+```
+
+Shorthand still works when you only want to change spacing:
+
+```toml
+[fill.parks.kinds]
+garden = "0.25mm"
+wood = "0.70mm"
+```
+
+Any theme can use any algorithm — put `algorithm = "waves"` under buildings
+tomorrow if you want buildings to look like water. Omit a theme's section to
+keep that filter's code defaults (buildings fall back to the historical
+card-wide hatch).
+
+### Algorithms
 
 | Name | What it draws | Continuous? |
 |---|---|---|
@@ -26,21 +70,23 @@ chance downstream.
 | `grid` | Two `zigzag` passes at 90° | yes (per direction) |
 | `honeycomb` | Three `zigzag` passes at 60° | yes (per direction) |
 | `hilbert` | Hilbert curve clipped to the region | broken by the clip |
+| `dots` | Short-mark stipple grid | no — one dab per cell |
+| `waves` | Sine-wave hatch (historical water) | yes — one stroke per band |
+
+A `dots` mark shorter than its grid step (the parks configuration: `mark =
+"0.2mm"` at 0.25–0.85 mm spacing) is laid out vectorised and only the dabs
+that straddle a boundary are clipped; a mark at or above the step takes the
+generic clip path, which is slower on large regions.
+
+![Every algorithm on the same footprint; dashed pink is pen-up travel](img/fills_gallery.png)
+
+Dashed pink is pen-up travel between consecutive strokes, in the order the fill
+returns them (before vpype's `linesort`). Regenerate with
+`python docs/make_figures.py`.
 
 `grid` and `honeycomb` are **not** loose cross-hatches. Each direction is a
 full zigzag traversal so the pen does not rely on `linesort` to stitch
 neighbours — that would risk connectors outside the footprint.
-
-## Config
-
-In `configs/fluidnc.toml` (or any profile):
-
-```toml
-[fill.buildings]
-algorithm = "zigzag"    # see table above
-spacing = "0.5mm"
-angle = 45
-```
 
 Optional per-algorithm options:
 
@@ -49,22 +95,44 @@ Optional per-algorithm options:
 connector = "band"      # band | boundary | none
 ```
 
-Omit the whole `[fill.buildings]` section to keep the historical card-wide
-hatch. Parks and water still use the old patterns (`dots` / `waves`); only
-buildings are wired to this family so far.
+`band` (default) tries a straight hop between facing scan-line ends; when the
+outline is irregular and that hop would leave the footprint, it follows the
+inset perimeter instead. `boundary` prefers the perimeter path. `none` only
+reorders fragments.
 
-## Contract
+![zigzag connector modes on awkward shapes](img/zigzag_connectors.png)
+
+The lift between the two boxes is deliberate: separate parts are never
+bridged.
+
+### Contract
 
 ```python
 def fill_<name>(region, spacing, **options) -> list[LineString]
 ```
 
 - `region` is already in page millimetres (Polygon or MultiPolygon)
-- strokes stay inside the region, inset by ~`spacing / 2` — the inset is
-  **part of the algorithm**, not a post-clip in composition. Re-clipping
-  afterwards (the old card-wide hatch habit) shatters zigzag connectors
+- strokes stay inside the region; continuous fills inset by ~`spacing / 2`
+  (unless `inset` is set in the profile)
 - holes are respected — nothing crosses a courtyard
 - MultiPolygons are filled per part; no bridge between buildings
+
+## Outline strokes
+
+```toml
+[stroke.parks]
+style = "dash"          # solid | dash | dotted
+dash = "0.45mm"
+gap = "0.40mm"
+
+[stroke.water]
+style = "solid"
+```
+
+Dashes are real geometry (short LineStrings), not SVG `stroke-dasharray` —
+vpype → G-code would otherwise ignore the pattern.
+
+![solid, dash and dotted outline styles on a park-sized outline](img/strokes.png)
 
 ## Measuring / comparing
 
@@ -79,8 +147,7 @@ python -m postcards fills \
 ```
 
 Prints lifts, drawn length, coverage and containment for every algorithm, and
-writes one SVG each. That report — not taste — decides which algorithms earn
-a place on the plotter.
+writes one SVG each.
 
 ## Layout
 
@@ -88,26 +155,19 @@ a place on the plotter.
 postcards/utils/fills/
 ├── __init__.py        # registry: name → callable
 ├── _common.py         # inset, sweep, clip helpers
-├── _fixtures.py       # L, ring, star, …
-├── _report.py         # lifts / length / coverage
+├── dots.py            # dots + waves (pattern-style fills)
 ├── rectilinear.py
 ├── zigzag.py
-├── concentric.py
-├── spiral.py
-├── grid.py
-├── honeycomb.py
-└── hilbert.py
+├── …
+postcards/utils/theme_style.py   # reads [fill.*] / [stroke.*] for filters
+docs/make_figures.py             # renders docs/img/*.png
 ```
-
-`postcards/fills.py` is the CLI (`postcards fills`). Buildings pick the
-algorithm in `postcards/utils/filters/buildings.py` via
-`plot_config.fill_section`.
 
 ## Still open
 
-- **Parks / water.** Same interface; not wired yet.
+- **Roads centre-line dash** still lives in `filters/roads.py`; could move under
+  `[stroke.roads]` later.
 - **Skeleton / Fermat.** Worth it only if zigzag + spiral leave a measurable
   gap on real footprints.
-- **Spiral on messy MultiPolygons.** Rings join within one nest; some real
-  maps still show a few containment misses — treat spiral as experimental
-  until that is closed.
+- **Spiral on messy MultiPolygons.** Treat as experimental until containment
+  misses are closed.
