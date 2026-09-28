@@ -56,6 +56,20 @@ def _op_args(op: dict[str, Any], defaults: dict[str, Any], layer: int) -> list[s
         args += ["-t", str(op.get("tolerance", defaults.get("linemerge", "0.25mm")))]
     elif name == "filter":
         args += ["-m", str(op.get("tolerance", defaults.get("filter_min", "0.15mm")))]
+    elif name == "deoverlap":
+        # Corridor de-overlap (vpype plugin from the deoverlap package). Layer
+        # flag is already set above; never use the coarse ``deduplicate`` plugin.
+        args += ["-t", str(op.get("tolerance", defaults.get("penwidth", "0.1mm")))]
+        if (prefer := op.get("prefer")) is not None:
+            args += ["--prefer", str(prefer)]
+        if (angle := op.get("angle")) is not None:
+            args += ["--angle", str(angle)]
+        if op.get("self_overlap", False):
+            args.append("--self-overlap")
+        if (min_length := op.get("min_length")) is not None:
+            args += ["-m", str(min_length)]
+        if (drop := op.get("drop")) is not None:
+            args += ["--drop", str(drop)]
     elif name == "linesort":
         if op.get("two_opt", defaults.get("linesort_two_opt", True)):
             args.append("-t")

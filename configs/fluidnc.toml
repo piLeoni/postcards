@@ -16,16 +16,61 @@ padding_mm = 3
 # lat = 37.8771145
 # lng = -122.256196
 
-# --- area fills (optional; omit to keep the historical card-wide hatch) ------
-# See docs/fills.md. Algorithms:
+# --- area fills / outline strokes (theme styling; geometry still in code) ---
+# Algorithms:
 #   rectilinear | concentric | zigzag | spiral | grid | honeycomb | hilbert
+#   dots | waves
+# Any theme can use any algorithm — swap freely.
+# See docs/fills.md.
 [fill.buildings]
 algorithm = "zigzag"
-spacing = "0.5mm"
+spacing = "0.75mm"
 angle = 45
 # Optional per-algorithm options:
-# [fill.buildings.zigzag]
-# connector = "band"       # band | boundary | none
+[fill.buildings.zigzag]
+connector = "boundary"       # band (straight, then perimeter) | boundary | none
+
+[fill.water]
+algorithm = "waves"
+spacing = "0.75mm"
+angle = 0
+
+[fill.parks]
+# Theme defaults — each kind inherits these unless it overrides.
+algorithm = "dots"
+angle = 45
+mark = "0.2mm"
+spacing = "0.50mm"
+leftover = "wood"        # which kind's settings fill union-only gaps
+
+# Per-kind fills: full tables (algorithm + knobs), or a bare length for spacing
+# only. Any algorithm works — garden can be dots while wood is waves.
+[fill.parks.kinds.garden]
+algorithm = "dots"
+spacing = "0.25mm"
+
+[fill.parks.kinds.park]
+spacing = "0.45mm"       # inherits algorithm = dots
+
+[fill.parks.kinds.wood]
+algorithm = "dots"
+spacing = "0.70mm"
+
+[fill.parks.kinds.grass]
+algorithm = "dots"
+spacing = "0.85mm"
+# Example of a different pattern:
+# algorithm = "rectilinear"
+# angle = 30
+
+# Outline stroke styles: solid | dash | dotted
+[stroke.parks]
+style = "dash"
+dash = "0.45mm"
+gap = "0.40mm"
+
+[stroke.water]
+style = "solid"
 
 # --- path optimization (vpype) ----------------------------------------------
 # Shared defaults. A layer may override any of these in its [layers.*] section.
@@ -45,12 +90,15 @@ linesort_two_opt = true
 # Each layer lists the vpype operations to run on it, in order, by name.
 # Adding a layer to the map means adding a section here — no code change.
 #
-# Available ops: snap | linesimplify | linemerge | filter | linesort
-#   linesimplify / linemerge / filter accept a tolerance: "0.1mm"
+# Available ops: snap | linesimplify | linemerge | filter | deoverlap | linesort
+#   linesimplify / linemerge / filter / deoverlap accept a tolerance: "0.1mm"
+#   deoverlap also accepts: prefer, angle, self_overlap, min_length, drop
 #   linesort accepts -t (two-opt) and -f (follow / no reorder of first point)
 #
-# Never use vpype `deduplicate` on a multi-layer document: it ignores -l and
-# merges every layer into layer 1, wiping the fillings.
+# Prefer `deoverlap` (corridor proximity) over vpype's `deduplicate` (endpoint
+# match only, and historically unsafe across layers). Never run deoverlap on
+# dab/stipple layers such as parks_filling. Use self_overlap=true on layers whose
+# outlines are single rings with near-parallel opposite sides (roads).
 
 [layers.outlines]
 ops = [
@@ -58,6 +106,7 @@ ops = [
   { name = "linesimplify", tolerance = "0.1mm" },
   { name = "linemerge", tolerance = "0.25mm" },
   { name = "filter", tolerance = "0.15mm" },
+  { name = "deoverlap", tolerance = "0.1mm" },
   { name = "linesort", two_opt = true },
 ]
 
@@ -66,6 +115,9 @@ ops = [
   { name = "linesimplify", tolerance = "0.1mm" },
   { name = "linemerge", tolerance = "0.25mm" },
   { name = "filter", tolerance = "0.15mm" },
+  # self_overlap: thin park drives are one continuous outline — opposite
+  # kerbs must suppress each other, not only collide with other geometries.
+  { name = "deoverlap", tolerance = "0.15mm", self_overlap = true },
   { name = "linesort", two_opt = true },
 ]
 
@@ -74,6 +126,7 @@ ops = [
   { name = "linesimplify", tolerance = "0.1mm" },
   { name = "linemerge", tolerance = "0.25mm" },
   { name = "filter", tolerance = "0.15mm" },
+  { name = "deoverlap", tolerance = "0.1mm" },
   { name = "linesort", two_opt = true },
 ]
 
@@ -82,6 +135,7 @@ ops = [
   { name = "linesimplify", tolerance = "0.1mm" },
   { name = "linemerge", tolerance = "0.25mm" },
   { name = "filter", tolerance = "0.15mm" },
+  { name = "deoverlap", tolerance = "0.1mm" },
   { name = "linesort", two_opt = true },
 ]
 
@@ -90,6 +144,7 @@ ops = [
   { name = "linesimplify", tolerance = "0.1mm" },
   { name = "linemerge", tolerance = "0.25mm" },
   { name = "filter", tolerance = "0.15mm" },
+  { name = "deoverlap", tolerance = "0.1mm" },
   { name = "linesort", two_opt = true },
 ]
 
@@ -99,20 +154,24 @@ ops = [
   # Fill hatch merges more aggressively so the diagonals read as one stroke.
   { name = "linemerge", tolerance = "0.3mm" },
   { name = "filter", tolerance = "0.15mm" },
+  { name = "deoverlap", tolerance = "0.1mm" },
   { name = "linesort", two_opt = true },
 ]
 
+# Park outlines are already real dash segments (~0.45mm on / 0.40mm gap).
+# Do NOT linemerge (would stitch dashes into a solid fence) or deoverlap
+# (adjacent dashes are meant to sit closer than a pen width along the ring).
 [layers.parks_outlines]
 ops = [
-  { name = "linesimplify", tolerance = "0.1mm" },
-  { name = "linemerge", tolerance = "0.25mm" },
+  { name = "linesimplify", tolerance = "0.05mm" },
   { name = "filter", tolerance = "0.15mm" },
   { name = "linesort", two_opt = true },
 ]
 
-# Dots are independent ~0.05mm dabs. Do NOT filter them (filter_min 0.15mm
-# would wipe the whole layer), and do not linemerge (would stitch marks into
-# streaks). Sort with follow only so the grid order stays a raster scan.
+# Dots are independent ~0.2mm dabs. Do NOT filter them (filter_min 0.15mm
+# would wipe short marks), do not linemerge (would stitch marks into streaks),
+# and do not deoverlap (the grid is meant to sit closer than a pen width).
+# Sort with follow only so the grid order stays a raster scan.
 [layers.parks_filling]
 ops = [
   { name = "linesort", two_opt = false, follow = true },
@@ -123,6 +182,7 @@ ops = [
   { name = "linesimplify", tolerance = "0.1mm" },
   { name = "linemerge", tolerance = "0.25mm" },
   { name = "filter", tolerance = "0.15mm" },
+  { name = "deoverlap", tolerance = "0.1mm" },
   { name = "linesort", two_opt = true },
 ]
 
@@ -131,6 +191,7 @@ ops = [
 ops = [
   { name = "linesimplify", tolerance = "0.1mm" },
   { name = "filter", tolerance = "0.15mm" },
+  { name = "deoverlap", tolerance = "0.1mm" },
   { name = "linesort", two_opt = true, follow = true },
 ]
 
@@ -148,19 +209,27 @@ flip_y = true
 anchor = "page"
 # Drop consecutive G0/G1 moves shorter than this (mm) when scrubbing output.
 scrub_min_mm = 0.15
-# Write one G-code file per SVG layer (same detail, smaller files FluidNC can open).
-split_layers = true
-# Further split any file over this many lines (0 = off). Keeps all geometry.
+
+# --- G-code job splitting (FluidNC cannot open huge single files) -----------
+# Two independent knobs, then how parts hand off to each other:
+#   1. by_layer     — one raw file per SVG layer (roads, parks, …)
+#   2. max_lines    — further split any file over N G-code lines (at pen-up)
+#   3. chain        — append $SD/Run=…/part_NN.gcode so FluidNC auto-starts next
+[gcode]
+by_layer = true
+# 0 = do not split on line count (only by_layer). ~8000 keeps SD opens reliable.
 max_lines_per_file = 8000
-# Append $SD/Run=/<job>/part_N+1.gcode at end of each part (FluidNC job nesting).
-chain_parts = true
+# "all"           — every part starts the next (within a layer AND across layers)
+# "within_layer"  — only chunk→chunk inside the same layer; start each layer yourself
+# "none"          — no auto-run; start each part_XX manually
+chain = "all"
 
 # --- feeds (mm/min and Z heights) — declare once, referenced as $name below --
 [feeds]
-travel_xy = 8000   # G0 between strokes
-pen_z = 2000       # pen up/down (use G1 so F is honored)
-draw_xy = 3500     # ink on paper
-pen_up = 4         # Z when pen is up
+travel_xy = 12000  # G0 between strokes (was 8000)
+pen_z = 5000       # pen up/down — short Z move, run it fast (was 2000)
+draw_xy = 4000     # ink on paper (was 3500; machine-safe ~3000–4000)
+pen_up = 2         # Z when pen is up (was 4; ~2mm clears paper, halves lift time)
 pen_down = 0       # Z when drawing
 
 # --- gcode writer (vpype-gcode profile) --------------------------------------
