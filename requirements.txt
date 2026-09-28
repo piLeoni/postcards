@@ -49,4 +49,4 @@ urllib3==2.4.0
 # --- CLI tools installed separately (not pip-resolvable here) ---------------
 # vpype==1.15.0
 # vpype-gcode==0.13.0
-# deoverlap[vpype] @ git+https://github.com/piLeoni/deoverlap@v3.2.2  # corridor de-overlap plugin (dev: pip install -e ../deoverlap[vpype])
+# deoverlap[vpype]==3.2.2  # corridor de-overlap plugin, from PyPI
