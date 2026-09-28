@@ -35,6 +35,8 @@ python3.12 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 pip install vpype vpype-gcode     # CLI tools, shelled out to rather than imported
+pip install "deoverlap[vpype] @ git+https://github.com/piLeoni/deoverlap@v3.2.2"
+                                  # corridor de-overlap (dev: pip install -e ../deoverlap[vpype])
 ```
 
 ## Use
