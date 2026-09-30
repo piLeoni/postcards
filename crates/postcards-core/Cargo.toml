@@ -1,0 +1,20 @@
+[package]
+name = "postcards-core"
+description = "Map postcards for pen plotters: OSM features to a layered SVG. No I/O."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+penfill = { workspace = true }
+geo = { workspace = true }
+geographiclib-rs = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde-saphyr = { workspace = true }
+json5 = { workspace = true }
+thiserror = { workspace = true }
+rayon = { workspace = true }
+
+[dev-dependencies]
+approx = { workspace = true }

@@ -24,3 +24,6 @@ tmp/
 
 # Inkscape / editor backups
 *.tif
+
+# Rust
+target/

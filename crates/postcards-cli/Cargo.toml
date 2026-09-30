@@ -1,0 +1,20 @@
+[package]
+name = "postcards-cli"
+description = "postcards map stage: fetch OSM, render the layered SVG"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "postcards-rs"
+path = "src/main.rs"
+
+[dependencies]
+postcards-core = { workspace = true }
+clap = { workspace = true }
+geo = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+ureq = { workspace = true }
+watermask = { workspace = true }
+sha1_smol = { workspace = true }
