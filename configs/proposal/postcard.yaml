@@ -1,4 +1,165 @@
-# OBSOLETE — v1 proposal. See docs/profile.md (v2): defs + draw + compose,
-# not this stack/layers shape. Kept only as a reminder of what not to do.
+# configs/postcard.yaml scritto nella grammatica proposta in docs/profile.md
+# (defs / draw / compose). NON IMPLEMENTATO: postcards-rs non lo sa ancora leggere.
 #
-# Do not implement from this file.
+#   defs     variabili geometriche: sorgenti OSM/oceano, aree, linee, fill.
+#            Qui NON si disegna niente. Ogni voce e' calcolata una volta sola.
+#   draw     cosa diventa inchiostro nell'SVG, con quale id di gruppo e stile.
+#   compose  ordine di disegno, maschere (chi copre chi) e clip per ogni id.
+#
+# ============================================================================
+# TOOLKIT — le operazioni disponibili in defs:
+#
+# SORGENTI
+#   osm     { select: { <tag>: <valore> | [valori] | true } }
+#           insieme di feature OSM. except:, underground: come oggi.
+#   polygons <nome>      area: l'unione dei poligoni di quelle feature
+#   lines    <nome>      linee: tutte le linestring di quelle feature
+#   segments <nome>      linee: ogni lato di ogni poligono + le linee (muri)
+#   card                 area: il rettangolo della cartolina
+#   ocean    {}          area: il mare, dalle tile di costa. Non e' un tag OSM:
+#                        e' una funzione del host, vuota se la carta non tocca la costa.
+#
+# AREE  (booleane e modificatori)
+#   union      [a, b, ...]                 unione
+#   difference { base:, cut: }             base meno cut (cut puo' essere lista)
+#   intersect  { base:, keep: }            base limitata a keep
+#   fill_holes <area>                      chiude i buchi (laghi dentro i parchi)
+#   grow       { of:, by: +-len }          dilata / restringe (negativo = restringe)
+#
+# LINEE
+#   rings      <area> | { of:, exterior_only: true }   anelli dei poligoni
+#   dedupe     <linee>                     fonde i segmenti doppi
+#   clip       { lines:, within:, invert: }  tiene dentro / fuori da un'area
+#   merge      <linee>                     unisce linee contigue
+#
+# FILL  (producono linee, il pattern lo disegna penfill)
+#   fill       { in: <area>, pattern:, ... }        un giro sull'unione
+#   fill       { in: <area>, per: feature, ... }    un giro per ogni poligono
+#
+# MODULI  (solo strade: larghezze, z-index, ponti)
+#   module     roads/v1   ->  pubblica roads.area, roads.outlines, roads.details
+#
+# COMPOSIZIONE  (vedi in fondo)
+#   draw.from            un nome di defs
+#   draw.stroke          solid | dash | dotted | none | { style:, dash:, gap: }
+#   compose.masks        { from: <area>, occludes: [id di draw, ...] }
+#   compose.clip         default: auto | none | [nomi di defs]
+# ============================================================================
+
+card:
+  width: 6in
+  height: 4in
+  scale: "1:10000"
+  bearing: 0
+  projection: utm
+  # address: "1730 Highland Pl, Berkeley, CA 94709"   # --address / --lat --lng la scavalcano
+
+defs:
+  # ---------------------------------------------------------------- parchi ---
+  # Un "tipo" per i parchi. Ogni tipo rivendica la sua area togliendo quelli
+  # sopra di lui, cosi' un giardino dentro un parco viene punteggiato una volta
+  # sola. parks_ext e' l'unione con i buchi chiusi: e' il bordo esterno e anche
+  # la maschera.
+  g_f: { osm: { select: { leisure: garden } } }
+  p_f: { osm: { select: { leisure: park } } }
+  w_f: { osm: { select: { natural: wood, landuse: forest, leisure: nature_reserve } } }
+  r_f: { osm: { select: { landuse: [grass, meadow], natural: grassland } } }
+  g_a: { polygons: g_f }
+  p_a: { difference: { base: { polygons: p_f }, cut: g_a } }
+  w_a: { difference: { base: { polygons: w_f }, cut: [g_a, p_a] } }
+  r_a: { difference: { base: { polygons: r_f }, cut: [g_a, p_a, w_a] } }
+  parks_u: { union: [g_a, p_a, w_a, r_a] }
+  parks_ext: { fill_holes: parks_u }
+  wild_a: { difference: { base: parks_ext, cut: [g_a, p_a, w_a, r_a] } }
+
+  park_dots_g: { fill: { in: g_a, pattern: dots, spacing: 0.25mm, mark: 0.2mm, angle: 45 } }
+  park_dots_p: { fill: { in: p_a, pattern: dots, spacing: 0.45mm, mark: 0.2mm, angle: 45 } }
+  park_dots_w: { fill: { in: w_a, pattern: dots, spacing: 0.70mm, mark: 0.2mm, angle: 45 } }
+  park_dots_r: { fill: { in: r_a, pattern: dots, spacing: 0.85mm, mark: 0.2mm, angle: 45 } }
+  park_dots_x: { fill: { in: wild_a, pattern: dots, spacing: 0.70mm, mark: 0.2mm, angle: 45 } }
+  parks_ring: { rings: { of: parks_ext, exterior_only: true } }
+
+  # ---------------------------------------------------------------- acqua ---
+  # Due sorgenti diverse: i corpi interni sono tag OSM, il mare e' una funzione
+  # del host. Le uniamo per avere un solo disegno, ma restano due nomi separati
+  # se un giorno servono distinti.
+  inland_a: { polygons: { osm: { select: { water: true, natural: water } } } }
+  sea_a: { ocean: {} }
+  wet: { union: [inland_a, sea_a] }
+  wet_fill: { fill: { in: wet, pattern: waves, spacing: 0.75mm, angle: 0 } }
+  wet_ring: { rings: wet }
+
+  # --------------------------------------------------------------- strade ---
+  # Unico modulo: larghezze, z-index dei ponti e giunti non si scrivono nel
+  # profilo. Il modulo pubblica output nominati, il profilo sceglie quali usare.
+  roads: { module: roads/v1 }
+
+  # -------------------------------------------------------------- edifici ---
+  # L'outline e' l'anello della dissoluzione; i "dettagli" sono i segmenti
+  # condivisi che cadono dentro la dissoluzione ritirata di 0.1 mm.
+  bldg: { osm: { select: { building: true } } }
+  footprints: { polygons: bldg }
+  dissolved: { union: [footprints] }
+
+  building_outline:
+    union_lines:
+      - { rings: dissolved }
+      - { osm.lines: bldg }
+  inner_band: { grow: { of: dissolved, by: -0.1mm } }
+  shared_walls:
+    clip:
+      lines: { dedupe: { segments: bldg } }
+      within: inner_band
+  building_hatch:
+    fill: { in: footprints, per: feature, pattern: zigzag, spacing: 0.5mm, angle: 45 }
+
+draw:
+  - { id: parks_ring, from: parks_ring, stroke: { style: dash, dash: 0.45mm, gap: 0.40mm } }
+  - { id: parks_fill_g, from: park_dots_g }
+  - { id: parks_fill_p, from: park_dots_p }
+  - { id: parks_fill_w, from: park_dots_w }
+  - { id: parks_fill_r, from: park_dots_r }
+  - { id: parks_fill_x, from: park_dots_x }
+  - { id: water_ring, from: wet_ring, stroke: solid }
+  - { id: water_fill, from: wet_fill }
+  - { id: roads_out, from: roads.outlines, stroke: solid }
+  - { id: roads_det, from: roads.details }
+  - { id: bldg_wall, from: shared_walls, stroke: solid }
+  - { id: bldg_fill, from: building_hatch }
+  - { id: bldg_ring, from: building_outline, stroke: solid }
+
+compose:
+  # bottom --> top, come la lista Python di oggi (parchi, acqua, strade, edifici)
+  order:
+    - parks_ring
+    - parks_fill_g
+    - parks_fill_p
+    - parks_fill_w
+    - parks_fill_r
+    - parks_fill_x
+    - water_ring
+    - water_fill
+    - roads_out
+    - roads_det
+    - bldg_wall
+    - bldg_fill
+    - bldg_ring
+
+  # Chi copre il disegno sotto di se' e quali id colpisce. Un id senza voce qui
+  # non taglia niente: disegna e basta (es. i tratteggi delle scuole).
+  masks:
+    parks_cover:
+      from: parks_ext
+      occludes: [water_fill, water_ring, roads_out, roads_det, bldg_wall, bldg_fill, bldg_ring]
+    wet_cover:
+      from: wet
+      occludes: [parks_fill_g, parks_fill_p, parks_fill_w, parks_fill_r, parks_fill_x, parks_ring, roads_out, roads_det, bldg_wall, bldg_fill, bldg_ring]
+    roads_cover:
+      from: roads.area
+      occludes: [parks_fill_g, parks_fill_p, parks_fill_w, parks_fill_r, parks_fill_x, parks_ring, water_fill, water_ring]
+    bldg_cover:
+      from: dissolved
+      occludes: [parks_fill_g, parks_fill_p, parks_fill_w, parks_fill_r, parks_fill_x, parks_ring, water_fill, water_ring, roads_out, roads_det]
+
+  clip:
+    default: auto     # ogni id tagliato dalle maschere sopra di lui che lo elencano
