@@ -73,7 +73,7 @@ Today (`docs/pipeline.md`), roughly 5,200 lines:
 | watermask (Python wheel) | `watermask` crate (same Rust core) |
 | pint lengths (`"6in"`, `"0.5mm"`) | small in-tree parser |
 
-### Geometry: `geo` + `i_overlay`, Clipper2 only inside penfill
+### Geometry: `geo` + `i_overlay`, penfill included
 
 The map stage needs: many-polygon union, difference and intersection;
 negative polygon buffers (buildings); line buffers with flat caps and round
@@ -89,11 +89,9 @@ It has line-vs-polygon clipping (`BooleanOps::clip`, with an invert flag for
 difference) and `Buffer` with caps and joins. Line merge and substring are
 not in `geo`; they are ~100 lines in core.
 
-Clipper2 stays where it already is: inside penfill. Core converts a `geo`
-polygon to a `penfill::Region` only at the fill call. Using
-`penfill::Region` or the `clipper2` crate for general geometry was the
-alternative; it would mean integer-coordinate plumbing through every theme,
-a C++ build for anything polygon-related, and no line tools.
+penfill runs on `i_overlay` too (it moved off Clipper2 in phase 2), so
+core and fills share one engine and no C++ is built anywhere. Core converts
+a `geo` polygon to a `penfill::Region` only at the fill call.
 
 Fallback if `geo`'s buffer disappoints on roads: call `i_overlay`'s outline
 API directly (what `geo` wraps) for that one operation.
@@ -156,7 +154,7 @@ Contract — the one postcards fills already follow:
 - Output: `Strokes`, polylines in millimetres, each one pen-down, in draw
   order, holes respected, nothing outside the region.
 
-`penfill::Region` (Clipper2, micrometre resolution) is used only at the fill
+`penfill::Region` (i_overlay shapes in millimetres) is used only at the fill
 call; the rest of core works on `geo` geometry (see Geometry above).
 
 ### Fill spec
@@ -452,10 +450,10 @@ that don't exist.
 - penfill: stippling `leftover` hung in `poisson_disk`. The cause is a
   Clipper2 2.0.1 bug: its miter offset breaks on turns that nearly reverse,
   like the slivers a polygon overlay leaves. A shrunk sliver came back
-  hundreds of metres wide. `Region::inset` now erodes exactly (region minus a
-  round buffer of its rings) when a ring has such a turn. postcards builds
-  against the local penfill through `[patch.crates-io]` until that is
-  released.
+  hundreds of metres wide. penfill now runs on `i_overlay` instead, which
+  handles those slivers; maps render about 1.8× faster, and the penfill WASM
+  build needs no C++ toolchain. postcards builds against the local penfill
+  through `[patch.crates-io]` until that is released.
 
 Not done: the parity themes stay modules. Building inner walls, park kinds
 and leftovers, and water with ocean tiles don't fit the current steps.
@@ -471,7 +469,7 @@ and leftovers, and water with ocean tiles don't fit the current steps.
 
 - `postcards-wasm` over the same core: browser fetch for Nominatim and
   Overpass (proxy if CORS requires), render, download SVG.
-- Document bundle size (Clipper2 through penfill, projection).
+- Document bundle size (penfill, projection).
 
 ### Phase 5 — burin as a penfill source
 
@@ -500,8 +498,8 @@ and leftovers, and water with ocean tiles don't fit the current steps.
   stage is the reference until parity, then removed. No bindings. vpype,
   G-code, and upload stay as they are for now.
 - **Geocoding is ported** (same Nominatim request as osmnx).
-- **Geometry:** `geo` (booleans and buffers via `i_overlay`); Clipper2 only
-  inside penfill.
+- **Geometry:** `geo` (booleans and buffers via `i_overlay`); penfill on
+  `i_overlay` too.
 - **Projection:** in-tree UTM (Krüger series) and web Mercator;
   `geographiclib-rs` for geodesics. No PROJ.
 - **Profile:** YAML primary, JSON5 accepted, one schema.
