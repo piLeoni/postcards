@@ -425,6 +425,41 @@ tiles come from the watermask cache today). Stroke `none` draws nothing
 
 Done when adding a theme or changing its look is a profile edit only.
 
+**Status.** A layer has either `module:` or `steps:`. The example
+`configs/examples/steps.yaml` adds terrain, rail and piers, and rebuilds
+buildings, with no code change. The step vocabulary settled on, run in order
+over a working selection, area and lines:
+
+- `select {tags, except, underground}`, `region: card | leftover`, `union`,
+  `lines`, `outline [all | exterior]`.
+- `buffer <len> | {distance, of: area | lines, cap: round | flat}`,
+  `fill_holes`, `difference <id>`, `intersect <id>`.
+- `stroke {…}` and `fill {…}` / `fill_each {…}`. Both are merged over the
+  layer's `stroke` / `fill`.
+- `emit outlines | details | mask`.
+
+Unknown steps or fields are profile errors, and so are references to layers
+that don't exist.
+
+- OSM tags: the query is the standard osmnx tag set plus any key a `select`
+  asks for, rather than only what the profile needs. Keeping the standard set
+  keeps the query, and so the cache key, shared with osmnx and with every
+  profile that adds nothing.
+- Planner: a layer waits for the masks it names (`difference`, `intersect`),
+  and a `leftover` layer waits for every layer above it. Ready layers run
+  together (rayon) in waves. A loop or a reference to a disabled layer is a
+  plan error.
+- penfill: stippling `leftover` hung in `poisson_disk`. The cause is a
+  Clipper2 2.0.1 bug: its miter offset breaks on turns that nearly reverse,
+  like the slivers a polygon overlay leaves. A shrunk sliver came back
+  hundreds of metres wide. `Region::inset` now erodes exactly (region minus a
+  round buffer of its rings) when a ring has such a turn. postcards builds
+  against the local penfill through `[patch.crates-io]` until that is
+  released.
+
+Not done: the parity themes stay modules. Building inner walls, park kinds
+and leftovers, and water with ocean tiles don't fit the current steps.
+
 ### Phase 3 — Retire the Python map stage
 
 - Delete the Python map code (`make_map`, filters, fills, patterns,

@@ -86,7 +86,12 @@ fn default_height() -> Mm {
 #[serde(deny_unknown_fields)]
 pub struct LayerSpec {
     pub id: String,
-    pub module: String,
+    /// A built-in theme (`roads/v1`, …)…
+    #[serde(default)]
+    pub module: Option<String>,
+    /// …or a recipe (see `steps`). Exactly one of the two.
+    #[serde(default)]
+    pub steps: Option<Vec<crate::steps::Step>>,
     #[serde(default)]
     pub enabled: Option<bool>,
     #[serde(default)]
@@ -269,13 +274,40 @@ impl Profile {
             if !seen.insert(layer.id.as_str()) {
                 return Err(ProfileError::Invalid(format!("layer id {:?} is used twice", layer.id)));
             }
-            if !crate::modules::is_known(&layer.module) {
-                return Err(ProfileError::Invalid(format!(
-                    "layer {:?}: unknown module {:?} (known: {})",
-                    layer.id,
-                    layer.module,
-                    crate::modules::KNOWN.join(", ")
-                )));
+            match (&layer.module, &layer.steps) {
+                (Some(module), None) if !crate::modules::is_known(module) => {
+                    return Err(ProfileError::Invalid(format!(
+                        "layer {:?}: unknown module {module:?} (known: {})",
+                        layer.id,
+                        crate::modules::KNOWN.join(", ")
+                    )));
+                }
+                (Some(_), None) => {}
+                (None, Some(_)) => {
+                    if !layer.kinds.is_empty() || !layer.options.is_empty() {
+                        return Err(ProfileError::Invalid(format!(
+                            "layer {:?}: kinds and options belong to modules, not steps",
+                            layer.id
+                        )));
+                    }
+                }
+                _ => {
+                    return Err(ProfileError::Invalid(format!(
+                        "layer {:?}: give either a module or steps",
+                        layer.id
+                    )))
+                }
+            }
+        }
+        for layer in &self.layers {
+            let (refs, _) = crate::steps::dependencies(layer.steps.as_deref().unwrap_or_default());
+            for id in refs {
+                if !seen.contains(id.as_str()) {
+                    return Err(ProfileError::Invalid(format!(
+                        "layer {:?}: refers to layer {id:?}, which does not exist",
+                        layer.id
+                    )));
+                }
             }
         }
         for id in self.compose.order.iter().flatten() {
@@ -306,11 +338,36 @@ impl Profile {
         out
     }
 
+    /// OSM keys the enabled layers can select on.
+    pub fn osm_keys(&self) -> Vec<String> {
+        let mut keys: Vec<String> = Vec::new();
+        let mut add = |k: &str| {
+            if !keys.iter().any(|x| x == k) {
+                keys.push(k.to_string());
+            }
+        };
+        for layer in self.stack() {
+            if let Some(m) = &layer.module {
+                crate::modules::osm_keys(m).iter().for_each(|k| add(k));
+            }
+            for step in layer.steps.iter().flatten() {
+                if let crate::steps::Step::Select(sel) = step {
+                    sel.keys().for_each(&mut add);
+                }
+            }
+        }
+        keys
+    }
+
     /// Every SVG file a fill references, so the host can read them.
     pub fn source_files(&self) -> Vec<String> {
         let mut out = Vec::new();
         for layer in &self.layers {
-            let fills = layer.fill.iter().chain(layer.kinds.iter().map(|(_, f)| f));
+            let step_fills = layer.steps.iter().flatten().filter_map(|s| match s {
+                crate::steps::Step::Fill(f) | crate::steps::Step::FillEach(f) => Some(f),
+                _ => None,
+            });
+            let fills = layer.fill.iter().chain(layer.kinds.iter().map(|(_, f)| f)).chain(step_fills);
             for f in fills {
                 if let Some(src) = &f.source {
                     if !out.contains(&src.file) {

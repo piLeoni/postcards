@@ -28,10 +28,11 @@ fn main() {
         })
         .collect();
     let sources = Sources::new();
-    let ctx = Context { card: &card, features: &features, ocean: None, sources: &sources };
+    let masks = Default::default();
+    let ctx = Context { card: &card, features: &features, ocean: None, sources: &sources, masks: &masks };
     for layer in profile.stack() {
         let t = std::time::Instant::now();
-        let p = themes::render(layer, &ctx).unwrap();
+        let p = themes::render(layer, &ctx, &[]).unwrap();
         let secs = t.elapsed().as_secs_f64();
         let len = |l: &[geo::LineString<f64>]| l.iter().map(line_length).sum::<f64>();
         println!(

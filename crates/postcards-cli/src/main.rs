@@ -4,7 +4,7 @@ mod ocean;
 mod osm_http;
 
 use clap::{Parser, Subcommand};
-use postcards_core::card::{overpass_query, Card, OSM_TAGS};
+use postcards_core::card::{fetch_keys, overpass_query, Card};
 use postcards_core::osm::{features_from_overpass, needs_ocean};
 use postcards_core::pipeline::{render, Inputs};
 use postcards_core::profile::{Format, Profile};
@@ -93,9 +93,11 @@ fn map(
     let card = Card::new(&profile.map, center);
 
     let area = card.query_polygon();
-    let json = http.overpass(&overpass_query(&area, OSM_TAGS, osm_http::OVERPASS_TIMEOUT_S))?;
+    let keys = fetch_keys(&profile.osm_keys());
+    let keys: Vec<&str> = keys.iter().map(String::as_str).collect();
+    let json = http.overpass(&overpass_query(&area, &keys, osm_http::OVERPASS_TIMEOUT_S))?;
     timer.log("Fetching data");
-    let features = features_from_overpass(&json, &area, OSM_TAGS).map_err(|e| e.to_string())?;
+    let features = features_from_overpass(&json, &area, &keys).map_err(|e| e.to_string())?;
     timer.log(&format!("Building {} features", features.len()));
 
     let ocean = if needs_ocean(&features) {

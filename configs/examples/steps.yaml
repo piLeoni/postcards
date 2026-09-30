@@ -1,0 +1,66 @@
+# Layers written as steps. Same card as postcard.yaml, plus:
+# - terrain: whatever no other layer covers, lightly stippled;
+# - rail: railway lines, dashed;
+# - piers: man_made=pier areas (a key outside the standard fetch, so the
+#   Overpass query grows to include it);
+# - buildings: the buildings/v1 look rebuilt from steps (no inner walls).
+#
+#   postcards-rs map --profile configs/examples/steps.yaml --address "…"
+#
+# Steps run in order over a working selection, area and lines:
+#   select {tags, except, underground}   pick features (any listed tag matches)
+#   region card | leftover               area = the card / what layers above leave
+#   union                                area = the selection's polygons
+#   lines                                lines = the selection's linear features
+#   outline [all | exterior]             lines = the area's rings
+#   buffer <len> | {distance, of: area|lines, cap: round|flat}
+#   fill_holes | difference <id> | intersect <id>
+#   stroke {style, dash, gap, mark}      restyle the lines (over the layer's stroke)
+#   emit outlines | details | mask       put lines / area into the layer
+#   fill {…} | fill_each {…}             fill the area / each feature (over the layer's fill)
+
+map:
+  width: 6in
+  height: 4in
+  scale: "1:10000"
+
+layers:
+  - id: terrain
+    steps:
+      - region: leftover
+      - fill: { generator: stipple, spacing: 1.6mm, mark: 0.15mm, seed: 7 }
+
+  - id: parks
+    module: parks/v1
+
+  - id: water
+    module: water/v1
+
+  - id: piers
+    steps:
+      - select: { man_made: pier }
+      - union
+      - emit: mask
+      - outline
+      - emit: outlines
+      - fill: { generator: lines, spacing: 0.6mm, angle: 90 }
+
+  - id: roads
+    module: roads/v1
+
+  - id: rail
+    steps:
+      - select: { railway: [rail, light_rail, tram, subway], except: { tunnel: [yes] } }
+      - lines
+      - stroke: { style: dash, dash: 1.2mm, gap: 0.6mm }
+      - emit: outlines
+
+  - id: buildings
+    fill: { generator: zigzag, spacing: 0.75mm, angle: 45 }
+    steps:
+      - select: { building: true }
+      - union
+      - emit: mask
+      - outline
+      - emit: outlines
+      - fill_each

@@ -953,8 +953,6 @@ checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
 [[package]]
 name = "penfill"
 version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2c5054dc7ba45a34c60e5516efb3cea2d360835e4952e2883b017925a7ebacbd"
 dependencies = [
  "clipper2",
  "image",

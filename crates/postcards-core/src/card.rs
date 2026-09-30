@@ -80,6 +80,20 @@ impl Card {
 pub const OSM_TAGS: &[&str] =
     &["building", "highway", "railway", "natural", "water", "landuse", "amenity", "leisure", "waterway"];
 
+/// Keys to ask Overpass for: the standard set, then whatever else the profile
+/// selects on. Asking for the standard set even when a profile needs less
+/// keeps one cached response per card, shared by every profile and by the
+/// Python pipeline.
+pub fn fetch_keys(needed: &[String]) -> Vec<String> {
+    let mut keys: Vec<String> = OSM_TAGS.iter().map(|k| k.to_string()).collect();
+    for k in needed {
+        if !keys.contains(k) {
+            keys.push(k.clone());
+        }
+    }
+    keys
+}
+
 /// The Overpass QL osmnx sends for `features_from_polygon(polygon, tags)`
 /// with every tag set to `True` — same text, so responses are interchangeable.
 pub fn overpass_query(polygon: &Polygon<f64>, tags: &[&str], timeout_s: u32) -> String {

@@ -9,6 +9,7 @@ pub mod osm;
 pub mod pipeline;
 pub mod profile;
 pub mod projection;
+pub mod steps;
 pub mod svg;
 pub mod themes;
 pub mod units;
