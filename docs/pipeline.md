@@ -36,9 +36,10 @@ theme is clipped against everything drawn above it. Roads therefore cross parks
 and water; buildings punch holes in roads underneath.
 
 Building *filling* strokes come from `postcards/utils/fills/`, chosen in the
-profile with `[fill.buildings]` (algorithm, spacing, angle). Continuity is
-decided there — not left to vpype `linesort`. Details in
-[`docs/fills.md`](fills.md). Parks and water still use the older pattern helpers.
+profile with `[fill.<theme>]` (algorithm, spacing, angle). Continuity is
+decided there — not left to vpype `linesort`. Parks and water use the same
+family (`dots` / `waves` by default); outline dash style is `[stroke.<theme>]`.
+Details in [`docs/fills.md`](fills.md).
 
 Layers written to the SVG: `roads_outlines`, `roads_details`,
 `buildings_outlines`, `buildings_details`, `buildings_filling`,
@@ -68,11 +69,19 @@ ops = [
 ]
 ```
 
-Available ops: `snap`, `linesimplify`, `linemerge`, `filter`, `linesort`.
-Layers with no section pass through untouched.
+Available ops: `snap`, `linesimplify`, `linemerge`, `filter`, `deoverlap`,
+`linesort`. Layers with no section pass through untouched.
 
-Never add vpype's `deduplicate` to a layer pipeline: it ignores `-l` and merges
-every layer into layer 1, destroying the fillings. There is a test for this.
+`deoverlap` is the corridor-proximity cleaner from the
+[`deoverlap`](https://github.com/piLeoni/deoverlap) package (install with
+`pip install "deoverlap[vpype]"`). It removes strokes that run within a pen
+width of each other — the case that bleeds on the plotter — and honours `-l`.
+Set `segments = true` on layers whose outlines are single rings with near-parallel
+opposite sides (notably `roads_outlines`), so a thin drive can self-overlap.
+Do **not** use vpype's older `deduplicate` plugin (endpoint-only, historically
+unsafe across layers). Do **not** run `deoverlap` (or `linemerge`) on dab/stipple
+layers such as `parks_filling`, or on `parks_outlines` — those dashes are real
+geometry and merging them would fuse the gaps back into a solid fence.
 
 ## 3. `postcards export_gcode` — SVG to machine G-code
 
@@ -83,8 +92,10 @@ The most delicate stage. It:
 2. Flips Y (SVG grows downward, the machine grows toward home) and places the
    page on the bed — top edge on `origin_y_mm`, which is the Y home rail.
 3. Refuses to continue if any point lands outside the bed.
-4. Writes G-code per layer, splits oversized files at pen-up boundaries, and
-   chains the parts with `$SD/Run` so one start runs the whole job.
+4. Writes G-code according to ``[gcode]`` in the plot profile:
+   - `by_layer` — one raw file per SVG layer
+   - `max_lines_per_file` — further split oversized files at pen-up boundaries
+   - `chain` — `all` | `within_layer` | `none` for `$SD/Run` hand-off between parts
 
 Placement modes:
 

@@ -11,7 +11,7 @@ from __future__ import annotations
 import pytest
 import shapely
 
-from postcards.utils.fills import FILLS, fill, fill_names, get_fill
+from postcards.utils.fills import FILLS, PATTERN_FILLS, fill, fill_names, get_fill
 from postcards.utils.fills._common import as_region, inset, ring_polygons
 from postcards.utils.fills._fixtures import FIXTURES
 from postcards.utils.fills._report import measure, worst_gap
@@ -21,6 +21,9 @@ SPACING = 1.0
 # Shapes where a line drawn between two points can leave the region, which is
 # where containment and coverage actually get tested.
 AWKWARD = ("L", "ring", "corridor", "U", "star")
+
+# Continuous fills honour spacing/2 inset; dots/waves are pattern-style.
+INSET_ALGORITHMS = [a for a in fill_names() if a not in PATTERN_FILLS]
 
 
 def _slack(region):
@@ -49,13 +52,13 @@ def test_holes_are_respected(algorithm):
         assert not hole.buffer(2.0).intersects(line), f"{algorithm} drew through the hole"
 
 
-@pytest.mark.parametrize("algorithm", fill_names())
+@pytest.mark.parametrize("algorithm", INSET_ALGORITHMS)
 def test_inset_is_honoured(algorithm):
     """Strokes stay at least the contract inset off the boundary."""
     region = FIXTURES["square"]
     lines = fill(region, SPACING, algorithm=algorithm)
-    # Every algorithm insets by spacing/2, so no stroke endpoint should sit on
-    # the original boundary.
+    # Every continuous algorithm insets by spacing/2, so no stroke endpoint
+    # should sit on the original boundary.
     for line in lines:
         for x, y in line.coords:
             assert region.exterior.distance(shapely.Point(x, y)) >= SPACING / 4
@@ -116,6 +119,8 @@ def test_registry_lookup_and_errors():
         "grid",
         "honeycomb",
         "hilbert",
+        "dots",
+        "waves",
     ]
     assert set(FILLS) == set(fill_names())
     with pytest.raises(KeyError, match="unknown fill algorithm"):
@@ -150,6 +155,42 @@ def test_multi_polygon_input_is_filled_but_not_bridged(algorithm):
 
 
 # --- comparison ------------------------------------------------------------
+
+def test_zigzag_joins_small_square_at_forty_five_degrees():
+    """Diamond tips of a rotated rectangle must not become singleton bands.
+
+    At 45° the sweep sees short chords near the corners; a hard overlap
+    threshold used to leave them unjoined so even a regular square looked
+    like plain rectilinear.
+    """
+    from postcards.utils.fills.zigzag import fill_zigzag
+
+    region = shapely.box(0, 0, 5, 5)
+    none = fill_zigzag(region, 0.75, angle=45, connector="none")
+    band = fill_zigzag(region, 0.75, angle=45, connector="band")
+    assert len(band) == 1
+    assert len(list(band[0].coords)) > len(none)
+    assert measure(band, region).outside == 0
+    """Irregular outlines: when a straight hop leaves the region, follow the perimeter.
+
+    A deep notch makes many facing ends unable to see each other in a straight
+    line; the old band connector broke the path. The perimeter fallback should
+    keep the serpentine going without leaving the footprint.
+    """
+    from postcards.utils.fills.zigzag import fill_zigzag
+
+    region = shapely.Polygon(
+        [(0, 0), (40, 0), (40, 30), (24, 30), (24, 8), (16, 8), (16, 30), (0, 30)]
+    )
+    none = measure(
+        fill_zigzag(region, 0.75, angle=0, connector="none"), region, "none"
+    )
+    band = measure(
+        fill_zigzag(region, 0.75, angle=0, connector="band"), region, "band"
+    )
+    assert band.outside == 0
+    assert band.lifts < none.lifts * 0.5
+
 
 def test_zigzag_joins_both_walls_of_a_ring():
     """A courtyard must not shatter the hatch into one stroke per scan line."""

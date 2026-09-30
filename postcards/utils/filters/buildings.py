@@ -11,7 +11,6 @@ from __future__ import annotations
 import geopandas as gpd
 import shapely
 
-from postcards.utils.fills import get_fill
 from postcards.utils.gdf_ops import (
     gdf_polygons_to_lines,
     gdf_remove_below_ground,
@@ -20,23 +19,11 @@ from postcards.utils.gdf_ops import (
 )
 from postcards.utils.layers import LayerParts, as_gdf, empty_gdf
 from postcards.utils.patterns.lines import lines_pattern
+from postcards.utils.theme_style import fill_geometry, theme_fill_settings
 
 # The inset the historical hatch used, independent of the fill spacing. Kept so
 # existing profiles render identically; the new fills inset themselves.
 LEGACY_INSET_MM = 0.1
-
-
-def _fill_settings(params: dict) -> dict:
-    """``[fill.buildings]`` from the profile, if the run has a config."""
-    config = params.get("config")
-    if not config:
-        return {}
-    from postcards.utils.plot_config import fill_section, load_plot_config
-
-    try:
-        return fill_section(load_plot_config(config), "buildings")
-    except FileNotFoundError:
-        return {}
 
 
 def _fill_geometry(building_geoms, crs, params: dict) -> gpd.GeoDataFrame:
@@ -46,7 +33,7 @@ def _fill_geometry(building_geoms, crs, params: dict) -> gpd.GeoDataFrame:
     buildings into one outline creates courtyard-like notches that shatter the
     zigzag bands even when each building alone would serpentine cleanly.
     """
-    settings = _fill_settings(params)
+    settings = theme_fill_settings(params, "buildings")
     geoms = [g for g in building_geoms if g is not None and not g.is_empty]
     if not geoms:
         return empty_gdf(crs)
@@ -60,45 +47,10 @@ def _fill_geometry(building_geoms, crs, params: dict) -> gpd.GeoDataFrame:
         )
         return filling.clip(inner)
 
-    algorithm = settings.get("algorithm", "rectilinear")
-    spacing = float(settings.get("spacing", 0.5))
-    angle = float(settings.get("angle", 45))
-    inset_mm = settings.get("inset")
-
-    options = {}
-    if angle is not None:
-        options["angle"] = angle
-    if inset_mm is not None:
-        options["inset_mm"] = inset_mm
-    options.update(_algorithm_options(params, algorithm))
-
-    filler = get_fill(algorithm)
     lines = []
     for geom in geoms:
-        lines.extend(filler(geom, spacing, **options))
+        lines.extend(fill_geometry(geom, params, "buildings"))
     return as_gdf(lines, crs)
-
-
-def _algorithm_options(params: dict, algorithm: str) -> dict:
-    """Per-algorithm options from ``[fill.buildings.<algorithm>]``."""
-    config = params.get("config")
-    if not config:
-        return {}
-    from postcards.utils.plot_config import fill_options, load_plot_config
-
-    try:
-        cfg = load_plot_config(config)
-    except FileNotFoundError:
-        return {}
-    options = fill_options(cfg, "buildings", algorithm)
-    # A theme-level key like `connector` sits next to `algorithm` when the user
-    # only wants one algorithm; accept it from either place.
-    theme = (cfg.get("fill") or {}).get("buildings") or {}
-    for key, value in theme.items():
-        if key in ("algorithm", "spacing", "angle", "inset"):
-            continue
-        options.setdefault(key, value)
-    return options
 
 
 def filter_buildings(gdf: gpd.GeoDataFrame, params: dict) -> LayerParts:

@@ -38,6 +38,50 @@ def placement_section(cfg: dict[str, Any]) -> dict[str, Any]:
     return dict(cfg.get("placement") or {})
 
 
+def gcode_section(cfg: dict[str, Any]) -> dict[str, Any]:
+    """Job-splitting / chaining options from ``[gcode]``, with legacy fallbacks.
+
+    Older profiles stored ``split_layers`` / ``max_lines_per_file`` / ``chain_parts``
+    under ``[placement]``. Those still work when ``[gcode]`` omits a key.
+    """
+    placement = cfg.get("placement") or {}
+    section = dict(cfg.get("gcode") or {})
+
+    if "by_layer" not in section and "split_by_layer" not in section:
+        if "split_layers" in placement:
+            section["by_layer"] = placement["split_layers"]
+    if "max_lines_per_file" not in section and "max_lines_per_file" in placement:
+        section["max_lines_per_file"] = placement["max_lines_per_file"]
+    if "chain" not in section and "chain_parts" in placement:
+        section["chain"] = "all" if placement["chain_parts"] else "none"
+
+    # Normalize aliases.
+    if "split_by_layer" in section and "by_layer" not in section:
+        section["by_layer"] = section.pop("split_by_layer")
+
+    by_layer = bool(section.get("by_layer", True))
+    max_lines = int(section.get("max_lines_per_file", 8000) or 0)
+    chain_raw = section.get("chain", "all")
+    if isinstance(chain_raw, bool):
+        chain = "all" if chain_raw else "none"
+    else:
+        chain = str(chain_raw).strip().lower()
+    if chain in ("true", "yes", "1"):
+        chain = "all"
+    if chain in ("false", "no", "0"):
+        chain = "none"
+    if chain not in ("all", "within_layer", "none"):
+        raise ValueError(
+            f"gcode.chain must be all|within_layer|none, got {chain_raw!r}"
+        )
+
+    return {
+        "by_layer": by_layer,
+        "max_lines_per_file": max_lines,
+        "chain": chain,
+    }
+
+
 def layers_section(cfg: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
     """Per-layer vpype pipelines from ``[layers.<name>]``.
 
@@ -90,21 +134,35 @@ def gwrite_plotter(cfg: dict[str, Any]) -> dict[str, Any]:
 def fill_section(cfg: dict[str, Any], theme: str) -> dict[str, Any]:
     """``[fill.<theme>]`` settings, with lengths resolved to millimetres.
 
-    Returns an empty dict when the theme has no section, which the building
-    filter reads as "use the defaults" — so existing profiles keep working
-    unchanged. Lengths accept the same units as the rest of the config
-    (``"0.5mm"``, ``0.5``, ``"0.02in"``).
+    Returns an empty dict when the theme has no section, which filters read as
+    "use the code defaults" — so existing profiles keep working unchanged.
+    Lengths accept the same units as the rest of the config (``"0.5mm"``,
+    ``0.5``, ``"0.02in"``). Nested tables (``kinds``, per-algorithm options)
+    survive as dicts; scalar kind spacings under ``kinds`` are converted.
     """
     section = (cfg.get("fill") or {}).get(theme)
     if not section:
         return {}
 
     out = dict(section)
-    # A nested table like [fill.buildings.zigzag] carries per-algorithm options
-    # and must survive verbatim; only the scalar lengths are converted.
-    for key in ("spacing", "inset"):
+    for key in ("spacing", "inset", "mark"):
         if key in out and not isinstance(out[key], dict):
             out[key] = parse_mm(out[key])
+
+    kinds = out.get("kinds")
+    if isinstance(kinds, dict):
+        parsed: dict[str, Any] = {}
+        for name, value in kinds.items():
+            if isinstance(value, dict):
+                entry = dict(value)
+                for key in ("spacing", "inset", "mark"):
+                    if key in entry and not isinstance(entry[key], dict):
+                        entry[key] = parse_mm(entry[key])
+                parsed[str(name)] = entry
+            else:
+                # Shorthand: garden = "0.25mm" → spacing only (inherits algorithm).
+                parsed[str(name)] = {"spacing": parse_mm(value)}
+        out["kinds"] = parsed
     return out
 
 
@@ -113,6 +171,21 @@ def fill_options(cfg: dict[str, Any], theme: str, algorithm: str) -> dict[str, A
     section = (cfg.get("fill") or {}).get(theme) or {}
     options = section.get(algorithm)
     return dict(options) if isinstance(options, dict) else {}
+
+
+def stroke_section(cfg: dict[str, Any], theme: str) -> dict[str, Any]:
+    """``[stroke.<theme>]`` outline style (solid / dash / dotted).
+
+    Length keys ``dash``, ``gap``, ``mark`` are resolved to millimetres.
+    """
+    section = (cfg.get("stroke") or {}).get(theme)
+    if not section:
+        return {}
+    out = dict(section)
+    for key in ("dash", "gap", "mark"):
+        if key in out and not isinstance(out[key], dict):
+            out[key] = parse_mm(out[key])
+    return out
 
 
 def parse_mm(value: Any) -> float:

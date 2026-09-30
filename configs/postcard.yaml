@@ -45,4 +45,4 @@ layers:
 
   - id: buildings
     module: buildings/v1
-    fill: { generator: zigzag, spacing: 0.75mm, angle: 45 }
+    fill: { generator: zigzag, spacing: 0.5mm, angle: 45 }

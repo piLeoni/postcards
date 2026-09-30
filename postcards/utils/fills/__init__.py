@@ -16,6 +16,7 @@ from typing import Callable
 from shapely.geometry import LineString
 
 from postcards.utils.fills.concentric import fill_concentric
+from postcards.utils.fills.dots import fill_dots, fill_waves
 from postcards.utils.fills.grid import fill_grid
 from postcards.utils.fills.hilbert import fill_hilbert
 from postcards.utils.fills.honeycomb import fill_honeycomb
@@ -35,11 +36,17 @@ FILLS: "OrderedDict[str, FillFn]" = OrderedDict(
         ("grid", fill_grid),
         ("honeycomb", fill_honeycomb),
         ("hilbert", fill_hilbert),
+        ("dots", fill_dots),
+        ("waves", fill_waves),
     ]
 )
 
 # Algorithms whose output is a genuine traversal, in draw order.
 TRAVERSALS = frozenset({"zigzag", "spiral", "hilbert", "grid", "honeycomb"})
+
+# Pattern-style fills: no spacing/2 inset contract (stipple / waves sit under
+# their own outline stroke; historical water used a fixed 0.1 mm clearance).
+PATTERN_FILLS = frozenset({"dots", "waves"})
 
 
 def fill_names() -> list[str]:

@@ -120,3 +120,57 @@ def test_scrub_keeps_a_dab_after_pen_up(tmp_path):
     )
     eg.scrub_gcode(path, min_mm=0.15)
     assert "X5.05" in path.read_text()
+
+
+def _raw_layer(tmp_path, name: str, body: list[str]) -> Path:
+    path = tmp_path / name
+    path.write_text("\n".join(["G21", "G90"] + body) + "\n")
+    return path
+
+
+def test_chain_within_layer_does_not_cross_layers(tmp_path):
+    """within_layer chains chunk→chunk of one layer, but not layer A → layer B."""
+    pen_up = "G1 Z2 F5000"
+    # Two "layers": first is long enough to split into 2 chunks at max_lines=4
+    # when counting body lines that end on pen-up.
+    layer_a = _raw_layer(
+        tmp_path,
+        "L1.gcode",
+        [
+            "G0 X0 Y0 F12000",
+            "G1 Z0 F5000",
+            "G1 X1 Y0 F4000",
+            pen_up,
+            "G0 X2 Y0 F12000",
+            "G1 Z0 F5000",
+            "G1 X3 Y0 F4000",
+            pen_up,
+        ],
+    )
+    layer_b = _raw_layer(
+        tmp_path,
+        "L2.gcode",
+        [
+            "G0 X4 Y0 F12000",
+            "G1 Z0 F5000",
+            "G1 X5 Y0 F4000",
+            pen_up,
+        ],
+    )
+    paths = eg.assemble_job(
+        raw_paths=[layer_a, layer_b],
+        job_dir=tmp_path / "job",
+        document_start="G21\n$H\n" + pen_up,
+        document_end=pen_up + "\n$H",
+        continue_start="G21\n" + pen_up,
+        pen_up_line=pen_up,
+        pen_up_re=eg._pen_up_re(2),
+        max_lines=4,
+        chain="within_layer",
+    )
+    # Expect 3 parts: L1 chunk1, L1 chunk2, L2
+    assert len(paths) == 3
+    t0, t1, t2 = (p.read_text() for p in paths)
+    assert "$SD/Run=" in t0 and "part_02" in t0  # within layer A
+    assert "$SD/Run=" not in t1  # end of layer A — do not jump to B
+    assert "$SD/Run=" not in t2  # last part

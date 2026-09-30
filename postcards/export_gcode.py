@@ -2,11 +2,10 @@
 """Export G-code from an optimized SVG using a plotter profile TOML.
 
 Placement, pen up/down, and job start/end come from the config.
-With placement.split_layers=true, writes one file per layer (full detail,
-smaller files FluidNC can open) — not a reduction of geometry.
+``[gcode]`` controls FluidNC-friendly splitting: by SVG layer, by line count,
+and whether each ``part_XX.gcode`` auto-starts the next via ``$SD/Run``.
 
-Parts land in exports/<job>/part_XX.gcode and chain via $SD/Run when
-placement.chain_parts=true.
+Parts land in exports/<job>/part_XX.gcode.
 """
 
 from __future__ import annotations
@@ -25,6 +24,7 @@ from vpype.io import read_multilayer_svg, write_svg
 from postcards.utils.plot_config import (
     DEFAULT_CONFIG,
     feeds_section,
+    gcode_section,
     gwrite_plotter,
     load_plot_config,
     placement_section,
@@ -303,29 +303,45 @@ def assemble_job(
     pen_up_line: str,
     pen_up_re: re.Pattern[str],
     max_lines: int,
-    chain: bool,
+    chain: str = "all",
 ) -> list[Path]:
-    """Write job_dir/part_XX.gcode with home only on first/last; chain via $SD/Run."""
+    """Write job_dir/part_XX.gcode with home only on first/last; optional $SD/Run.
+
+    ``raw_paths`` is one G-code file per SVG layer (or a single combined file).
+    Each is optionally chunked at pen-up boundaries when ``max_lines`` > 0.
+
+    ``chain``:
+      - ``all`` — every part ends with ``$SD/Run`` of the next (within + across layers)
+      - ``within_layer`` — only chain chunks that belong to the same layer
+      - ``none`` — no auto-run
+    """
+    if isinstance(chain, bool):
+        chain = "all" if chain else "none"
+    chain_mode = str(chain).strip().lower()
+    if chain_mode not in ("all", "within_layer", "none"):
+        raise SystemExit(f"gcode.chain must be all|within_layer|none, got {chain!r}")
+
     job_dir.mkdir(parents=True, exist_ok=True)
     for old in job_dir.glob("part_*.gcode"):
         old.unlink()
 
-    bodies: list[list[str]] = []
-    for path in raw_paths:
-        bodies.extend(
-            _chunk_body(_extract_body(path.read_text().splitlines()), max_lines, pen_up_re)
-        )
+    # (layer_index, body_lines) — layer_index stays stable across chunks of one raw file.
+    chunks: list[tuple[int, list[str]]] = []
+    for layer_index, path in enumerate(raw_paths):
+        body = _extract_body(path.read_text().splitlines())
+        for piece in _chunk_body(body, max_lines, pen_up_re):
+            chunks.append((layer_index, piece))
         path.unlink(missing_ok=True)
 
-    if not bodies:
+    if not chunks:
         raise SystemExit("no gcode body to assemble")
 
     sd_dir = "/" + job_dir.name
     out_paths: list[Path] = []
 
-    for i, body in enumerate(bodies):
+    for i, (layer_index, body) in enumerate(chunks):
         is_first = i == 0
-        is_last = i == len(bodies) - 1
+        is_last = i == len(chunks) - 1
         out = job_dir / f"part_{i + 1:02d}.gcode"
         parts: list[str] = []
         parts.extend((document_start if is_first else continue_start).strip().splitlines())
@@ -334,14 +350,19 @@ def assemble_job(
             parts.append(pen_up_line)
         if is_last:
             parts.extend(document_end.strip().splitlines())
-        elif chain:
-            parts.append(f"$SD/Run={sd_dir}/part_{i + 2:02d}.gcode")
+        else:
+            next_layer = chunks[i + 1][0]
+            same_layer = next_layer == layer_index
+            if chain_mode == "all" or (chain_mode == "within_layer" and same_layer):
+                parts.append(f"$SD/Run={sd_dir}/part_{i + 2:02d}.gcode")
         out.write_text("\n".join(parts) + "\n")
         out_paths.append(out)
         print(f"wrote {out} ({len(parts)} lines, {out.stat().st_size} bytes)")
 
-    if chain and len(out_paths) > 1:
-        print(f"chained: {out_paths[0].name} → … → {out_paths[-1].name} via $SD/Run")
+    if chain_mode != "none" and len(out_paths) > 1:
+        print(
+            f"chained ({chain_mode}): {out_paths[0].name} → … → {out_paths[-1].name} via $SD/Run"
+        )
     print(f"job folder: {job_dir}/")
     print(f"on SD as:  {sd_dir}/part_01.gcode …")
     return out_paths
@@ -355,8 +376,9 @@ def export(
 ) -> None:
     cfg = load_plot_config(config_path)
     placement = placement_section(cfg)
+    job = gcode_section(cfg)
     if split_layers is not None:
-        placement["split_layers"] = split_layers
+        job["by_layer"] = split_layers
 
     feeds = feeds_section(cfg)
     gwrite = gwrite_plotter(cfg)
@@ -367,9 +389,9 @@ def export(
     pen_up_re = _pen_up_re(feeds["pen_up"])
 
     min_seg = float(vp.convert_length(f"{placement.get('scrub_min_mm', 0.15)}mm"))
-    do_split = bool(placement.get("split_layers", False))
-    max_lines = int(placement.get("max_lines_per_file", 0) or 0)
-    chain = bool(placement.get("chain_parts", True))
+    do_split = bool(job["by_layer"])
+    max_lines = int(job["max_lines_per_file"])
+    chain = str(job["chain"])
 
     doc = read_multilayer_svg(str(svg_path), quantization=0.1)
     clean_document(doc, min_seg)
@@ -408,14 +430,14 @@ def export(
                 part.add(copied, lid)
                 out = work / f"L{i}.gcode"
                 _gwrite(part, out, vpype_cfg, bed_w, bed_h)
-                scrub_gcode(out, scrub_mm)
+                scrub_gcode(out, scrub_mm, pen_up_z=float(feeds["pen_up"]))
                 validate_gcode(out, placement)
                 print(f"layer {lid} → {out.name} ({out.stat().st_size} bytes)")
                 raw_paths.append(out)
         else:
             out = work / "all.gcode"
             _gwrite(doc, out, vpype_cfg, bed_w, bed_h)
-            scrub_gcode(out, scrub_mm)
+            scrub_gcode(out, scrub_mm, pen_up_z=float(feeds["pen_up"]))
             validate_gcode(out, placement)
             raw_paths.append(out)
 

@@ -13,10 +13,10 @@ code:
 3. within a band, alternate direction so each line starts where the previous ended
 4. join with a short connector
 
-Default connector is ``band``: a straight hop between facing ends. That hop is
-about one spacing long and stays inside the inset region whenever the two
-fragments overlap in x — which is exactly the banding criterion. ``boundary``
-routes along the outline instead (Cura's look); ``none`` only orders, no join.
+Default connector is ``band``: a straight hop when it stays inside the inset
+region; when a notch or irregular outline would push that hop outside, fall
+back to walking the inset perimeter between the two ends. ``boundary`` prefers
+the perimeter path; ``none`` only orders, no join.
 
 Containment is enforced by refusing any connector that leaves the region, and
 opening a new path instead. That keeps the pen honest without a post-clip that
@@ -44,8 +44,29 @@ from postcards.utils.fills._common import (
 POINT = tuple[float, float]
 
 # Fragments on adjacent scan lines belong in one band when they share this much
-# x-extent (in spacings). Below that, the hop would leave the band.
+# x-extent (in spacings). Below that we still allow a join when the shorter
+# fragment is mostly covered — otherwise diamond tips at 45° (tiny chords near
+# a corner) become singleton bands and the serpentine never even tries.
 MIN_OVERLAP_SPACINGS = 0.5
+
+
+def _x_linked(
+    lo_a: float, hi_a: float, lo_b: float, hi_b: float, spacing: float
+) -> bool:
+    """Whether two scan-line x-spans belong in the same vertical band.
+
+    - Positive overlap: same column (soft threshold so diamond tip chords join).
+    - Small gap (≤ one spacing): diagonal / thin footprint staircase where
+      consecutive chords step sideways without overlapping — still one band.
+    - Larger gap: courtyard or separate walls; keep bands apart.
+    """
+    overlap = min(hi_a, hi_b) - max(lo_a, lo_b)
+    if overlap > 0:
+        shorter = min(hi_a - lo_a, hi_b - lo_b)
+        need = min(MIN_OVERLAP_SPACINGS * spacing, max(0.5 * shorter, 1e-9))
+        return overlap >= need
+    gap = -overlap
+    return gap <= spacing
 
 # Refuse connectors longer than this many spacings — better to lift.
 MAX_CONNECTOR_SPACINGS = 8.0
@@ -93,7 +114,6 @@ def _bands(fragments: list[LineString], spacing: float) -> list[list[int]]:
     for i in order:
         by_scan.setdefault(round(_y(fragments[i]), 6), []).append(i)
 
-    need = MIN_OVERLAP_SPACINGS * spacing
     scans = sorted(by_scan)
     for prev, curr in zip(scans, scans[1:]):
         if curr - prev > spacing * 1.5:
@@ -102,7 +122,7 @@ def _bands(fragments: list[LineString], spacing: float) -> list[list[int]]:
             lo_a, hi_a = spans[a]
             for b in by_scan[curr]:
                 lo_b, hi_b = spans[b]
-                if min(hi_a, hi_b) - max(lo_a, lo_b) >= need:
+                if _x_linked(lo_a, hi_a, lo_b, hi_b, spacing):
                     union(a, b)
 
     groups: dict[int, list[int]] = {}
@@ -132,7 +152,7 @@ def _bands(fragments: list[LineString], spacing: float) -> list[list[int]]:
                 if yi - y_last > spacing * 1.5:
                     continue
                 lo_a, hi_a = spans[last]
-                if min(hi_a, hi_i) - max(lo_a, lo_i) >= need:
+                if _x_linked(lo_a, hi_a, lo_i, hi_i, spacing):
                     col.append(i)
                     placed = True
                     break
@@ -169,48 +189,101 @@ def _connector_ok(
     return True
 
 
-def _boundary_connector(
-    region, a: POINT, b: POINT, limit: float
-) -> list[POINT] | None:
-    """Shorter exterior-arc between two points, or None if too long / unavailable.
-
-    The arc is projected onto the region's exterior, then pulled a hair inward
-    toward the region's centroid so the stroke does not sit on the outline.
-    """
-    exterior = region.exterior
-    if exterior is None or exterior.length <= 0:
-        return None
-
+def _shorter_arc(ring, da: float, db: float):
+    """Shorter walk along a closed ring between distances ``da`` and ``db``."""
     from shapely.ops import substring
 
-    da = exterior.project(Point(a))
-    db = exterior.project(Point(b))
-    forward = substring(exterior, da, db)
-    backward = substring(exterior, db, da)
-    arcs = [c for c in (forward, backward) if not c.is_empty and c.length > 0]
+    if ring is None or ring.length <= 0:
+        return None
+    forward = substring(ring, da, db, normalized=False)
+    backward = substring(ring, db, da, normalized=False)
+    arcs = [c for c in (forward, backward) if c is not None and not c.is_empty and c.length > 0]
     if not arcs:
         return None
-    arc = min(arcs, key=lambda c: c.length)
-    if arc.length > limit:
+    return min(arcs, key=lambda c: c.length)
+
+
+def _boundary_rings(region, pull: float):
+    """Rings to route connectors on, pulled inward from the fill boundary.
+
+    ``region`` is already the inset hatch area. Pulling a hair further keeps the
+    connector clearly inside (and off the building outline) without the fragile
+    centroid nudge the old path used.
+    """
+    route = region
+    if pull > 0:
+        shrunk = region.buffer(-pull, join_style="mitre", mitre_limit=5.0)
+        if not shrunk.is_empty and shrunk.area > 0:
+            route = shrunk
+    if route.geom_type == "Polygon":
+        polys = [route]
+    elif route.geom_type == "MultiPolygon":
+        polys = list(route.geoms)
+    else:
+        return []
+    rings = []
+    for poly in polys:
+        if poly.exterior is not None and poly.exterior.length > 0:
+            rings.append(poly.exterior)
+        rings.extend(r for r in poly.interiors if r is not None and r.length > 0)
+    return rings
+
+
+def _boundary_connector(
+    region, a: POINT, b: POINT, limit: float, snap: float = 2.0
+) -> list[POINT] | None:
+    """Shorter inward-offset boundary arc between two points, or None.
+
+    Tries every ring of a slightly shrunk copy of ``region`` (exterior and
+    holes) so connectors along a courtyard wall use the hole ring instead of
+    walking the long way around the outer perimeter. Refuses arcs longer than
+    ``limit`` or whose projections land far from the endpoints (wrong ring).
+    """
+    pull = min(0.08, max(limit * 0.01, 0.02))
+    best: tuple[float, object, object, object] | None = None  # len, arc, pa, pb
+
+    for ring in _boundary_rings(region, pull):
+        da = float(ring.project(Point(a)))
+        db = float(ring.project(Point(b)))
+        pa = ring.interpolate(da)
+        pb = ring.interpolate(db)
+        if Point(a).distance(pa) > snap or Point(b).distance(pb) > snap:
+            continue
+        arc = _shorter_arc(ring, da, db)
+        if arc is None or arc.length > limit or arc.length < MIN_SEGMENT_MM:
+            continue
+        if best is None or arc.length < best[0]:
+            best = (arc.length, arc, pa, pb)
+
+    if best is None:
         return None
 
-    # Pull interior vertices toward the centroid so the connector is inset.
-    cx, cy = region.centroid.x, region.centroid.y
-    pull = 0.05
-    mid = []
-    for x, y in list(arc.coords)[1:-1]:
-        dx, dy = cx - x, cy - y
-        d = math.hypot(dx, dy)
-        if d > pull:
-            t = pull / d
-            mid.append((x + dx * t, y + dy * t))
-        else:
-            mid.append((x, y))
-    # Verify the resulting polyline stays inside.
-    route = LineString([a, *mid, b])
+    _, arc, pa, pb = best
+    # a → (onto ring) → along arc → (off ring) → b. Skip micro-segments.
+    coords: list[POINT] = [a]
+    arc_coords = [(float(x), float(y)) for x, y in arc.coords]
+    if Point(a).distance(pa) > MIN_SEGMENT_MM:
+        coords.append((float(pa.x), float(pa.y)))
+    # Arc already runs pa → pb; drop its endpoints to avoid duplicates.
+    if len(arc_coords) > 2:
+        coords.extend(arc_coords[1:-1])
+    if Point(b).distance(pb) > MIN_SEGMENT_MM:
+        coords.append((float(pb.x), float(pb.y)))
+    coords.append(b)
+
+    # Deduplicate consecutive points.
+    cleaned: list[POINT] = [coords[0]]
+    for p in coords[1:]:
+        if math.hypot(p[0] - cleaned[-1][0], p[1] - cleaned[-1][1]) > MIN_SEGMENT_MM:
+            cleaned.append(p)
+    if len(cleaned) < 2:
+        return None
+
+    route = LineString(cleaned)
     if not region.buffer(1e-6).covers(route):
         return None
-    return mid
+    # Return intermediate vertices only — caller stitches a … mid … b.
+    return cleaned[1:-1]
 
 
 def _walk(
@@ -231,6 +304,8 @@ def _walk(
     paths: list[LineString] = []
     coords: list[POINT] = []
     previous: LineString | None = None
+    # Boundary arcs may be longer than a straight hop; give them more leash.
+    boundary_limit = limit * 2.0
 
     for step, i in enumerate(ordered):
         start, end = _facing(fragments[i], step % 2 == 1)
@@ -243,15 +318,27 @@ def _walk(
         prev_end = coords[-1]
         mid: list[POINT] | None = None
 
-        if connector == "boundary":
-            mid = _boundary_connector(region, prev_end, start, limit)
+        prefer_boundary = connector in ("boundary", "outline")
+        # ``band`` (default): straight hop first; fall back to the inset
+        # perimeter when the hop would leave the region — the irregular-outline
+        # case where "straight or nothing" used to shatter the serpentine.
+        if prefer_boundary:
+            mid = _boundary_connector(region, prev_end, start, boundary_limit)
             if mid is not None and previous is not None:
                 hop = LineString([prev_end, *mid, start])
                 if previous.crosses(hop):
                     mid = None
-
-        if mid is None and _connector_ok(prev_end, start, region, previous, limit):
-            mid = []  # empty list = straight hop, no intermediate points
+            if mid is None and _connector_ok(prev_end, start, region, previous, limit):
+                mid = []
+        else:
+            if _connector_ok(prev_end, start, region, previous, limit):
+                mid = []
+            else:
+                mid = _boundary_connector(region, prev_end, start, boundary_limit)
+                if mid is not None and previous is not None:
+                    hop = LineString([prev_end, *mid, start])
+                    if previous.crosses(hop):
+                        mid = None
 
         if mid is None:
             path = segment(coords)
@@ -282,8 +369,9 @@ def fill_zigzag(
     """Serpentine hatch over ``region``, paths in draw order.
 
     ``connector``:
-      ``band``      — straight hop between facing ends (default; short, clean)
-      ``boundary``  — follow the outline (Cura-style; longer, fewer lifts)
+      ``band``      — straight hop when it stays inside; otherwise follow the
+                      inset perimeter (default)
+      ``boundary``  — prefer the perimeter path; straight hop as fallback
       ``none``      — order only, no joins
     """
     geo = as_region(region)

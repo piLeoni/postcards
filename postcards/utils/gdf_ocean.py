@@ -1,56 +1,43 @@
 import geopandas as gpd
-from shapely.geometry import box
-import os
-import pandas as pd
-import numpy as np
+import watermask
+from shapely.geometry import shape
 
-def load_ocean_tiles_by_polygon(selector_polygon, crs=None, tile_dir="tiles/ocean_10deg", tile_suffix=".gpkg", clip=True):
+
+def load_ocean_tiles_by_polygon(selector_polygon, crs=None, clip=True, width=2048):
     """
-    Loads and merges 10x10 degree ocean tiles intersecting a polygon.
+    Loads the ocean inside a polygon from OpenStreetMap vector tiles (OpenFreeMap),
+    via watermask. Tiles are downloaded on demand and cached on disk.
 
     Parameters:
         selector_polygon (shapely.geometry.Polygon): Input polygon in EPSG:4326.
-        crs: CRS of the map frame being built. Tiles are read in EPSG:4326 and
-            reprojected to it so the ocean joins the water layer seamlessly.
-        tile_dir (str): Folder with ocean tiles named like ocean_<lat>_<lon>.gpkg.
-        tile_suffix (str): File extension, e.g., '.gpkg'.
-        clip (bool): Whether to clip merged result to the selector polygon.
+        crs: CRS of the map frame being built. The ocean is reprojected to it so
+            it joins the water layer seamlessly.
+        clip (bool): Whether to clip the result to the selector polygon.
+        width (int): Detail to fetch, as pixels across the polygon's bounds; picks
+            the tile zoom (up to 14, full OpenStreetMap detail).
 
     Returns:
-        GeoDataFrame: Merged ocean geometry, in ``crs``.
+        GeoDataFrame: One merged ocean geometry, in ``crs``.
     """
 
     if not selector_polygon.is_valid:
         selector_polygon = selector_polygon.buffer(0)
 
-    # Get bounding box
-    minx, miny, maxx, maxy = selector_polygon.bounds
-
-    # Round to nearest 10 degrees
-    lons = np.arange(int(np.floor(minx / 10.0)) * 10, int(np.ceil(maxx / 10.0)) * 10, 10)
-    lats = np.arange(int(np.floor(miny / 10.0)) * 10, int(np.ceil(maxy / 10.0)) * 10, 10)
-
-    tiles = []
-    for lat in lats:
-        for lon in lons:
-            tile_geom = box(lon, lat, lon + 10, lat + 10)
-            if selector_polygon.intersects(tile_geom):
-                tile_path = os.path.join(tile_dir, f"ocean_{lat}_{lon}{tile_suffix}")
-                if os.path.exists(tile_path):
-                    try:
-                        tiles.append(gpd.read_file(tile_path))
-                    except Exception as e:
-                        print(f"Failed to read {tile_path}: {e}")
-
-    if not tiles:
+    water = watermask.fetch(selector_polygon.bounds, width=width, areas=["ocean"], lines=[])
+    # watermask joins the tile pieces and cuts to the box itself.
+    features = water.geojson(bounds=selector_polygon.bounds if clip else None)["features"]
+    oceans = [shape(f["geometry"]) for f in features if f["properties"]["class"] == "ocean"]
+    if not oceans:
         return gpd.GeoDataFrame(geometry=[], crs="EPSG:4326")
 
-    merged = gpd.GeoDataFrame(pd.concat(tiles, ignore_index=True), crs="EPSG:4326")
-
+    ocean = oceans[0] if len(oceans) == 1 else oceans[0].union(oceans[1])
     if clip:
-        merged = merged.clip(selector_polygon)
+        ocean = ocean.intersection(selector_polygon)
+    if ocean.is_empty:
+        return gpd.GeoDataFrame(geometry=[], crs="EPSG:4326")
 
-    if crs is not None and merged.crs is not None and not merged.crs.equals(crs):
+    merged = gpd.GeoDataFrame(geometry=[ocean], crs="EPSG:4326")
+    if crs is not None and not merged.crs.equals(crs):
         merged = merged.to_crs(crs)
 
     return merged
