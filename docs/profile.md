@@ -1,231 +1,350 @@
-# Profile grammar — proposal
+# Profile grammar — proposal (v2)
 
-**Status: a proposal to edit, nothing here is implemented yet.** Once it
-settles, it replaces the current schema (`module:` / `steps:` layers,
-`compose.order`) and `configs/*.yaml` are rewritten in it.
+**Status: proposal only — no implementation until this reads right.**  
+YAML is the sketch format; the same graph could be JSON5 or a small DSL. What
+matters is the **shape**: named geometry, named ink, explicit clip rules — not
+four fixed theme names.
 
-## Why change it
+## What was wrong with v1
 
-Today a profile says *what* each layer draws, but not how the layers
-compose:
+The first draft still looked like today's product: a `stack` of `buildings`,
+`roads`, `water`, `parks`, each with implicit `outline` + `fill` + `mask`. That
+presupposes:
 
-- **Order is implicit.** Layers are listed bottom-first and "each layer is
-  clipped by the areas of the layers after it". That rule lives in a
-  comment and in `compose.rs`, not in the file.
-- **Masks are implicit.** Which shape hides the layers below is decided
-  inside each module (buildings: the union; parks: the union without holes,
-  while its fill ignores the holes; rail: nothing).
-- **Modules hide structure.** Park kinds claim area in a fixed order, and a
-  "leftover" kind fills the rest. Both are a stack inside the layer that
-  the profile can't see.
-- **Steps are procedural.** `select → union → emit mask → outline → emit
-  outlines → fill_each` has to be traced in order to know what it draws.
+- every theme is an **area** with contour + riempimento;
+- **composition** is one line: "everything above clips everything below";
+- **ocean** is a keyword beside OSM tags, not a different kind of source;
+- **buildings** is a layer id instead of something you **build** from tags and
+  booleans.
 
-## The model
+You want something closer to the Python pipeline: a short list of **sources**
+and **operations** (union, difference, clip lines, buffer, fill into region),
+with **names** you reuse — and then, separately, **what gets drawn**, **how**, and
+**who cuts whom**. Roads stay a **module** (too much internal logic); almost
+everything else should be composable in the profile.
+
+---
+
+## Three parts of a profile
 
 ```text
-card ──► areas ──► layers ──► stack ──► SVG
-          │          │          │
-          │          │          └─ top first: each layer hides the layers
-          │          │             below it, wherever its mask is
-          │          └─ each layer: select → area → outline / lines / details / fill
-          └─ named areas: computed once, used by name anywhere
+card          paper frame, centre, projection
+defs          named geometry (areas, line sets, fills-as-geometry)
+draw          which names become SVG ink, and how (stroke / fill)
+compose       draw order, occlusion masks, selective clipping
 ```
 
-Four rules cover everything:
+Nothing in `defs` is drawn by itself. Nothing in `draw` computes OSM unless it
+points at a `defs` name. A drawable can be **only hatching** with **no mask**,
+so it never punches holes in the layers below — e.g. dashed schools on top of
+everything.
 
-1. **A layer is a fixed set of keys, each answering one question.** No step
-   lists: nothing depends on the order the keys are written in.
-2. **The stack is one list, top first**, like the layers panel of a drawing
-   program. The layer at the top is drawn over everything.
-3. **What isn't written isn't drawn.** No hidden default outlines, no
-   default fills. A module can compute geometry, but the profile decides
-   which parts are drawn and how.
-4. **Areas have names.** A shape built from other shapes is written once
-   in `areas:`, computed once, and used by name wherever it's needed.
+---
 
-## Layer keys
+## `defs:` — the geometry graph
 
-| Key | Question | Value |
+Each key is a **variable**: an area (multi-polygon in card mm), a **lines**
+set (polylines), or a **fill** result (lines from penfill). Values are one
+**operation** (a single-key mapping). The planner builds a DAG; each name is
+computed once; unused names are skipped.
+
+### Sources
+
+| Operation | Result | Notes |
 |---|---|---|
-| `select` | Which OSM features? | Tag filter: any listed tag matches. `except:` removes features, `underground: include` keeps negative `layer`/`level`. |
-| `module` | Is the geometry computed by built-in code? | `roads/v1`. It replaces `select` and `area` and offers named `details`. |
-| `area` | What surface does the layer own? | See [Areas](#areas). Default: the union of the selected polygons. |
-| `outline` | How is the area's boundary drawn? | A stroke. `rings: exterior` skips the holes. |
-| `lines` | How are the selected linear features drawn? | A stroke (rail, paths, contour lines). |
-| `details` | Which extra strokes inside the area? | Named sets: `shared_walls` for OSM areas, module-specific ones for modules. Each takes a stroke. |
-| `fill` | Which pattern inside the area? | A fill spec. `per: feature` fills each feature on its own instead of the whole area. |
-| `mask` | What hides the layers below? | Default `area`. `none`, or an area expression (e.g. `{ from: area, grow: 0.3mm }`). |
-| `hides` | Which layers below? | Default `below` (all of them). A list of ids to hide only those. |
-| `group` | Is this layer a small stack? | A list of member layer ids, top first. See [Groups](#groups). |
+| `osm: { select: … }` | feature set | Same tag rules as today (`except`, skip underground unless asked). |
+| `osm.polygons: <name>` | area | Union of polygon parts of those features. |
+| `osm.lines: <name>` | lines | All linestrings from those features. |
+| `osm.segments: <name>` | lines | Every edge of every polygon **plus** line features (building walls). |
+| `card` | area | The full card rectangle. |
+| `ocean: {}` | area | **Not OSM.** Host fetches sea polygons from coastline tiles when the
+card cuts the coast (today: watermask). Empty inland. Like calling a function. |
 
-### Strokes
-
-`solid`, `none`, or a mapping:
+`ocean` and `osm` are different **sources**. Inland water is `osm.select`;
+the sea is `ocean`. You combine them only if you want one shape:
 
 ```yaml
-outline: { style: dash, dash: 0.45mm, gap: 0.40mm }   # solid | dash | dotted | none
-lines:   { style: dotted, gap: 0.5mm, mark: 0.1mm }
+defs:
+  inland:   { osm: { select: { water: true, natural: water } } }
+  inland_a: { polygons: inland }
+  sea_a:    { ocean: {} }
+  all_wet:  { union: [inland_a, sea_a] }
 ```
 
-### Fills
+### Area ops
 
-The same fill spec as today, with `pattern` as the name of the penfill
-generator (`generator` stays as an alias):
-
-```yaml
-fill: { pattern: zigzag, spacing: 0.5mm, angle: 45, inset: 0.1mm, seed: 7 }
-fill: { pattern: dots, spacing: 0.5mm, mark: 0.2mm, lattice: hex }   # generator options inline
-fill: { source: { file: art.svg, size: contain } }                   # an SVG instead of a pattern
-fill: { pattern: zigzag, spacing: 0.5mm, per: feature }              # each footprint on its own
-```
-
-## Areas
-
-`area` is either a keyword or a mapping.
-
-| Keyword | Means |
+| Operation | Meaning |
 |---|---|
-| *(omitted)* | Union of the selected polygons (`features`). |
-| `features` | Same, written out. |
-| `card` | The whole card. |
-| `rest` | The card minus the masks of every layer above this one in the stack. Inside a group, the group's area minus the members above. |
-| `ocean` | Sea polygons, when the card shows a coastline. |
-| `<name>` | A named area from `areas:`, or another layer's area by its id. |
+| `union: [a, b, …]` | Boolean union. |
+| `difference: { base, cut }` | `base` minus `cut` (cut may be a list → union of cuts). |
+| `intersect: { base, keep }` | Clip `base` to `keep`. |
+| `fill_holes: <area>` | Drop interior rings (ponds inside parks). |
+| `grow: { of: <area>, by: ±len }` | Buffer out / inset (negative = shrink). |
 
-The mapping form combines them. Keys apply in this order:
+### Line ops
 
-```yaml
-area:
-  from: [features, ocean]   # union of these (one keyword or a list)
-  lines: 1.2mm              # also: the selected lines, buffered to this width
-  fill_holes: true          # drop the holes
-  within: parks             # keep only what is inside these areas
-  minus: [water, roads]     # remove these areas
-  grow: 2mm                 # buffer out (negative: shrink)
-```
+| Operation | Meaning |
+|---|---|
+| `rings: <area>` | Boundary rings of polygons (exterior + holes unless `exterior_only`). |
+| `rings: { of: <area>, exterior_only: true }` | Outer rings only (park outline today). |
+| `dedupe: <lines>` | Merge duplicate segments (shared walls input). |
+| `clip: { lines, within: <area> }` | Keep parts inside the area. |
+| `clip: { lines, within: <area>, invert: true }` | Keep parts outside. |
+| `merge: <lines>` | Merge contiguous lines where endpoints meet. |
 
-### Named areas: the variables
+### Fill ops (geometry only — pattern runs penfill)
 
-A shape that depends on earlier shapes is defined once in `areas:` and
-then used by name. An entry takes the same keys as a layer's `area`, plus
-an optional `select`:
+| Operation | Meaning |
+|---|---|
+| `fill: { in: <area>, pattern: …, per: feature }` | One penfill run per footprint polygon. |
+| `fill: { in: <area>, pattern: … }` | One run on the union. |
 
-```yaml
-areas:
-  wet:     { select: { water: true, natural: water }, from: [features, ocean] }
-  green:   { select: { leisure: park, landuse: [grass, forest] }, fill_holes: true }
-  built:   { select: { building: true } }
-  dry:     { from: green, minus: wet }                     # green, without its ponds
-  shore:   { from: wet, grow: 3mm, minus: wet }            # a 3 mm band along every shore
-  open:    { from: card, minus: [built, roads, wet] }      # roads: the roads layer's area
-  meadows: { from: open, within: shore }                   # uses two other names
-```
+Fill options are the same as today (`spacing`, `angle`, `mark`, `source: file`, …).
 
-- **One namespace.** A name is either an entry in `areas:` or a layer id,
-  which stands for that layer's area. `<id>.mask` is the layer's mask when
-  it differs from its area. Using the same name twice is an error.
-- **Computed once.** However many layers and areas use `shore`, it's built
-  once and shared. An area nobody uses isn't computed at all.
-- **Areas before ink.** Referencing a layer waits for its area, not for its
-  fill or outline. `open` can start as soon as the roads *area* exists,
-  while roads' details are still being drawn.
-- **Order doesn't matter.** Entries can refer to entries written below
-  them. The planner sorts them (a dependency graph) and computes what's
-  independent in parallel. A loop is an error naming the areas involved.
-- `rest` is the one name that isn't global: it depends on where the layer
-  sits in the stack, so it's only valid inside a layer.
-- `postcards-rs areas --profile … --show shore` (later) writes one named
-  area as an SVG, to check a step of the chain.
+### Modules (roads only)
 
-## Masks and the stack
-
-Composition is exactly this, and nothing else:
-
-> Walk the stack from the top. Each layer's ink is clipped away wherever a
-> layer above it has a mask that `hides` it.
-
-- A layer's `mask` is its `area` unless it says otherwise.
-- A layer with only `lines` (rail) has no area, so its mask is `none`
-  unless it asks for one: `mask: { from: lines, grow: 0.3mm }`.
-- `mask: { from: area, grow: 0.3mm }` leaves a white halo: the layers below
-  stop short of the edge.
-- `hides: [parks, terrain]` lets a layer cover some layers and draw over
-  others.
-- A layer in `layers` but not in `stack` (or in a group) is an error:
-  shapes that are only computed, not drawn, go in `areas:`.
-
-## Groups
-
-A group is a stack inside a layer. Park kinds are the example: a garden
-inside a park claims its area first, so the park's fill doesn't draw over
-it.
+A module is a **function** that returns a fixed set of named defs the profile
+may use or ignore:
 
 ```yaml
-parks:
-  group: [garden, park, wood, grass, wild]   # top first, like the stack
-  area: { fill_holes: true }                 # the group's area: union of its members
-  outline: { style: dash, dash: 0.45mm, gap: 0.40mm, rings: exterior }
-  fill: { pattern: dots, angle: 45, mark: 0.2mm }   # members inherit it
+defs:
+  roads:
+    module: roads/v1
+    # implicitly defines e.g. roads.area, roads.outlines, roads.centerlines,
+    # roads.bridge_seams — exact names part of the module contract
 ```
 
-- The group's area is the union of its members' areas, then the group's
-  own `area` keys apply (`fill_holes`, `minus`, …).
-- Members compose among themselves inside the group's area. The outer
-  stack sees only the group's mask.
-- Members inherit the group's `fill` fields they don't set.
-- Members' ink goes into the group's SVG groups (`parks_filling`, …).
+The profile does **not** reimplement width tables, bridge stacking, or joint disks.
+It **does** choose which outputs to `draw` and how.
 
-A group is only shorthand. The same parks written out with named areas,
-where each kind subtracts the kinds above it:
+Optional helpers (not modules) could exist later for repetitive recipes, e.g.
+`recipe: building_footprints` → `{ footprints, outline, shared_walls }` from
+one `osm.select`, but the long form below must always be expressible.
+
+---
+
+## Example — buildings the way Rust/Python do it today
+
+From `building=*` footprints:
+
+1. **Union** → `footprints` (area). This is what occludes roads when used as a mask.
+2. **Rings** of the union (+ open building line work) → `building_outline` (lines).
+3. **All segments** of footprints, **deduped**, **clipped** to an **inset** of the
+   union by 0.1 mm → `shared_walls` (lines). That is the “inner detail”: not
+   “internal rings of the polygon”, but **shared edges** that fall inside the
+   dissolved block after a slight shrink.
+
+Declarative form:
 
 ```yaml
-areas:
-  garden_a: { select: { leisure: garden } }
-  park_a:   { select: { leisure: park }, minus: garden_a }
-  wood_a:   { select: { natural: wood, landuse: forest }, minus: [garden_a, park_a] }
-  parks_a:  { from: [garden_a, park_a, wood_a], fill_holes: true }
-  wild_a:   { from: parks_a, minus: [garden_a, park_a, wood_a] }
+defs:
+  bldg: { osm: { select: { building: true } } }
 
-layers:
-  parks:
-    area: parks_a
-    outline: { style: dash, dash: 0.45mm, gap: 0.40mm, rings: exterior }
-  # … plus one fill-only layer per kind, each with `area: garden_a` etc.
+  footprints: { polygons: bldg }
+  dissolved:  { union: [footprints] }          # one area for outline + mask
+
+  building_outline:
+    union_lines:
+      - { rings: dissolved }
+      - { osm.lines: bldg }                   # rare open building linework
+
+  inner_band: { grow: { of: dissolved, by: -0.1mm } }
+
+  shared_walls:
+    clip:
+      lines: { dedupe: { segments: bldg } }
+      within: inner_band
+
+  building_hatch:
+    fill:
+      in: footprints
+      per: feature
+      pattern: zigzag
+      spacing: 0.5mm
+      angle: 45
 ```
 
-Both are valid. The group is shorter and keeps the claim order in one
-list; the long form is there when a kind needs to be carved by something
-outside the park (e.g. `wood_a: { …, minus: shore }`).
+None of this **must** be drawn, and **`dissolved` need not occlude anything**.
+Another card might only expose `building_hatch` with a dashed stroke and
+`compose` that never registers a building mask.
 
-## Modules
+---
 
-A module is built-in code for geometry the keys can't express. It replaces
-`select` and `area`, and publishes named `details` the profile can draw or
-leave out. Only `roads/v1` remains:
+## Example — schools vs rest (same mechanism, no “buildings layer”)
 
 ```yaml
-roads:
-  module: roads/v1
-  outline: solid
-  details:
-    centerlines: { style: dash, dash: 0.3mm, gap: 0.35mm }   # ways ≥ 6 m wide, erased under higher decks
-    bridge_seams: solid                                       # where a deck crosses a road below
-  options:
-    widths: { motorway: 15m, primary: 7m, residential: 4m }  # overrides the built-in table
+defs:
+  schools:   { osm: { select: { amenity: school, building: school } } }
+  schools_a: { polygons: schools }
+
+  all_built: { osm: { select: { building: true } } }
+  other_a:   { difference: { base: { polygons: all_built }, cut: schools_a } }
+
+  school_hatch:
+    fill: { in: schools_a, pattern: zigzag, spacing: 0.4mm, angle: 45 }
+
+  other_hatch:
+    fill: { in: other_a, per: feature, pattern: zigzag, spacing: 0.5mm, angle: 45 }
 ```
 
-roads/v1 selects `highway=*` (minus crossings, sidewalks and tunnels) and
-buffers each way by half its ground width. The width comes from `width`,
-then `width:lanes`, then `lanes`, then the table. Bridges are stacked by
-`layer`.
+`draw` and `compose` decide whether schools sit on top without cutting terrain,
+whether footprints punch roads, etc.
 
-Buildings, parks and water no longer need modules: they are plain layers
-and a group (see below).
+---
 
-## Example 1 — the default card
+## `draw:` — ink, not geometry
 
-Equivalent to today's `configs/postcard.yaml`.
+Each entry takes geometry from `defs` and assigns **style** and an **svg id**
+(group name in the SVG).
+
+```yaml
+draw:
+  - id: parks_dots
+    from: park_hatch          # a fill: def → already lines
+    # fill style optional if baked into def; override allowed
+
+  - id: parks_edge
+    from: parks_exterior
+    stroke: { style: dash, dash: 0.45mm, gap: 0.40mm }
+
+  - id: building_shell
+    from: building_outline
+    stroke: solid
+
+  - id: building_walls
+    from: shared_walls
+    stroke: solid
+
+  - id: building_zigzag
+    from: building_hatch
+    # penfill output; no extra stroke
+
+  - id: schools_sketch
+    from: school_hatch
+    stroke: { style: dash, dash: 0.3mm, gap: 0.25mm }   # if you hatch via stroke tool instead
+```
+
+**No** entry is required to have an outline, a fill, or a mask. If it is not
+listed in `draw`, it never hits the SVG.
+
+---
+
+## `compose:` — order, masks, selective clip
+
+Composition is **not** “the stack implies four themes”. It answers:
+
+1. **In what order** are `draw` groups stacked in the SVG (plot order)?
+2. **Which defs are occlusion masks** (areas that can hide ink)?
+3. **For each drawable, which masks clip it?**
+
+```yaml
+compose:
+  order:                    # bottom → top in SVG (same as today’s Python list)
+    - parks_edge
+    - parks_dots
+    - water_fill
+    - water_edge
+    - roads_outline
+    - roads_details
+    - building_walls
+    - building_zigzag
+    - building_shell
+    - schools_sketch
+
+  masks:                    # names in defs → who they occlude when active
+    dissolved:
+      from: dissolved
+      occludes: [parks_dots, parks_edge, water_fill, water_edge, roads_outline, roads_details]
+
+    roads.area:
+      from: roads.area       # from module
+      occludes: [parks_dots, parks_edge, water_fill, water_edge]
+
+    # schools_sketch: no mask entry → draws on top, cuts nothing
+
+  clip:                     # optional per draw id; default shown
+    parks_dots:    auto      # union of masks listed in occludes from items above in order
+    parks_edge:    auto
+    water_fill:    auto
+    building_zigzag: auto
+    schools_sketch: none      # never clipped
+```
+
+| `clip` value | Behaviour |
+|---|---|
+| `auto` | Clip against the union of **`masks`** contributed by draw ids **above** this one in `order`, restricted to ids that list this draw id in their `occludes`. |
+| `none` | Never clip (decorative overlay). |
+| `[mask names…]` | Explicit list of defs to subtract (your “cut only from these two layers”). |
+
+So a mask can affect **some** drawables below and not others — unlike today's
+engine, where every mask above hits everyone.
+
+**Default card (today’s behaviour)** in this scheme:
+
+- `order` bottom → top: parks → water → roads → buildings (parts).
+- `dissolved` occludes everything below building ink.
+- `roads.area` occludes parks and water.
+- Most entries use `clip: auto`.
+
+That matches `STACK_ORDER` in the Python reference without naming layers
+`buildings` or `parks` in the schema — only **draw ids** and **def names** you
+chose.
+
+---
+
+## Water split: inland, sea, and things on the sea
+
+```yaml
+defs:
+  inland_a:  { polygons: { osm: { select: { water: true, natural: water } } } }
+  sea_a:     { ocean: {} }
+  lakes_only: { difference: { base: inland_a, cut: sea_a } }   # if you ever need it
+
+  wet:       { union: [inland_a, sea_a] }
+  wet_fill:  { fill: { in: wet, pattern: waves, spacing: 0.75mm } }
+  wet_edge:  { rings: wet }
+
+  pier_a:    { polygons: { osm: { select: { man_made: pier } } } }
+  pier_fill: { fill: { in: pier_a, pattern: lines, spacing: 0.6mm, angle: 90 } }
+```
+
+`compose.order` puts `pier_*` above `wet_*` if piers should sit on the water;
+`pier_a` can get its own `masks.pier` entry occluding only `terrain`, not roads.
+
+---
+
+## Parks without a module
+
+Claim order (garden before park before wood…) is **just defs**:
+
+```yaml
+defs:
+  g_a: { polygons: { osm: { select: { leisure: garden } } } }
+  p_a: { polygons: { osm: { select: { leisure: park } } } }
+  w_a: { polygons: { osm: { select: { natural: wood, landuse: forest } } } }
+
+  p_claim: { difference: { base: p_a, cut: g_a } }
+  w_claim: { difference: { base: w_a, cut: [g_a, p_a] } }
+
+  parks_u: { union: [g_a, p_a, w_a] }
+  parks_ext: { fill_holes: parks_u }
+
+  wild: { difference: { base: parks_ext, cut: [g_a, p_a, w_a] } }
+
+  garden_dots: { fill: { in: g_a, pattern: dots, spacing: 0.25mm, mark: 0.2mm } }
+  # … one fill def per kind + wild
+  parks_edge: { rings: { of: parks_ext, exterior_only: true } }
+```
+
+A **`group:` sugar** (optional) could expand to this graph; the long form is the
+reference.
+
+---
+
+## Full sketch — default postcard
+
+Same look as `configs/postcard.yaml`, rewritten. Names are arbitrary; ids are
+what `compose` uses.
 
 ```yaml
 card:
@@ -233,221 +352,132 @@ card:
   height: 4in
   scale: "1:10000"
   bearing: 0
-  projection: utm            # utm | webmercator
-  # address: "1730 Highland Pl, Berkeley, CA 94709"   (--address / --lat --lng override)
+  projection: utm
 
-stack:                       # top first: each layer hides the ones below it
-  - buildings
-  - roads
-  - water
-  - parks
+defs:
+  # --- parks ---
+  g_f: { osm: { select: { leisure: garden } } }
+  p_f: { osm: { select: { leisure: park } } }
+  w_f: { osm: { select: { natural: wood, landuse: forest, leisure: nature_reserve } } }
+  r_f: { osm: { select: { landuse: [grass, meadow], natural: grassland } } }
+  g_a: { polygons: g_f }
+  p_a: { difference: { base: { polygons: p_f }, cut: g_a } }
+  w_a: { difference: { base: { polygons: w_f }, cut: [g_a, p_a] } }
+  r_a: { difference: { base: { polygons: r_f }, cut: [g_a, p_a, w_a] } }
+  parks_u: { union: [g_a, p_a, w_a, r_a] }
+  parks_ext: { fill_holes: parks_u }
+  wild_a: { difference: { base: parks_ext, cut: [g_a, p_a, w_a, r_a] } }
+  park_dots_g: { fill: { in: g_a, pattern: dots, spacing: 0.25mm, mark: 0.2mm, angle: 45 } }
+  park_dots_p: { fill: { in: p_a, pattern: dots, spacing: 0.45mm, mark: 0.2mm, angle: 45 } }
+  park_dots_w: { fill: { in: w_a, pattern: dots, spacing: 0.70mm, mark: 0.2mm, angle: 45 } }
+  park_dots_r: { fill: { in: r_a, pattern: dots, spacing: 0.85mm, mark: 0.2mm, angle: 45 } }
+  park_dots_x: { fill: { in: wild_a, pattern: dots, spacing: 0.70mm, mark: 0.2mm, angle: 45 } }
+  parks_ring: { rings: { of: parks_ext, exterior_only: true } }
 
-layers:
-  buildings:
-    select: { building: true }
-    outline: solid
-    details: { shared_walls: solid }
-    fill: { pattern: zigzag, spacing: 0.5mm, angle: 45, per: feature }
+  # --- water ---
+  inland_a: { polygons: { osm: { select: { water: true, natural: water } } } }
+  sea_a: { ocean: {} }
+  wet: { union: [inland_a, sea_a] }
+  wet_fill: { fill: { in: wet, pattern: waves, spacing: 0.75mm, angle: 0 } }
+  wet_ring: { rings: wet }
 
-  roads:
-    module: roads/v1
-    outline: solid
-    details:
-      centerlines: { style: dash, dash: 0.3mm, gap: 0.35mm }
-      bridge_seams: solid
+  # --- roads (module) ---
+  roads: { module: roads/v1 }
 
-  water:
-    select: { water: true, natural: water }
-    area: { from: [features, ocean] }
-    outline: solid
-    fill: { pattern: waves, spacing: 0.75mm, angle: 0 }
+  # --- buildings ---
+  bldg: { osm: { select: { building: true } } }
+  footprints: { polygons: bldg }
+  dissolved: { union: [footprints] }
+  building_outline:
+    union_lines:
+      - { rings: dissolved }
+      - { osm.lines: bldg }
+  inner_band: { grow: { of: dissolved, by: -0.1mm } }
+  shared_walls:
+    clip:
+      lines: { dedupe: { segments: bldg } }
+      within: inner_band
+  building_hatch:
+    fill: { in: footprints, per: feature, pattern: zigzag, spacing: 0.5mm, angle: 45 }
 
-  parks:
-    group: [garden, park, wood, grass, wild]
-    area: { fill_holes: true }
-    outline: { style: dash, dash: 0.45mm, gap: 0.40mm, rings: exterior }
-    fill: { pattern: dots, angle: 45, mark: 0.2mm }
+draw:
+  - { id: parks_ring,  from: parks_ring,  stroke: { style: dash, dash: 0.45mm, gap: 0.40mm } }
+  - { id: parks_fill,  from: park_dots_g }   # multiple from: or union in defs — see open Q
+  - { id: water_ring,  from: wet_ring,      stroke: solid }
+  - { id: water_fill,  from: wet_fill }
+  - { id: roads_out,   from: roads.outlines, stroke: solid }
+  - { id: roads_det,   from: roads.details }
+  - { id: bldg_wall,   from: shared_walls,  stroke: solid }
+  - { id: bldg_fill,   from: building_hatch }
+  - { id: bldg_ring,   from: building_outline, stroke: solid }
 
-  garden: { select: { leisure: garden }, fill: { spacing: 0.25mm } }
-  park:   { select: { leisure: park }, fill: { spacing: 0.45mm } }
-  wood:   { select: { natural: wood, landuse: forest, leisure: nature_reserve }, fill: { spacing: 0.70mm } }
-  grass:  { select: { landuse: [grass, meadow], natural: grassland }, fill: { spacing: 0.85mm } }
-  wild:   { area: rest, fill: { spacing: 0.70mm } }    # inside parks, claimed by no kind
+compose:
+  order:
+    - parks_ring
+    - parks_fill
+    - water_ring
+    - water_fill
+    - roads_out
+    - roads_det
+    - bldg_wall
+    - bldg_fill
+    - bldg_ring
+  masks:
+    parks_cover:  { from: parks_ext,  occludes: [water_fill, water_ring, roads_out, roads_det, bldg_wall, bldg_fill, bldg_ring] }
+    wet_cover:    { from: wet,        occludes: [parks_fill, parks_ring, roads_out, roads_det, bldg_wall, bldg_fill, bldg_ring] }
+    roads_cover:  { from: roads.area, occludes: [parks_fill, parks_ring, water_fill, water_ring] }
+    bldg_cover:   { from: dissolved,  occludes: [parks_fill, parks_ring, water_fill, water_ring, roads_out, roads_det] }
+  clip:
+    default: auto
 ```
 
-## Example 2 — more layers, no modules but roads
+(Park fill is five defs today — `draw` might list five ids or one `union_lines`
+of fills; see open questions.)
 
-Equivalent to today's `configs/examples/steps.yaml`: terrain on whatever
-is left, piers, dashed rail.
+---
 
-```yaml
-card: { width: 6in, height: 4in, scale: "1:10000" }
+## Relation to today
 
-stack:
-  - buildings
-  - rail
-  - roads
-  - piers
-  - water
-  - parks
-  - terrain
-
-layers:
-  buildings:
-    select: { building: true }
-    outline: solid
-    fill: { pattern: zigzag, spacing: 0.75mm, angle: 45, per: feature }
-
-  rail:
-    select: { railway: [rail, light_rail, tram, subway], except: { tunnel: [yes] } }
-    lines: { style: dash, dash: 1.2mm, gap: 0.6mm }
-    # no area, so no mask: rail draws over roads without cutting them
-
-  roads:
-    module: roads/v1
-    outline: solid
-
-  piers:
-    select: { man_made: pier }
-    outline: solid
-    fill: { pattern: lines, spacing: 0.6mm, angle: 90 }
-
-  water:
-    select: { water: true, natural: water }
-    area: { from: [features, ocean] }
-    outline: solid
-    fill: { pattern: waves, spacing: 0.75mm }
-
-  parks:
-    group: [garden, green]
-    area: { fill_holes: true }
-    outline: { style: dash, dash: 0.45mm, gap: 0.40mm, rings: exterior }
-    fill: { pattern: dots, angle: 45, mark: 0.2mm }
-  garden: { select: { leisure: garden }, fill: { spacing: 0.25mm } }
-  green:  { select: { leisure: park, natural: [wood, grassland], landuse: [forest, grass, meadow] }, fill: { spacing: 0.6mm } }
-
-  terrain:
-    area: rest                 # the card minus every mask above
-    fill: { pattern: stipple, spacing: 1.6mm, mark: 0.15mm, seed: 7 }
-```
-
-## Example 3 — using the masks
-
-A sketchier card that uses the parts of the grammar the first two don't:
-a chain of named areas (`coast` is built on `wet`, `near_sea` on
-`coast`), `grow`, a halo mask and `hides`.
-
-```yaml
-card: { width: 6in, height: 4in, scale: "1:5000", bearing: 25 }
-
-areas:
-  wet:     { select: { water: true, natural: water }, from: [features, ocean] }
-  coast:   { from: wet, grow: 3mm, minus: wet }        # built on wet
-  woods:   { select: { natural: wood, landuse: forest }, minus: coast }
-  near_sea: { from: coast, grow: 10mm, minus: [wet, coast] }   # built on coast
-
-stack:
-  - buildings
-  - roads
-  - beach
-  - water
-  - trees
-  - dunes
-  - terrain
-
-layers:
-  buildings:
-    select: { building: true }
-    outline: solid             # no fill: outlines only
-    hides: [terrain]           # buildings cut the stipple but not the beach
-
-  roads:
-    module: roads/v1
-    outline: solid
-    mask: { from: area, grow: 0.4mm }   # a white halo along every road
-
-  beach:
-    area: coast
-    fill: { pattern: stipple, spacing: 0.5mm, mark: 0.1mm }
-
-  water:
-    area: wet
-    fill: { pattern: waves, spacing: 1mm }   # no outline: the beach edge draws the shore
-
-  trees:
-    area: woods                # the woods, never on the beach
-    fill: { pattern: grass, spacing: 0.8mm }
-
-  dunes:
-    area: { from: near_sea, minus: woods }
-    fill: { pattern: scribble, spacing: 1.2mm }
-
-  terrain:
-    area: rest
-    fill: { source: { file: art/relief.svg, size: cover } }   # later: burin
-```
-
-## From today's profile
-
-| Today | Proposed |
+| Today | This proposal |
 |---|---|
-| `map:` | `card:` |
-| `layers:` list, bottom-first, `compose.order` | `stack:` list, top first. `layers:` is a map by id. |
-| `- id: x` | `x:` |
-| `module: buildings/v1` | `select: { building: true }`, `details: { shared_walls }`, `fill: { per: feature }` |
-| `module: parks/v1` + `kinds` + `options.leftover` | A `group` of member layers, `rest` for the leftover |
-| `module: water/v1` | `select` + `area: { from: [features, ocean] }` |
-| `module: roads/v1` | Unchanged, plus named `details` |
-| `steps:` | `select` / `area` / `outline` / `lines` / `fill` / `mask` keys |
-| `region: leftover` | `area: rest` |
-| `difference x` / `intersect x` | `area: { minus: x }` / `area: { within: x }` |
-| A step chain reused by several layers | A named entry in `areas:` |
-| `buffer` | `area: { grow: … }` or `area: { lines: … }` |
-| `emit: mask` | Implicit (`mask` defaults to `area`), or `mask:` |
-| `fill_each` | `fill: { per: feature }` |
-| `stroke:` | `outline:` or `lines:` |
-| `fill.generator` | `fill.pattern` (alias kept) |
+| `layers[]` + modules | `defs` graph + optional `roads/v1` |
+| `LayerParts` slots | You choose what to put in `draw` |
+| `compose.rs` global union | `compose.masks` + `compose.clip` per drawable |
+| `ocean` inside water filter | `ocean: {}` source, combined only if you want |
+| `steps:` in YAML | Same ops as explicit `defs` |
+| Implicit theme order | `compose.order` only |
 
-What behaves differently:
-
-- **Order reads the other way** (top first).
-- **Nothing is drawn by default.** Today a module layer with no `stroke`
-  still draws a solid outline.
-- **`fill_holes` applies to the mask too.** Today the parks fill covers
-  holes that the parks mask leaves open, so a layer below (terrain) also
-  draws in them.
-- **The kind order is the profile's**, not the module's built-in list.
+---
 
 ## Validation
 
-Errors, reported with the layer id:
+- Unknown op, unknown def reference, cycle in `defs`.
+- `draw.from` must point to a def with the right kind (lines vs fill output).
+- `compose.order` ids must exist in `draw`.
+- `masks.*.from` must be area defs; `occludes` must name draw ids.
+- `module` outputs referenced but module missing.
+- Host capability: `ocean: {}` used but card has no coastline (empty area, OK).
 
-- Unknown keys, unknown patterns or modules.
-- A name in `stack`, `group`, `hides` or an area expression that is
-  neither a layer nor an entry in `areas:`.
-- The same name used for a layer and a named area.
-- A layer in both the stack and a group, in two groups, or in neither.
-- `rest` in `areas:` (it only means something inside a layer).
-- `module` together with `select` or `area`.
-- A loop between areas, reported with the names in the loop
-  (`coast → wet → coast`).
-- A layer that draws nothing (no `outline`, `lines`, `details` or
-  `fill`): a shape that is only computed belongs in `areas:`.
+Debug (later): `postcards-rs def show dissolved -o dissolved.svg`.
+
+---
 
 ## Open questions
 
-1. **Separate `stack:` or ordered `layers:`?** The proposal keeps the order
-   in one short list at the top, so the composition reads at a glance. The
-   alternative is `layers:` as an ordered map (top first), which is one
-   place instead of two.
-2. **Group members as top-level layers or nested?** Top-level (as above)
-   keeps a single kind of layer and lets members be referenced by id.
-   Nested inside the group is more compact.
-3. **`select` values:** `true` for "any value" (today), or `any`?
-4. **Defaults:** is "nothing drawn unless written" right, or should a
-   layer with an area and no keys at least get a solid outline?
-5. **Names:** `card` / `areas` / `stack` / `rest` / `hides` / `pattern` —
-   happy with them?
-6. **Named areas with `select` inside:** allowed (as above, so `wet` is one
-   line), or should `areas:` only combine other names and keywords, leaving
-   OSM selection to layers?
+1. **Syntax sugar:** keep `defs` as named ops only, or allow a linear `as:`
+   form (`- union: … as: dissolved`) for people who think in steps?
+2. **Multiple `from` in one draw** (e.g. five park fills → one SVG group)?
+3. **`union_lines` / list ops** — exact spellings vs a minimal core.
+4. **`clip: auto` rules** — is “masks above in `order` that list me in
+   `occludes`” the right default?
+5. **Second file** — split `catalog.yaml` (defs only) vs `style.yaml` (draw +
+   compose) for reuse across cards?
+6. **Language** — stay YAML, or a tiny expression language for defs when maps
+   get deep?
+
+---
+
+## Older files
+
+- `configs/proposal/postcard.yaml` — v1 shape; **obsolete** relative to this doc.
+- When v2 is accepted, replace it with a profile that matches the sketch above.

@@ -464,8 +464,8 @@ and leftovers, and water with ocean tiles don't fit the current steps.
 tested. `generate.sh` runs `postcards-rs map` and writes
 `exports/<slug>/map.svg`.
 
-Next: a profile grammar where composition and masks are explicit
-([`profile.md`](profile.md)).
+Next: agree on the profile grammar in [`profile.md`](profile.md) (v2:
+`defs` / `draw` / `compose`) before any parser work.
 
 ### Phase 4 — WASM
 
