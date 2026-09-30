@@ -9,7 +9,7 @@ license = "AGPL-3.0-only"
 
 [workspace.dependencies]
 postcards-core = { path = "crates/postcards-core" }
-penfill = "0.1"
+penfill = { path = "../penfill" }
 geo = "0.33"
 geographiclib-rs = "0.2"
 serde = { version = "1", features = ["derive"] }
@@ -23,10 +23,6 @@ ureq = { version = "3", features = ["json"] }
 watermask = "0.2"
 sha1_smol = "1"
 approx = "0.5"
-
-# Needs the unreleased Region::inset fix for sharp tips; drop once published.
-[patch.crates-io]
-penfill = { path = "../penfill" }
 
 [profile.release]
 lto = "thin"

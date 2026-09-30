@@ -452,8 +452,8 @@ that don't exist.
   like the slivers a polygon overlay leaves. A shrunk sliver came back
   hundreds of metres wide. penfill now runs on `i_overlay` instead, which
   handles those slivers; maps render about 1.8× faster, and the penfill WASM
-  build needs no C++ toolchain. postcards builds against the local penfill
-  through `[patch.crates-io]` until that is released.
+  build needs no C++ toolchain. postcards depends on the local `../penfill`
+  until both are stable enough to publish together.
 
 Not done: the parity themes stay modules. Building inner walls, park kinds
 and leftovers, and water with ocean tiles don't fit the current steps.
