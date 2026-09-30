@@ -24,14 +24,15 @@ compose:
 ## The model
 
 ```text
-card ──► layers ──► stack ──► SVG
-          │           │
-          │           └─ top first: each layer hides the layers below it,
-          │              wherever its mask is
-          └─ each layer: select → area → outline / lines / details / fill
+card ──► areas ──► layers ──► stack ──► SVG
+          │          │          │
+          │          │          └─ top first: each layer hides the layers
+          │          │             below it, wherever its mask is
+          │          └─ each layer: select → area → outline / lines / details / fill
+          └─ named areas: computed once, used by name anywhere
 ```
 
-Three rules cover everything:
+Four rules cover everything:
 
 1. **A layer is a fixed set of keys, each answering one question.** No step
    lists: nothing depends on the order the keys are written in.
@@ -40,6 +41,8 @@ Three rules cover everything:
 3. **What isn't written isn't drawn.** No hidden default outlines, no
    default fills. A module can compute geometry, but the profile decides
    which parts are drawn and how.
+4. **Areas have names.** A shape built from other shapes is written once
+   in `areas:`, computed once, and used by name wherever it's needed.
 
 ## Layer keys
 
@@ -88,7 +91,7 @@ fill: { pattern: zigzag, spacing: 0.5mm, per: feature }              # each foot
 | `card` | The whole card. |
 | `rest` | The card minus the masks of every layer above this one in the stack. Inside a group, the group's area minus the members above. |
 | `ocean` | Sea polygons, when the card shows a coastline. |
-| `<layer id>` | Another layer's area. |
+| `<name>` | A named area from `areas:`, or another layer's area by its id. |
 
 The mapping form combines them. Keys apply in this order:
 
@@ -102,8 +105,38 @@ area:
   grow: 2mm                 # buffer out (negative: shrink)
 ```
 
-Referring to another layer's area makes this layer wait for it. `rest`
-waits for every layer above. A loop is an error.
+### Named areas: the variables
+
+A shape that depends on earlier shapes is defined once in `areas:` and
+then used by name. An entry takes the same keys as a layer's `area`, plus
+an optional `select`:
+
+```yaml
+areas:
+  wet:     { select: { water: true, natural: water }, from: [features, ocean] }
+  green:   { select: { leisure: park, landuse: [grass, forest] }, fill_holes: true }
+  built:   { select: { building: true } }
+  dry:     { from: green, minus: wet }                     # green, without its ponds
+  shore:   { from: wet, grow: 3mm, minus: wet }            # a 3 mm band along every shore
+  open:    { from: card, minus: [built, roads, wet] }      # roads: the roads layer's area
+  meadows: { from: open, within: shore }                   # uses two other names
+```
+
+- **One namespace.** A name is either an entry in `areas:` or a layer id,
+  which stands for that layer's area. `<id>.mask` is the layer's mask when
+  it differs from its area. Using the same name twice is an error.
+- **Computed once.** However many layers and areas use `shore`, it's built
+  once and shared. An area nobody uses isn't computed at all.
+- **Areas before ink.** Referencing a layer waits for its area, not for its
+  fill or outline. `open` can start as soon as the roads *area* exists,
+  while roads' details are still being drawn.
+- **Order doesn't matter.** Entries can refer to entries written below
+  them. The planner sorts them (a dependency graph) and computes what's
+  independent in parallel. A loop is an error naming the areas involved.
+- `rest` is the one name that isn't global: it depends on where the layer
+  sits in the stack, so it's only valid inside a layer.
+- `postcards-rs areas --profile … --show shore` (later) writes one named
+  area as an SVG, to check a step of the chain.
 
 ## Masks and the stack
 
@@ -119,9 +152,8 @@ Composition is exactly this, and nothing else:
   stop short of the edge.
 - `hides: [parks, terrain]` lets a layer cover some layers and draw over
   others.
-- A layer in `layers` but not in `stack` is **not drawn**. It can still be
-  used as an area by name. It's a helper, e.g. a "coast" band that two
-  layers share.
+- A layer in `layers` but not in `stack` (or in a group) is an error:
+  shapes that are only computed, not drawn, go in `areas:`.
 
 ## Groups
 
@@ -143,6 +175,28 @@ parks:
   stack sees only the group's mask.
 - Members inherit the group's `fill` fields they don't set.
 - Members' ink goes into the group's SVG groups (`parks_filling`, …).
+
+A group is only shorthand. The same parks written out with named areas,
+where each kind subtracts the kinds above it:
+
+```yaml
+areas:
+  garden_a: { select: { leisure: garden } }
+  park_a:   { select: { leisure: park }, minus: garden_a }
+  wood_a:   { select: { natural: wood, landuse: forest }, minus: [garden_a, park_a] }
+  parks_a:  { from: [garden_a, park_a, wood_a], fill_holes: true }
+  wild_a:   { from: parks_a, minus: [garden_a, park_a, wood_a] }
+
+layers:
+  parks:
+    area: parks_a
+    outline: { style: dash, dash: 0.45mm, gap: 0.40mm, rings: exterior }
+  # … plus one fill-only layer per kind, each with `area: garden_a` etc.
+```
+
+Both are valid. The group is shorter and keeps the claim order in one
+list; the long form is there when a kind needs to be carved by something
+outside the park (e.g. `wood_a: { …, minus: shore }`).
 
 ## Modules
 
@@ -280,10 +334,17 @@ layers:
 ## Example 3 — using the masks
 
 A sketchier card that uses the parts of the grammar the first two don't:
-a helper area, `within`, `grow`, a halo mask and `hides`.
+a chain of named areas (`coast` is built on `wet`, `near_sea` on
+`coast`), `grow`, a halo mask and `hides`.
 
 ```yaml
 card: { width: 6in, height: 4in, scale: "1:5000", bearing: 25 }
+
+areas:
+  wet:     { select: { water: true, natural: water }, from: [features, ocean] }
+  coast:   { from: wet, grow: 3mm, minus: wet }        # built on wet
+  woods:   { select: { natural: wood, landuse: forest }, minus: coast }
+  near_sea: { from: coast, grow: 10mm, minus: [wet, coast] }   # built on coast
 
 stack:
   - buildings
@@ -291,12 +352,10 @@ stack:
   - beach
   - water
   - trees
+  - dunes
   - terrain
 
 layers:
-  coast:                       # helper: not in the stack, so not drawn
-    area: { from: water, grow: 3mm, minus: water }
-
   buildings:
     select: { building: true }
     outline: solid             # no fill: outlines only
@@ -312,14 +371,16 @@ layers:
     fill: { pattern: stipple, spacing: 0.5mm, mark: 0.1mm }
 
   water:
-    select: { water: true, natural: water }
-    area: { from: [features, ocean] }
+    area: wet
     fill: { pattern: waves, spacing: 1mm }   # no outline: the beach edge draws the shore
 
   trees:
-    select: { natural: wood, landuse: forest }
-    area: { minus: coast }     # the woods, but never on the beach
+    area: woods                # the woods, never on the beach
     fill: { pattern: grass, spacing: 0.8mm }
+
+  dunes:
+    area: { from: near_sea, minus: woods }
+    fill: { pattern: scribble, spacing: 1.2mm }
 
   terrain:
     area: rest
@@ -340,6 +401,7 @@ layers:
 | `steps:` | `select` / `area` / `outline` / `lines` / `fill` / `mask` keys |
 | `region: leftover` | `area: rest` |
 | `difference x` / `intersect x` | `area: { minus: x }` / `area: { within: x }` |
+| A step chain reused by several layers | A named entry in `areas:` |
 | `buffer` | `area: { grow: … }` or `area: { lines: … }` |
 | `emit: mask` | Implicit (`mask` defaults to `area`), or `mask:` |
 | `fill_each` | `fill: { per: feature }` |
@@ -361,14 +423,16 @@ What behaves differently:
 Errors, reported with the layer id:
 
 - Unknown keys, unknown patterns or modules.
-- An id in `stack`, `group`, `hides` or an area expression that doesn't
-  exist.
-- A layer in both the stack and a group, or in two groups.
-- `rest` in a layer that is in neither the stack nor a group.
+- A name in `stack`, `group`, `hides` or an area expression that is
+  neither a layer nor an entry in `areas:`.
+- The same name used for a layer and a named area.
+- A layer in both the stack and a group, in two groups, or in neither.
+- `rest` in `areas:` (it only means something inside a layer).
 - `module` together with `select` or `area`.
-- A loop between area references.
-- A layer in the stack that draws nothing (no `outline`, `lines`,
-  `details` or `fill`), unless it's a helper that is only referenced.
+- A loop between areas, reported with the names in the loop
+  (`coast → wet → coast`).
+- A layer that draws nothing (no `outline`, `lines`, `details` or
+  `fill`): a shape that is only computed belongs in `areas:`.
 
 ## Open questions
 
@@ -382,5 +446,8 @@ Errors, reported with the layer id:
 3. **`select` values:** `true` for "any value" (today), or `any`?
 4. **Defaults:** is "nothing drawn unless written" right, or should a
    layer with an area and no keys at least get a solid outline?
-5. **Names:** `card` / `stack` / `rest` / `hides` / `pattern` — happy with
-   them?
+5. **Names:** `card` / `areas` / `stack` / `rest` / `hides` / `pattern` —
+   happy with them?
+6. **Named areas with `select` inside:** allowed (as above, so `wet` is one
+   line), or should `areas:` only combine other names and keywords, leaving
+   OSM selection to layers?
