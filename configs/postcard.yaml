@@ -1,5 +1,4 @@
 # Map profile for postcards-rs: the card, its layers, and how each is drawn.
-# The map half of fluidnc.toml; vpype / G-code settings stay there.
 #
 # Fill generators (penfill): rectilinear zigzag lines grid triangles honeycomb
 #   dots waves wave_grid scales sunburst spiral concentric hilbert stipple

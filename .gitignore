@@ -11,6 +11,7 @@ venv/
 cache/
 
 # Generated artifacts
+/*.svg
 exports/
 svg_backup/
 _raw/

@@ -1,6 +1,6 @@
 //! `cargo run --release --example dump_features -- <overpass.json> <lat> <lng>`
 //! prints `element id geometry-type area` per feature, for diffing against
-//! osmnx (crates/postcards-cli/parity/dump_features.py).
+//! osmnx (reference/python/parity/dump_features.py).
 
 use geo::Area;
 use postcards_core::card::{Card, OSM_TAGS};

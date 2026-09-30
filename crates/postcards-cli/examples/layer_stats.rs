@@ -1,7 +1,7 @@
 //! `cargo run --release --example layer_stats -- <profile> <overpass.json> <lat> <lng>`
 //! prints each layer before composition: mask area (mm²) and the ink length
 //! of its outlines, details and filling (mm). Pairs with
-//! crates/postcards-cli/parity/layer_stats.py. No ocean (offline).
+//! reference/python/parity/layer_stats.py. No ocean (offline).
 
 use geo::Area;
 use postcards_core::card::{Card, OSM_TAGS};

@@ -1,14 +1,13 @@
 # Plan: postcards in Rust — penfill patterns, declarative profile, burin later
 
 **The map stage of postcards is rewritten in Rust, and it produces SVG —
-only SVG.** Work happens on the `rust-rewrite` branch. The Python map stage
-stays runnable as the reference until the Rust one reaches parity, then it
-is deleted. There is **no binding** between the two: no PyO3, no maturin.
-Only files cross over: cached OSM responses used as test fixtures, and the
-layered SVG.
+only SVG.** Work happens on the `rust-rewrite` branch. The project is Rust
+only: the whole Python pipeline (map stage, vpype `optimize`,
+`export_gcode`, `upload`) now lives in `reference/python/`, kept to read and
+not run. There is **no binding** between the two: no PyO3, no maturin.
 
-Downstream stays as it is: vpype (`optimize`), `export_gcode`, and `upload`
-consume the SVG. Whether any of that moves to Rust is a later decision.
+Anything after the SVG (path optimisation, G-code, upload) is out of scope
+for now; it will be designed later, in Rust.
 
 Order of work:
 
@@ -44,9 +43,9 @@ profile; byte-identical output to the Python pipeline.
 
 ---
 
-## Current state (Python, the reference)
+## Starting point (Python, now in `reference/python/`)
 
-Today (`docs/pipeline.md`), roughly 5,200 lines:
+As documented in `reference/python/docs/pipeline.md`, roughly 5,200 lines:
 
 - **One Overpass request** through osmnx with a fixed tag superset; each
   theme **filters in memory** on the same projected GeoDataFrame.
@@ -127,14 +126,14 @@ crates/
   postcards-cli/           # the binary: HTTP (Nominatim, Overpass, ocean tiles),
                            # disk cache, subcommands map | fill
   postcards-wasm/          # later: browser host over the same core
-postcards/                 # Python: map stage is the reference until parity;
-                           # optimize / gcode / upload stay
+configs/                   # profiles
+reference/python/          # the former Python pipeline, read-only
 ```
 
 Core stays free of network and filesystem so it builds for `wasm32`
-unchanged. Hosts fetch bytes and hand them to core. Until the Python package
-is gone, the Rust binary is called `postcards-rs` so the two CLIs don't
-collide.
+unchanged. Hosts fetch bytes and hand them to core. The binary is still
+called `postcards-rs`; it can take the plain name now that the Python CLI is
+retired.
 
 ---
 
@@ -315,8 +314,8 @@ compose:
 svg:        # units, layer naming
 ```
 
-The vpype / G-code / bed settings stay in `configs/fluidnc.toml` for the
-Python downstream stages; the Rust profile only covers the map.
+The profile only covers the map. The grammar is being redesigned in
+[`profile.md`](profile.md).
 
 Later, without a schema change:
 
@@ -327,7 +326,7 @@ Later, without a schema change:
       source: { burin: { preset: freehand, pen_mm: 0.3 } }
 ```
 
-**SVG contract** (unchanged, so vpype and `export_gcode` keep working): one
+**SVG contract** (the same as the Python pipeline's): one
 `<g id="...">` per output layer, in draw order; plot-critical dashes as real
 geometry; mm user space `0 0 width_mm height_mm`.
 
@@ -337,7 +336,7 @@ geometry; mm user space `0 0 width_mm height_mm`.
 
 | Host | Output |
 |------|--------|
-| CLI (native Rust) | layered SVG, fed to the existing vpype / G-code stages |
+| CLI (native Rust) | layered SVG |
 | WASM (browser) | layered SVG, downloaded |
 
 ---
@@ -389,7 +388,7 @@ Done when the three fixtures pass the layer comparison.
 `postcards-rs map --profile configs/postcard.yaml (--address … | --lat … --lng …)`.
 Fixtures run offline from the shared `./cache`, since the Overpass query and
 cache keys are identical to osmnx's. The parity tools are in
-`crates/postcards-cli/parity/` (SVG comparison, feature dump, pre-compose
+`reference/python/parity/` (SVG comparison, feature dump, pre-compose
 layer stats) and `crates/postcards-cli/examples/`. Results against Python on
 the three cards:
 
@@ -458,12 +457,15 @@ that don't exist.
 Not done: the parity themes stay modules. Building inner walls, park kinds
 and leftovers, and water with ocean tiles don't fit the current steps.
 
-### Phase 3 — Retire the Python map stage
+### Phase 3 — Retire the Python pipeline
 
-- Delete the Python map code (`make_map`, filters, fills, patterns,
-  projection, composition, SVG writer) and its tests. Keep `optimize`,
-  `export_gcode`, `upload_fluidnc` and their config.
-- `generate.sh` runs `postcards-rs map`, then the Python downstream stages.
+**Done.** The whole Python pipeline, downstream stages included, moved to
+`reference/python/` (last Python state committed first). It is not run or
+tested. `generate.sh` runs `postcards-rs map` and writes
+`exports/<slug>/map.svg`.
+
+Next: a profile grammar where composition and masks are explicit
+([`profile.md`](profile.md)).
 
 ### Phase 4 — WASM
 
@@ -494,9 +496,9 @@ and leftovers, and water with ocean tiles don't fit the current steps.
 
 ## Decisions already made
 
-- **The map stage is rewritten in Rust and outputs SVG only.** Python's map
-  stage is the reference until parity, then removed. No bindings. vpype,
-  G-code, and upload stay as they are for now.
+- **postcards is Rust only and outputs SVG only.** The Python pipeline is
+  kept in `reference/python/` to read. No bindings. vpype, G-code and upload
+  are out of scope for now.
 - **Geocoding is ported** (same Nominatim request as osmnx).
 - **Geometry:** `geo` (booleans and buffers via `i_overlay`); penfill on
   `i_overlay` too.
@@ -519,16 +521,17 @@ and leftovers, and water with ocean tiles don't fit the current steps.
 - **OSM validity repair:** shapely's `make_valid` has no exact `geo`
   equivalent; unioning a polygon with itself through `i_overlay` is the
   planned stand-in. Check against the fixtures.
-- **Downstream in Rust:** vpype, G-code and upload stay in Python for now;
-  revisit after phase 3.
+- **After the SVG:** path optimisation, G-code and upload, in Rust, are a
+  later design.
 - **License:** postcards has no `LICENSE`; the binary links AGPL penfill.
 
 ---
 
 ## Related docs
 
-- [`pipeline.md`](pipeline.md) — current Python pipeline (the reference).
-- [`fills.md`](fills.md) — current fill configuration; replaced by penfill.
-- [`roads.md`](roads.md) — roads rules for `roads/v1`.
+- [`profile.md`](profile.md) — the profile grammar (proposal).
+- [`../reference/python/docs/pipeline.md`](../reference/python/docs/pipeline.md) — the Python pipeline.
+- [`../reference/python/docs/fills.md`](../reference/python/docs/fills.md) — the Python fill configuration; replaced by penfill.
+- [`../reference/python/docs/roads.md`](../reference/python/docs/roads.md) — roads rules for `roads/v1`.
 - penfill README — generators, `svg_fill`, `Region::clip`.
 - burin-map README — for phase 7.

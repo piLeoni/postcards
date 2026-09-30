@@ -36,7 +36,7 @@ enum Command {
         lng: Option<f64>,
         #[arg(long, short, default_value = "map.svg")]
         output: PathBuf,
-        /// osmnx-compatible response cache, shared with the Python pipeline.
+        /// osmnx-compatible response cache.
         #[arg(long, default_value = "cache")]
         cache: PathBuf,
         /// Use only cached responses; never touch the network for OSM data.

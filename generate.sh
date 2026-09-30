@@ -1,18 +1,24 @@
 #!/usr/bin/env bash
-# One-shot convenience wrapper around the CLI: ./generate.sh "address".
-# All flags are passed straight through, e.g.
-#   ./generate.sh --address "Piazza Maggiore, Bologna" --width 6in
+# ./generate.sh "address" [postcards-rs map flags]
+# writes exports/<address_slug>/map.svg unless -o is given.
 set -euo pipefail
 
 cd "$(dirname "$0")"
 
+run() { cargo run -q --release -p postcards-cli -- map "$@"; }
+
 if [ "$#" -eq 0 ]; then
-    exec python -m postcards make --help
+    run --help
+    exit 0
 fi
 
-# Bare argument means an address, so `./generate.sh "some address"` works.
-if [[ "$1" != -* ]]; then
-    set -- --address "$@"
+if [[ "$1" == -* ]]; then
+    run "$@"
+    exit 0
 fi
 
-exec python -m postcards make "$@"
+address="$1"
+shift
+slug=$(printf '%s' "$address" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/_/g; s/^_+|_+$//g')
+mkdir -p "exports/$slug"
+run --address "$address" -o "exports/$slug/map.svg" "$@"
