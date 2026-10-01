@@ -57,6 +57,12 @@
 # MODULI  (solo strade: larghezze, z-index, ponti)
 #   module_roads: {}   ->  pubblica  roads.area, roads.outlines, roads.details
 #
+# PRIMITIVES  (una catena di tools con un nome; vedi docs/profile.md)
+#   primitives_<nome>: { from: <feature> }  ->  pubblica i quattro output fissi:
+#     .outlines  .details  .filling  .mask
+#   I quattro ci sono sempre (vuoti se non servono). Dentro la primitiva si usa
+#   solo tools_*: se serve una tabella, un ciclo o dell'aritmetica, e' un modulo.
+#
 # DRAW / COMPOSE
 #   draw: [ { id:, from: <linee>, stroke: solid | dash | dotted | none | { } } ]
 #   compose.order         id di draw, dal basso verso l'alto
@@ -216,3 +222,56 @@ compose:
 
   clip:
     default: auto     # ogni id tagliato dalle maschere sopra di lui che lo elencano
+
+
+# ============================================================================
+# PRIMITIVES — come sarebbero scritte sopra, se le avessimo.
+#
+# NON IMPLEMENTATE: il parser riconosce il prefisso e rifiuta. Serve a fissare la
+# forma. Una primitiva e' una catena di tools_*, dichiarata una volta e chiamata
+# per nome; pubblica sempre gli stessi quattro output, presi dal contratto
+# Python LayerParts(outlines, details, filling, mask).
+#
+# Con questa definizione, il blocco $areas ed $lines di sopra (da `park_p` a
+# `shared_walls`) sparisce, e il profilo diventa:
+#
+#   $areas:
+#     bldg: { primitives_buildings: { from: $features.bldg } }
+#   draw:
+#     - { id: bldg_ring, from: $areas.bldg.outlines, stroke: solid }
+#     - { id: bldg_wall, from: $areas.bldg.details, stroke: solid }
+#     - { id: bldg_fill, from: $areas.bldg.filling }
+#   compose:
+#     masks:
+#       bldg_cover: { from: $areas.bldg.mask, occludes: [...] }
+#
+# I parchi sono il caso che rende `$recipes` utile davvero: quattro kind, la
+# stessa catena ripetuta. Il parametro e' `from:`, gli altri nomi restano fissi.
+# ============================================================================
+
+#$recipes:
+#  primitives_buildings:
+#    select:   { osm_select: { building: true } }
+#    dissolve: { tools_polygons: $features.select }
+#    inner:    { tools_grow: { of: $areas.dissolve, by: -0.1mm } }
+#    outlines: { tools_rings: $areas.dissolve }
+#    details:  { tools_clip: { lines: { tools_segments: $features.select }, within: $areas.inner } }
+#    filling:  { tools_fill: { in: $areas.dissolve, per: feature, pattern: zigzag, spacing: 0.5mm, angle: 45 } }
+#    mask:     { tools_polygons: $features.select }
+#
+#  primitives_water:
+#    select:   { osm_select: { water: true, natural: water } }
+#    union:    { tools_polygons: $features.select }
+#    outlines: { tools_rings: { of: $areas.union, exterior_only: true } }
+#    details:  {}
+#    filling:  { tools_fill: { in: $areas.union, pattern: waves, spacing: 0.75mm, angle: 0 } }
+#    mask:     { tools_polygons: $features.select }
+#
+#  # Il kind entra come `from:`; la catena e' la stessa quattro volte.
+#  primitives_parks:
+#    select:   { osm_select: { leisure: garden } }         # <- from, a chiamarla
+#    union:    { tools_polygons: $features.select }
+#    filling:  { tools_fill: { in: $areas.union, pattern: dots, spacing: 0.25mm, mark: 0.2mm, angle: 45 } }
+#    mask:     {}
+#    outlines: {}
+#    details:  {}

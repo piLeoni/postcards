@@ -54,7 +54,7 @@ What loads and validates today:
 - `$expressions` and `~name`: recognised, rejected with a "lands in v4" error;
 - `module_*`: recorded as `Op::Module` — its outputs are not resolvable yet,
   because v3 has no syntax to name them (see open question 4);
-- `primitives_*`: not defined in this build;
+- `primitives_*`: shape proposed (below), not defined in this build;
 - loops between defs, duplicate names, dangling references, two operations in
   one def: load errors, not surprises at render time.
 
@@ -86,16 +86,144 @@ The rule for placing a new thing:
 > If `tools_*` can express it, it is a **primitive**. If it needs code the
 > operations do not have, it is a **module**.
 
-A primitive carries a contract: **one canonical expansion**, documented, and
-the engine guarantees the primitive and its expansion produce identical output
-(a test per primitive, comparing the two SVGs). That is what keeps a primitive
-honest sugar instead of an opaque module.
+A primitive is not a fifth kind of name. It is a **macro**: a name that stands
+for a chain of `tools_*`, and that the engine can print back to you.
 
-Today: `buildings`, `parks`, `water`, `rail`, `piers` are primitives (all of
-them are already `tools_*` chains); `roads` is a module, because ground width
-per tag, bridge stacking, joint disks and erased centre lines are code. A
-plain "roads primitive" (uniform buffer per class, no bridges) can exist
-besides the module, but is not needed yet.
+---
+
+## Chains: one operation per def, lined up by hand
+
+This is the decision that shapes the rest, so it is worth stating plainly.
+**A def holds exactly one operation.** A chain is several defs, each naming the
+one before it:
+
+```yaml
+$areas:
+  inner:     { tools_grow: { of: $areas.dissolved, by: -0.1mm } }
+$lines:
+  bldg_seg:  { tools_segments: $features.bldg }
+  bldg_dedupe: { tools_dedupe: $lines.bldg_seg }
+  walls:     { tools_clip: { lines: $lines.bldg_dedupe, within: $areas.inner } }
+```
+
+No `{ tools_dedupe: $lines.bldg_seg }` nested inside another operation. That is
+deliberate:
+
+- **Every intermediate has a name.** You can `draw` it, use it as a mask, or
+  diff it against the previous render. Nesting hides the middle of the chain.
+- **One error message per line.** With nesting, a bad ref reports the outer
+  operation and you count brackets. Here the def is the unit: `$lines.walls`
+  failed, and the message says which of its two inputs is missing.
+- **The document already has the shape.** The old `steps:` list was a chain in
+  disguise; splitting it into named defs buys back the ability to reuse a step
+  without a second syntax for "define but don't draw".
+- **A test can check it.** Flat defs are trivially walkable: refs, cycles and
+  section types are all checkable before anything renders.
+
+The cost is verbosity: three lines where one nested expression would do. The
+compensation is **primitives**.
+
+---
+
+## `primitives_*`: a chain with a name
+
+The Python filters all return the same contract — `LayerParts(outlines,
+details, filling, mask)` — and each one is a fixed sequence of geo operations.
+That sequence is exactly what a primitive names.
+
+### The uniform shape
+
+A primitive is written like a module — it is *called*, and it *publishes named
+outputs* — but its outputs are declared in YAML, not compiled:
+
+```yaml
+$recipes:                       # later: a second file, see open questions
+  primitives_buildings:
+    select:  { osm_select: { building: true } }
+    dissolve: { tools_polygons: $features.bldg }
+    inner:   { tools_grow: { of: $areas.dissolve, by: -0.1mm } }
+    outlines: { tools_rings: $areas.dissolve }
+    details:  { tools_clip: { lines: { tools_segments: $features.bldg }, within: $areas.inner } }
+    filling:  { tools_fill: { in: $areas.dissolve, per: feature, pattern: zigzag } }
+    mask:     { tools_polygons: $features.bldg }
+```
+
+Called from a layer, and drawn by output name:
+
+```yaml
+$areas:
+  bldg: { primitives_buildings: { from: $features.bldg } }
+
+draw:
+  - { id: bldg_ring, from: $areas.bldg.outlines, stroke: solid }
+  - { id: bldg_wall, from: $areas.bldg.details, stroke: solid }
+  - { id: bldg_fill, from: $areas.bldg.filling }
+```
+
+### The rules that make it uniform
+
+1. **The output names are fixed**, and they are the four from `LayerParts`:
+   `outlines`, `details`, `filling`, `mask`. Not a primitive's choice: this is
+   what lets a primitive be swapped for a module, and what `compose` can assume.
+2. **The four are always present**, possibly empty. A primitive that has no
+   `details` declares `details: {}` — an empty line set — instead of omitting
+   it. So `buildings.outlines` is never "sometimes defined".
+3. **A primitive is an area-ish object, not a line set.** `$areas.bldg` is a
+   bundle; you reach into it with `.$output`. That is why it fits `$areas` and
+   not `$lines`: its `mask` is an area, and `compose` can use it unchanged
+   (`from: $areas.bldg.mask`).
+4. **The expansion is canonical.** For each primitive the engine has a `tools_*`
+   rendering that must produce the identical SVG, and a test proves it. The
+   primitive is sugar, and the sugar is checkable.
+5. **Only `tools_*` inside.** If a primitive needs arithmetic on a tag, a lookup
+   table or a loop, it is a module, not a primitive. The danger signals below
+   are the test.
+
+This is the same shape as `module_roads` (`roads.area` / `roads.outlines` /
+`roads.details`), which is deliberate: one day `roads` can gain a pure-`tools`
+"basic" recipe behind the same three output names, and a profile that used the
+module keeps working.
+
+### Why a call and not just a `$def`
+
+Because the four outputs must be nameable. A plain `$areas.bldg` def would give
+you one name for four geometries, and `draw` would need `from:` to mean four
+things. The dotted output is the smallest syntax that keeps one call and four
+draws.
+
+### What the four outputs mean (from the Python contract)
+
+| Output | What it is | Drawn? |
+|---|---|---|
+| `outlines` | the theme's boundary strokes | yes, with `stroke:` |
+| `details` | secondary strokes inside the theme (kerbs, shared walls, bridge seams) | yes, with `stroke:` |
+| `filling` | a penfill pattern already generated (`$fills`-like) | yes |
+| `mask` | the solid area the theme covers | no: it is what `compose.masks` occludes with |
+
+A primitive that only wants to be drawn as three line sets has an empty
+`mask`; one that only masks has everything else empty. The card does not lose
+the ability to be minimal — it just gains one written name for "the whole
+buildings thing".
+
+### The first four
+
+| Primitive | from | Produces |
+|---|---|---|
+| `primitives_buildings` | `{ building: true }` | ring + shared-wall detail + zigzag fill + footprint mask |
+| `primitives_parks` | the park tags, by kind | dot fills per kind (garden → grass) + one dash outline + union mask |
+| `primitives_water` | `{ water: true, natural: water }` | solid outline + waves fill + water mask |
+| `primitives_green` | trees, scrub, hedges | dots, no mask (and optionally a border) |
+
+Each one is the Python filter written as defs, and the per-kind park logic is
+what makes `$recipes` earn its keep: the four park kinds are the same chain run
+four times, which is exactly what a parameterised recipe is for.
+
+### Is a chain needed for *every* theme?
+
+No. The chain (`$areas` / `$lines` defs) stays the primitive's *definition*. For
+a one-off shape — a river, a school yard — you write the defs directly. The
+primitive is the escape hatch for the four things every card has, where writing
+eleven defs every time is the actual problem.
 
 **Danger signals** — when one of these appears, the answer is a module or a
 plugin, never new syntax:
