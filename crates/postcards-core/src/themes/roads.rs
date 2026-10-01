@@ -200,7 +200,7 @@ fn node_key(layer: i64, c: Coord<f64>) -> (i64, u64, u64) {
     (layer, snap(c.x), snap(c.y))
 }
 
-pub(super) fn render(layer: &LayerSpec, ctx: &Context) -> Result<LayerParts, FillError> {
+pub(crate) fn render(layer: &LayerSpec, ctx: &Context) -> Result<LayerParts, FillError> {
     let feats: Vec<(&Feature, i64)> = ctx
         .features
         .iter()

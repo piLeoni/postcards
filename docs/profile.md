@@ -41,25 +41,34 @@ an anchor `&name`) and the parser rejects it. `!` and `%` are reserved too.
 
 ## Implementation status
 
-The grammar in this document is implemented in `crates/postcards-core/src/grammar.rs`
-and covered by tests, including a test that loads `configs/proposal/postcard.yaml`.
+The grammar is implemented and **runs**. `postcards-core::grammar` parses and
+validates it; `postcards-core::grammar_run` evaluates it against OSM data and
+writes the SVG. The CLI picks the v3 path by itself when the file starts with
+`card:` or `$features:`.
 
-What loads and validates today:
+Verified end to end on 1730 Highland Pl, Berkeley: 3396 features in, all
+thirteen groups out (`parks_ring`, `parks_fill_*`, `water_ring`, `water_fill`,
+`roads_out`, `roads_det`, `bldg_wall`, `bldg_fill`, `bldg_ring`).
 
-- `card`, the four `$` sections, `draw`, `compose.order` / `masks` / `clip`;
+What runs today:
+
+- `card`, the four `$` sections, `draw`, `compose.order` / `masks` / `clip`,
+  including `clip.default`;
 - every operation in the toolkit table, with section typing: `tools_rings`
   written under `$areas` is a load error;
 - references (`$areas.river`), and module outputs (`roads.outlines`,
   `roads.area`) in `draw.from` and `masks.from`;
+- `module_roads`, reusing the compiled roads theme, published as
+  `roads.area` / `roads.outlines` / `roads.details`;
+- selective occlusion: a mask cuts only the ids it lists in `occludes`;
+- defs evaluated in waves, each once, and in parallel;
 - `$expressions` and `~name`: recognised, rejected with a "lands in v4" error;
-- `module_*`: recorded as `Op::Module` — its outputs are not resolvable yet,
-  because v3 has no syntax to name them (see open question 4);
-- `primitives_*`: shape proposed (below), not defined in this build;
+- `primitives_*`: shape proposed (above), not defined in this build;
 - loops between defs, duplicate names, dangling references, two operations in
   one def: load errors, not surprises at render time.
 
-Still to come: the executor that turns this `Grammar` into the geometry
-pipeline, and the `compose.masks[].occludes` wiring.
+Still to come: `$recipes` / `primitives_*`, and the park kinds inside a
+primitive (today the profile spells the four kinds out).
 
 ### Ids are labels, not variables
 

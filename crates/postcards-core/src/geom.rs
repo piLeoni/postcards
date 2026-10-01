@@ -104,8 +104,7 @@ pub fn fill_holes(mp: &MultiPolygon<f64>) -> MultiPolygon<f64> {
 }
 
 /// The parts of `lines` inside `mask` (or outside, with `invert`).
-pub fn clip_lines(lines: &[LineString<f64>], mask: &MultiPolygon<f64>, invert: bool) -> Lines {
-    if lines.is_empty() {
+pub fn clip_lines(lines: &[LineString<f64>], mask: &MultiPolygon<f64>, invert: bool) -> Lines {    if lines.is_empty() {
         return vec![];
     }
     if mask.0.is_empty() {

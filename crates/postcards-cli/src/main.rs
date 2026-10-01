@@ -5,6 +5,7 @@ mod osm_http;
 
 use clap::{Parser, Subcommand};
 use postcards_core::card::{fetch_keys, overpass_query, Card};
+use postcards_core::grammar::Grammar;
 use postcards_core::osm::{features_from_overpass, needs_ocean};
 use postcards_core::pipeline::{render, Inputs};
 use postcards_core::profile::{Format, Profile};
@@ -70,7 +71,17 @@ fn map(
 ) -> Result<(), String> {
     let mut timer = Timer(Instant::now());
     let text = read(profile_path)?;
-    let profile = Profile::parse(&text, Format::from_path(&profile_path.to_string_lossy()))
+    let format = Format::from_path(&profile_path.to_string_lossy());
+
+    // Two profile schemas share this command: v3 (`card:`, `$areas:`, …) and
+    // the older `map:`/`layers:`. The v3 one is tried first, by its own first
+    // key, then the file is loaded as whichever it is.
+    let is_v3 = text.lines().any(|l| l.trim_start().starts_with("card:") || l.trim_start().starts_with("$features:"));
+    if is_v3 {
+        return map_v3(&text, format, profile_path, address, lat, lng, output, cache, offline, &mut timer);
+    }
+
+    let profile = Profile::parse(&text, format)
         .map_err(|e| format!("{}: {e}", profile_path.display()))?;
 
     let base = profile_path.parent().unwrap_or(Path::new("."));
@@ -133,4 +144,71 @@ fn main() -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+/// The v3 path: `Grammar` in, the same Overpass fetch, the grammar executor out.
+#[allow(clippy::too_many_arguments)]
+fn map_v3(
+    text: &str,
+    format: Format,
+    profile_path: &Path,
+    address: Option<String>,
+    lat: Option<f64>,
+    lng: Option<f64>,
+    output: &Path,
+    cache: PathBuf,
+    offline: bool,
+    timer: &mut Timer,
+) -> Result<(), String> {
+    let grammar = Grammar::parse(text, format).map_err(|e| format!("{}: {e}", profile_path.display()))?;
+
+    let base = profile_path.parent().unwrap_or(Path::new("."));
+    let mut sources = BTreeMap::new();
+    for file in grammar.source_files() {
+        let path = if Path::new(&file).is_absolute() { PathBuf::from(&file) } else { base.join(&file) };
+        sources.insert(file, read(&path)?);
+    }
+
+    let http = osm_http::Http::new(cache, offline);
+    let center = match (address, lat, lng) {
+        (_, Some(lat), Some(lng)) => (lng, lat),
+        (Some(address), _, _) => http.geocode(&address)?,
+        (None, _, _) => match (grammar.card.lat, grammar.card.lng) {
+            (Some(lat), Some(lng)) => (lng, lat),
+            _ => return Err("no location: pass --address or --lat/--lng, or set card.address".into()),
+        },
+    };
+    eprintln!("centre: {:.7}, {:.7}", center.1, center.0);
+    let card = Card::new(&grammar.card, center);
+
+    let area = card.query_polygon();
+    let keys = fetch_keys(&grammar.osm_keys());
+    let keys: Vec<&str> = keys.iter().map(String::as_str).collect();
+    let json = http.overpass(&overpass_query(&area, &keys, osm_http::OVERPASS_TIMEOUT_S))?;
+    timer.log("Fetching data");
+    let features = features_from_overpass(&json, &area, &keys).map_err(|e| e.to_string())?;
+    timer.log(&format!("Building {} features", features.len()));
+
+    let ocean = if needs_ocean(&features) {
+        eprintln!("coastline found — loading ocean tiles");
+        let b = geo::BoundingRect::bounding_rect(&area).ok_or("empty query area")?;
+        Some(ocean::ocean([b.min().x, b.min().y, b.max().x, b.max().y])?)
+    } else {
+        None
+    };
+
+    let rendered = postcards_core::grammar_run::run(
+        &grammar,
+        &card,
+        postcards_core::grammar_run::Inputs { features, ocean, sources: &sources },
+    )
+    .map_err(|e| e.to_string())?;
+    timer.log("Rendering layers");
+    std::fs::write(output, &rendered.svg).map_err(|e| format!("{}: {e}", output.display()))?;
+    timer.log("Saving svg");
+    for (id, n) in &rendered.groups {
+        eprintln!("  {id}: {n} strokes");
+    }
+    println!("{}", output.display());
+    Ok(())
 }

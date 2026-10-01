@@ -113,7 +113,7 @@ impl fmt::Display for Name {
 }
 
 /// An SVG group id: a label, not a variable, so it carries no marker.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Id(pub String);
 
 // ---------------------------------------------------------------------------
@@ -237,8 +237,9 @@ impl Op {
             Op::Rings(_) | Op::Lines(_) | Op::Segments(_) | Op::Dedupe(_) | Op::Merge(_) | Op::Join(_)
             | Op::ClipLines(_) => Section::Lines,
             Op::Fill(_) => Section::Fills,
-            // Outputs depend on the module; none exists yet.
-            Op::Module(_) => Section::Lines,
+            // A module is called from $areas: its headline output is an area,
+            // and the rest are reached by output name (`roads.outlines`).
+            Op::Module(_) => Section::Areas,
         }
     }
 
@@ -335,8 +336,9 @@ pub struct Mask {
     pub occludes: Vec<Id>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub enum Clip {
+    #[default]
     Auto,
     None,
     /// Subtract exactly these areas.
@@ -350,12 +352,6 @@ pub struct Compose {
     pub masks: Vec<(String, Mask)>,
     pub clip: BTreeMap<Id, Clip>,
     pub clip_default: Clip,
-}
-
-impl Default for Clip {
-    fn default() -> Self {
-        Clip::Auto
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -389,9 +385,53 @@ impl Grammar {
         self.defs(name.section).iter().find(|d| d.name == name.name)
     }
 
+    /// The def holding `module_<module>`, if the profile calls one.
+    pub fn module(&self, module: &str) -> Option<&Def> {
+        self.all_defs().find(|d| matches!(&d.op, Op::Module(m) if m == module))
+    }
+
     /// The SVG group each draw entry writes.
     pub fn groups(&self) -> Vec<String> {
         self.draw.iter().map(Draw::group).collect()
+    }
+
+    /// Every OSM key the profile can select on: what Overpass must fetch.
+    ///
+    /// Modules read tags the profile never names (`module_roads` needs
+    /// `highway`), so they contribute their keys too.
+    pub fn osm_keys(&self) -> Vec<String> {
+        let mut keys: Vec<String> = Vec::new();
+        fn add(keys: &mut Vec<String>, k: &str) {
+            if !keys.iter().any(|x| x == k) {
+                keys.push(k.to_string());
+            }
+        }
+        let defs: Vec<&Def> = self.all_defs().collect();
+        for def in defs {
+            match &def.op {
+                Op::Select(sel) => sel.keys().for_each(|k| add(&mut keys, k)),
+                Op::Module(m) => {
+                    crate::modules::osm_keys(&format!("{m}/v1")).iter().for_each(|k| add(&mut keys, k))
+                }
+                _ => {}
+            }
+        }
+        keys
+    }
+
+    /// SVG files named by a fill `source`, for the host to read.
+    pub fn source_files(&self) -> Vec<String> {
+        let mut out = Vec::new();
+        for def in self.defs(Section::Fills) {
+            if let Op::Fill(f) = &def.op {
+                if let Some(src) = &f.spec.source {
+                    if !out.contains(&src.file) {
+                        out.push(src.file.clone());
+                    }
+                }
+            }
+        }
+        out
     }
 }
 
@@ -661,8 +701,6 @@ fn expr_or_name(text: String) -> GrammarError {
     }
 }
 
-/// `Name::parse` in a context that already returns `GrammarError`.
-
 /// `$lines.x`, `$fills.x`, or `roads.outlines` (a module output).
 fn parse_output(text: &str) -> Result<Output, GrammarError> {
     if let Some(rest) = text.strip_prefix('$') {
@@ -805,18 +843,25 @@ fn parse_op(raw: RawOp, section: Section) -> Result<Op, GrammarError> {
             Op::ClipLines(ClipLines { lines: refname(&raw.lines)?, within: refname(&raw.within)?, invert: raw.invert })
         }
         "tools_fill" => {
-            // No `deny_unknown_fields`: `per` and `in` are ours, everything
-            // else belongs to FillSpec, which is permissive by design.
+            // The v3 toolkit writes `pattern:` (dots, waves, zigzag…), the spec
+            // calls it `generator:`; one rename and the rest is FillSpec.
             #[derive(Deserialize)]
             struct Raw {
                 #[serde(rename = "in")]
                 in_area: String,
                 #[serde(default)]
                 per: Option<String>,
+                #[serde(default)]
+                pattern: Option<String>,
                 #[serde(flatten)]
                 spec: FillSpec,
             }
-            let raw: Raw = json(&value, "tools_fill")?;
+            let mut raw: Raw = json(&value, "tools_fill")?;
+            if let Some(pattern) = raw.pattern.take() {
+                if raw.spec.generator.is_none() {
+                    raw.spec.generator = Some(pattern);
+                }
+            }
             let per_feature = match raw.per.as_deref() {
                 None => false,
                 Some("feature") => true,
@@ -1092,7 +1137,7 @@ fn find_cycle(g: &Grammar) -> Option<Vec<String>> {
     let mut marks = BTreeMap::new();
     let mut path = Vec::new();
     for def in g.all_defs() {
-        if marks.get(&def.reference()).is_none() {
+        if !marks.contains_key(&def.reference()) {
             if let Some(cycle) = visit(g, &def.reference(), &mut marks, &mut path) {
                 return Some(cycle);
             }

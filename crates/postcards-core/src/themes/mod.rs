@@ -73,9 +73,13 @@ pub fn render(layer: &LayerSpec, ctx: &Context, above: &[String]) -> Result<Laye
     }
 }
 
+/// The compiled roads module, reachable from the grammar executor.
+pub fn roads_render(layer: &LayerSpec, ctx: &Context) -> Result<LayerParts, FillError> {
+    roads::render(layer, ctx)
+}
+
 /// Every fill spec the layer would use, fully merged, for up-front checks.
-pub fn fill_specs(layer: &LayerSpec) -> Vec<FillSpec> {
-    if let Some(steps) = &layer.steps {
+pub fn fill_specs(layer: &LayerSpec) -> Vec<FillSpec> {    if let Some(steps) = &layer.steps {
         return crate::steps::fill_specs(steps, layer.fill.as_ref());
     }
     match layer.module.as_deref().unwrap_or_default() {
