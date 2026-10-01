@@ -4,6 +4,7 @@ pub mod card;
 pub mod compose;
 pub mod fill;
 pub mod geom;
+pub mod grammar;
 pub mod modules;
 pub mod osm;
 pub mod pipeline;

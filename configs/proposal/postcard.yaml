@@ -1,6 +1,6 @@
-# configs/postcard.yaml scritto nella grammatica proposta in docs/profile.md (v3).
-# NON IMPLEMENTATO: postcards-rs non lo sa ancora leggere. Serve a vedere come la
-# cartolina di oggi verrebbe scritta, e a leggere la grammatica su un caso vero.
+# configs/postcard.yaml scritto nella grammatica v3 (docs/profile.md).
+# IMPLEMENTATO: postcards-core::grammar lo legge e lo valida. Serve a vedere come
+# la cartolina di oggi verrebbe scritta, e a tenere allineati documento e parser.
 #
 # ============================================================================
 # LE TRE REGOLE, IN BREVE
@@ -94,9 +94,12 @@ $features:
 # --------------------------------------------------------------------------
 $areas:
   garden: { tools_polygons: $features.garden }
-  park:   { tools_difference: { base: { tools_polygons: $features.park },  cut: $areas.garden } }
-  wood:   { tools_difference: { base: { tools_polygons: $features.wood },  cut: [$areas.garden, $areas.park] } }
-  grass:  { tools_difference: { base: { tools_polygons: $features.grass }, cut: [$areas.garden, $areas.park, $areas.wood] } }
+  park_p: { tools_polygons: $features.park }
+  wood_p: { tools_polygons: $features.wood }
+  grass_p: { tools_polygons: $features.grass }
+  park:   { tools_difference: { base: $areas.park_p,  cut: $areas.garden } }
+  wood:   { tools_difference: { base: $areas.wood_p,  cut: [$areas.garden, $areas.park] } }
+  grass:  { tools_difference: { base: $areas.grass_p, cut: [$areas.garden, $areas.park, $areas.wood] } }
 
   parks:     { tools_union: [$areas.garden, $areas.park, $areas.wood, $areas.grass] }
   parks_ext: { tools_fill_holes: $areas.parks }
@@ -129,17 +132,15 @@ $lines:
 
   # Bordo degli edifici: gli anelli della dissoluzione, piu' le eventuali
   # feature lineari (raro: un edificio mappato come linea).
-  building_outline:
-    tools_join:
-      - { tools_rings: $areas.dissolved }
-      - { tools_lines: $features.bldg }
+  dissolved_rings: { tools_rings: $areas.dissolved }
+  bldg_lines:      { tools_lines: $features.bldg }
+  building_outline: { tools_join: [$lines.dissolved_rings, $lines.bldg_lines] }
 
   # "Dettagli" degli edifici: non gli anelli interni del poligono, ma i segmenti
   # condivisi fra edifici che cadono DENTRO la dissoluzione ritirata di 0.1 mm.
-  shared_walls:
-    tools_clip:
-      lines: { tools_dedupe: { tools_segments: $features.bldg } }
-      within: $areas.inner_band
+  bldg_segments: { tools_segments: $features.bldg }
+  bldg_dedupe:   { tools_dedupe: $lines.bldg_segments }
+  shared_walls:  { tools_clip: { lines: $lines.bldg_dedupe, within: $areas.inner_band } }
 
 
 # --------------------------------------------------------------------------

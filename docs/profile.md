@@ -12,6 +12,119 @@ What matters is the **shape**:
 
 ---
 
+## Decisions taken (v3)
+
+These are settled; the sections below explain them.
+
+| Decision | Chosen |
+|---|---|
+| Provenance marker | `$` on the section: `$areas.river` is yours |
+| Expressions | `~` on the name: `spacing: ~dense` — recognised, **not implemented** in v3 |
+| Draw ids | explicit `id:`, falling back to the def name when omitted |
+| `primitives_*` | recipes expandable into `tools_*`: sugar, no new code |
+| `module_*` | compiled code (roads); not expressible in the kit |
+
+### Two symbols, two questions
+
+- **`$` answers "whose is it?"** — `$areas.river` is defined in this file; a
+  name with no `$` that is not a kit keyword or a module output is an error.
+- **`~` answers "is it an expression?"** — `spacing: ~dense` is a value
+  computed from the variables in "$expressions", not a fixed length.
+
+A plain `0.5mm` is a length, `$areas.river` is geometry, `~dense` is an
+expression: three visibly different things. Nothing else starts with `$` or
+`~`, so both markers are unambiguous.
+
+`*` cannot be used: in YAML it is already the alias marker (`*name` refers to
+an anchor `&name`) and the parser rejects it. `!` and `%` are reserved too.
+`$`, `~`, `@` and `+` are free.
+
+## Implementation status
+
+The grammar in this document is implemented in `crates/postcards-core/src/grammar.rs`
+and covered by tests, including a test that loads `configs/proposal/postcard.yaml`.
+
+What loads and validates today:
+
+- `card`, the four `$` sections, `draw`, `compose.order` / `masks` / `clip`;
+- every operation in the toolkit table, with section typing: `tools_rings`
+  written under `$areas` is a load error;
+- references (`$areas.river`), and module outputs (`roads.outlines`,
+  `roads.area`) in `draw.from` and `masks.from`;
+- `$expressions` and `~name`: recognised, rejected with a "lands in v4" error;
+- `module_*`: recorded as `Op::Module` — its outputs are not resolvable yet,
+  because v3 has no syntax to name them (see open question 4);
+- `primitives_*`: not defined in this build;
+- loops between defs, duplicate names, dangling references, two operations in
+  one def: load errors, not surprises at render time.
+
+Still to come: the executor that turns this `Grammar` into the geometry
+pipeline, and the `compose.masks[].occludes` wiring.
+
+### Ids are labels, not variables
+
+An `id` in `draw` names an SVG group; nothing is ever looked up through it, so
+it carries no marker and no type. It is the contract with the outside (the
+plotter, an editor, the parity tools). `compose` refers to it.
+
+When `id` is omitted, the group is named after the def it draws:
+`from: $fills.garden` → `fills_garden`. An explicit `id` wins, which keeps
+today's group names (`buildings_filling`, …) available while short profiles
+stay short.
+
+### The boundary: composition in the profile, algorithms in code
+
+| Family | Prefix | What it is | Expandable? |
+|---|---|---|---|
+| kit | `tools_*` | boolean / line / buffer / fill operations | — (vocabulary) |
+| sources | `osm_*`, `engine_*` | OSM selections, card, ocean | — |
+| recipes | `primitives_*` | a canned chain of the above | **yes**, in YAML |
+| compiled | `module_*` | e.g. roads | **no**, it is code |
+
+The rule for placing a new thing:
+
+> If `tools_*` can express it, it is a **primitive**. If it needs code the
+> operations do not have, it is a **module**.
+
+A primitive carries a contract: **one canonical expansion**, documented, and
+the engine guarantees the primitive and its expansion produce identical output
+(a test per primitive, comparing the two SVGs). That is what keeps a primitive
+honest sugar instead of an opaque module.
+
+Today: `buildings`, `parks`, `water`, `rail`, `piers` are primitives (all of
+them are already `tools_*` chains); `roads` is a module, because ground width
+per tag, bridge stacking, joint disks and erased centre lines are code. A
+plain "roads primitive" (uniform buffer per class, no bridges) can exist
+besides the module, but is not needed yet.
+
+**Danger signals** — when one of these appears, the answer is a module or a
+plugin, never new syntax:
+
+- a lookup table keyed on a tag (`highway` → metres);
+- an `if`/`else` inside an operation instead of between values;
+- a loop, a counter, or an accumulator;
+- arithmetic (`width_m * 0.5 + 0.2mm`);
+- `and`/`or` between conditions;
+- an intermediate variable defined inside an expression.
+
+### Expressions (later, v4)
+
+Recognised by the parser, rejected with a clear error in v3. Shape: a
+dictionary in `$expressions`, two constructs only, and **no inline
+conditionals scattered through the file**:
+
+```yaml
+$expressions:
+  dense:   { when: { area_m2: { "<": 50 } }, then: 0.3mm, else: 0.5mm }
+  by_zoom: { stops: { input: scale, at: [ [2000, 0.3mm], [10000, 0.2mm] ], interpolate: linear } }
+```
+
+Used by name: `spacing: ~dense`. The engine publishes the variables they may
+read: per render (`scale`, `width_mm`, `height_mm`, `bearing`) and per feature
+(`area_m2`, `width_m`, `length_m`). Expressions **read the world, they do not
+build it**: no arithmetic, no nesting, no composition. When a calculation is
+needed, it belongs in a module and is published as an output.
+
 ## Why: provenance, not just namespaces
 
 In v1 a profile looked like today's product: a `stack` of `buildings`, `roads`,
@@ -474,30 +587,25 @@ Debug (later): `postcards-rs def show '$areas.dissolved' -o dissolved.svg`.
 
 ## Open questions
 
-1. **The marker.** `$` before the section name (`$areas.river`) as above, or no
-   marker at all (`areas.river`)? The argument for `$` is provenance when
-   reading someone else's file; the argument against is one more symbol to
-   explain. Both are one line of parser. A third option: `::` (`areas::river`).
-2. **Where the marker goes.** On the section (`$areas:`) as above, or on each
-   entry (`areas: { $river: … }`), or on both.
-3. **Kit prefix.** `tools_`, `engine_`, `osm_` as above, or no prefix and rely
+1. **Kit prefix.** `tools_`, `engine_`, `osm_` as above, or no prefix and rely
    on the closed list of keywords? Prefixes cost verbosity and buy the ability
    to tell "the engine does this" from "I defined this" in one glance.
-4. **`$recipes`.** In v3 or later? The long form must stay expressible either
+2. **`$recipes`.** In v3 or later? The long form must stay expressible either
    way.
-5. **Same name across sections** — encouraged (as `river` above), or should
+3. **Same name across sections** — encouraged (as `river` above), or should
    base names be unique across the file to avoid confusion?
-6. **Multiple `from` in one draw**, to gather e.g. five park fills into one SVG
+4. **Multiple `from` in one draw**, to gather e.g. five park fills into one SVG
    group.
-7. **Second file** — split `$features` / `$areas` (catalog) from `draw` /
+5. **Second file** — split `$features` / `$areas` (catalog) from `draw` /
    `compose` (style) so one catalog serves several cards?
-8. **Scale units** — `grow: 30m` mixes metres (ground) with card millimetres
+6. **Scale units** — `grow: 30m` mixes metres (ground) with card millimetres
    (`0.5mm`). Intentional, or should everything be card mm?
+7. **`~` for expressions** — kept, or reuse `$` and let the section give the
+   type? Decided for `~`; revisit if it reads badly in practice.
 
 ---
 
 ## Older files
 
-- `configs/proposal/postcard.yaml` — v2 shape (`defs` / `draw` / `compose`,
-  unmarked names). Superseded by this document; kept for comparison.
-- When v3 is accepted, rewrite it in the form above.
+- `configs/proposal/postcard.yaml` — v3 shape (this document's grammar).
+- `docs/plan.md` — phases; the parser lands as "phase 3b".

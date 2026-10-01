@@ -54,7 +54,7 @@ pub enum ProjectionMode {
     Webmercator,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MapSpec {
     #[serde(default)]
@@ -120,7 +120,7 @@ impl LayerSpec {
 /// How a region is filled: a penfill generator by name, or an SVG source
 /// clipped into the region. Unset fields inherit (module default, then the
 /// layer's `fill`, then a kind's entry).
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 pub struct FillSpec {
     #[serde(default, alias = "algorithm")]
     pub generator: Option<String>,
@@ -192,17 +192,41 @@ pub enum StrokeStyle {
     None,
 }
 
-#[derive(Debug, Clone, Default, Deserialize)]
-#[serde(deny_unknown_fields)]
+/// `solid`, `dash`, `dotted`, `none`, or a mapping `{ style, dash, gap, mark }`.
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct StrokeSpec {
-    #[serde(default)]
     pub style: Option<StrokeStyle>,
-    #[serde(default)]
     pub dash: Option<Mm>,
-    #[serde(default)]
     pub gap: Option<Mm>,
-    #[serde(default)]
     pub mark: Option<Mm>,
+}
+
+
+impl<'de> Deserialize<'de> for StrokeSpec {
+    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<StrokeSpec, D::Error> {
+        #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct Fields {
+            #[serde(default)]
+            style: Option<StrokeStyle>,
+            #[serde(default)]
+            dash: Option<Mm>,
+            #[serde(default)]
+            gap: Option<Mm>,
+            #[serde(default)]
+            mark: Option<Mm>,
+        }
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum Raw {
+            Keyword(StrokeStyle),
+            Fields(Fields),
+        }
+        Ok(match Raw::deserialize(d)? {
+            Raw::Keyword(style) => StrokeSpec { style: Some(style), ..StrokeSpec::default() },
+            Raw::Fields(f) => StrokeSpec { style: f.style, dash: f.dash, gap: f.gap, mark: f.mark },
+        })
+    }
 }
 
 impl StrokeSpec {
