@@ -20,13 +20,13 @@
 use crate::fill::{self, FillError, Sources};
 use crate::geom::{self, Lines};
 use crate::card::Card;
-use crate::grammar::{Clip, Grammar, Mask, Name, Op, Section, UnionRules};
+use crate::grammar::{Clip, Def, Grammar, Mask, Name, Op, Section, UnionRules};
 use crate::osm::Feature;
 use crate::steps::Selector;
 use crate::svg::write_svg;
 use geo::MultiPolygon;
 use rayon::prelude::*;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Debug, thiserror::Error)]
 pub enum RunError {
@@ -421,20 +421,23 @@ fn compose(
         ids
     };
 
-    // 4. Occlusion: for each group above a mask, subtract the masks that list it.
+    // 4. Occlusion. A mask is an area, not a group: it sits in the stack where
+    // the first group that draws from the same def sits. `parks_cover` comes
+    // from `$areas.parks_ext`, drawn by the parks groups, so it hides what is
+    // below the parks — not the roads above them.
     let mut out: Vec<(String, Lines)> = Vec::new();
     for (i, id) in order.iter().enumerate() {
         let Some(lines) = parts.get(id) else { continue };
         let mut above = geom::empty();
         for (name, mask) in &grammar.compose.masks {
-            if mask.occludes.iter().any(|o| &o.0 == id) {
-                // Only masks whose area is drawn above this group count.
-                if let Some(area) = masks_by_id.get(name) {
-                    let position = order.iter().position(|o| o == name);
-                    if position.is_none_or(|p| p > i) {
-                        above = geom::union_multi([&above, area]);
-                    }
-                }
+            if !mask.occludes.iter().any(|o| &o.0 == id) {
+                continue;
+            }
+            let Some(area) = masks_by_id.get(name) else { continue };
+            // Where this mask sits: the lowest draw group that draws its def.
+            let at = mask_position(mask, grammar, &order, values);
+            if at.is_none_or(|p| p > i) {
+                above = geom::union_multi([&above, area]);
             }
         }
         above = match clip_for(grammar, id) {
@@ -458,6 +461,46 @@ fn compose(
     Ok(out)
 }
 
+
+/// Where a mask sits in the draw order: the lowest group that draws from the
+/// def the mask is made of. A mask whose def nothing draws sits on top, so it
+/// still hides everything (the old "a mask covers what is below it" rule).
+fn mask_position(
+    mask: &Mask,
+    grammar: &Grammar,
+    order: &[String],
+    values: &BTreeMap<Name, Value>,
+) -> Option<usize> {
+    if let Some(module) = &mask.from.module {
+        // A module area (`roads.area`) sits where the module's own draws sit.
+        return order.iter().position(|id| {
+            grammar
+                .draw
+                .iter()
+                .any(|d| &d.group() == id && d.from.module.as_deref() == Some(module.as_str()))
+        });
+    }
+    let _ = values;
+    // The def the mask is made of: `$areas.parks_ext`. It does not become a
+    // group itself (it is not ink), but the defs derived from it do, so a few
+    // levels of use are followed to find the lowest one drawn.
+    let mut target = mask.from.name.clone();
+    let mut seen = BTreeSet::new();
+    loop {
+        if !seen.insert(target.clone()) {
+            return None;
+        }
+        if let Some(at) = grammar.draw.iter().position(|d| d.from.module.is_none() && d.from.name == target) {
+            return Some(at);
+        }
+        // Nothing draws it: follow the defs that read it, one step.
+        let next = grammar.all_defs().find(|d| d.op.refs().iter().any(|r| r == &target)).map(Def::reference);
+        match next {
+            Some(n) => target = n,
+            None => return None,
+        }
+    }
+}
 
 /// The area a mask subtracts: `$areas.*`, the ocean, or a module output.
 fn mask_area(
