@@ -5,6 +5,9 @@ import { loadPostcards } from './lib/postcards'
 import { DEFAULT_DOC } from './lib/presets'
 import { setCardKeys } from './lib/doc'
 
+/** Where the card is and how big: a drawing is only good for one of these. */
+const placeOf = (c) => (c ? [c.lat, c.lng, c.width_mm, c.height_mm, c.scale, c.bearing].join() : '')
+
 export default function App() {
   const [engine, setEngine] = useState(null)
   const [engineError, setEngineError] = useState(null)
@@ -69,6 +72,7 @@ export default function App() {
     if (!engine || !doc || !card) return
     const token = ++drawTokenRef.current
     const { lat, lng } = card
+    const at = placeOf(card)
     if (!workerRef.current) {
       workerRef.current = new Worker(new URL('./lib/draw.worker.js', import.meta.url), { type: 'module' })
       workerRef.current.onmessage = ({ data }) => onWorkerRef.current?.(data)
@@ -98,7 +102,7 @@ export default function App() {
         changed()
         if (msg.e.kind === 'begin' && msg.e.id === 'draw') setStatus({ phase: 'working', detail: 'Drawing…' })
       } else if (msg.type === 'done') {
-        setDrawing({ svg: msg.svg, groups: msg.groups, ms: msg.ms, bytes: msg.bytes })
+        setDrawing({ svg: msg.svg, groups: msg.groups, ms: msg.ms, bytes: msg.bytes, at })
         setStatus({ phase: 'ready' })
         // Let the finished tree be readable for a moment before it goes.
         setTimeout(() => {
@@ -109,10 +113,33 @@ export default function App() {
         changed()
         setStatus({ phase: 'error', detail: msg.message })
         setDrawing(null)
+        // The failed row reads for a moment, then the map is back; the
+        // sidebar keeps the error.
+        setTimeout(() => {
+          if (token === drawTokenRef.current) setLoad(null)
+        }, 2500)
       }
     }
     workerRef.current.postMessage({ type: 'draw', token, doc, lat, lng })
   }, [engine, doc, card])
+
+  // A drawing belongs to where the card was when it was drawn: once the card
+  // moves or changes scale or size, it is stale and goes.
+  const here = placeOf(card)
+  const current = drawing && drawing.at === here ? drawing : null
+  useEffect(() => {
+    if (drawing && drawing.at !== here) setDrawing(null)
+  }, [drawing, here])
+
+  const downloadSvg = useCallback(() => {
+    if (!current || !card) return
+    const url = URL.createObjectURL(new Blob([current.svg], { type: 'image/svg+xml' }))
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `postcard_${card.lat.toFixed(4)}_${card.lng.toFixed(4)}_1-${Math.round(card.scale)}.svg`
+    a.click()
+    URL.revokeObjectURL(url)
+  }, [current, card])
 
   const moveCard = useCallback(({ lat, lng }) => setDoc((d) => setCardKeys(d, { lat, lng })), [])
   const resizeCard = useCallback(({ scale }) => setDoc((d) => setCardKeys(d, { scale: `"1:${scale}"` })), [])
@@ -134,11 +161,11 @@ export default function App() {
       setDoc,
       card,
       status,
-      drawing,
+      drawing: current,
       busy: status.phase === 'working',
       onDraw: draw,
     }),
-    [doc, card, status, drawing, draw],
+    [doc, card, status, current, draw],
   )
 
   if (engineError) {
@@ -157,10 +184,12 @@ export default function App() {
       <main className="relative min-h-0 min-w-0 flex-1">
         <MapView
           card={card}
-          drawing={drawing}
+          drawing={current}
           apiRef={mapApiRef}
           load={load}
           loadTitle={loadTitle}
+          onEditCard={() => setDrawing(null)}
+          onDownload={downloadSvg}
           onMoveCard={moveCard}
           onResizeCard={resizeCard}
           onCardToCentre={centreCardOnMap}

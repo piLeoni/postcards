@@ -64,6 +64,8 @@ export default function MapView({
   apiRef,
   load,
   loadTitle,
+  onEditCard,
+  onDownload,
   onMoveCard,
   onResizeCard,
   onCardToCentre,
@@ -74,6 +76,7 @@ export default function MapView({
   const overlayRef = useRef(null)
   const labelRef = useRef(null)
   const tagsRef = useRef(null)
+  const downloadRef = useRef(null)
   const awayRef = useRef(null)
   const readyRef = useRef(false)
   const lastFitRef = useRef('')
@@ -107,7 +110,7 @@ export default function MapView({
     const { clientWidth: W, clientHeight: H } = map.getContainer()
     const away = !b || b.x > W || b.y > H || b.x + b.w < 0 || b.y + b.h < 0
     if (awayRef.current) awayRef.current.style.display = cardRef.current && away ? '' : 'none'
-    const parts = [labelRef, tagsRef]
+    const parts = [labelRef, tagsRef, downloadRef]
     if (away || b.w < 4 || b.h < 4) {
       el.style.display = 'none'
       for (const r of parts) if (r.current) r.current.style.display = 'none'
@@ -119,8 +122,10 @@ export default function MapView({
     el.style.width = `${b.w}px`
     el.style.height = `${b.h}px`
     // Written here rather than by React, so a resize reads live.
-    // The label over the top edge, the tags under the bottom one, flush right;
-    // both outside, so the drawing is never covered, and `GAP` away from it.
+    // The label over the top edge, the tags under the bottom one, `download`
+    // flush left and the handles flush right; all outside, so the drawing is
+    // never covered, and `GAP` away from it.
+    if (downloadRef.current) downloadRef.current.style.transform = `translate(${b.x}px, ${b.y + b.h + GAP}px)`
     if (labelRef.current) {
       labelRef.current.textContent = sizeText(cardRef.current)
       labelRef.current.style.transform = `translate(${b.x}px, ${b.y - GAP}px) translateY(-100%)`
@@ -231,7 +236,11 @@ export default function MapView({
     const from = cardRef.current
     if (!map || !from) return
     const start = { x: e.clientX, y: e.clientY }
+    let moved = false
     const move = (ev) => {
+      // The drawing is of where the card was: it goes as soon as the card moves.
+      if (!moved) onEditCard?.()
+      moved = true
       const { lat, lng, scale, width_mm, height_mm } = from
       editRef.current = { lat, lng, scale, width_mm, height_mm, ...step(map, from, ev.clientX - start.x, ev.clientY - start.y, ev) }
       cardRef.current = { ...from, ...editRef.current }
@@ -332,6 +341,14 @@ export default function MapView({
           className="pointer-events-none absolute left-0 top-0 z-10 bg-white/90 px-1.5 py-0.5 font-mono text-[10px] whitespace-nowrap"
           style={{ display: 'none' }}
         />
+      )}
+
+      {card && drawing?.svg && (
+        <div ref={downloadRef} className="absolute left-0 top-0 z-20 flex" style={{ display: 'none', willChange: 'transform' }}>
+          <Tag title="Save the drawing as an SVG" aria-label="Download the card" onClick={onDownload}>
+            ↓ download
+          </Tag>
+        </div>
       )}
 
       {card && (

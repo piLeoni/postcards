@@ -144,11 +144,11 @@ export default function Sidebar({ open, onClose, doc, setDoc, card, status, draw
           on the map, then generate it; the config below is the whole card.
         </p>
         <div className="relative flex shrink-0 flex-wrap gap-[1ch]">
-          <button type="button" {...KEY} title="Open a YAML config" onClick={() => fileRef.current?.click()}>
-            import
+          <button type="button" {...KEY} title="Load a YAML config" onClick={() => fileRef.current?.click()}>
+            load
           </button>
-          <button type="button" {...KEY} title="Save as postcard.yaml" onClick={download}>
-            download
+          <button type="button" {...KEY} title="Save the config as postcard.yaml" onClick={download}>
+            save
           </button>
           {/* Static, so the menu opens under the whole row rather than this button. */}
           <details ref={presetMenuRef} is-="popover" className="static">
