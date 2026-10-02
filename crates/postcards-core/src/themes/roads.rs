@@ -5,7 +5,8 @@
 use super::{below_ground, layer_stroke, Context, LayerParts};
 use crate::fill::{self, FillError};
 use crate::geom::{self, Lines};
-use crate::osm::Feature;
+use crate::osm::{Element, Feature};
+use crate::tiles::LAYER_TAG;
 use crate::profile::{LayerSpec, StrokeSpec};
 use geo::algorithm::buffer::Buffer;
 use geo::{Coord, Geometry, LineString, MultiLineString, MultiPolygon};
@@ -121,8 +122,59 @@ fn width_lanes_m(value: &str) -> Option<f64> {
     (!widths.is_empty()).then(|| widths.iter().sum())
 }
 
+/// The OSM `highway` a way stands for: its tag, or for a vector tile road
+/// (OpenMapTiles `transportation`) the nearest one to its class and subclass.
+/// Railways, ferries, roads under construction and indoor corridors are not
+/// roads here.
+fn highway(f: &Feature) -> Option<&str> {
+    if f.element != Element::Tile {
+        return f.tag("highway");
+    }
+    if f.tag(LAYER_TAG) != Some("transportation") {
+        return None;
+    }
+    let ramp = truthy(f.tag("ramp"));
+    Some(match (f.tag("class")?, ramp) {
+        ("motorway", false) => "motorway",
+        ("motorway", true) => "motorway_link",
+        ("trunk", false) => "trunk",
+        ("trunk", true) => "trunk_link",
+        ("primary", false) => "primary",
+        ("primary", true) => "primary_link",
+        ("secondary", false) => "secondary",
+        ("secondary", true) => "secondary_link",
+        ("tertiary", false) => "tertiary",
+        ("tertiary", true) => "tertiary_link",
+        ("minor", _) => "residential",
+        ("service" | "busway", _) => "service",
+        ("track", _) => "track",
+        ("raceway", _) => "raceway",
+        ("path", _) => match f.tag("subclass") {
+            Some(s @ ("footway" | "path" | "steps" | "cycleway" | "bridleway" | "pedestrian")) => s,
+            Some("corridor" | "platform") => return None,
+            _ => "path",
+        },
+        _ => return None,
+    })
+}
+
+/// A tunnel's `tunnel` value (`yes`, `culvert`…); tiles say `brunnel=tunnel`.
+fn tunnel(f: &Feature) -> Option<&str> {
+    match f.element {
+        Element::Tile => (f.tag("brunnel") == Some("tunnel")).then_some("yes"),
+        _ => f.tag("tunnel"),
+    }
+}
+
+fn bridge(f: &Feature) -> bool {
+    match f.element {
+        Element::Tile => f.tag("brunnel") == Some("bridge"),
+        _ => truthy(f.tag("bridge")),
+    }
+}
+
 fn road_width_m(f: &Feature) -> f64 {
-    let highway = f.tag("highway").unwrap_or("");
+    let highway = highway(f).unwrap_or("");
     let clamp = |w: f64| w.max(0.5).min(max_width_by_type(highway));
     if let Some(w) = f.tag("width").and_then(parse_width_m).filter(|w| *w > 0.0) {
         return clamp(w);
@@ -143,7 +195,7 @@ fn road_width_m(f: &Feature) -> f64 {
 /// Ways drawn as a single line instead of a carriageway outline: at card
 /// scale their two edges would be a tenth of a millimetre apart.
 fn is_trail(f: &Feature) -> bool {
-    matches!(f.tag("highway"), Some("footway" | "path" | "steps" | "track" | "bridleway" | "cycleway"))
+    matches!(highway(f), Some("footway" | "path" | "steps" | "track" | "bridleway" | "cycleway"))
 }
 
 fn truthy(v: Option<&str>) -> bool {
@@ -158,12 +210,12 @@ fn road_layer(f: &Feature) -> i64 {
         .filter(|l| !l.trim().is_empty())
         .and_then(|l| l.split(';').next().unwrap_or("").trim().parse::<f64>().ok())
         .map(|l| l.trunc() as i64);
-    if let Some(t) = f.tag("tunnel") {
+    if let Some(t) = tunnel(f) {
         if !matches!(t.trim().to_ascii_lowercase().as_str(), "" | "no" | "false" | "0" | "building_passage") {
             return explicit.filter(|e| *e < 0).unwrap_or(-1);
         }
     }
-    let bridge = truthy(f.tag("bridge"));
+    let bridge = bridge(f);
     match explicit {
         Some(0) if bridge => 1,
         Some(e) => e,
@@ -213,7 +265,7 @@ pub(crate) fn render(layer: &LayerSpec, ctx: &Context) -> Result<LayerParts, Fil
     let feats: Vec<(&Feature, i64)> = ctx
         .features
         .iter()
-        .filter(|f| f.has("highway") && !matches!(f.tag("footway"), Some("crossing" | "sidewalk")) && !f.is_point())
+        .filter(|f| highway(f).is_some() && !matches!(f.tag("footway"), Some("crossing" | "sidewalk")) && !f.is_point())
         .map(|f| (f, road_layer(f)))
         .filter(|(f, l)| *l >= 0 && !below_ground(f, &["layer"]))
         .collect();
@@ -403,6 +455,25 @@ mod tests {
         assert_eq!(road_width_m(&feature(&[("highway", "raceway")])), 6.0);
         assert_eq!(parse_width_m("3 m;5"), Some(5.0));
         assert_eq!(parse_width_m("2 furlongs"), None);
+    }
+
+    #[test]
+    fn tile_roads_speak_openmaptiles() {
+        let tile = |tags: &[(&str, &str)]| Feature {
+            element: Element::Tile,
+            ..feature(&[&[(LAYER_TAG, "transportation")], tags].concat())
+        };
+        assert_eq!(highway(&tile(&[("class", "minor")])), Some("residential"));
+        assert_eq!(highway(&tile(&[("class", "primary"), ("ramp", "1")])), Some("primary_link"));
+        assert_eq!(highway(&tile(&[("class", "path"), ("subclass", "steps")])), Some("steps"));
+        assert_eq!(highway(&tile(&[("class", "path"), ("subclass", "platform")])), None);
+        assert_eq!(highway(&tile(&[("class", "rail"), ("subclass", "rail")])), None);
+        assert!(is_trail(&tile(&[("class", "path"), ("subclass", "footway")])));
+        assert_eq!(road_width_m(&tile(&[("class", "secondary")])), 6.0);
+        assert_eq!(road_layer(&tile(&[("class", "minor"), ("brunnel", "bridge")])), 1);
+        assert_eq!(road_layer(&tile(&[("class", "minor"), ("brunnel", "tunnel")])), -1);
+        // An OSM way keeps reading OSM tags, even one called `class`.
+        assert_eq!(highway(&feature(&[("class", "minor")])), None);
     }
 
     #[test]

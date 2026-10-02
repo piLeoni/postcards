@@ -11,7 +11,7 @@ license = "AGPL-3.0-only"
 postcards-core = { path = "crates/postcards-core" }
 penfill = { path = "../penfill" }
 # Reads tiles only; the CLI turns `fetch` on, the page downloads them itself.
-terramask = { path = "../terramask/crates/terramask", default-features = false }
+terramask = { path = "../terramask/crates/terramask", version = "0.2.0", default-features = false }
 geo = "0.33"
 geographiclib-rs = "0.2"
 serde = { version = "1", features = ["derive"] }

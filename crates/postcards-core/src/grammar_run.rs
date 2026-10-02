@@ -3,7 +3,8 @@
 //! [`crate::grammar`] validates the profile; this module gives it meaning. Every
 //! def evaluates to one of three things, decided by its section:
 //!
-//! - `$features` → a set of features (tag-filtered, still lon/lat)
+//! - `$features` → a set of features, from Overpass (`osm_select`) or the
+//!   vector tiles (`tiles_select`)
 //! - `$areas`    → a [`MultiPolygon`] in card millimetres
 //! - `$lines`    → a [`Lines`] in card millimetres
 //! - `$fills`    → a `Lines` too, but produced by penfill
@@ -81,6 +82,9 @@ pub struct Outputs {
 pub struct Inputs<'a> {
     /// Features in lon/lat, as `osm::features_from_overpass` returns them.
     pub features: Vec<Feature>,
+    /// Vector tile features in lon/lat, as `tiles::Tiles::features` returns
+    /// them: what `tiles_select` picks from.
+    pub tiles: Vec<Feature>,
     /// Ocean polygons in lon/lat, when the card shows a coastline.
     pub ocean: Option<MultiPolygon<f64>>,
     /// SVG text of every file named by a fill `source`.
@@ -105,23 +109,26 @@ pub fn run_with(grammar: &Grammar, card: &Card, inputs: Inputs, draw: &Task) -> 
         sources.insert(file.clone(), drawing);
     }
 
-    let project = draw.child("project", "project", inputs.features.len() as u64, "features");
+    let project = draw.child("project", "project", (inputs.features.len() + inputs.tiles.len()) as u64, "features");
     let projector = crate::projection::Projector::new(card);
-    let features: Vec<Feature> = inputs
-        .features
-        .into_par_iter()
-        .map(|mut f| {
-            f.geometry = projector.project_geometry(&f.geometry);
-            project.tick();
-            f
-        })
-        .collect();
+    let projected = |features: Vec<Feature>| -> Vec<Feature> {
+        features
+            .into_par_iter()
+            .map(|mut f| {
+                f.geometry = projector.project_geometry(&f.geometry);
+                project.tick();
+                f
+            })
+            .collect()
+    };
+    let features = projected(inputs.features);
+    let tiles = projected(inputs.tiles);
     let frame = MultiPolygon::new(vec![card.query_polygon()]);
     let ocean = inputs.ocean.map(|o| projector.project_geometry(&geom::intersection(&o, &frame)));
     let engine = Engine { of: card, card: projector.project_geometry(&frame), ocean: ocean.unwrap_or_else(geom::empty) };
     project.ok("");
 
-    let values = evaluate(grammar, &features, &engine, draw)?;
+    let values = evaluate(grammar, &Found { osm: &features, tiles: &tiles }, &engine, draw)?;
 
     // Fills come last: they need areas, and they call into penfill.
     let fill_defs: Vec<&Def> = grammar.defs(Section::Fills).iter().filter(|d| matches!(d.op, Op::Fill(_))).collect();
@@ -153,6 +160,12 @@ pub fn run_with(grammar: &Grammar, card: &Card, inputs: Inputs, draw: &Task) -> 
     Ok(Outputs { svg, groups: groups.iter().map(|(id, l)| (id.clone(), l.len())).collect() })
 }
 
+/// The features a selection picks from, in card millimetres.
+struct Found<'a> {
+    osm: &'a [Feature],
+    tiles: &'a [Feature],
+}
+
 /// The card, and the `engine_*` areas in card millimetres like everything
 /// evaluated.
 struct Engine<'a> {
@@ -164,7 +177,7 @@ struct Engine<'a> {
 /// Evaluate every non-fill def, in dependency order (waves).
 fn evaluate(
     grammar: &Grammar,
-    features: &[Feature],
+    features: &Found,
     engine: &Engine,
     draw: &Task,
 ) -> Result<BTreeMap<Name, Value>, RunError> {
@@ -210,7 +223,7 @@ fn evaluate(
 fn eval_op(
     op: &Op,
     done: &BTreeMap<Name, Value>,
-    features: &[Feature],
+    features: &Found,
     engine: &Engine,
 ) -> Result<Value, String> {
     let area = |n: &Name| -> Result<MultiPolygon<f64>, String> {
@@ -229,7 +242,10 @@ fn eval_op(
 
     Ok(match op {
         // ---- features ------------------------------------------------------
-        Op::Select(sel) => Value::Features(select(sel, features)),
+        Op::Select(sel) => Value::Features(select(sel, features.osm)),
+        Op::TileSelect(t) => {
+            Value::Features(features.tiles.iter().filter(|f| crate::tiles::keeps(&t.filter, f)).cloned().collect())
+        }
 
         // ---- areas ---------------------------------------------------------
         Op::Polygons(n) => Value::Area(union_features(&feats(n)?)),
@@ -284,7 +300,10 @@ fn eval_op(
 
         // Handled in the fill pass, so `values` never holds one.
         Op::Fill(_) => return Err("tools_fill is evaluated in the fill pass".into()),
-        Op::Module(m) => eval_module(m, features, engine.of)?,
+        Op::Module(m) => match &m.from {
+            Some(from) => eval_module(&m.name, &feats(from)?, engine.of)?,
+            None => eval_module(&m.name, features.osm, engine.of)?,
+        },
     })
 }
 
@@ -292,8 +311,8 @@ fn eval_op(
 fn eval_module(module: &str, features: &[Feature], card: &Card) -> Result<Value, String> {
     match module {
         "roads" => {
-            // The module needs no profile knobs: it reads OSM tags and the card
-            // scale. Its outputs are the same three names every module publishes.
+            // The module needs no profile knobs: it reads OSM tags (or a tile
+            // feature's attributes) and the card scale. Its outputs are the same three names every module publishes.
             let layer = crate::profile::LayerSpec {
                 id: "roads".into(),
                 module: Some("roads/v1".into()),
@@ -616,7 +635,7 @@ mod tests {
         run(
             &grammar,
             &card(),
-            Inputs { features: vec![], ocean: None, sources: &BTreeMap::new() },
+            Inputs { features: vec![], tiles: vec![], ocean: None, sources: &BTreeMap::new() },
         )
     }
 
@@ -691,7 +710,7 @@ mod tests {
              draw:\n  - { id: sea, from: $fills.waves }\n  - { id: ring, from: $lines.ring, stroke: solid }\n";
         let grammar = Grammar::parse(text, Format::Yaml).unwrap();
         let ocean = MultiPolygon::new(vec![card().query_polygon()]);
-        let out = run(&grammar, &card(), Inputs { features: vec![], ocean: Some(ocean), sources: &BTreeMap::new() })
+        let out = run(&grammar, &card(), Inputs { features: vec![], tiles: vec![], ocean: Some(ocean), sources: &BTreeMap::new() })
             .unwrap();
         let strokes = |id: &str| out.groups.iter().find(|(g, _)| g == id).map_or(0, |(_, n)| *n);
         assert!(strokes("sea") >= 40, "one line per mm across the card, got {}", strokes("sea"));
@@ -715,7 +734,7 @@ mod tests {
         let out = run(
             &grammar,
             &card(),
-            Inputs { features: vec![], ocean: None, sources: &BTreeMap::new() },
+            Inputs { features: vec![], tiles: vec![], ocean: None, sources: &BTreeMap::new() },
         )
         .unwrap();
         assert!(!out.svg.is_empty());

@@ -24,6 +24,7 @@ fn main() {
             Element::Node => "node",
             Element::Way => "way",
             Element::Relation => "relation",
+            Element::Tile => "tile",
         };
         let kind = match &f.geometry {
             geo::Geometry::Point(_) => "Point",

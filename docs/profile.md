@@ -278,7 +278,7 @@ Four families of names, each with a fixed prefix:
 |---|---|---|---|
 | **Yours** | `$areas.river`, `$lines.river` | this file | yes: the `$` is required |
 | **Kit operations** | `tools_union`, `tools_fill` | the engine's toolkit | yes: closed list |
-| **Engine sources** | `osm_select`, `engine_card`, `engine_ocean` | the engine | yes: closed list |
+| **Engine sources** | `osm_select`, `tiles_select`, `engine_card`, `engine_ocean` | the engine | yes: closed list |
 | **Modules** | `module_roads`, `roads.outlines` | a compiled module | yes: declared by the module |
 
 The `$` means **"defined in this file"**. Nothing else in the grammar may start
@@ -298,7 +298,7 @@ With the marker, the type is syntactic and the error comes at load:
 
 ```text
 card              paper frame, centre, projection          (schema, no marker)
-$features         OSM selections: tag filters only
+$features         OSM selections: tag filters (Overpass) or tile layers
 $areas            areas  (multi-polygons in card mm)
 $lines            line sets
 $fills            penfill patterns: already line sets
@@ -338,13 +338,32 @@ prefix so that a `union` is recognisably the engine's `union`:
 | `tools_join: [a, b, …]` | lines | Concatenate line sets. |
 | `tools_fill: { in, pattern, … }` | lines | penfill into an area. `per: feature` runs one pattern per polygon. `anchor: global` (default) lays one lattice over the whole card, so neighbouring areas meet with no seam; `anchor: local` places it on each shape. `shift: [x, y]` (mm) moves it. A `sunburst` is local unless given a `centre`. |
 
-### Engine sources — `engine_*` / `osm_*`
+### Engine sources — `engine_*` / `osm_*` / `tiles_*`
 
 | Source | Result | Notes |
 |---|---|---|
 | `engine_card: {}` | area | The card rectangle. |
-| `engine_ocean: {}` | area | The sea, from coastline tiles. **Not** an OSM tag: a host function, empty inland. |
-| `osm_select: { building: true }` | features | Tag filter; `except:`, `underground:`. |
+| `engine_ocean: {}` | area | The sea, from OpenFreeMap's vector tiles. **Not** an OSM tag: a host function, empty inland. |
+| `osm_select: { building: true }` | features | Tag filter, from Overpass; `except:`, `underground:`. |
+| `tiles_select: [buildings, "landcover:park,garden"]` | features | Layers of OpenFreeMap's vector tiles (OpenMapTiles schema), read by terramask. |
+
+`tiles_select` takes terramask's selectors: presets (`buildings`, `roads`,
+`paths`, `rail`, `water`, `forest`, `parks`…) and `layer:class` rules, where a
+name is a class or a subclass (`landcover:park` is the parks among landcover
+`grass`) and `class/subclass` names one pair (`landcover:grass/grass`, the
+lawns). Each feature comes mended across tile edges, so a building or a road
+cut by two tiles is one feature again, with the tile's attributes as tags
+(`class`, `subclass`, `brunnel`, `layer`…). The tiles are a handful of static
+files per card on a CDN, cached for years; Overpass has every OSM tag but is
+slow and often busy. A card that uses only `tiles_select` never asks Overpass.
+
+| OSM tags (Overpass) | Tiles |
+|---|---|
+| `building=*` | `buildings` |
+| `leisure=park` / `garden` | `landcover:park,garden` |
+| `landuse=grass`, `landuse=forest`, `natural=wood` | `landcover:grass/grass,wood` |
+| `water=*`, `natural=water` | `water:lake,river,pond,dock` |
+| `highway=*` | `roads`, `paths` (with `module_roads: { from: … }`) |
 
 `osm_` and `engine_` are different prefixes because they are different things:
 one is **data**, the other is **computed geometry**. `$areas.wet` below unions
@@ -358,6 +377,17 @@ A module is compiled code, published as one def:
 $areas:
   roads:
     module_roads: {}
+```
+
+It reads every OSM feature by default. `from` hands it a feature set of its
+own instead, such as the roads of the vector tiles, which it reads in their
+OpenMapTiles terms (class, subclass, `brunnel`):
+
+```yaml
+$features:
+  ways: { tiles_select: [roads, paths] }
+$areas:
+  roads: { module_roads: { from: $features.ways } }
 ```
 
 It defines fixed outputs the profile may use or ignore — for roads/v1:

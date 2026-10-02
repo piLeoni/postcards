@@ -1,7 +1,8 @@
 //! WebAssembly bindings for postcards.
 //!
 //! The browser gets the pipeline after the download: the card document plus
-//! the Overpass JSON its query returned, out comes the SVG, with the same
+//! the Overpass JSON its query returned and the vector tiles it asked for, out
+//! comes the SVG, with the same
 //! progress events the command line draws in the terminal. Nothing here
 //! touches the filesystem or the network, so the same `postcards-core` the CLI
 //! uses runs unchanged in a page.
@@ -18,8 +19,8 @@ use postcards_core::card::{
 use postcards_core::osm_cache;
 use geo::MultiPolygon;
 use postcards_core::grammar::Grammar;
-use postcards_core::ocean::{Ocean, TILES};
-use postcards_core::osm::{features_from_overpass, needs_ocean, Feature};
+use postcards_core::osm::{features_from_overpass, Feature};
+use postcards_core::tiles::{self, Tiles, TILES};
 use postcards_core::profile::{Format, Profile};
 use postcards_core::board::{Board, Line};
 use postcards_core::progress::{thousands, Event, Level, Progress, Task};
@@ -139,23 +140,26 @@ pub fn overpass_error_js(json: &str) -> Option<String> {
     overpass_error(json)
 }
 
-/// The TileJSON of the vector tiles the sea comes from, the same the command
-/// line reads.
-#[wasm_bindgen(js_name = oceanSource)]
-pub fn ocean_source() -> String {
+/// The TileJSON of the vector tiles (`tiles_select` and the sea), the same
+/// the command line reads.
+#[wasm_bindgen(js_name = tileSource)]
+pub fn tile_source() -> String {
     TILES.into()
 }
 
-/// One draw, in the two steps the command line takes after the download:
-/// `read` the Overpass reply, then `draw`. Each tells `on_event` what it is
-/// doing, as the same events the terminal shows: `read` as a row under the
-/// page's `download`, `draw` as the whole drawing tree.
+/// One draw, in the steps the command line takes after locating the card:
+/// `read` the Overpass reply when `needsOsm`, hand over the `tiles` it asks
+/// for with `addTile` and `readTiles` them, then `draw`. Each tells
+/// `on_event` what it is doing, as the same events the terminal shows: the
+/// reads as rows under the page's `download`, `draw` as the drawing tree.
 #[wasm_bindgen]
 pub struct Job {
     doc: Doc,
     features: Option<Vec<Feature>>,
-    needs_ocean: bool,
-    ocean: Option<Ocean>,
+    /// Planned on the first `tiles` call, once Overpass has answered.
+    tiles: Option<Option<Tiles>>,
+    tile_features: Vec<Feature>,
+    ocean: Option<MultiPolygon<f64>>,
 }
 
 #[wasm_bindgen]
@@ -170,7 +174,14 @@ impl Job {
         if let Some(v) = lng {
             doc.card.center.0 = v;
         }
-        Ok(Job { doc, features: None, needs_ocean: false, ocean: None })
+        Ok(Job { doc, features: None, tiles: None, tile_features: Vec::new(), ocean: None })
+    }
+
+    /// Whether the document selects anything from Overpass (`osm_select`, or
+    /// a module reading OSM). When not, skip the query and `read`.
+    #[wasm_bindgen(getter, js_name = needsOsm)]
+    pub fn needs_osm(&self) -> bool {
+        !self.doc.keys.is_empty()
     }
 
     /// Turn the Overpass reply into features, as the `read OSM` row.
@@ -180,42 +191,67 @@ impl Job {
         let keys: Vec<&str> = self.doc.keys.iter().map(String::as_str).collect();
         let features = features_from_overpass(overpass, &self.doc.card.query_polygon(), &keys).map_err(err)?;
         task.ok(&format!("{} features", thousands(features.len() as u64)));
-        self.needs_ocean = needs_ocean(&features);
         self.features = Some(features);
         Ok(())
     }
 
-    /// Whether the reply shows a coastline, so the card needs the sea: the
-    /// page downloads `oceanTiles` and hands each to `addOceanTile`.
-    #[wasm_bindgen(getter, js_name = needsOcean)]
-    pub fn needs_ocean(&self) -> bool {
-        self.needs_ocean
+    /// The vector tiles the card needs, as `[z, x, y, z, x, y, …]`, for a
+    /// source whose deepest zoom is `max_zoom` (the TileJSON's `maxzoom`):
+    /// what `tiles_select` picks, and the sea when the card draws it (with
+    /// Overpass, only where it shows a coastline). Empty when none. Their
+    /// source is `tileSource()`.
+    pub fn tiles(&mut self, max_zoom: u8) -> Result<Vec<u32>, JsValue> {
+        let plan = self.plan()?;
+        Ok(plan.map(|t| t.tiles(max_zoom).iter().flat_map(|t| [t.z as u32, t.x, t.y]).collect()).unwrap_or_default())
     }
 
-    /// The vector tiles with the sea under the card, as `[z, x, y, z, x, y,
-    /// …]`, for a source whose deepest zoom is `max_zoom` (the TileJSON's
-    /// `maxzoom`). Their source is `oceanSource()`.
-    #[wasm_bindgen(js_name = oceanTiles)]
-    pub fn ocean_tiles(&mut self, max_zoom: u8) -> Vec<u32> {
-        let ocean = self.ocean.get_or_insert_with(|| Ocean::new(&self.doc.card.query_polygon()));
-        ocean.tiles(max_zoom).iter().flat_map(|t| [t.z as u32, t.x, t.y]).collect()
+    /// One of the `tiles`, as downloaded (raw or gzipped protobuf).
+    #[wasm_bindgen(js_name = addTile)]
+    pub fn add_tile(&mut self, z: u8, x: u32, y: u32, bytes: &[u8]) -> Result<(), JsValue> {
+        let t = self.plan()?.ok_or_else(|| err("this card needs no tiles"))?;
+        t.add_tile(TileId::new(z, x, y), bytes).map_err(err)
     }
 
-    /// One of the `oceanTiles`, as downloaded (raw or gzipped protobuf).
-    #[wasm_bindgen(js_name = addOceanTile)]
-    pub fn add_ocean_tile(&mut self, z: u8, x: u32, y: u32, bytes: &[u8]) -> Result<(), JsValue> {
-        let ocean = self.ocean.get_or_insert_with(|| Ocean::new(&self.doc.card.query_polygon()));
-        ocean.add_tile(TileId::new(z, x, y), bytes).map_err(err)
+    /// The tile features mended across tile edges, and the sea, as the `read
+    /// tiles` row.
+    #[wasm_bindgen(js_name = readTiles)]
+    pub fn read_tiles(&mut self, on_event: js_sys::Function) -> Result<(), JsValue> {
+        let Some(t) = self.plan()? else { return Ok(()) };
+        let progress = JsProgress(on_event);
+        let task = Task::begin(&progress, "read-tiles", Some("download"), "read tiles", 0, "");
+        let features = t.features();
+        let ocean = t.ocean();
+        let found = format!("{} tile features", thousands(features.len() as u64));
+        task.ok(&match &ocean {
+            Some(sea) => format!("{found} · sea in {} polygons", sea.0.len()),
+            None => found,
+        });
+        self.tile_features = features;
+        self.ocean = ocean;
+        Ok(())
+    }
+
+    fn plan(&mut self) -> Result<Option<&mut Tiles>, JsValue> {
+        if self.tiles.is_none() {
+            let d = &self.doc;
+            self.tiles = Some(tiles::plan(&d.card, &d.selectors, d.ocean, self.features.as_deref()).map_err(err)?);
+        }
+        Ok(self.tiles.as_mut().and_then(Option::as_mut))
     }
 
     /// Draw the card, as the `draw` tree. `sources` maps the file names the
     /// document references to their SVG text; `{}` when it has none.
     pub fn draw(&mut self, sources: js_sys::Object, on_event: js_sys::Function) -> Result<Rendered, JsValue> {
-        let features = self.features.take().ok_or_else(|| err("read the Overpass reply first"))?;
-        let ocean = self.ocean.take().map(|o| o.polygons());
+        let features = match self.features.take() {
+            Some(f) => f,
+            None if self.needs_osm() => return Err(err("read the Overpass reply first")),
+            None => Vec::new(),
+        };
+        let tile_features = std::mem::take(&mut self.tile_features);
+        let ocean = self.ocean.take();
         let progress = JsProgress(on_event);
         let draw = Task::begin(&progress, "draw", None, "draw", 0, "");
-        let out = self.doc.render(features, ocean, &string_map(&sources), &draw).map_err(err)?;
+        let out = self.doc.render(features, tile_features, ocean, &string_map(&sources), &draw).map_err(err)?;
         draw.ok("");
         let groups = js_sys::Array::new();
         for (id, n) in out.groups {
@@ -356,7 +392,12 @@ impl Progress for JsProgress {
 /// A document in either schema, ready to run.
 struct Doc {
     card: Card,
+    /// OSM keys to ask Overpass for; empty when it needs none.
     keys: Vec<String>,
+    /// `tiles_select` items.
+    selectors: Vec<String>,
+    /// Whether it draws the sea.
+    ocean: bool,
     body: Body,
 }
 
@@ -378,19 +419,21 @@ impl Doc {
         if is_grammar {
             let grammar = Grammar::parse(text, format).map_err(err)?;
             let keys = grammar.osm_keys();
+            let (selectors, ocean) = (grammar.tile_selectors(), grammar.draws_ocean());
             let card = Card::new(&grammar.card, default_center(&grammar.card));
-            return Ok(Doc { card, keys, body: Body::Grammar(Box::new(grammar)) });
+            return Ok(Doc { card, keys, selectors, ocean, body: Body::Grammar(Box::new(grammar)) });
         }
         let profile = Profile::parse(text, format).map_err(err)?;
         let keys = profile.osm_keys();
         let card = Card::new(&profile.map, default_center(&profile.map));
-        Ok(Doc { card, keys, body: Body::Profile(Box::new(profile)) })
+        Ok(Doc { card, keys, selectors: Vec::new(), ocean: true, body: Body::Profile(Box::new(profile)) })
     }
 
     /// The drawing, its steps as rows under `draw`.
     fn render(
         &self,
         features: Vec<Feature>,
+        tiles: Vec<Feature>,
         ocean: Option<MultiPolygon<f64>>,
         sources: &BTreeMap<String, String>,
         draw: &Task,
@@ -400,7 +443,7 @@ impl Doc {
                 let out = postcards_core::grammar_run::run_with(
                     g,
                     &self.card,
-                    postcards_core::grammar_run::Inputs { features, ocean, sources },
+                    postcards_core::grammar_run::Inputs { features, tiles, ocean, sources },
                     draw,
                 )
                 .map_err(|e| e.to_string())?;

@@ -15,6 +15,8 @@ pub enum Element {
     Node,
     Relation,
     Way,
+    /// A feature of a vector tile (see [`crate::tiles`]), not an OSM element.
+    Tile,
 }
 
 #[derive(Debug, Clone)]

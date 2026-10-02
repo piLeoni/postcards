@@ -270,12 +270,12 @@ export default function Sidebar({ open, onClose, doc, setDoc, card, status, draw
       <details className="group shrink-0 border-t border-black py-[0.5lh]">
         <summary className="flex cursor-pointer list-none items-center gap-[1ch] select-none">
           <span className="font-bold">Map data</span>
-          <span className="min-w-0 truncate opacity-60">OpenStreetMap · Overpass · OpenFreeMap · Mapbox</span>
+          <span className="min-w-0 truncate opacity-60">OpenStreetMap · OpenFreeMap · Overpass · Mapbox</span>
           <span className="ml-auto transition-transform group-open:rotate-90">›</span>
         </summary>
         <ul className="mt-[0.5lh] opacity-60">
-          <li>Features: © OpenStreetMap contributors, through Overpass.</li>
-          <li>Sea: © OpenMapTiles © OpenStreetMap contributors, tiles from OpenFreeMap.</li>
+          <li>Features and sea: © OpenMapTiles © OpenStreetMap contributors, tiles from OpenFreeMap.</li>
+          <li>With osm_select: © OpenStreetMap contributors, through Overpass.</li>
           <li>Basemap: © Mapbox © OpenStreetMap.</li>
         </ul>
       </details>

@@ -6,11 +6,11 @@ mod term;
 use clap::{Parser, Subcommand};
 use postcards_core::card::{fetch_keys, Card};
 use postcards_core::grammar::Grammar;
-use postcards_core::ocean::Ocean;
-use postcards_core::osm::{features_from_overpass, needs_ocean};
+use postcards_core::osm::{features_from_overpass, Feature};
 use postcards_core::pipeline::{render, Inputs};
 use postcards_core::profile::{Format, Profile};
 use postcards_core::progress::{thousands, Event, Level, Progress, Task};
+use postcards_core::tiles::{self, Tiles};
 use std::collections::BTreeMap;
 use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
@@ -114,7 +114,8 @@ fn map(term: &Term, http: &osm_http::Http, profile_path: &Path, place: Place, ou
     let download = Task::begin(term, "download", None, "download", 0, "");
     let center = locate(&download, http, place, profile.map.address.clone(), (profile.map.lat, profile.map.lng))?;
     let card = Card::new(&profile.map, center);
-    let (features, ocean) = fetch(http, download, &card, &fetch_keys(&profile.osm_keys()))?;
+    let needs = Needs { keys: profile.osm_keys(), tiles: Vec::new(), ocean: true };
+    let Fetched { osm: features, ocean, .. } = fetch(http, download, &card, &needs)?;
 
     let draw = Task::begin(term, "draw", None, "draw", 0, "");
     let task = draw.child("render", "render", 0, "");
@@ -124,46 +125,79 @@ fn map(term: &Term, http: &osm_http::Http, profile_path: &Path, place: Place, ou
     Ok(rendered.groups)
 }
 
-/// The OSM features on `card`, and the ocean when the card shows a coast:
-/// each a row under `download`, which ends with them.
-fn fetch(
-    http: &osm_http::Http,
-    download: Task,
-    card: &Card,
-    keys: &[String],
-) -> Result<(Vec<postcards_core::osm::Feature>, Option<geo::MultiPolygon<f64>>), String> {
-    let json = http.overpass(card, keys, &download)?;
-    let mb = json.len() as f64 / 1e6;
-
-    let area = card.query_polygon();
-    let task = download.child("read", "read OSM", 0, "");
-    let keys: Vec<&str> = keys.iter().map(String::as_str).collect();
-    let features = features_from_overpass(&json, &area, &keys).map_err(|e| e.to_string())?;
-    let found = format!("{} features", thousands(features.len() as u64));
-    task.ok(&found);
-
-    let ocean = if needs_ocean(&features) { Some(ocean(&download, &area)?) } else { None };
-    download.ok(&format!("{mb:.1} MB · {found}"));
-    Ok((features, ocean))
+/// What a document reads: the OSM keys it selects on (none: no Overpass at
+/// all), its `tiles_select` items, and whether it draws the sea.
+struct Needs {
+    keys: Vec<String>,
+    tiles: Vec<String>,
+    ocean: bool,
 }
 
-/// The sea under a card that shows a coast, from OpenFreeMap's vector tiles
-/// (cached by terramask), as the `ocean tiles` row.
-fn ocean(download: &Task, area: &geo::Polygon<f64>) -> Result<geo::MultiPolygon<f64>, String> {
-    let mut ocean = Ocean::new(area);
-    let task = download.child("ocean", "ocean tiles", ocean.tiles(terramask::MAX_ZOOM).len() as u64, "tiles");
-    let found = terramask::Fetcher::with_source(postcards_core::ocean::TILES)
-        .water(ocean.bounds(), ocean.zoom(terramask::MAX_ZOOM), &postcards_core::ocean::filter(), |done, total| {
+/// What the download brings, in lon/lat.
+struct Fetched {
+    osm: Vec<Feature>,
+    tiles: Vec<Feature>,
+    /// The sea, when the card draws it and shows some.
+    ocean: Option<geo::MultiPolygon<f64>>,
+}
+
+/// The OSM features on `card`, the vector tile features, and the sea when the
+/// card shows one: each a row under `download`, which ends with them.
+fn fetch(http: &osm_http::Http, download: Task, card: &Card, needs: &Needs) -> Result<Fetched, String> {
+    let area = card.query_polygon();
+    let mut notes: Vec<String> = Vec::new();
+    let osm = if needs.keys.is_empty() {
+        None
+    } else {
+        let keys = fetch_keys(&needs.keys);
+        let json = http.overpass(card, &keys, &download)?;
+        let task = download.child("read", "read OSM", 0, "");
+        let keys: Vec<&str> = keys.iter().map(String::as_str).collect();
+        let features = features_from_overpass(&json, &area, &keys).map_err(|e| e.to_string())?;
+        let found = format!("{} features", thousands(features.len() as u64));
+        task.ok(&found);
+        notes.push(format!("{:.1} MB · {found}", json.len() as f64 / 1e6));
+        Some(features)
+    };
+    let (tile_features, ocean) = match tiles::plan(card, &needs.tiles, needs.ocean, osm.as_deref())? {
+        Some(t) => read_tiles(&download, t, &mut notes)?,
+        None => (Vec::new(), None),
+    };
+    download.ok(&notes.join(" · "));
+    Ok(Fetched { osm: osm.unwrap_or_default(), tiles: tile_features, ocean })
+}
+
+/// OpenFreeMap's vector tiles under the card (cached by terramask, a file
+/// per layer), as the `vector tiles` row; then the features mended across
+/// tile edges, as `read tiles`.
+fn read_tiles(
+    download: &Task,
+    mut tiles: Tiles,
+    notes: &mut Vec<String>,
+) -> Result<(Vec<Feature>, Option<geo::MultiPolygon<f64>>), String> {
+    let n = tiles.tiles(terramask::MAX_ZOOM).len() as u64;
+    let task = download.child("tiles", "vector tiles", n, "tiles");
+    let found = terramask::Fetcher::with_source(tiles::TILES)
+        .water(tiles.bounds(), tiles.zoom(terramask::MAX_ZOOM), tiles.filter(), |done, total| {
             if done == 1 {
                 task.set_total(total as u64);
             }
             task.step(done as u64, "");
         })
-        .map_err(|e| format!("ocean tiles: {e}"))?;
-    ocean.add_features(found);
-    let sea = ocean.polygons();
-    task.ok(&format!("{} polygons", sea.0.len()));
-    Ok(sea)
+        .map_err(|e| format!("vector tiles: {e}"))?;
+    tiles.add_features(found);
+    task.ok(&format!("zoom {} · {}", tiles.zoom(terramask::MAX_ZOOM), tiles.filter().layers().join(", ")));
+
+    let task = download.child("read-tiles", "read tiles", 0, "");
+    let features = tiles.features();
+    let ocean = tiles.ocean();
+    let found = format!("{} tile features", thousands(features.len() as u64));
+    task.ok(&match &ocean {
+        Some(sea) => format!("{found} · sea in {} polygons", sea.0.len()),
+        None => found.clone(),
+    });
+    notes.push(format!("{n} tiles · {found}"));
+    Ok((features, ocean))
 }
 
 /// Writes the SVG as the last row under `draw`, which ends with it.
@@ -197,7 +231,8 @@ fn main() -> ExitCode {
     }
 }
 
-/// The v3 path: `Grammar` in, the same Overpass fetch, the grammar executor out.
+/// The v3 path: `Grammar` in, Overpass and the vector tiles as it asks, the
+/// grammar executor out.
 fn map_v3(
     term: &Term,
     http: &osm_http::Http,
@@ -219,13 +254,14 @@ fn map_v3(
     let download = Task::begin(term, "download", None, "download", 0, "");
     let center = locate(&download, http, place, grammar.card.address.clone(), (grammar.card.lat, grammar.card.lng))?;
     let card = Card::new(&grammar.card, center);
-    let (features, ocean) = fetch(http, download, &card, &fetch_keys(&grammar.osm_keys()))?;
+    let needs = Needs { keys: grammar.osm_keys(), tiles: grammar.tile_selectors(), ocean: grammar.draws_ocean() };
+    let Fetched { osm: features, tiles, ocean } = fetch(http, download, &card, &needs)?;
 
     let draw = Task::begin(term, "draw", None, "draw", 0, "");
     let rendered = postcards_core::grammar_run::run_with(
         &grammar,
         &card,
-        postcards_core::grammar_run::Inputs { features, ocean, sources: &sources },
+        postcards_core::grammar_run::Inputs { features, tiles, ocean, sources: &sources },
         &draw,
     )
     .map_err(|e| e.to_string())?;

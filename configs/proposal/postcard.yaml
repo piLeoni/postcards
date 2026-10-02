@@ -28,6 +28,9 @@
 #
 # SORGENTI
 #   osm_select: { <tag>: <valore> | [valori] | true }   feature OSM (except:, underground:)
+#   tiles_select: [buildings, "landcover:park,garden"]  feature dalle tile vettoriali
+#                                              (OpenFreeMap, schema OpenMapTiles): preset e
+#                                              regole layer:class di terramask; niente Overpass
 #
 # AREE
 #   tools_polygons: <feature>                  area: unione dei poligoni

@@ -10,7 +10,8 @@
 
 /**
  * Everything: parks, water, roads and buildings, in the CLI's own order and
- * with its masks. This is the card the plotter gets.
+ * with its masks. This is the card the plotter gets. Its data comes from
+ * OpenFreeMap's vector tiles (`tiles_select`): no Overpass.
  */
 export const FULL_DOC = `card:
   width: 6in
@@ -22,12 +23,13 @@ export const FULL_DOC = `card:
   lng: -122.256196
 
 $features:
-  bldg:  { osm_select: { building: true } }
-  green: { osm_select: { leisure: [park, garden], landuse: [grass, forest], natural: wood } }
-  wet:   { osm_select: { water: true, natural: water } }
+  bldg:  { tiles_select: buildings }
+  green: { tiles_select: "landcover:park,garden,grass/grass,wood" }
+  wet:   { tiles_select: "water:lake,river,pond,dock" }
+  ways:  { tiles_select: [roads, paths] }
 
 $areas:
-  roads:     { module_roads: {} }
+  roads:     { module_roads: { from: $features.ways } }
   buildings: { tools_polygons: $features.bldg }
   parks:     { tools_polygons: $features.green }
   inland:    { tools_polygons: $features.wet }
@@ -92,9 +94,9 @@ export const DEFAULT_DOC = `card:
   lng: -122.256196
 
 $features:
-  bldg:  { osm_select: { building: true } }
-  green: { osm_select: { leisure: [park, garden] } }
-  wet:   { osm_select: { water: true, natural: water } }
+  bldg:  { tiles_select: buildings }
+  green: { tiles_select: "landcover:park,garden" }
+  wet:   { tiles_select: "water:lake,river,pond,dock" }
 
 $areas:
   buildings: { tools_polygons: $features.bldg }
@@ -132,7 +134,7 @@ export const SMALL_DOC = `card:
   lng: -122.256196
 
 $features:
-  bldg: { osm_select: { building: true } }
+  bldg: { tiles_select: buildings }
 
 $areas:
   buildings: { tools_polygons: $features.bldg }
@@ -150,6 +152,21 @@ draw:
 compose:
   order: [bldg_fill, bldg_ring]
 `
+
+/**
+ * The everything card with its data from Overpass instead (`osm_select`):
+ * every OSM tag, road widths from \`width\` and \`lanes\`, but a busy server.
+ */
+export const OVERPASS_DOC = FULL_DOC.replace(
+  /\$features:[\s\S]*?\n\n\$areas:\n  roads: +\{ module_roads: \{ from: \$features.ways \} \}/,
+  `$features:
+  bldg:  { osm_select: { building: true } }
+  green: { osm_select: { leisure: [park, garden], landuse: [grass, forest], natural: wood } }
+  wet:   { osm_select: { water: true, natural: water } }
+
+$areas:
+  roads:     { module_roads: {} }`,
+)
 
 export const PRESETS = [
   {
@@ -169,5 +186,11 @@ export const PRESETS = [
     name: 'Buildings only',
     hint: 'the fastest draw',
     doc: SMALL_DOC,
+  },
+  {
+    id: 'overpass',
+    name: 'Everything · Overpass',
+    hint: 'the same card, from Overpass',
+    doc: OVERPASS_DOC,
   },
 ]

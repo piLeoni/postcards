@@ -44,7 +44,7 @@ modules. [`docs/profile.md`](docs/profile.md) is the profile grammar.
 | Path | Role |
 |---|---|
 | `crates/postcards-core` | Profile, planner, projection, OSM → features, layers, compose, SVG. No I/O. |
-| `crates/postcards-cli` | The `postcards-rs` binary: geocoding, Overpass, ocean tiles, cache |
+| `crates/postcards-cli` | The `postcards-rs` binary: geocoding, Overpass, vector tiles, cache |
 | `configs/` | Profiles |
 | `data/` | Address lists |
 | `docs/plan.md` | The Rust rewrite: decisions, status, next phases |

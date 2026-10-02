@@ -1,6 +1,7 @@
 /**
- * A draw, off the page's thread: the download, then the engine, the same
- * steps as `postcards-rs map`. The page sends `{ type: 'draw', token, doc,
+ * A draw, off the page's thread: the download (Overpass when the card asks
+ * it anything, then the vector tiles), then the engine, the same steps as
+ * `postcards-rs map`. The page sends `{ type: 'draw', token, doc,
  * lat, lng }` and gets back every progress event as `{ type: 'event', token,
  * e }`, then `{ type: 'done', … }` or `{ type: 'error', … }`. Running here,
  * the engine's events reach the page while it works, so the bars move.
@@ -8,7 +9,7 @@
 
 import { loadPostcards } from './postcards'
 import { fetchOverpass } from './overpass'
-import { fetchOcean } from './ocean'
+import { fetchTiles } from './tiles'
 import { Task } from './progress'
 
 let current = null
@@ -27,15 +28,20 @@ async function run({ token, doc, lat, lng }) {
     const engine = await loadPostcards()
     const download = Task.begin(emit, 'download', null, 'download')
     download.log('info', `centre ${lat.toFixed(7)}, ${lng.toFixed(7)}`)
-    const req = JSON.parse(engine.osmRequest(doc, lat, lng))
-    const json = await fetchOverpass(engine, req, ac.signal, download, engine.overpassPolicy())
-    if (ac.signal.aborted) return
-
     const job = new engine.Job(doc, lat, lng)
     try {
-      job.read(json, emit)
-      if (job.needsOcean) await fetchOcean(engine, job, ac.signal, download)
+      // Overpass only for a card that selects from it (`osm_select`).
+      let bytes = 0
+      if (job.needsOsm) {
+        const req = JSON.parse(engine.osmRequest(doc, lat, lng))
+        const json = await fetchOverpass(engine, req, ac.signal, download, engine.overpassPolicy())
+        if (ac.signal.aborted) return
+        job.read(json, emit)
+        bytes = json.length
+      }
+      await fetchTiles(engine, job, ac.signal, download)
       if (ac.signal.aborted) return
+      job.readTiles(emit)
       download.ok()
       const t0 = performance.now()
       const out = job.draw({}, emit)
@@ -46,7 +52,7 @@ async function run({ token, doc, lat, lng }) {
         svg: out.svg,
         groups: out.groups,
         ms: Math.round(performance.now() - t0),
-        bytes: json.length,
+        bytes,
       })
     } finally {
       job.free()

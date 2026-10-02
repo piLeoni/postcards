@@ -1,6 +1,7 @@
 //! Render one of the web app's presets through the same code path the WASM
-//! build exposes, against a cached Overpass reply. This is the page's smoke
-//! test without a browser.
+//! build exposes: its vector tiles through terramask's fetcher (cached), and
+//! for `osm_select`, a cached Overpass reply. This is the page's smoke test
+//! without a browser.
 //!
 //! `cargo run --release --example wasm_render -- <preset-id> [cache.json] [out.svg]`
 //! `preset-id` is one of `full`, `parks`, `buildings` (see web/src/lib/presets.js).
@@ -10,6 +11,7 @@ use postcards_core::grammar::Grammar;
 use postcards_core::grammar_run::{run, Inputs};
 use postcards_core::osm::features_from_overpass;
 use postcards_core::profile::Format;
+use postcards_core::tiles;
 use std::collections::BTreeMap;
 
 fn main() {
@@ -25,13 +27,27 @@ fn main() {
     let card = Card::new(&grammar.card, (-122.256196, 37.8771145));
     let keys = grammar.osm_keys();
     let keys: Vec<&str> = keys.iter().map(String::as_str).collect();
-    let json = std::fs::read_to_string(&cache).expect("cache file");
-    let features = features_from_overpass(&json, &card.query_polygon(), &keys).expect("features");
-    println!("{want}: {} features, keys {:?}", features.len(), keys);
+    let features = if keys.is_empty() {
+        Vec::new()
+    } else {
+        let json = std::fs::read_to_string(&cache).expect("cache file");
+        features_from_overpass(&json, &card.query_polygon(), &keys).expect("features")
+    };
+    let (tile_features, ocean) = match tiles::plan(&card, &grammar.tile_selectors(), grammar.draws_ocean(), (!keys.is_empty()).then_some(&features[..])).expect("tile plan") {
+        Some(mut t) => {
+            let found = terramask::Fetcher::with_source(tiles::TILES)
+                .water(t.bounds(), t.zoom(terramask::MAX_ZOOM), t.filter(), |_, _| {})
+                .expect("vector tiles");
+            t.add_features(found);
+            (t.features(), t.ocean())
+        }
+        None => (Vec::new(), None),
+    };
+    println!("{want}: {} OSM features, keys {:?} · {} tile features", features.len(), keys, tile_features.len());
 
     let sources = BTreeMap::new();
     let t0 = std::time::Instant::now();
-    let result = run(&grammar, &card, Inputs { features, ocean: None, sources: &sources }).expect("render");
+    let result = run(&grammar, &card, Inputs { features, tiles: tile_features, ocean, sources: &sources }).expect("render");
     let ms = t0.elapsed().as_millis();
     for (id, n) in &result.groups {
         println!("  {id}: {n} strokes");
@@ -46,7 +62,7 @@ fn preset(js: &str, want: &str) -> Option<String> {
         "full" => "FULL_DOC",
         "parks" => "DEFAULT_DOC",
         "buildings" => "SMALL_DOC",
-        other => return preset(js, other),
+        _ => return None,
     };
     let at = js.find(&format!("export const {marker} = `"))?;
     let after = &js[at + format!("export const {marker} = `").len()..];

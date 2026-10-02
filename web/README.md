@@ -21,13 +21,21 @@ want it and press "generate card".
 ## How it works
 
 - `crates/postcards-wasm` is the engine: `cardInfo`, `osmRequest` /
-  `osmPick` / `osmEvict`, `overpassPolicy`, `oceanSource`, a `Job` (read the Overpass reply, add the
-  ocean tiles, draw) and a `Board` that lays out the progress. No filesystem,
-  no network on that side.
-- `src/lib/draw.worker.js` runs a draw off the page's thread: the download,
-  then the engine. Its progress events go through the engine's `Board`, the
+  `osmPick` / `osmEvict`, `overpassPolicy`, `tileSource`, a `Job` (read the
+  Overpass reply when `needsOsm`, add the `tiles` it asks for, `readTiles`,
+  draw) and a `Board` that lays out the progress. No filesystem, no network on
+  that side.
+- `src/lib/draw.worker.js` runs a draw off the page's thread: the download
+  (Overpass only for a card with `osm_select`, then the vector tiles), then
+  the engine. Its progress events go through the engine's `Board`, the
   same one that lays out the terminal for `postcards-rs map`, and
   `LoadCard.jsx` paints its lines.
+- `src/lib/tiles.js` fetches the vector tiles the card needs (OpenFreeMap,
+  read by terramask inside the engine): what `tiles_select` picks and the sea.
+  A card is a handful of zoom-14 tiles; their URLs carry the build they come
+  from and are cached by the browser for years, so a second draw nearby needs
+  no network. The presets read everything from tiles; "Everything · Overpass"
+  is the same card from Overpass, to compare.
 - `src/lib/overpass.js` fetches the reply with the CLI's policy (servers,
   rounds, pauses, timeouts come from the engine). A browser cannot set
   `User-Agent` the way the CLI does, so the public mirrors sometimes answer a
@@ -37,8 +45,6 @@ want it and press "generate card".
   download asks for a quarter more ground on every side, so moving the card a
   little or zooming in does not download again. The rules are the engine's
   (`postcards_core::osm_cache`), the same the CLI follows in `cache/overpass/`.
-- `src/lib/ocean.js` fetches the vector tiles with the sea when the card shows
-  a coast (OpenFreeMap, read by terramask inside the engine), as the CLI does.
 - `src/components/MapView.jsx` puts the two together: the card rectangle is
   centred on the map, `width × height` at `1:N`, and the SVG is stretched to
   fill exactly that rectangle.

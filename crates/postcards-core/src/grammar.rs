@@ -30,7 +30,8 @@
 //!
 //! - `$section.name` — yours, defined in this file. The section gives the type.
 //! - `tools_*` — kit operations (this module).
-//! - `osm_*` / `engine_*` — sources: OSM selections, the card, the ocean.
+//! - `osm_*` / `tiles_*` / `engine_*` — sources: OSM selections (Overpass),
+//!   vector tile selections, the card, the ocean.
 //! - `module_*` / `primitives_*` — canned recipes. `module_*` is compiled code
 //!   (roads); `primitives_*` expands into `tools_*` and is defined here.
 //!
@@ -123,6 +124,22 @@ pub struct Id(pub String);
 /// A tag filter, as `osm_select: { building: true, highway: [primary] }`.
 pub type Select = Vec<(String, TagMatch)>;
 
+/// A vector tile selection, as `tiles_select: [buildings, landcover:park]`:
+/// terramask presets and `layer:class` rules, a class or a subclass by name.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TileSelect {
+    /// As written.
+    pub items: Vec<String>,
+    pub filter: terramask::Filter,
+}
+
+/// A compiled module, reading `from` when given, else every OSM feature.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Module {
+    pub name: String,
+    pub from: Option<Name>,
+}
+
 /// Buffer a shape by a distance, positive or negative.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Grow {
@@ -183,6 +200,7 @@ pub struct Fill {
 pub enum Op {
     // ---- feature sets ----------------------------------------------------
     Select(Selector),
+    TileSelect(TileSelect),
 
     // ---- areas -----------------------------------------------------------
     Polygons(Name),
@@ -209,10 +227,8 @@ pub enum Op {
     Fill(Fill),
 
     // ---- compiled modules (roads) ----------------------------------------
-    /// Recognised and validated, but not yet wired into the render: the module
-    /// publishes named outputs (`roads.area`, `roads.outlines`, …) that v3 has
-    /// no way to reference. Until they exist, this is a placeholder.
-    Module(String),
+    /// Publishes named outputs (`roads.area`, `roads.outlines`, …).
+    Module(Module),
 }
 
 impl Clip {
@@ -225,7 +241,7 @@ impl Op {
     /// What a def holding this operation defines.
     pub fn section(&self) -> Section {
         match self {
-            Op::Select(_) => Section::Features,
+            Op::Select(_) | Op::TileSelect(_) => Section::Features,
             Op::Polygons(_)
             | Op::Union(_)
             | Op::Difference(_)
@@ -246,7 +262,8 @@ impl Op {
     /// The names this operation reads.
     pub fn refs(&self) -> Vec<Name> {
         match self {
-            Op::Select(_) | Op::Card | Op::Ocean | Op::Module(_) => vec![],
+            Op::Select(_) | Op::TileSelect(_) | Op::Card | Op::Ocean => vec![],
+            Op::Module(m) => m.from.iter().cloned().collect(),
             Op::Polygons(n) | Op::FillHoles(n) | Op::Dedupe(n) | Op::Merge(n) | Op::Lines(n) | Op::Segments(n) => {
                 vec![n.clone()]
             }
@@ -387,7 +404,7 @@ impl Grammar {
 
     /// The def holding `module_<module>`, if the profile calls one.
     pub fn module(&self, module: &str) -> Option<&Def> {
-        self.all_defs().find(|d| matches!(&d.op, Op::Module(m) if m == module))
+        self.all_defs().find(|d| matches!(&d.op, Op::Module(m) if m.name == module))
     }
 
     /// The SVG group each draw entry writes.
@@ -398,7 +415,9 @@ impl Grammar {
     /// Every OSM key the profile can select on: what Overpass must fetch.
     ///
     /// Modules read tags the profile never names (`module_roads` needs
-    /// `highway`), so they contribute their keys too.
+    /// `highway`), so they contribute their keys too, unless they read a
+    /// feature set of their own (`from`). Empty: the profile needs no
+    /// Overpass at all.
     pub fn osm_keys(&self) -> Vec<String> {
         let mut keys: Vec<String> = Vec::new();
         fn add(keys: &mut Vec<String>, k: &str) {
@@ -410,13 +429,29 @@ impl Grammar {
         for def in defs {
             match &def.op {
                 Op::Select(sel) => sel.keys().for_each(|k| add(&mut keys, k)),
-                Op::Module(m) => {
-                    crate::modules::osm_keys(&format!("{m}/v1")).iter().for_each(|k| add(&mut keys, k))
+                Op::Module(Module { name, from: None }) => {
+                    crate::modules::osm_keys(&format!("{name}/v1")).iter().for_each(|k| add(&mut keys, k))
                 }
                 _ => {}
             }
         }
         keys
+    }
+
+    /// Every `tiles_select` item: what to read from the vector tiles.
+    pub fn tile_selectors(&self) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        for def in self.all_defs() {
+            if let Op::TileSelect(t) = &def.op {
+                out.extend(t.items.iter().filter(|i| !out.contains(i)).cloned().collect::<Vec<_>>());
+            }
+        }
+        out
+    }
+
+    /// Whether the profile draws the sea (`engine_ocean`).
+    pub fn draws_ocean(&self) -> bool {
+        self.all_defs().any(|d| matches!(d.op, Op::Ocean))
     }
 
     /// SVG files named by a fill `source`, for the host to read.
@@ -735,7 +770,7 @@ pub struct Output {
 fn parse_op(raw: RawOp, section: Section) -> Result<Op, GrammarError> {
     let (key, value) = only_op(raw).map_err(GrammarError::Invalid)?;
     let target = match key.as_str() {
-        "osm_select" => Section::Features,
+        "osm_select" | "tiles_select" => Section::Features,
         "tools_polygons" | "tools_union" | "tools_difference" | "tools_intersect" | "tools_fill_holes"
         | "tools_grow" | "engine_card" | "engine_ocean" => Section::Areas,
         "tools_rings" | "tools_lines" | "tools_segments" | "tools_dedupe" | "tools_merge" | "tools_join"
@@ -743,7 +778,20 @@ fn parse_op(raw: RawOp, section: Section) -> Result<Op, GrammarError> {
         "tools_fill" => Section::Fills,
         other => {
             if let Some(rest) = other.strip_prefix("module_") {
-                return Ok(Op::Module(rest.to_string()));
+                #[derive(Deserialize)]
+                #[serde(deny_unknown_fields)]
+                struct Raw {
+                    #[serde(default)]
+                    from: Option<String>,
+                }
+                let raw: Raw = json(&value, &key)?;
+                let from = raw.from.as_deref().map(refname).transpose()?;
+                if let Some(f) = &from {
+                    if f.section != Section::Features {
+                        return Err(GrammarError::Invalid(format!("{key}.from is {f}, but it must be a $features set")));
+                    }
+                }
+                return Ok(Op::Module(Module { name: rest.to_string(), from }));
             }
             if let Some(rest) = other.strip_prefix("primitives_") {
                 return Err(GrammarError::Invalid(format!(
@@ -761,6 +809,7 @@ fn parse_op(raw: RawOp, section: Section) -> Result<Op, GrammarError> {
     let _ = target;
     let op = match key.as_str() {
         "osm_select" => Op::Select(parse_selector(&value)?),
+        "tiles_select" => Op::TileSelect(parse_tile_select(&value)?),
         "engine_card" => Op::Card,
         "engine_ocean" => Op::Ocean,
         "tools_polygons" => Op::Polygons(name_ref(&value, "tools_polygons")?),
@@ -981,6 +1030,20 @@ impl OneOrMany {
             OneOrMany::Many(v) => v,
         }
     }
+}
+
+fn parse_tile_select(value: &Value) -> Result<TileSelect, GrammarError> {
+    let items: Vec<String> = json::<OneOrMany>(value, "tiles_select")?
+        .into_vec()
+        .iter()
+        .flat_map(|s| s.split(|c: char| c.is_whitespace()).map(str::to_string).collect::<Vec<_>>())
+        .filter(|s| !s.is_empty())
+        .collect();
+    if items.is_empty() {
+        return Err(GrammarError::Invalid("tiles_select needs a preset or a layer:class rule".into()));
+    }
+    let filter = terramask::Filter::parse(&items).map_err(|e| GrammarError::Invalid(format!("tiles_select: {e}")))?;
+    Ok(TileSelect { items, filter })
 }
 
 fn parse_selector(value: &Value) -> Result<Selector, GrammarError> {
@@ -1273,11 +1336,27 @@ compose:
         // have no syntax yet.
         let module = "$lines:\n  roads: { module_roads: {} }\n";
         let g = parse(module).unwrap();
-        assert_eq!(g.defs(Section::Lines)[0].op, Op::Module("roads".into()));
+        assert_eq!(g.defs(Section::Lines)[0].op, Op::Module(Module { name: "roads".into(), from: None }));
         let block = "$expressions:\n  dense: { when: { area_m2: { \"<\": 50 } }, then: 0.3mm, else: 0.5mm }\n";
         assert!(matches!(parse(block), Err(GrammarError::Invalid(m)) if m.contains("v4")));
         let bad_ref = "$areas:\n  a: { tools_union: [~dense] }\n";
         assert!(matches!(parse(bad_ref), Err(GrammarError::Invalid(m)) if m.contains("v4")));
+    }
+
+    #[test]
+    fn tile_selections_and_modules_reading_them() {
+        let text = "$features:\n  bldg: { tiles_select: buildings }\n  ways: { tiles_select: [roads, \"paths\"] }\n\
+                    $areas:\n  roads: { module_roads: { from: $features.ways } }\n  sea: { engine_ocean: {} }\n";
+        let g = parse(text).unwrap();
+        assert_eq!(g.tile_selectors(), ["buildings", "roads", "paths"]);
+        assert!(g.osm_keys().is_empty(), "nothing reads Overpass");
+        assert!(g.draws_ocean());
+        assert_eq!(g.find(&Name::parse("$areas.roads").unwrap()).unwrap().op.refs(), [Name::parse("$features.ways").unwrap()]);
+        let osm = parse("$areas:\n  roads: { module_roads: {} }\n").unwrap();
+        assert!(osm.osm_keys().contains(&"highway".to_string()) && osm.tile_selectors().is_empty());
+        assert!(matches!(parse("$features:\n  a: { tiles_select: forrest }\n"), Err(GrammarError::Invalid(m)) if m.contains("preset")));
+        assert!(parse("$areas:\n  r: { module_roads: { from: $areas.r } }\n").is_err());
+        assert!(parse("$areas:\n  r: { module_roads: { form: $features.x } }\n").is_err());
     }
 
     #[test]
