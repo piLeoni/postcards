@@ -1054,6 +1054,7 @@ dependencies = [
  "js-sys",
  "penfill",
  "postcards-core",
+ "serde_json",
  "terramask",
  "wasm-bindgen",
 ]

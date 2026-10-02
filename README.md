@@ -28,7 +28,7 @@ cargo run --release -p postcards-cli -- map --lat 37.8771 --lng -122.2562 --prof
 | `--profile` | Profile file, YAML or JSON5 (default `configs/postcard.yaml`) |
 | `--address` / `--lat --lng` | Where; overrides the profile's `map` block |
 | `-o` | Output SVG (default `map.svg`) |
-| `--cache` | Overpass / Nominatim response cache (default `cache/`, osmnx-compatible) |
+| `--cache` | Overpass / Nominatim response cache (default `cache/`; Overpass replies in `cache/overpass/`, reused by any card they cover) |
 | `--offline` | Use cached responses only |
 
 ## Profiles

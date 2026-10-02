@@ -12,8 +12,10 @@
 //! pastes what it has.
 
 use postcards_core::card::{
-    overpass_query, Card, OVERPASS_ENDPOINTS, OVERPASS_ENDPOINT_TIMEOUT_S, OVERPASS_ROUND_PAUSE_S,
+    overpass_error, overpass_slot_wait_s, overpass_status_url, Card, OVERPASS_ENDPOINTS, OVERPASS_ENDPOINT_TIMEOUT_S,
+    OVERPASS_MAX_SLOT_WAIT_S, OVERPASS_ROUND_PAUSE_S,
 };
+use postcards_core::osm_cache;
 use geo::MultiPolygon;
 use postcards_core::grammar::Grammar;
 use postcards_core::ocean::{Ocean, TILES};
@@ -24,9 +26,6 @@ use postcards_core::progress::{thousands, Event, Level, Progress, Task};
 use std::collections::BTreeMap;
 use terramask::TileId;
 use wasm_bindgen::prelude::*;
-
-/// Overpass server timeout, matching the CLI.
-const TIMEOUT_S: u32 = 180;
 
 /// A rendered card: the SVG, plus how many strokes each group drew.
 #[wasm_bindgen]
@@ -50,12 +49,15 @@ impl Rendered {
     }
 }
 
-/// The Overpass query for this document and centre, ready to POST.
+/// What this document and centre need from Overpass, as JSON: `{ need,
+/// fetch, query }` (see `postcards_core::osm_cache::Request`). `need` is the
+/// card's ground and keys, which a stored reply must cover; `fetch` the
+/// padded ground `query` asks for, to store the reply under.
 ///
 /// The centre comes from the document unless `lat`/`lng` override it, the same
 /// way `postcards-rs map --lat --lng` does.
-#[wasm_bindgen(js_name = overpassQuery)]
-pub fn overpass_query_js(doc: &str, lat: Option<f64>, lng: Option<f64>) -> Result<String, JsValue> {
+#[wasm_bindgen(js_name = osmRequest)]
+pub fn osm_request(doc: &str, lat: Option<f64>, lng: Option<f64>) -> Result<String, JsValue> {
     let mut d = Doc::load(doc)?;
     if let Some(v) = lat {
         d.card.center.1 = v;
@@ -63,8 +65,24 @@ pub fn overpass_query_js(doc: &str, lat: Option<f64>, lng: Option<f64>) -> Resul
     if let Some(v) = lng {
         d.card.center.0 = v;
     }
-    let keys: Vec<&str> = d.keys.iter().map(String::as_str).collect();
-    Ok(overpass_query(&d.card.query_polygon(), &keys, TIMEOUT_S))
+    serde_json::to_string(&osm_cache::request(&d.card, &d.keys)).map_err(err)
+}
+
+/// Which of the stored replies (`[{ bbox, keys, fetched, bytes }]`, JSON)
+/// serves `need` (JSON), or -1: the same choice the command line makes.
+/// `now` is Unix seconds.
+#[wasm_bindgen(js_name = osmPick)]
+pub fn osm_pick(entries: &str, need: &str, now: f64) -> Result<i32, JsValue> {
+    let entries: Vec<osm_cache::Entry> = serde_json::from_str(entries).map_err(err)?;
+    let need: osm_cache::Extent = serde_json::from_str(need).map_err(err)?;
+    Ok(osm_cache::pick(&entries, &need, now as u64, Some(osm_cache::MAX_AGE_S)).map_or(-1, |i| i as i32))
+}
+
+/// Which stored replies to delete to stay within the browser's budget.
+#[wasm_bindgen(js_name = osmEvict)]
+pub fn osm_evict(entries: &str, now: f64) -> Result<Vec<u32>, JsValue> {
+    let entries: Vec<osm_cache::Entry> = serde_json::from_str(entries).map_err(err)?;
+    Ok(osm_cache::evict(&entries, osm_cache::BROWSER_BUDGET, now as u64).into_iter().map(|i| i as u32).collect())
 }
 
 /// The card's centre and size, so the page can place the rectangle on the map.
@@ -88,8 +106,9 @@ pub fn card_info(doc: &str) -> Result<JsValue, JsValue> {
 }
 
 /// How to ask Overpass, the same as the command line: `{ endpoints, pauses,
-/// timeoutS }`, the servers in order, the seconds to wait before each round
-/// of them, and how long to wait for one to answer.
+/// timeoutS, maxSlotWaitS }`, the servers in order, the seconds to wait
+/// before each round of them, how long to wait for one to answer, and the
+/// longest wait for a free slot after a 429 worth sitting through.
 #[wasm_bindgen(js_name = overpassPolicy)]
 pub fn overpass_policy() -> JsValue {
     let o = js_sys::Object::new();
@@ -98,7 +117,26 @@ pub fn overpass_policy() -> JsValue {
     js_sys::Reflect::set(&o, &"endpoints".into(), &endpoints).ok();
     js_sys::Reflect::set(&o, &"pauses".into(), &pauses).ok();
     js_sys::Reflect::set(&o, &"timeoutS".into(), &JsValue::from_f64(OVERPASS_ENDPOINT_TIMEOUT_S as f64)).ok();
+    js_sys::Reflect::set(&o, &"maxSlotWaitS".into(), &JsValue::from_f64(OVERPASS_MAX_SLOT_WAIT_S as f64)).ok();
     o.into()
+}
+
+/// The status page next to an Overpass `interpreter` URL.
+#[wasm_bindgen(js_name = overpassStatusUrl)]
+pub fn overpass_status_url_js(interpreter: &str) -> String {
+    overpass_status_url(interpreter)
+}
+
+/// Seconds until a slot is free, from a status page; -1 when it does not say.
+#[wasm_bindgen(js_name = overpassSlotWait)]
+pub fn overpass_slot_wait_js(status: &str) -> f64 {
+    overpass_slot_wait_s(status).map_or(-1.0, |s| s as f64)
+}
+
+/// The error inside a 200 reply cut short by Overpass, or `undefined`.
+#[wasm_bindgen(js_name = overpassError)]
+pub fn overpass_error_js(json: &str) -> Option<String> {
+    overpass_error(json)
 }
 
 /// The TileJSON of the vector tiles the sea comes from, the same the command

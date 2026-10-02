@@ -20,8 +20,8 @@ want it and press "generate card".
 
 ## How it works
 
-- `crates/postcards-wasm` is the engine: `cardInfo`, `overpassQuery`,
-  `overpassPolicy`, `oceanSource`, a `Job` (read the Overpass reply, add the
+- `crates/postcards-wasm` is the engine: `cardInfo`, `osmRequest` /
+  `osmPick` / `osmEvict`, `overpassPolicy`, `oceanSource`, a `Job` (read the Overpass reply, add the
   ocean tiles, draw) and a `Board` that lays out the progress. No filesystem,
   no network on that side.
 - `src/lib/draw.worker.js` runs a draw off the page's thread: the download,
@@ -32,7 +32,11 @@ want it and press "generate card".
   rounds, pauses, timeouts come from the engine). A browser cannot set
   `User-Agent` the way the CLI does, so the public mirrors sometimes answer a
   page with a 504. `VITE_OVERPASS_URL` points the app at a proxy of your own
-  instead.
+  instead. Replies are kept in the browser's Cache Storage (up to 200 MB, 30
+  days) and a card is drawn from any stored reply that covers it: each
+  download asks for a quarter more ground on every side, so moving the card a
+  little or zooming in does not download again. The rules are the engine's
+  (`postcards_core::osm_cache`), the same the CLI follows in `cache/overpass/`.
 - `src/lib/ocean.js` fetches the vector tiles with the sea when the card shows
   a coast (OpenFreeMap, read by terramask inside the engine), as the CLI does.
 - `src/components/MapView.jsx` puts the two together: the card rectangle is
@@ -42,7 +46,5 @@ want it and press "generate card".
   format the CLI reads, so anything you write there works in `postcards-rs map`
   too. `cargo run --example check_web_presets` parses each one, so a preset that
   stops parsing fails there rather than in a browser.
-
-## Not done yet
-
-- No SVG export yet: "download" saves the document, the CLI writes the drawing.
+- "load" and "save" in the sidebar read and write the config; "download"
+  under a drawn card saves the drawing as an SVG.

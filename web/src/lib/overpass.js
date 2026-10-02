@@ -5,25 +5,66 @@
  * rounds counts down on `download` itself, and a failed try is logged with
  * what happens next.
  *
+ * Replies are kept in the browser's Cache Storage, across reloads. Which one
+ * serves a card, and which are deleted to stay in budget, the engine decides
+ * (`osmPick`, `osmEvict`): the same rules the command line follows on disk.
+ *
  * Runs in the draw worker. `VITE_OVERPASS_URL` (comma separated) replaces the
  * servers, as `POSTCARDS_OVERPASS` does for the command line.
  */
 
 const FROM_ENV = import.meta.env.VITE_OVERPASS_URL || ''
 
-/** Replies already downloaded this session, by query: the page's cache. */
-const cache = new Map()
-
 /**
- * The Overpass JSON for `query`. `policy` is `overpassPolicy()` from the
- * engine; `download` the task the tries are rows of.
+ * The Overpass JSON for `req` (`osmRequest()` from the engine): a stored
+ * reply that covers the card, or a download of `req.query`. `policy` is
+ * `overpassPolicy()`; `download` the task the tries are rows of.
  */
-export async function fetchOverpass(query, signal, download, policy) {
-  const hit = cache.get(query)
-  if (hit) {
-    download.child('osm-cache', 'OSM from cache').ok(`${mbBare(hit.length)} MB`)
-    download.log('info', 'cached reply, downloaded earlier in this session')
-    return hit
+export async function fetchOverpass(engine, req, signal, download, policy) {
+  const store = await openStore()
+  const stored = await store.list()
+  const now = Math.floor(Date.now() / 1000)
+  const metas = JSON.stringify(stored.map((s) => s.meta))
+  const i = engine.osmPick(metas, JSON.stringify(req.need), now)
+  if (i >= 0) {
+    const hit = await store.read(stored[i].key)
+    if (hit) {
+      download.child('osm-cache', 'OSM from cache').ok(`${mbBare(hit.length)} MB · ${ageWords(now - stored[i].meta.fetched)}`)
+      return hit
+    }
+  }
+  const text = await download_(engine, req.query, signal, download, policy)
+  const meta = { ...req.fetch, fetched: now, bytes: text.length }
+  const key = await store.write(meta, text)
+  const all = [...stored.filter((s) => !sameGround(s.meta, meta)), { key, meta }]
+  for (const j of engine.osmEvict(JSON.stringify(all.map((s) => s.meta)), now)) await store.remove(all[j].key)
+  return text
+}
+
+/** Tries every server in rounds until one answers. */
+async function download_(engine, query, signal, download, policy) {
+  const once = async (url, row) => {
+    const text = await attempt(url, query, signal, row, download, policy.timeoutS)
+    // Out of time or memory, Overpass still answers 200, cut short.
+    const cut = engine.overpassError(text)
+    if (cut) throw new Error(`cut short: ${cut}`)
+    return text
+  }
+  // Out of slots: the server says when one frees up; sit it out once if
+  // that is soon, rather than spend the next server.
+  const tryServer = async (url, row) => {
+    try {
+      return await once(url, row)
+    } catch (e) {
+      if (signal.aborted || !/^429/.test(e?.message ?? '')) throw e
+      const wait = await slotWait(engine, url, signal)
+      if (wait < 0 || wait > policy.maxSlotWaitS) throw e
+      for (let left = wait; left > 0; left--) {
+        row.note(`429 · a slot frees in ${left} s`)
+        await sleep(1000, signal)
+      }
+      return await once(url, row)
+    }
   }
   const endpoints = FROM_ENV ? FROM_ENV.split(',').map((s) => s.trim()) : policy.endpoints
   const pauses = policy.pauses
@@ -37,9 +78,8 @@ export async function fetchOverpass(query, signal, download, policy) {
       const url = endpoints[i]
       const row = download.child(`try-${round}-${i}`, `OSM from ${host(url)}`, 0, 'bytes')
       try {
-        const text = await attempt(url, query, signal, row, download, policy.timeoutS)
+        const text = await tryServer(url, row)
         row.ok()
-        cache.set(query, text)
         return text
       } catch (e) {
         // The draw was cancelled: stop, do not try the next server.
@@ -120,6 +160,17 @@ async function attempt(url, query, signal, row, download, timeoutS) {
   }
 }
 
+/** Seconds until `url` has a free slot for this page, from its status page; -1 when unknown. */
+async function slotWait(engine, url, signal) {
+  try {
+    const r = await fetch(engine.overpassStatusUrl(url), { signal })
+    return r.ok ? engine.overpassSlotWait(await r.text()) : -1
+  } catch (e) {
+    if (signal.aborted) throw e
+    return -1
+  }
+}
+
 /** A failed status in a few words, as the command line words it. */
 function statusWords(code) {
   return (
@@ -153,6 +204,64 @@ function concat(chunks, length) {
 }
 
 const mbBare = (bytes) => (bytes / 1e6).toFixed(1)
+
+/** "fetched 3 days ago", as the command line words it. */
+function ageWords(s) {
+  if (s < 120) return 'fetched just now'
+  if (s < 7200) return `fetched ${Math.floor(s / 60)} min ago`
+  if (s < 2 * 86400) return `fetched ${Math.floor(s / 3600)} h ago`
+  return `fetched ${Math.floor(s / 86400)} days ago`
+}
+
+const CACHE_NAME = 'postcards-overpass-v1'
+const ORIGIN = 'https://postcards.invalid/overpass/'
+
+/**
+ * Where replies are kept: Cache Storage, each under a made-up URL that
+ * carries its meta (`{ bbox, keys, fetched, bytes }`), so listing them needs
+ * no reads. Without Cache Storage (a page served over plain http) a Map, for
+ * this session only.
+ */
+async function openStore() {
+  const keyOf = (meta) => `${ORIGIN}${meta.bbox.map((v) => v.toFixed(4)).join('_')}?m=${encodeURIComponent(JSON.stringify(meta))}`
+  const metaOf = (url) => {
+    try {
+      return JSON.parse(new URL(url).searchParams.get('m'))
+    } catch {
+      return null
+    }
+  }
+  if (typeof caches === 'undefined') return memoryStore(keyOf, metaOf)
+  const cache = await caches.open(CACHE_NAME)
+  return {
+    list: async () => (await cache.keys()).map((r) => ({ key: r.url, meta: metaOf(r.url) })).filter((s) => s.meta),
+    read: async (key) => (await cache.match(key))?.text() ?? null,
+    write: async (meta, text) => {
+      const key = keyOf(meta)
+      // A reply for the same ground replaces the old one.
+      for (const r of await cache.keys()) if (sameGround(metaOf(r.url), meta) && r.url !== key) await cache.delete(r)
+      await cache.put(key, new Response(text, { headers: { 'Content-Type': 'application/json' } }))
+      return key
+    },
+    remove: (key) => cache.delete(key),
+  }
+}
+
+const sameGround = (a, b) => !!a && a.bbox.join() === b.bbox.join() && a.keys.join() === b.keys.join()
+
+const memory = new Map()
+function memoryStore(keyOf, metaOf) {
+  return {
+    list: async () => [...memory.keys()].map((key) => ({ key, meta: metaOf(key) })),
+    read: async (key) => memory.get(key) ?? null,
+    write: async (meta, text) => {
+      const key = keyOf(meta)
+      memory.set(key, text)
+      return key
+    },
+    remove: async (key) => memory.delete(key),
+  }
+}
 
 function host(url) {
   try {

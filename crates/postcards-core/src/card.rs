@@ -82,8 +82,7 @@ pub const OSM_TAGS: &[&str] =
 
 /// Keys to ask Overpass for: the standard set, then whatever else the profile
 /// selects on. Asking for the standard set even when a profile needs less
-/// keeps one cached response per card, shared by every profile and by the
-/// Python pipeline.
+/// keeps one cached reply per place, shared by every profile.
 pub fn fetch_keys(needed: &[String]) -> Vec<String> {
     let mut keys: Vec<String> = OSM_TAGS.iter().map(|k| k.to_string()).collect();
     for k in needed {
@@ -94,8 +93,7 @@ pub fn fetch_keys(needed: &[String]) -> Vec<String> {
     keys
 }
 
-/// Overpass servers, tried in order. The first is the one osmnx uses, and the
-/// one the CLI's cache keys are made from whichever server answered. `z.`
+/// Overpass servers, tried in order. `z.`
 /// and `lz4.` are overpass-api.de's own machines by name: when the main
 /// address answers 504 one of them often still has a free slot. (The kumi
 /// and private.coffee mirrors took connections and never answered.)
@@ -107,16 +105,58 @@ pub const OVERPASS_ENDPOINTS: &[&str] = &[
 ];
 
 /// Seconds to wait before each round of tries over every endpoint. A busy
-/// server's 504 usually clears within seconds, so a failed round is worth
-/// repeating a few times before giving up.
-pub const OVERPASS_ROUND_PAUSE_S: &[u64] = &[0, 5, 15];
+/// server's 504 often clears within a minute, so a failed round is worth
+/// repeating a few times, further apart each time, before giving up.
+pub const OVERPASS_ROUND_PAUSE_S: &[u64] = &[0, 10, 30, 60];
+
+/// Longest wait for a free slot after a 429 that is worth sitting through;
+/// beyond it the next server is tried instead.
+pub const OVERPASS_MAX_SLOT_WAIT_S: u64 = 120;
+
+/// The server's status page next to its `interpreter`: it says how many
+/// query slots this address has free, or when the next one frees up.
+pub fn overpass_status_url(interpreter: &str) -> String {
+    match interpreter.strip_suffix("interpreter") {
+        Some(base) => format!("{base}status"),
+        None => format!("{}/status", interpreter.trim_end_matches('/')),
+    }
+}
+
+/// Seconds until a query slot is free, from a status page: 0 when one is
+/// free now, `None` when the page says neither.
+pub fn overpass_slot_wait_s(status: &str) -> Option<u64> {
+    if status.lines().any(|l| l.trim_end().ends_with("slots available now.") && !l.starts_with("0 ")) {
+        return Some(0);
+    }
+    status
+        .lines()
+        .filter_map(|l| l.split(", in ").nth(1)?.strip_suffix(" seconds.")?.trim().parse::<u64>().ok())
+        .min()
+}
+
+/// The error Overpass reports inside a 200 reply, when a query ran out of
+/// time or memory and the elements are cut short: its `remark`, if it says
+/// "error". Read from the end, where Overpass writes it.
+pub fn overpass_error(json: &str) -> Option<String> {
+    let mut start = json.len().saturating_sub(2000);
+    while !json.is_char_boundary(start) {
+        start += 1;
+    }
+    let tail = &json[start..];
+    let at = tail.rfind("\"remark\"")?;
+    let rest = tail[at + 8..].trim_start().strip_prefix(':')?.trim_start().strip_prefix('"')?;
+    let text = rest.split('"').next()?.trim();
+    text.contains("error").then(|| text.to_string())
+}
 
 /// Give up on one endpoint after this long, so a hanging server cannot stall
 /// a draw.
 pub const OVERPASS_ENDPOINT_TIMEOUT_S: u64 = 60;
 
 /// The Overpass QL osmnx sends for `features_from_polygon(polygon, tags)`
-/// with every tag set to `True` — same text, so responses are interchangeable.
+/// with every tag set to `True`. Drawing asks for a padded box instead
+/// (`osm_cache::request`); this one finds the replies osmnx cached, for the
+/// parity examples.
 pub fn overpass_query(polygon: &Polygon<f64>, tags: &[&str], timeout_s: u32) -> String {
     let coords: Vec<String> =
         polygon.exterior().coords().map(|c| format!("{:.6} {:.6}", c.y, c.x)).collect();
@@ -156,6 +196,25 @@ mod tests {
              37.790971 -122.402126 37.790971 -122.384823 37.800125 -122.384822');(._;>;););"
         ));
         assert!(q.ends_with(");out;"));
+    }
+
+    #[test]
+    fn status_pages_and_remarks() {
+        let busy = "Connected as: 1\nRate limit: 2\n0 slots available now.\n\
+                    Slot available after: 2026-10-02T08:32:01Z, in 36 seconds.\n\
+                    Slot available after: 2026-10-02T08:32:20Z, in 55 seconds.\n";
+        let free = "Rate limit: 4\n3 slots available now.\nSlot available after: 2026-10-02T08:33:06Z, in 26 seconds.\n";
+        assert_eq!(overpass_slot_wait_s(busy), Some(36));
+        assert_eq!(overpass_slot_wait_s(free), Some(0));
+        assert_eq!(overpass_slot_wait_s("<html>406</html>"), None);
+        assert_eq!(
+            overpass_status_url("https://overpass-api.de/api/interpreter"),
+            "https://overpass-api.de/api/status"
+        );
+        let cut = r#"{"elements":[{"type":"node","id":1,"lat":0,"lon":0}],
+"remark": "runtime error: Query timed out in \"query\" at line 1 after 61 seconds." }"#;
+        assert!(overpass_error(cut).unwrap().starts_with("runtime error: Query timed out"));
+        assert_eq!(overpass_error(r#"{"elements":[]}"#), None);
     }
 
     #[test]

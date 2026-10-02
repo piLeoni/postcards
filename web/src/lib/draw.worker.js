@@ -27,8 +27,8 @@ async function run({ token, doc, lat, lng }) {
     const engine = await loadPostcards()
     const download = Task.begin(emit, 'download', null, 'download')
     download.log('info', `centre ${lat.toFixed(7)}, ${lng.toFixed(7)}`)
-    const query = engine.overpassQuery(doc, lat, lng)
-    const json = await fetchOverpass(query, ac.signal, download, engine.overpassPolicy())
+    const req = JSON.parse(engine.osmRequest(doc, lat, lng))
+    const json = await fetchOverpass(engine, req, ac.signal, download, engine.overpassPolicy())
     if (ac.signal.aborted) return
 
     const job = new engine.Job(doc, lat, lng)

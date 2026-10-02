@@ -1,18 +1,23 @@
-//! Overpass and Nominatim over HTTP, cached on disk the way osmnx caches:
-//! `<cache>/<sha1 of the equivalent GET url>.json`. The Python pipeline and
-//! this one share the same cache folder and hit it for the same card.
+//! Overpass and Nominatim over HTTP, cached on disk.
+//!
+//! Overpass replies go in `<cache>/overpass/`, one `<name>.json` each with a
+//! `<name>.meta.json` saying what ground and keys it covers; which one a card
+//! uses, and which are deleted, follows `postcards_core::osm_cache`, as in
+//! the browser, with a bigger budget. Nominatim lookups are
+//! `<cache>/<sha1 of the GET url>.json`.
 
-use postcards_core::card::{OVERPASS_ENDPOINTS, OVERPASS_ENDPOINT_TIMEOUT_S, OVERPASS_ROUND_PAUSE_S};
+use postcards_core::card::{
+    overpass_error, overpass_slot_wait_s, overpass_status_url, Card, OVERPASS_ENDPOINTS, OVERPASS_ENDPOINT_TIMEOUT_S,
+    OVERPASS_MAX_SLOT_WAIT_S, OVERPASS_ROUND_PAUSE_S,
+};
+use postcards_core::osm_cache::{self, Entry};
 use postcards_core::progress::{Level, Task};
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-/// The cache key's server: osmnx's, whichever server actually answered.
-const OVERPASS_URL: &str = OVERPASS_ENDPOINTS[0];
 const NOMINATIM_URL: &str = "https://nominatim.openstreetmap.org/search";
-/// osmnx's user agent: the cache files are shared, so requests look the same.
-const USER_AGENT: &str = "OSMnx Python package (https://github.com/gboeing/osmnx)";
+const USER_AGENT: &str = "postcards (https://github.com/piLeoni/postcards)";
 pub const OVERPASS_TIMEOUT_S: u32 = 180;
 
 pub struct Http {
@@ -78,24 +83,33 @@ impl Http {
         Ok(text)
     }
 
-    /// The Overpass JSON for `query`, from the cache or from the first server
+    /// The Overpass JSON for `card` and `keys`: a stored reply that covers
+    /// the card, or a download of the padded ground from the first server
     /// that answers. Every server is tried in rounds, as the page does it
     /// (`OVERPASS_ROUND_PAUSE_S`); each try is a row under `task`.
-    pub fn overpass(&self, query: &str, task: &Task) -> Result<String, String> {
-        let key = get_url(OVERPASS_URL, &[("data", query)]);
-        let path = self.cache_path(&key);
+    pub fn overpass(&self, card: &Card, keys: &[String], task: &Task) -> Result<String, String> {
+        let req = osm_cache::request(card, keys);
+        let dir = self.cache.join("overpass");
+        let stored = stored_replies(&dir);
+        let now = unix_now();
         if !self.refresh {
-            if let Some(text) = self.cached(&key) {
-                let row = task.child("osm-cache", "OSM from cache", 0, "");
-                row.ok(&format!("{:.1} MB", text.len() as f64 / 1e6));
-                task.note("");
-                task.log(Level::Info, &format!("cached reply {}", path.display()));
-                return Ok(text);
+            let entries: Vec<Entry> = stored.iter().map(|(_, e)| e.clone()).collect();
+            let max_age = if self.offline { None } else { Some(osm_cache::MAX_AGE_S) };
+            if let Some(i) = osm_cache::pick(&entries, &req.need, now, max_age) {
+                let path = dir.join(format!("{}.json", stored[i].0));
+                if let Ok(text) = std::fs::read_to_string(&path) {
+                    let row = task.child("osm-cache", "OSM from cache", 0, "");
+                    row.ok(&format!("{:.1} MB · {}", text.len() as f64 / 1e6, age_words(now.saturating_sub(entries[i].fetched))));
+                    task.note("");
+                    task.log(Level::Info, &format!("cached reply {}", path.display()));
+                    return Ok(text);
+                }
             }
         }
         if self.offline {
-            return Err(format!("overpass: not in {} and --offline is set", display(&self.cache)));
+            return Err(format!("overpass: not in {} and --offline is set", display(&dir)));
         }
+        let query = req.query.as_str();
         let agent: ureq::Agent = ureq::Agent::config_builder()
             .timeout_recv_response(Some(Duration::from_secs(OVERPASS_ENDPOINT_TIMEOUT_S)))
             .timeout_global(Some(Duration::from_secs(OVERPASS_TIMEOUT_S as u64)))
@@ -112,11 +126,25 @@ impl Http {
             }
             for (i, url) in endpoints.iter().enumerate() {
                 let row = task.child(&format!("try-{round}-{i}"), &format!("OSM from {}", host(url)), 0, "bytes");
-                match post_overpass(&agent, url, query, &row, task) {
+                let mut result = post_overpass(&agent, url, query, &row, task);
+                // Out of slots: the server says when one frees up; sit it out
+                // once if that is soon, rather than spend the next server.
+                if matches!(&result, Err(why) if why.starts_with("429")) {
+                    if let Some(wait) = slot_wait_s(&agent, url).filter(|&w| w <= OVERPASS_MAX_SLOT_WAIT_S) {
+                        for left in (1..=wait).rev() {
+                            row.note(&format!("429 · a slot frees in {left} s"));
+                            std::thread::sleep(Duration::from_secs(1));
+                        }
+                        result = post_overpass(&agent, url, query, &row, task);
+                    }
+                }
+                match result {
                     Ok(text) => {
                         row.ok("");
-                        self.store(&key, &text)?;
+                        let entry = Entry { extent: req.fetch.clone(), fetched: unix_now(), bytes: text.len() as u64 };
+                        let path = store_reply(&dir, &entry, &text)?;
                         task.log(Level::Info, &format!("saved to {}", path.display()));
+                        prune(&dir, stored, (entry.extent.name(), entry), now);
                         return Ok(text);
                     }
                     Err(why) => {
@@ -204,7 +232,24 @@ fn post_overpass(agent: &ureq::Agent, url: &str, query: &str, row: &Task, downlo
         return Err("answered, but not JSON".into());
     }
     serde_json::from_str::<serde_json::Value>(&text).map_err(|e| format!("answered, but not JSON: {e}"))?;
+    // Out of time or memory, Overpass still answers 200, cut short.
+    if let Some(error) = overpass_error(&text) {
+        return Err(format!("cut short: {error}"));
+    }
     Ok(text)
+}
+
+/// Seconds until `interpreter` has a free slot for us, from its status page.
+fn slot_wait_s(agent: &ureq::Agent, interpreter: &str) -> Option<u64> {
+    let status = agent
+        .get(&overpass_status_url(interpreter))
+        .header("User-Agent", USER_AGENT)
+        .call()
+        .ok()?
+        .body_mut()
+        .read_to_string()
+        .ok()?;
+    overpass_slot_wait_s(&status)
 }
 
 /// A failed request in a few words, for a row's note.
@@ -243,32 +288,51 @@ fn display(p: &Path) -> String {
     p.display().to_string()
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use postcards_core::card::{overpass_query, Card, OSM_TAGS};
-    use postcards_core::profile::ProjectionMode;
+fn unix_now() -> u64 {
+    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
+}
 
-    /// The cache keys osmnx 2.0.2 wrote for these cards.
-    #[test]
-    fn cache_keys_match_osmnx() {
-        let cases = [
-            ((-122.4821837, 37.7693681), "7e16616e7a92f7d1bdab29bd2b1be997daf49932"),
-            ((-122.2696803, 37.8059773), "6b8e2f4600d8dd5da30c30a3905ff04523c421a1"),
-            ((-122.3934746, 37.7955487), "482ab39fbd842239c0aee10bb16066ce7d7689ee"),
-        ];
-        for (center, key) in cases {
-            let card = Card {
-                center,
-                width_mm: 152.4,
-                height_mm: 101.6,
-                scale: 10000.0,
-                bearing: 0.0,
-                projection: ProjectionMode::Utm,
-            };
-            let query = overpass_query(&card.query_polygon(), OSM_TAGS, OVERPASS_TIMEOUT_S);
-            let url = get_url(OVERPASS_URL, &[("data", &query)]);
-            assert_eq!(sha1_smol::Sha1::from(&url).digest().to_string(), key);
-        }
+/// "fetched 3 days ago".
+fn age_words(s: u64) -> String {
+    match s {
+        s if s < 120 => "fetched just now".into(),
+        s if s < 7200 => format!("fetched {} min ago", s / 60),
+        s if s < 2 * 86400 => format!("fetched {} h ago", s / 3600),
+        s => format!("fetched {} days ago", s / 86400),
+    }
+}
+
+/// The replies in `dir`, by name, from their `.meta.json` files.
+fn stored_replies(dir: &Path) -> Vec<(String, Entry)> {
+    let Ok(read) = std::fs::read_dir(dir) else { return vec![] };
+    read.filter_map(|f| {
+        let path = f.ok()?.path();
+        let name = path.file_name()?.to_str()?.strip_suffix(".meta.json")?.to_string();
+        let entry = serde_json::from_str(&std::fs::read_to_string(&path).ok()?).ok()?;
+        Some((name, entry))
+    })
+    .collect()
+}
+
+/// Writes the reply, then its meta file, so a meta file always has its reply.
+fn store_reply(dir: &Path, entry: &Entry, text: &str) -> Result<PathBuf, String> {
+    std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    let name = entry.extent.name();
+    let path = dir.join(format!("{name}.json"));
+    std::fs::write(&path, text).map_err(|e| format!("{}: {e}", path.display()))?;
+    let meta = serde_json::to_string(entry).map_err(|e| e.to_string())?;
+    std::fs::write(dir.join(format!("{name}.meta.json")), meta).map_err(|e| format!("{}: {e}", path.display()))?;
+    Ok(path)
+}
+
+/// Deletes what `osm_cache::evict` gives up, the new reply included in the count.
+fn prune(dir: &Path, stored: Vec<(String, Entry)>, new: (String, Entry), now: u64) {
+    let mut all: Vec<(String, Entry)> = stored.into_iter().filter(|(n, _)| *n != new.0).collect();
+    all.push(new);
+    let entries: Vec<Entry> = all.iter().map(|(_, e)| e.clone()).collect();
+    for i in osm_cache::evict(&entries, osm_cache::DISK_BUDGET, now) {
+        let name = &all[i].0;
+        let _ = std::fs::remove_file(dir.join(format!("{name}.meta.json")));
+        let _ = std::fs::remove_file(dir.join(format!("{name}.json")));
     }
 }

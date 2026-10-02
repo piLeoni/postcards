@@ -4,7 +4,7 @@ mod osm_http;
 mod term;
 
 use clap::{Parser, Subcommand};
-use postcards_core::card::{fetch_keys, overpass_query, Card};
+use postcards_core::card::{fetch_keys, Card};
 use postcards_core::grammar::Grammar;
 use postcards_core::ocean::Ocean;
 use postcards_core::osm::{features_from_overpass, needs_ocean};
@@ -40,7 +40,7 @@ enum Command {
         lng: Option<f64>,
         #[arg(long, short, default_value = "map.svg")]
         output: PathBuf,
-        /// osmnx-compatible response cache.
+        /// Response cache: Overpass replies and Nominatim lookups.
         #[arg(long, default_value = "cache")]
         cache: PathBuf,
         /// Use only cached responses; never touch the network for OSM data.
@@ -114,10 +114,7 @@ fn map(term: &Term, http: &osm_http::Http, profile_path: &Path, place: Place, ou
     let download = Task::begin(term, "download", None, "download", 0, "");
     let center = locate(&download, http, place, profile.map.address.clone(), (profile.map.lat, profile.map.lng))?;
     let card = Card::new(&profile.map, center);
-    let area = card.query_polygon();
-    let keys = fetch_keys(&profile.osm_keys());
-    let keys: Vec<&str> = keys.iter().map(String::as_str).collect();
-    let (features, ocean) = fetch(http, download, &area, &keys)?;
+    let (features, ocean) = fetch(http, download, &card, &fetch_keys(&profile.osm_keys()))?;
 
     let draw = Task::begin(term, "draw", None, "draw", 0, "");
     let task = draw.child("render", "render", 0, "");
@@ -127,23 +124,25 @@ fn map(term: &Term, http: &osm_http::Http, profile_path: &Path, place: Place, ou
     Ok(rendered.groups)
 }
 
-/// The OSM features for `area`, and the ocean when the card shows a coast:
+/// The OSM features on `card`, and the ocean when the card shows a coast:
 /// each a row under `download`, which ends with them.
 fn fetch(
     http: &osm_http::Http,
     download: Task,
-    area: &geo::Polygon<f64>,
-    keys: &[&str],
+    card: &Card,
+    keys: &[String],
 ) -> Result<(Vec<postcards_core::osm::Feature>, Option<geo::MultiPolygon<f64>>), String> {
-    let json = http.overpass(&overpass_query(area, keys, osm_http::OVERPASS_TIMEOUT_S), &download)?;
+    let json = http.overpass(card, keys, &download)?;
     let mb = json.len() as f64 / 1e6;
 
+    let area = card.query_polygon();
     let task = download.child("read", "read OSM", 0, "");
-    let features = features_from_overpass(&json, area, keys).map_err(|e| e.to_string())?;
+    let keys: Vec<&str> = keys.iter().map(String::as_str).collect();
+    let features = features_from_overpass(&json, &area, &keys).map_err(|e| e.to_string())?;
     let found = format!("{} features", thousands(features.len() as u64));
     task.ok(&found);
 
-    let ocean = if needs_ocean(&features) { Some(ocean(&download, area)?) } else { None };
+    let ocean = if needs_ocean(&features) { Some(ocean(&download, &area)?) } else { None };
     download.ok(&format!("{mb:.1} MB · {found}"));
     Ok((features, ocean))
 }
@@ -220,10 +219,7 @@ fn map_v3(
     let download = Task::begin(term, "download", None, "download", 0, "");
     let center = locate(&download, http, place, grammar.card.address.clone(), (grammar.card.lat, grammar.card.lng))?;
     let card = Card::new(&grammar.card, center);
-    let area = card.query_polygon();
-    let keys = fetch_keys(&grammar.osm_keys());
-    let keys: Vec<&str> = keys.iter().map(String::as_str).collect();
-    let (features, ocean) = fetch(http, download, &area, &keys)?;
+    let (features, ocean) = fetch(http, download, &card, &fetch_keys(&grammar.osm_keys()))?;
 
     let draw = Task::begin(term, "draw", None, "draw", 0, "");
     let rendered = postcards_core::grammar_run::run_with(

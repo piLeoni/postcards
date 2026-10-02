@@ -274,8 +274,14 @@ what a future terrain layer needs.
 7. **Run layers in parallel.** penfill calls are pure and independent.
 8. **Compose**, then **write SVG**.
 
-The CLI caches raw Overpass responses on disk (as osmnx does), which also
-gives the test fixtures.
+Overpass replies are cached by the CLI on disk (`cache/overpass/`) and by
+the page in the browser's Cache Storage, with the same rules
+(`postcards_core::osm_cache`): a download asks for a quarter more ground on
+every side, and any stored reply whose ground and keys cover a card serves
+it, so a card moved a little or zoomed in is not downloaded again. Features
+are read against the card's own outline, so a bigger reply draws the same
+card. Only the budgets differ: 2 GB on disk, 200 MB in the browser, 30 days
+either way.
 
 ---
 

@@ -9,6 +9,7 @@ pub mod grammar_run;
 pub mod modules;
 pub mod ocean;
 pub mod osm;
+pub mod osm_cache;
 pub mod pipeline;
 pub mod profile;
 pub mod progress;
