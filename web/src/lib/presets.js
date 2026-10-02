@@ -1,0 +1,173 @@
+/**
+ * The card documents this app ships, matching the CLI's configs. The app
+ * starts from one of these and edits it in the sidebar; the text is what
+ * `render` takes, so anything the CLI reads, the page reads too.
+ *
+ * Checked against the parser: `examples/check_web_presets.rs` runs the parser
+ * over each one, so a preset that stops parsing fails a test rather than a
+ * browser. `examples/wasm_render.rs` renders them from a canned Overpass reply.
+ */
+
+/**
+ * Everything: parks, water, roads and buildings, in the CLI's own order and
+ * with its masks. This is the card the plotter gets.
+ */
+export const FULL_DOC = `card:
+  width: 6in
+  height: 4in
+  scale: "1:8000"
+  bearing: 0
+  projection: utm
+  lat: 37.8771145
+  lng: -122.256196
+
+$features:
+  bldg:  { osm_select: { building: true } }
+  green: { osm_select: { leisure: [park, garden], landuse: [grass, forest], natural: wood } }
+  wet:   { osm_select: { water: true, natural: water } }
+
+$areas:
+  roads:     { module_roads: {} }
+  buildings: { tools_polygons: $features.bldg }
+  parks:     { tools_polygons: $features.green }
+  inland:    { tools_polygons: $features.wet }
+  sea:       { engine_ocean: {} }
+  water:     { tools_union: [$areas.inland, $areas.sea] }
+
+$lines:
+  park_ring: { tools_rings: $areas.parks }
+  bldg_ring: { tools_rings: $areas.buildings }
+  water_ring: { tools_rings: $areas.water }
+
+$fills:
+  park_fill:  { tools_fill: { in: $areas.parks, pattern: dots, spacing: 0.45mm, mark: 0.2mm, angle: 45 } }
+  water_fill: { tools_fill: { in: $areas.water, pattern: waves, spacing: 0.75mm } }
+  bldg_fill:  { tools_fill: { in: $areas.buildings, per: feature, pattern: zigzag, spacing: 0.4mm, angle: 45 } }
+
+draw:
+  - { id: park_ring,  from: $lines.park_ring, stroke: { style: dash, dash: 0.45mm, gap: 0.4mm } }
+  - { id: park_fill,  from: $fills.park_fill }
+  - { id: water_ring, from: $lines.water_ring, stroke: solid }
+  - { id: water_fill, from: $fills.water_fill }
+  - { id: roads_out,  from: roads.outlines, stroke: solid }
+  - { id: roads_trail, from: roads.trails, stroke: solid }
+  - { id: roads_det,  from: roads.details }
+  - { id: bldg_fill,  from: $fills.bldg_fill }
+  - { id: bldg_ring,  from: $lines.bldg_ring, stroke: solid }
+
+compose:
+  order:
+    - park_ring
+    - park_fill
+    - water_ring
+    - water_fill
+    - roads_out
+    - roads_trail
+    - roads_det
+    - bldg_fill
+    - bldg_ring
+  masks:
+    parks_cover:
+      from: $areas.parks
+      occludes: [water_fill, water_ring, roads_out, roads_trail, roads_det, bldg_fill, bldg_ring]
+    wet_cover:
+      from: $areas.water
+      occludes: [park_ring, park_fill, roads_out, roads_trail, roads_det, bldg_fill, bldg_ring]
+    roads_cover:
+      from: roads.area
+      occludes: [park_ring, park_fill, water_ring, water_fill]
+    bldg_cover:
+      from: $areas.buildings
+      occludes: [park_ring, park_fill, water_ring, water_fill, roads_out, roads_trail, roads_det]
+`
+
+/** Buildings and green only: the quickest to fetch and draw. */
+export const DEFAULT_DOC = `card:
+  width: 6in
+  height: 4in
+  scale: "1:8000"
+  bearing: 0
+  projection: utm
+  lat: 37.8771145
+  lng: -122.256196
+
+$features:
+  bldg:  { osm_select: { building: true } }
+  green: { osm_select: { leisure: [park, garden] } }
+  wet:   { osm_select: { water: true, natural: water } }
+
+$areas:
+  buildings: { tools_polygons: $features.bldg }
+  parks:     { tools_polygons: $features.green }
+  inland:    { tools_polygons: $features.wet }
+  sea:       { engine_ocean: {} }
+  water:     { tools_union: [$areas.inland, $areas.sea] }
+
+$lines:
+  bldg_ring: { tools_rings: $areas.buildings }
+  park_ring: { tools_rings: $areas.parks }
+
+$fills:
+  bldg_fill: { tools_fill: { in: $areas.buildings, per: feature, pattern: zigzag, spacing: 0.4mm, angle: 45 } }
+  park_fill: { tools_fill: { in: $areas.parks, pattern: dots, spacing: 0.45mm, mark: 0.2mm } }
+  water_fill: { tools_fill: { in: $areas.water, pattern: waves, spacing: 0.75mm } }
+
+draw:
+  - { id: park_ring,  from: $lines.park_ring, stroke: { style: dash, dash: 0.45mm, gap: 0.4mm } }
+  - { id: park_fill,  from: $fills.park_fill }
+  - { id: water_fill, from: $fills.water_fill }
+  - { id: bldg_fill,  from: $fills.bldg_fill }
+  - { id: bldg_ring,  from: $lines.bldg_ring, stroke: solid }
+
+compose:
+  order: [park_ring, park_fill, water_fill, bldg_fill, bldg_ring]
+`
+
+/** Just buildings: the fastest draw there is. */
+export const SMALL_DOC = `card:
+  width: 80mm
+  height: 60mm
+  scale: "1:4000"
+  lat: 37.8771145
+  lng: -122.256196
+
+$features:
+  bldg: { osm_select: { building: true } }
+
+$areas:
+  buildings: { tools_polygons: $features.bldg }
+
+$lines:
+  bldg_ring: { tools_rings: $areas.buildings }
+
+$fills:
+  bldg_fill: { tools_fill: { in: $areas.buildings, per: feature, pattern: zigzag, spacing: 0.4mm, angle: 45 } }
+
+draw:
+  - { id: bldg_fill, from: $fills.bldg_fill }
+  - { id: bldg_ring, from: $lines.bldg_ring, stroke: solid }
+
+compose:
+  order: [bldg_fill, bldg_ring]
+`
+
+export const PRESETS = [
+  {
+    id: 'full',
+    name: 'Everything',
+    hint: 'roads, trails, parks, water, buildings',
+    doc: FULL_DOC,
+  },
+  {
+    id: 'parks',
+    name: 'Parks and buildings',
+    hint: 'green, water, buildings',
+    doc: DEFAULT_DOC,
+  },
+  {
+    id: 'buildings',
+    name: 'Buildings only',
+    hint: 'the fastest draw',
+    doc: SMALL_DOC,
+  },
+]

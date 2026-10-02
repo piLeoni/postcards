@@ -28,3 +28,9 @@ tmp/
 
 # Rust
 target/
+
+# Web
+web/node_modules/
+web/dist/
+web/.env.local
+web/public/pkg/
