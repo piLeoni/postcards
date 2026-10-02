@@ -58,6 +58,9 @@ const JOINT_CLOSE_M: f64 = 2.5;
 /// Grid (card mm) endpoints snap to when looking for shared nodes.
 const NODE_SNAP_MM: f64 = 0.05;
 const CENTERLINE_MIN_WIDTH_M: f64 = 6.0;
+/// Ground width a trail cuts out of what is below it. A trail is one pen
+/// line, so it hides about as much as the line covers, whatever its tags say.
+const TRAIL_WIDTH_M: f64 = 1.0;
 const CENTERLINE_DASH_MM: f64 = 0.3;
 const CENTERLINE_GAP_MM: f64 = 0.35;
 
@@ -135,6 +138,12 @@ fn road_width_m(f: &Feature) -> f64 {
         }
     }
     width_by_type(highway).unwrap_or(DEFAULT_WIDTH_M)
+}
+
+/// Ways drawn as a single line instead of a carriageway outline: at card
+/// scale their two edges would be a tenth of a millimetre apart.
+fn is_trail(f: &Feature) -> bool {
+    matches!(f.tag("highway"), Some("footway" | "path" | "steps" | "track" | "bridleway" | "cycleway"))
 }
 
 fn truthy(v: Option<&str>) -> bool {
@@ -215,6 +224,10 @@ pub(crate) fn render(layer: &LayerSpec, ctx: &Context) -> Result<LayerParts, Fil
     let scale_ratio = 1.0 / (ctx.card.scale / 1000.0) * BUFFER_FUDGE;
 
     let mut buffered: Vec<MultiPolygon<f64>> = Vec::new();
+    // Trails at ground level stop at the carriageway edge; on a bridge they
+    // are drawn across whatever they span.
+    let mut ground_trails: Lines = Vec::new();
+    let mut raised_trails: Lines = Vec::new();
     // Keyed by (layer, radius as 1e-4 mm steps), in first-seen order.
     let mut key_order: Vec<(i64, i64)> = Vec::new();
     let mut lines_by_key: HashMap<(i64, i64), Lines> = HashMap::new();
@@ -224,6 +237,10 @@ pub(crate) fn render(layer: &LayerSpec, ctx: &Context) -> Result<LayerParts, Fil
 
     for (f, lyr) in &feats {
         match &f.geometry {
+            Geometry::LineString(_) | Geometry::MultiLineString(_) if is_trail(f) => {
+                let parts = geom::lines_of(&f.geometry).into_iter().filter(|p| geom::line_length(p) > 0.0);
+                if *lyr >= 1 { raised_trails.extend(parts) } else { ground_trails.extend(parts) }
+            }
             Geometry::LineString(_) | Geometry::MultiLineString(_) => {
                 let radius = road_width_m(f) / 2.0 * scale_ratio;
                 let key = (*lyr, (radius * 1e4).round_ties_even() as i64);
@@ -287,22 +304,16 @@ pub(crate) fn render(layer: &LayerSpec, ctx: &Context) -> Result<LayerParts, Fil
         }
     }
 
-    if buffered.is_empty() {
-        return Ok(LayerParts::default());
-    }
-    let mut mask = merge(&buffered);
+    let mut carriageway = merge(&buffered);
     let close = JOINT_CLOSE_M * scale_ratio;
     if close > 0.0 {
-        mask = close_gaps(&mask, close);
+        carriageway = close_gaps(&carriageway, close);
         for decks in by_layer.values_mut() {
             let merged = merge(decks);
             *decks = if merged.0.is_empty() { vec![] } else { vec![close_gaps(&merged, close)] };
         }
     }
-    if mask.0.is_empty() {
-        return Ok(LayerParts::default());
-    }
-    let outer = MultiLineString::new(geom::rings(&mask));
+    let outer = MultiLineString::new(geom::rings(&carriageway));
 
     let mut details: Lines = Vec::new();
 
@@ -349,11 +360,23 @@ pub(crate) fn render(layer: &LayerSpec, ctx: &Context) -> Result<LayerParts, Fil
         details.extend(seams);
     }
 
+    // Trails stay out of the carriageway and of its gap closing: they add no
+    // outline, only their own narrow cut to the mask.
+    let ground_trails = geom::linemerge(&ground_trails);
+    let raised_trails = geom::linemerge(&raised_trails);
+    let trail_radius = TRAIL_WIDTH_M / 2.0 * scale_ratio;
+    let mut covered: Vec<MultiPolygon<f64>> =
+        ground_trails.iter().chain(&raised_trails).map(|t| geom::buffer_line_flat(t, trail_radius)).collect();
+    covered.push(carriageway.clone());
+    let mut trails = geom::clip_lines(&ground_trails, &carriageway, true);
+    trails.extend(raised_trails);
+
     Ok(LayerParts {
-        outlines: fill::stroke(geom::rings(&mask), &layer_stroke(StrokeSpec::default(), layer)),
+        outlines: fill::stroke(geom::rings(&carriageway), &layer_stroke(StrokeSpec::default(), layer)),
         details,
+        trails,
         filling: vec![],
-        mask,
+        mask: merge(&covered),
     })
 }
 
@@ -380,6 +403,50 @@ mod tests {
         assert_eq!(road_width_m(&feature(&[("highway", "raceway")])), 6.0);
         assert_eq!(parse_width_m("3 m;5"), Some(5.0));
         assert_eq!(parse_width_m("2 furlongs"), None);
+    }
+
+    #[test]
+    fn trails_are_one_line_that_still_cuts() {
+        use crate::card::Card;
+        use crate::fill::Sources;
+        use crate::profile::{MapSpec, ProjectionMode};
+        use crate::units::{Mm, Scale};
+        use geo::{line_string, Contains};
+
+        let way = |highway: &str, y: f64| Feature {
+            geometry: Geometry::LineString(line_string![(x: 10.0, y: y), (x: 40.0, y: y)]),
+            ..feature(&[("highway", highway)])
+        };
+        let map = MapSpec {
+            address: None,
+            lat: None,
+            lng: None,
+            width: Mm(100.0),
+            height: Mm(50.0),
+            scale: Scale(10000.0),
+            bearing: 0.0,
+            projection: ProjectionMode::default(),
+        };
+        let card = Card::new(&map, (0.0, 0.0));
+        let features = vec![way("residential", 30.0), way("track", 10.0), way("service", 20.0)];
+        let ctx = Context { card: &card, features: &features, ocean: None, sources: &Sources::new(), masks: &BTreeMap::new() };
+        let layer = LayerSpec {
+            id: "roads".into(),
+            module: Some("roads/v1".into()),
+            steps: None,
+            enabled: None,
+            fill: None,
+            kinds: Vec::new(),
+            options: BTreeMap::new(),
+            stroke: None,
+        };
+        let parts = render(&layer, &ctx).unwrap();
+
+        assert_eq!(parts.trails.len(), 1, "only the track is a trail");
+        assert!(parts.trails[0].0.iter().all(|c| c.y == 10.0));
+        assert_eq!(geom::rings(&parts.mask).len(), 3, "residential, service and the track's strip");
+        assert!(parts.mask.contains(&Point::new(25.0, 10.0)));
+        assert!(parts.outlines.iter().all(|l| l.0.iter().all(|c| c.y > 15.0)), "the track has no outline");
     }
 
     #[test]

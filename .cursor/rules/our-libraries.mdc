@@ -1,0 +1,28 @@
+---
+description: postcards' libraries are our own sibling projects; change them freely when postcards needs it
+alwaysApply: true
+---
+
+# Our libraries, developed alongside postcards
+
+postcards is the first big user of a family of our own young libraries. They
+sit next to it on disk and in the workspace, and postcards depends on them by
+path, never by registry version or git URL:
+
+| Library | Path | What it gives postcards |
+|---|---|---|
+| penfill | `../penfill` | pen fills (patterns) inside polygons |
+| terramask | `../terramask` | sea, land, landcover, parks as polygons from vector tiles; elevation and depth bands from terrain tiles |
+| burin-map | `../burin-map` | pen-and-ink terrain drawing (formerly VectorsMap); uses terramask itself |
+
+Strategy:
+
+- When postcards needs something a library should own, change the library
+  rather than working around it in postcards. Same for bugs found there.
+- Before writing geometry or tile code in postcards, check whether one of
+  them already does it (terramask for anything from map or terrain tiles).
+- Keep them on one copy: libraries that depend on each other do so by path
+  too (burin-map reads `../terramask`), with `version` kept next to `path`
+  where the crate is published.
+- After changing a library, build and test it in its own repo, then rebuild
+  postcards (and `web/build-wasm.sh` when the WASM side is affected).

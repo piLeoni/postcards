@@ -336,7 +336,7 @@ prefix so that a `union` is recognisably the engine's `union`:
 | `tools_merge: <lines>` | lines | Join lines whose endpoints meet. |
 | `tools_lines: <feature set>` | lines | The linestrings of those features. |
 | `tools_join: [a, b, …]` | lines | Concatenate line sets. |
-| `tools_fill: { in, pattern, … }` | lines | penfill into an area. `per: feature` runs one pattern per polygon. |
+| `tools_fill: { in, pattern, … }` | lines | penfill into an area. `per: feature` runs one pattern per polygon. `anchor: global` (default) lays one lattice over the whole card, so neighbouring areas meet with no seam; `anchor: local` places it on each shape. `shift: [x, y]` (mm) moves it. A `sunburst` is local unless given a `centre`. |
 
 ### Engine sources — `engine_*` / `osm_*`
 
@@ -364,9 +364,10 @@ It defines fixed outputs the profile may use or ignore — for roads/v1:
 
 | Output | Result |
 |---|---|
-| `roads.area` | the carriageway as one area (the mask) |
-| `roads.outlines` | the mask boundary |
+| `roads.area` | the carriageway plus the strip each trail covers (the mask) |
+| `roads.outlines` | the carriageway boundary |
 | `roads.details` | centre lines and bridge seams, already generated |
+| `roads.trails` | footways, paths, tracks, steps, cycleways, bridleways as single lines |
 
 The module's internal names are **not** module-prefixed (`roads.area`, not
 `module_roads.area`): the `module_` prefix belongs to the *definition*, and the

@@ -53,6 +53,7 @@ pub(super) fn render(layer: &LayerSpec, ctx: &Context) -> Result<LayerParts, Fil
     Ok(LayerParts {
         outlines: fill::stroke(outlines, &layer_stroke(StrokeSpec::default(), layer)),
         details,
+        trails: vec![],
         filling: filled?.into_iter().flatten().collect(),
         mask: union,
     })

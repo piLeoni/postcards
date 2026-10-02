@@ -56,5 +56,7 @@ modules. [`docs/profile.md`](docs/profile.md) is the profile grammar.
 cargo test
 ```
 
-postcards builds against a local checkout of penfill in `../penfill` until
-both are published together.
+postcards builds against sibling checkouts of its own libraries, developed
+alongside it: penfill in `../penfill` (fills) and terramask in `../terramask`
+(the sea, from vector tiles); burin-map in `../burin-map` comes next, for
+terrain.

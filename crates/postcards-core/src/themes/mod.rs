@@ -21,6 +21,9 @@ pub struct LayerParts {
     pub outlines: Lines,
     /// Secondary strokes inside the area (inner walls, lane dividers, seams).
     pub details: Lines,
+    /// Ways drawn as one line rather than an outline (footways, paths,
+    /// tracks). The strip each line covers is part of `mask`.
+    pub trails: Lines,
     /// The area texture.
     pub filling: Lines,
     /// The area the layer covers; layers below are clipped by it.
@@ -29,13 +32,13 @@ pub struct LayerParts {
 
 impl Default for LayerParts {
     fn default() -> Self {
-        LayerParts { outlines: vec![], details: vec![], filling: vec![], mask: MultiPolygon::new(vec![]) }
+        LayerParts { outlines: vec![], details: vec![], trails: vec![], filling: vec![], mask: MultiPolygon::new(vec![]) }
     }
 }
 
 impl LayerParts {
     pub fn is_empty(&self) -> bool {
-        self.outlines.is_empty() && self.details.is_empty() && self.filling.is_empty() && self.mask.0.is_empty()
+        self.outlines.is_empty() && self.details.is_empty() && self.trails.is_empty() && self.filling.is_empty() && self.mask.0.is_empty()
     }
 }
 

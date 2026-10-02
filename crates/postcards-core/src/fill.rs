@@ -136,6 +136,25 @@ fn default_angle(generator: &str) -> f64 {
     }
 }
 
+/// Where the pattern's lattice sits. Global by default: one lattice for the
+/// whole card, so neighbouring areas filled alike (wood next to grass) don't
+/// show where one ends. A sunburst is the one pattern centred on its shape.
+fn anchor(o: &Opts) -> Result<penfill::Anchor, FillError> {
+    use penfill::{Anchor, Origin};
+    let (x, y) = o.point("shift")?.unwrap_or((0.0, 0.0));
+    if let Some(c) = o.point("centre")?.or(o.point("center")?) {
+        return Ok(Anchor::global(c.0 + x, c.1 + y));
+    }
+    let origin = match o.str("anchor")? {
+        Some("global") => Origin::Global,
+        Some("local") => Origin::Local,
+        Some(other) => return Err(o.bad("anchor", format!("{other:?}: use global or local"))),
+        None if o.generator == "sunburst" => Origin::Local,
+        None => Origin::Global,
+    };
+    Ok(Anchor { origin, shift: (x, y) })
+}
+
 /// Generators that take the inset themselves; for the rest an explicit
 /// `inset` shrinks the region first.
 fn insets_natively(generator: &str) -> bool {
@@ -158,43 +177,44 @@ fn run_generator(region: &Region, generator: &str, spec: &FillSpec) -> Result<pe
         region
     };
     let mark = |default: f64| spec.mark.map_or(default, |m| m.0);
+    let at = anchor(&o)?;
     Ok(match generator {
-        "rectilinear" => rectilinear::fill_rectilinear(r, s, a, inset),
-        "zigzag" => zigzag::fill_zigzag_inset(r, s, a, inset),
-        "lines" => grid::fill_lines(r, s, a),
-        "grid" => grid::fill_grid(r, s, a),
-        "triangles" => grid::fill_triangles(r, s, a),
-        "honeycomb" => honeycomb::fill_honeycomb(r, s, a, o.mm("line_width")?.unwrap_or(0.0)),
+        "rectilinear" => rectilinear::fill_rectilinear(r, s, a, inset, at),
+        "zigzag" => zigzag::fill_zigzag_inset(r, s, a, inset, at),
+        "lines" => grid::fill_lines(r, s, a, at),
+        "grid" => grid::fill_grid(r, s, a, at),
+        "triangles" => grid::fill_triangles(r, s, a, at),
+        "honeycomb" => honeycomb::fill_honeycomb(r, s, a, o.mm("line_width")?.unwrap_or(0.0), at),
         "dots" => {
             let lattice = match o.str("lattice")?.unwrap_or("square") {
                 "square" => Lattice::Square,
                 "hex" | "hexagonal" => Lattice::Hexagonal,
                 other => return Err(o.bad("lattice", format!("{other:?}: use square or hexagonal"))),
             };
-            dotswaves::fill_dots_with_lattice(r, s, a, mark(0.2), lattice)
+            dotswaves::fill_dots_with_lattice(r, s, a, mark(0.2), lattice, at)
         }
-        "waves" => dotswaves::fill_waves(r, s, a),
-        "wave_grid" => dotswaves::fill_wave_grid(r, s, a),
-        "scales" => scales::fill_scales(r, s, a),
-        "sunburst" => radial::fill_sunburst(r, s, a, o.point("centre")?.or(o.point("center")?)),
+        "waves" => dotswaves::fill_waves(r, s, a, at),
+        "wave_grid" => dotswaves::fill_wave_grid(r, s, a, at),
+        "scales" => scales::fill_scales(r, s, a, at),
+        "sunburst" => radial::fill_sunburst(r, s, a, at),
         "spiral" => spiral::fill_spiral(r, s),
         "concentric" => concentric::fill_concentric(r, s, inset),
         "hilbert" => hilbert::fill_hilbert(r, s, inset),
         "stipple" => stipple::fill_stipple(r, s, mark(0.2), seed),
-        "grass" => grass::fill_grass(r, s, a, seed),
+        "grass" => grass::fill_grass(r, s, a, seed, at),
         "gravel" => gravel::fill_gravel(r, s, seed),
         "scribble" => scribble::fill_scribble(r, s, a, seed),
-        "truchet" => truchet::fill_truchet(r, s, a, seed),
-        "marble" => textures::fill_marble(r, s, a, seed),
-        "wood" => textures::fill_wood(r, s, a, seed),
+        "truchet" => truchet::fill_truchet(r, s, a, seed, at),
+        "marble" => textures::fill_marble(r, s, a, seed, at),
+        "wood" => textures::fill_wood(r, s, a, seed, at),
         "cracks" => textures::fill_cracks(r, s, seed),
         "terrazzo" => terrazzo::fill_terrazzo(r, s, o.mm("hatch")?.unwrap_or(s / 6.0), seed),
-        "chess" => chess::fill_chess(r, o.mm("cell")?.unwrap_or(s * 8.0), s, a),
+        "chess" => chess::fill_chess(r, o.mm("cell")?.unwrap_or(s * 8.0), s, a, at),
         "pat" => {
             let name = o.str("name")?.ok_or_else(|| o.bad("name", "pat needs a pattern name"))?;
             let pattern = pat::builtin(name)
                 .ok_or_else(|| o.bad("name", format!("{name:?}: known {}", pat::BUILTIN.join(", "))))?;
-            pat::fill_pat(r, &pattern, o.mm("scale")?.unwrap_or(s), a)
+            pat::fill_pat(r, &pattern, o.mm("scale")?.unwrap_or(s), a, at)
         }
         "none" => vec![],
         other => return Err(FillError::UnknownGenerator(other.into())),
@@ -266,6 +286,7 @@ pub fn stroke(lines: Lines, spec: &StrokeSpec) -> Lines {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::units::Mm;
     use geo::polygon;
 
     fn square_with_island() -> MultiPolygon<f64> {
@@ -283,6 +304,29 @@ mod tests {
         let lines = fill(&square_with_island(), &spec, &Sources::new()).unwrap();
         let in_island = lines.iter().any(|l| l.0.iter().all(|c| (4.0..=6.0).contains(&c.x) && (4.0..=6.0).contains(&c.y)));
         assert!(in_island);
+    }
+
+    #[test]
+    fn areas_side_by_side_share_one_lattice() {
+        let rect = |x0: f64, x1: f64| MultiPolygon::new(vec![polygon![(x: x0, y: 0.0), (x: x1, y: 0.0), (x: x1, y: 12.0), (x: x0, y: 12.0)]]);
+        let ink = |spec: &FillSpec, m: &MultiPolygon<f64>| -> f64 { fill(m, spec, &Sources::new()).unwrap().iter().map(geom::line_length).sum() };
+        for generator in ["dots", "lines", "grid", "waves", "honeycomb"] {
+            let mut spec = FillSpec { generator: Some(generator.into()), inset: Some(Mm(0.0)), ..FillSpec::spacing(0.7) };
+            // off the outer walls: a line lying on one is a toss-up for the clip
+            spec.options.insert("shift".into(), serde_json::json!([0.3, -0.2]));
+            let (whole, halves) = (ink(&spec, &rect(0.0, 20.0)), ink(&spec, &rect(0.0, 8.3)) + ink(&spec, &rect(8.3, 20.0)));
+            assert!((whole - halves).abs() < 1e-3 * whole, "{generator}: {whole} vs {halves}");
+        }
+    }
+
+    #[test]
+    fn anchor_must_be_global_or_local() {
+        let mut spec = FillSpec { generator: Some("dots".into()), ..FillSpec::spacing(0.5) };
+        spec.options.insert("anchor".into(), "page".into());
+        assert!(matches!(validate(&spec, &Sources::new()), Err(FillError::BadOption { .. })));
+        spec.options.insert("anchor".into(), "local".into());
+        spec.options.insert("shift".into(), serde_json::json!([0.2, 0.1]));
+        assert!(validate(&spec, &Sources::new()).is_ok());
     }
 
     #[test]

@@ -35,6 +35,7 @@ pub(super) fn render(layer: &LayerSpec, ctx: &Context) -> Result<LayerParts, Fil
     Ok(LayerParts {
         outlines: fill::stroke(geom::rings(&mask), &layer_stroke(StrokeSpec::default(), layer)),
         details: vec![],
+        trails: vec![],
         filling,
         mask,
     })

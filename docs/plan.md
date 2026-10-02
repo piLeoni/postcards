@@ -69,7 +69,7 @@ As documented in `reference/python/docs/pipeline.md`, roughly 5,200 lines:
 | pyproj (UTM zone, EPSG:3857) | in-tree transverse Mercator (Krüger series) and spherical web Mercator; `geographiclib-rs` for the web-mercator scale |
 | shapely / geopandas | `geo` (booleans and buffers via `i_overlay`) plus a few in-tree line helpers |
 | `postcards/utils/fills/*`, `patterns/*` | penfill |
-| watermask (Python wheel) | `watermask` crate (same Rust core) |
+| watermask (Python wheel) | `terramask` (watermask's successor): the core reads the tiles, the CLI fetches them through terramask, the page with `fetch` |
 | pint lengths (`"6in"`, `"0.5mm"`) | small in-tree parser |
 
 ### Geometry: `geo` + `i_overlay`, penfill included
@@ -407,7 +407,7 @@ the three cards:
 - Time: about 6–7 s per card against about 24 s for Python.
 
 Still open in Phase 1: capturing ocean fixtures for fully offline runs (ocean
-tiles come from the watermask cache today). Stroke `none` draws nothing
+tiles come from the terramask cache today). Stroke `none` draws nothing
 (Python drew it solid).
 
 ### Phase 2 — Declarative layers
@@ -475,20 +475,21 @@ Next: agree on the profile grammar in [`profile.md`](profile.md) (v2:
 
 ### Phase 5 — burin as a penfill source
 
-- Add `burin-map-core` to core, pinned:
+- Add `burin-map-core` to core from the sibling checkout, like penfill and
+  terramask:
 
   ```toml
-  burin-map-core = { git = "ssh://git@github.com/piLeoni/burin-map.git", branch = "main" }
+  burin-map-core = { path = "../burin-map/crates/burin-map-core" }
   ```
 
-  (replace `branch` with `rev` in the same change). CI gets credentials for
-  the git dependency.
+  burin-map reads terramask from `../terramask` too, so both share one copy.
 - Source kind `burin`: the planner adds an **elevation** fetch for the card;
   burin draws **once per card**; the SVG is scaled into card millimetres;
   each fill that references it clips that same drawing into its region (a
   terrain layer on `leftover`, a park kind, …).
-- DEM loading: burin-map's own loader in the CLI host; the browser host
-  fetches elevation tiles as burin's web app does.
+- DEM loading through terramask, as for the sea: `Fetcher::elevation_for` in
+  the CLI, the page fetching Terrarium tiles into `Elevation::add_tile`, as
+  burin's web app does. Depth or height bands (`Features::split`) come free.
 - Tests use burin's CPU draw on a synthetic grid; its GPU path is not
   byte-stable across machines.
 

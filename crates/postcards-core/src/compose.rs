@@ -5,7 +5,7 @@ use crate::geom::{self, Lines};
 use crate::themes::LayerParts;
 
 /// `(layer id, parts)` bottom-most first → `("<id>_<part>", lines)` in draw
-/// order, parts as outlines, details, filling; empty groups are left out.
+/// order, parts as outlines, details, trails, filling; empty groups are left out.
 pub fn compose(stack: &[(String, LayerParts)]) -> Vec<(String, Lines)> {
     let mut above = geom::empty();
     let mut out: Vec<(String, Lines)> = Vec::new();
@@ -14,7 +14,13 @@ pub fn compose(stack: &[(String, LayerParts)]) -> Vec<(String, Lines)> {
             continue;
         }
         let mut groups = Vec::new();
-        for (suffix, lines) in [("outlines", &parts.outlines), ("details", &parts.details), ("filling", &parts.filling)] {
+        let named = [
+            ("outlines", &parts.outlines),
+            ("details", &parts.details),
+            ("trails", &parts.trails),
+            ("filling", &parts.filling),
+        ];
+        for (suffix, lines) in named {
             let kept = geom::clip_lines(lines, &above, true);
             if !kept.is_empty() {
                 groups.push((format!("{id}_{suffix}"), kept));

@@ -119,6 +119,7 @@ pub(super) fn render(layer: &LayerSpec, ctx: &Context) -> Result<LayerParts, Fil
     Ok(LayerParts {
         outlines: fill::stroke(geom::exterior_rings(&union), &layer_stroke(stroke, layer)),
         details: vec![],
+        trails: vec![],
         filling,
         mask: union,
     })

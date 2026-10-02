@@ -55,7 +55,7 @@
 #   tools_fill: { in: <area>, per: feature, pattern:, ... } un giro per ogni poligono
 #
 # MODULI  (solo strade: larghezze, z-index, ponti)
-#   module_roads: {}   ->  pubblica  roads.area, roads.outlines, roads.details
+#   module_roads: {}   ->  pubblica  roads.area, roads.outlines, roads.details, roads.trails
 #
 # PRIMITIVES  (una catena di tools con un nome; vedi docs/profile.md)
 #   primitives_<nome>: { from: <feature> }  ->  pubblica i quattro output fissi:
@@ -109,7 +109,9 @@ $areas:
 
   parks:     { tools_union: [$areas.garden, $areas.park, $areas.wood, $areas.grass] }
   parks_ext: { tools_fill_holes: $areas.parks }
-  wild:      { tools_difference: { base: $areas.parks_ext, cut: [$areas.garden, $areas.park, $areas.wood, $areas.grass] } }
+  # I buchi che `parks_ext` chiude (cortili, spiazzi): nessun tipo li
+  # punteggia, quindi li punteggia `wild`, con lo stesso passo degli altri.
+  wild:      { tools_difference: { base: $areas.parks_ext, cut: $areas.parks } }
 
   # Acqua: due sorgenti diverse. I corpi interni sono tag OSM, il mare e' una
   # funzione del motore. Le uniamo per avere un solo disegno, ma restano due
@@ -153,11 +155,11 @@ $lines:
 # FILL: penfill dentro un'area. Stesso nome base delle aree, sezione diversa.
 # --------------------------------------------------------------------------
 $fills:
-  garden: { tools_fill: { in: $areas.garden, pattern: dots, spacing: 0.25mm, mark: 0.2mm, angle: 45 } }
+  garden: { tools_fill: { in: $areas.garden, pattern: dots, spacing: 0.45mm, mark: 0.2mm, angle: 45 } }
   park:   { tools_fill: { in: $areas.park,   pattern: dots, spacing: 0.45mm, mark: 0.2mm, angle: 45 } }
-  wood:   { tools_fill: { in: $areas.wood,   pattern: dots, spacing: 0.70mm, mark: 0.2mm, angle: 45 } }
-  grass:  { tools_fill: { in: $areas.grass,  pattern: dots, spacing: 0.85mm, mark: 0.2mm, angle: 45 } }
-  wild:   { tools_fill: { in: $areas.wild,   pattern: dots, spacing: 0.70mm, mark: 0.2mm, angle: 45 } }
+  wood:   { tools_fill: { in: $areas.wood,   pattern: dots, spacing: 0.45mm, mark: 0.2mm, angle: 45 } }
+  grass:  { tools_fill: { in: $areas.grass,  pattern: dots, spacing: 0.45mm, mark: 0.2mm, angle: 45 } }
+  wild:   { tools_fill: { in: $areas.wild,   pattern: dots, spacing: 0.45mm, mark: 0.2mm, angle: 45 } }
   wet:    { tools_fill: { in: $areas.wet,    pattern: waves, spacing: 0.75mm, angle: 0 } }
   bldg:   { tools_fill: { in: $areas.footprints, per: feature, pattern: zigzag, spacing: 0.5mm, angle: 45 } }
 
@@ -177,6 +179,7 @@ draw:
   - { id: water_ring, from: $lines.wet_ring, stroke: solid }
   - { id: water_fill, from: $fills.wet }
   - { id: roads_out, from: roads.outlines, stroke: solid }
+  - { id: roads_trail, from: roads.trails, stroke: solid }
   - { id: roads_det, from: roads.details }
   - { id: bldg_wall, from: $lines.shared_walls, stroke: solid }
   - { id: bldg_fill, from: $fills.bldg }
@@ -198,6 +201,7 @@ compose:
     - water_ring
     - water_fill
     - roads_out
+    - roads_trail
     - roads_det
     - bldg_wall
     - bldg_fill
@@ -209,16 +213,16 @@ compose:
   masks:
     parks_cover:
       from: $areas.parks_ext
-      occludes: [water_fill, water_ring, roads_out, roads_det, bldg_wall, bldg_fill, bldg_ring]
+      occludes: [water_fill, water_ring, roads_out, roads_trail, roads_det, bldg_wall, bldg_fill, bldg_ring]
     wet_cover:
       from: $areas.wet
-      occludes: [parks_fill_g, parks_fill_p, parks_fill_w, parks_fill_r, parks_fill_x, parks_ring, roads_out, roads_det, bldg_wall, bldg_fill, bldg_ring]
+      occludes: [parks_fill_g, parks_fill_p, parks_fill_w, parks_fill_r, parks_fill_x, parks_ring, roads_out, roads_trail, roads_det, bldg_wall, bldg_fill, bldg_ring]
     roads_cover:
       from: roads.area
       occludes: [parks_fill_g, parks_fill_p, parks_fill_w, parks_fill_r, parks_fill_x, parks_ring, water_fill, water_ring]
     bldg_cover:
       from: $areas.dissolved
-      occludes: [parks_fill_g, parks_fill_p, parks_fill_w, parks_fill_r, parks_fill_x, parks_ring, water_fill, water_ring, roads_out, roads_det]
+      occludes: [parks_fill_g, parks_fill_p, parks_fill_w, parks_fill_r, parks_fill_x, parks_ring, water_fill, water_ring, roads_out, roads_trail, roads_det]
 
   clip:
     default: auto     # ogni id tagliato dalle maschere sopra di lui che lo elencano

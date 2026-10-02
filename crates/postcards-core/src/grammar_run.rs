@@ -22,6 +22,7 @@ use crate::geom::{self, Lines};
 use crate::card::Card;
 use crate::grammar::{Clip, Def, Grammar, Mask, Name, Op, Section, UnionRules};
 use crate::osm::Feature;
+use crate::progress::{thousands, Level, Task};
 use crate::steps::Selector;
 use crate::svg::write_svg;
 use geo::MultiPolygon;
@@ -44,8 +45,8 @@ enum Value {
     Features(Vec<Feature>),
     Area(MultiPolygon<f64>),
     Lines(Lines),
-    /// `module_roads` output, carrying all three at once.
-    Module { area: MultiPolygon<f64>, outlines: Lines, details: Lines },
+    /// `module_roads` output, carrying all four at once.
+    Module { area: MultiPolygon<f64>, outlines: Lines, details: Lines, trails: Lines },
 }
 
 impl Value {
@@ -88,6 +89,15 @@ pub struct Inputs<'a> {
 
 /// Evaluate `grammar` against `inputs`, project to `card`, compose and write.
 pub fn run(grammar: &Grammar, card: &Card, inputs: Inputs) -> Result<Outputs, RunError> {
+    let draw = Task::begin(&(), "draw", None, "draw", 0, "");
+    let out = run_with(grammar, card, inputs, &draw)?;
+    draw.ok("");
+    Ok(out)
+}
+
+/// [`run`], with every step a task under `draw`: projecting, the defs, each
+/// fill, composing, writing.
+pub fn run_with(grammar: &Grammar, card: &Card, inputs: Inputs, draw: &Task) -> Result<Outputs, RunError> {
     let mut sources = Sources::new();
     for (file, text) in inputs.sources {
         let drawing =
@@ -95,44 +105,68 @@ pub fn run(grammar: &Grammar, card: &Card, inputs: Inputs) -> Result<Outputs, Ru
         sources.insert(file.clone(), drawing);
     }
 
+    let project = draw.child("project", "project", inputs.features.len() as u64, "features");
     let projector = crate::projection::Projector::new(card);
     let features: Vec<Feature> = inputs
         .features
         .into_par_iter()
         .map(|mut f| {
             f.geometry = projector.project_geometry(&f.geometry);
+            project.tick();
             f
         })
         .collect();
-    let ocean = inputs.ocean.map(|o| {
-        let clip = MultiPolygon::new(vec![card.query_polygon()]);
-        projector.project_geometry(&geom::intersection(&o, &clip))
-    });
+    let frame = MultiPolygon::new(vec![card.query_polygon()]);
+    let ocean = inputs.ocean.map(|o| projector.project_geometry(&geom::intersection(&o, &frame)));
+    let engine = Engine { of: card, card: projector.project_geometry(&frame), ocean: ocean.unwrap_or_else(geom::empty) };
+    project.ok("");
 
-    let values = evaluate(grammar, &features, card)?;
+    let values = evaluate(grammar, &features, &engine, draw)?;
 
     // Fills come last: they need areas, and they call into penfill.
+    let fill_defs: Vec<&Def> = grammar.defs(Section::Fills).iter().filter(|d| matches!(d.op, Op::Fill(_))).collect();
+    let fills_task = draw.child("fills", "fills", fill_defs.len() as u64, "fills");
     let mut fills: BTreeMap<Name, Lines> = BTreeMap::new();
-    for def in grammar.defs(Section::Fills) {
+    for def in fill_defs {
         let Op::Fill(spec) = &def.op else { continue };
+        let name = def.reference();
+        let task = fills_task.child(&format!("fill:{name}"), &name.to_string(), 0, "pieces");
         let area = values
             .get(&spec.in_area)
-            .ok_or_else(|| RunError::Plan(format!("{}: missing input {}", def.reference(), spec.in_area)))?
+            .ok_or_else(|| RunError::Plan(format!("{name}: missing input {}", spec.in_area)))?
             .area(&spec.in_area)?;
-        let lines = run_fill(spec, area, &values, &sources, &def.reference())?;
-        fills.insert(def.reference(), lines);
+        let lines = run_fill(spec, area, &values, &sources, &name, &task)?;
+        task.ok(&format!("{} lines", thousands(lines.len() as u64)));
+        fills_task.tick();
+        fills.insert(name, lines);
     }
+    fills_task.ok("");
 
-    let groups = compose(grammar, &values, &fills, ocean.as_ref())?;
+    let compose_task = draw.child("compose", "compose", 0, "");
+    let groups = compose(grammar, &values, &fills, &compose_task)?;
+    compose_task.ok(&format!("{} groups", groups.len()));
+
+    let svg_task = draw.child("svg", "svg", 0, "");
     let svg = write_svg(card.width_mm, card.height_mm, &groups);
+    let strokes: usize = groups.iter().map(|(_, l)| l.len()).sum();
+    svg_task.ok(&format!("{} strokes · {:.1} MB", thousands(strokes as u64), svg.len() as f64 / 1e6));
     Ok(Outputs { svg, groups: groups.iter().map(|(id, l)| (id.clone(), l.len())).collect() })
+}
+
+/// The card, and the `engine_*` areas in card millimetres like everything
+/// evaluated.
+struct Engine<'a> {
+    of: &'a Card,
+    card: MultiPolygon<f64>,
+    ocean: MultiPolygon<f64>,
 }
 
 /// Evaluate every non-fill def, in dependency order (waves).
 fn evaluate(
     grammar: &Grammar,
     features: &[Feature],
-    card: &Card,
+    engine: &Engine,
+    draw: &Task,
 ) -> Result<BTreeMap<Name, Value>, RunError> {
     let mut done: BTreeMap<Name, Value> = BTreeMap::new();
     let mut pending: Vec<Name> = grammar
@@ -140,6 +174,7 @@ fn evaluate(
         .filter(|d| d.op.section() != Section::Fills)
         .map(|d| d.reference())
         .collect();
+    let task = draw.child("evaluate", "evaluate", pending.len() as u64, "defs");
 
     while !pending.is_empty() {
         let ready: Vec<Name> = pending
@@ -159,12 +194,16 @@ fn evaluate(
         // Deterministic order: the profile's own order, within a wave.
         for name in ready {
             let def = grammar.find(&name).expect("ready names come from the grammar");
-            let value = eval_op(&def.op, &done, features, card)
-                .map_err(|e| RunError::Plan(format!("{}: {e}", def.reference())))?;
+            task.step(done.len() as u64, &name.to_string());
+            let value = eval_op(&def.op, &done, features, engine).map_err(|e| {
+                task.log(Level::Error, &format!("{name}: {e}"));
+                RunError::Plan(format!("{}: {e}", def.reference()))
+            })?;
             done.insert(name.clone(), value);
             pending.retain(|n| n != &name);
         }
     }
+    task.ok("");
     Ok(done)
 }
 
@@ -172,7 +211,7 @@ fn eval_op(
     op: &Op,
     done: &BTreeMap<Name, Value>,
     features: &[Feature],
-    card: &Card,
+    engine: &Engine,
 ) -> Result<Value, String> {
     let area = |n: &Name| -> Result<MultiPolygon<f64>, String> {
         done.get(n).ok_or_else(|| format!("{} is missing", n))?.area(n).cloned().map_err(|e| e.to_string())
@@ -215,9 +254,8 @@ fn eval_op(
         }
         Op::FillHoles(n) => Value::Area(geom::fill_holes(&area(n)?)),
         Op::Grow(g) => Value::Area(geom::buffer(&area(&g.of)?, g.by.0)),
-        Op::Card => Value::Area(MultiPolygon::new(vec![card.query_polygon()])),
-        // The ocean is passed with the inputs; it is not a def.
-        Op::Ocean => Value::Area(geom::empty()),
+        Op::Card => Value::Area(engine.card.clone()),
+        Op::Ocean => Value::Area(engine.ocean.clone()),
 
         // ---- lines ---------------------------------------------------------
         Op::Rings(r) => {
@@ -246,7 +284,7 @@ fn eval_op(
 
         // Handled in the fill pass, so `values` never holds one.
         Op::Fill(_) => return Err("tools_fill is evaluated in the fill pass".into()),
-        Op::Module(m) => eval_module(m, features, card)?,
+        Op::Module(m) => eval_module(m, features, engine.of)?,
     })
 }
 
@@ -275,7 +313,7 @@ fn eval_module(module: &str, features: &[Feature], card: &Card) -> Result<Value,
                 masks: &BTreeMap::new(),
             };
             let parts = crate::themes::roads_render(&layer, &ctx).map_err(|e| e.to_string())?;
-            Ok(Value::Module { area: parts.mask, outlines: parts.outlines, details: parts.details })
+            Ok(Value::Module { area: parts.mask, outlines: parts.outlines, details: parts.details, trails: parts.trails })
         }
         other => Err(format!("module_{other} is not known")),
     }
@@ -292,7 +330,7 @@ fn module_lines(
     group: &str,
     masks_by_id: &mut BTreeMap<String, MultiPolygon<f64>>,
 ) -> Result<Option<Lines>, RunError> {
-    let Value::Module { area, outlines, details } = value else {
+    let Value::Module { area, outlines, details, trails } = value else {
         return Err(RunError::Plan(format!("module_{module} did not produce module outputs")));
     };
     Ok(match output {
@@ -302,9 +340,10 @@ fn module_lines(
         }
         "outlines" => Some(outlines.clone()),
         "details" => Some(details.clone()),
+        "trails" => Some(trails.clone()),
         other => {
             return Err(RunError::Plan(format!(
-                "module {module}: unknown output {other:?} (area, outlines, details)"
+                "module {module}: unknown output {other:?} (area, outlines, details, trails)"
             )))
         }
     })
@@ -351,18 +390,31 @@ fn run_fill(
     values: &BTreeMap<Name, Value>,
     sources: &Sources,
     def: &Name,
+    task: &Task,
 ) -> Result<Lines, RunError> {
     let base = spec.spec.clone();
     if spec.per_feature {
         // One penfill run per polygon of the input area, so neighbouring
         // buildings keep their own hatching instead of merging.
         let pieces: Vec<MultiPolygon<f64>> = area.0.iter().map(|p| MultiPolygon::new(vec![p.clone()])).collect();
-        let filled: Result<Vec<Lines>, FillError> =
-            pieces.par_iter().map(|m| fill::fill(m, &base, sources)).collect();
+        task.set_total(pieces.len() as u64);
+        let filled: Result<Vec<Lines>, FillError> = pieces
+            .par_iter()
+            .map(|m| {
+                let lines = fill::fill(m, &base, sources);
+                task.tick();
+                lines
+            })
+            .collect();
         return Ok(filled?.into_iter().flatten().collect());
     }
     let _ = values;
-    fill::fill(area, &base, sources).map_err(|source| RunError::Def { def: def.to_string(), source })
+    // One penfill pass over the whole area, so the pattern runs on across
+    // its polygons: a single step to count.
+    task.set_total(1);
+    let lines = fill::fill(area, &base, sources).map_err(|source| RunError::Def { def: def.to_string(), source })?;
+    task.tick();
+    Ok(lines)
 }
 
 /// Turn `draw` + `compose` into ordered SVG groups.
@@ -370,12 +422,13 @@ fn compose(
     grammar: &Grammar,
     values: &BTreeMap<Name, Value>,
     fills: &BTreeMap<Name, Lines>,
-    ocean: Option<&MultiPolygon<f64>>,
+    task: &Task,
 ) -> Result<Vec<(String, Lines)>, RunError> {
     // 1. Gather each draw entry's lines, styled by its stroke.
     let mut parts: BTreeMap<String, Lines> = BTreeMap::new();
     let mut masks_by_id: BTreeMap<String, MultiPolygon<f64>> = BTreeMap::new();
 
+    let strokes_task = task.child("compose:strokes", "strokes", grammar.draw.len() as u64, "draws");
     for draw in &grammar.draw {
         let lines = match &draw.from.module {
             Some(module) => {
@@ -398,14 +451,19 @@ fn compose(
         let lines = lines.unwrap_or_default();
         let strokes = draw.stroke.as_ref().map_or(lines.clone(), |s| fill::stroke(lines, s));
         parts.insert(draw.group(), strokes);
+        strokes_task.tick();
     }
+    strokes_task.ok("");
 
     // 2. Evaluate the masks: an area per mask name.
+    let masks_task = task.child("compose:masks", "masks", grammar.compose.masks.len() as u64, "masks");
     for (name, mask) in &grammar.compose.masks {
-        let area = mask_area(mask, values, grammar, ocean)
+        let area = mask_area(mask, values, grammar)
             .map_err(|e| RunError::Plan(format!("masks.{name}: {e}")))?;
         masks_by_id.insert(name.clone(), area);
+        masks_task.tick();
     }
+    masks_task.ok("");
 
     // 3. Order: bottom-most first. Without `order`, the draw order.
     let order: Vec<String> = if grammar.compose.order.is_empty() {
@@ -426,7 +484,9 @@ fn compose(
     // from `$areas.parks_ext`, drawn by the parks groups, so it hides what is
     // below the parks — not the roads above them.
     let mut out: Vec<(String, Lines)> = Vec::new();
+    let occlude_task = task.child("compose:occlude", "occlusion", order.len() as u64, "groups");
     for (i, id) in order.iter().enumerate() {
+        occlude_task.tick();
         let Some(lines) = parts.get(id) else { continue };
         let mut above = geom::empty();
         for (name, mask) in &grammar.compose.masks {
@@ -458,6 +518,7 @@ fn compose(
         let kept = geom::clip_lines(lines, &above, true);
         out.push((id.clone(), kept));
     }
+    occlude_task.ok("");
     Ok(out)
 }
 
@@ -490,25 +551,19 @@ fn mask_position(
         if !seen.insert(target.clone()) {
             return None;
         }
-        if let Some(at) = grammar.draw.iter().position(|d| d.from.module.is_none() && d.from.name == target) {
-            return Some(at);
+        let drawn = order.iter().position(|id| {
+            grammar.draw.iter().any(|d| &d.group() == id && d.from.module.is_none() && d.from.name == target)
+        });
+        if drawn.is_some() {
+            return drawn;
         }
         // Nothing draws it: follow the defs that read it, one step.
-        let next = grammar.all_defs().find(|d| d.op.refs().iter().any(|r| r == &target)).map(Def::reference);
-        match next {
-            Some(n) => target = n,
-            None => return None,
-        }
+        target = grammar.all_defs().find(|d| d.op.refs().iter().any(|r| r == &target)).map(Def::reference)?;
     }
 }
 
-/// The area a mask subtracts: `$areas.*`, the ocean, or a module output.
-fn mask_area(
-    mask: &Mask,
-    values: &BTreeMap<Name, Value>,
-    grammar: &Grammar,
-    ocean: Option<&MultiPolygon<f64>>,
-) -> Result<MultiPolygon<f64>, String> {
+/// The area a mask subtracts: `$areas.*` or a module output.
+fn mask_area(mask: &Mask, values: &BTreeMap<Name, Value>, grammar: &Grammar) -> Result<MultiPolygon<f64>, String> {
     if let Some(module) = &mask.from.module {
         let value = module_output(module, &mask.from.name.name, values, grammar)
             .map_err(|e| e.to_string())?;
@@ -519,10 +574,6 @@ fn mask_area(
         };
     }
     let name = &mask.from.name;
-    // `engine_ocean` is not stored as a normal def: it comes from the inputs.
-    if grammar.find(name).map(|d| matches!(d.op, Op::Ocean)).unwrap_or(false) {
-        return Ok(ocean.cloned().unwrap_or_else(geom::empty));
-    }
     values.get(name).ok_or_else(|| format!("{name} is missing"))?.area(name).cloned().map_err(|e| e.to_string())
 }
 
@@ -627,6 +678,24 @@ mod tests {
         )
         .unwrap();
         assert_eq!(out.groups.iter().map(|(id, _)| id.as_str()).collect::<Vec<_>>(), vec!["lines_one", "top"]);
+    }
+
+    #[test]
+    fn the_ocean_and_the_card_are_areas_in_card_mm() {
+        // The whole card is sea: its fill covers the card, and the card's
+        // ring sits on the card's edge, 100 by 50 mm.
+        let text = "card: { width: 100mm, height: 50mm }\n\
+             $areas:\n  sea: { engine_ocean: {} }\n  frame: { engine_card: {} }\n  wet: { tools_union: [$areas.sea] }\n\
+             $lines:\n  ring: { tools_rings: $areas.frame }\n\
+             $fills:\n  waves: { tools_fill: { in: $areas.wet, pattern: lines, spacing: 1mm } }\n\
+             draw:\n  - { id: sea, from: $fills.waves }\n  - { id: ring, from: $lines.ring, stroke: solid }\n";
+        let grammar = Grammar::parse(text, Format::Yaml).unwrap();
+        let ocean = MultiPolygon::new(vec![card().query_polygon()]);
+        let out = run(&grammar, &card(), Inputs { features: vec![], ocean: Some(ocean), sources: &BTreeMap::new() })
+            .unwrap();
+        let strokes = |id: &str| out.groups.iter().find(|(g, _)| g == id).map_or(0, |(_, n)| *n);
+        assert!(strokes("sea") >= 40, "one line per mm across the card, got {}", strokes("sea"));
+        assert_eq!(strokes("ring"), 1);
     }
 
     #[test]

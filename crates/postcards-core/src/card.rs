@@ -94,6 +94,27 @@ pub fn fetch_keys(needed: &[String]) -> Vec<String> {
     keys
 }
 
+/// Overpass servers, tried in order. The first is the one osmnx uses, and the
+/// one the CLI's cache keys are made from whichever server answered. `z.`
+/// and `lz4.` are overpass-api.de's own machines by name: when the main
+/// address answers 504 one of them often still has a free slot. (The kumi
+/// and private.coffee mirrors took connections and never answered.)
+pub const OVERPASS_ENDPOINTS: &[&str] = &[
+    "https://overpass-api.de/api/interpreter",
+    "https://z.overpass-api.de/api/interpreter",
+    "https://lz4.overpass-api.de/api/interpreter",
+    "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
+];
+
+/// Seconds to wait before each round of tries over every endpoint. A busy
+/// server's 504 usually clears within seconds, so a failed round is worth
+/// repeating a few times before giving up.
+pub const OVERPASS_ROUND_PAUSE_S: &[u64] = &[0, 5, 15];
+
+/// Give up on one endpoint after this long, so a hanging server cannot stall
+/// a draw.
+pub const OVERPASS_ENDPOINT_TIMEOUT_S: u64 = 60;
+
 /// The Overpass QL osmnx sends for `features_from_polygon(polygon, tags)`
 /// with every tag set to `True` — same text, so responses are interchangeable.
 pub fn overpass_query(polygon: &Polygon<f64>, tags: &[&str], timeout_s: u32) -> String {
