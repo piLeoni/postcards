@@ -57,6 +57,11 @@ want it and press "generate card".
   an SVG, one per sheet when the card is sliced. Beside it, "selection to
   map" brings the card to the middle of the map and "map to selection" the
   map to the card.
+- An edit in the editor is applied only once the engine takes it: "apply"
+  (or ⌘/Ctrl+Enter) on a config with a mistake keeps it as a draft, opens a
+  card over the column's foot with the engine's message, and underlines the
+  spot it points to. A loaded file with a mistake opens the same way; a draw
+  that fails says why in the same card.
 - "transform" on the card opens the `card:` block as controls
   (`src/components/CardControls.jsx`): the place (move with latitude and
   longitude, rotate, scale, the terrain the card covers) and the output (the

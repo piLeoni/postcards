@@ -206,17 +206,32 @@ export default function App() {
     mapApiRef.current?.jumpTo?.(card?.lng, card?.lat)
   }, [card?.lat, card?.lng])
 
+  /** What is wrong with `text` as a card, the engine's words; `null` when nothing. */
+  const check = useCallback(
+    (text) => {
+      if (!engine) return null
+      try {
+        engine.cardInfo(text)
+        return null
+      } catch (e) {
+        return e instanceof Error ? e.message : String(e)
+      }
+    },
+    [engine],
+  )
+
   const sidebar = useMemo(
     () => ({
       doc,
       setDoc,
+      check,
       card,
       status,
       drawing: current,
       busy: status.phase === 'working',
       onDraw: draw,
     }),
-    [doc, card, status, current, draw],
+    [doc, check, card, status, current, draw],
   )
 
   if (engineError) {
