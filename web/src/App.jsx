@@ -3,20 +3,19 @@ import MapView from './components/MapView'
 import Sidebar from './components/Sidebar'
 import { loadPostcards } from './lib/postcards'
 import { DEFAULT_DOC } from './lib/presets'
-import { setCardKeys } from './lib/doc'
+import { cardUnit, setCardKeys } from './lib/doc'
+import { lengthText } from './lib/frame'
 
 /** Where the card is, how big and how it is cut: a drawing is only good for one of these. */
 const placeOf = (c) =>
   c ? [c.lat, c.lng, c.width_mm, c.height_mm, c.scale, c.bearing, c.padding_mm, c.columns, c.rows, c.slice_padding_mm].join() : ''
 
-const mm = (v) => `${Math.round(v * 100) / 100}mm`
-
-/** The `card:` keys for a layout; the defaults leave the key out. */
-function layoutKeys({ padding_mm, columns, rows, slice_padding_mm }) {
+/** The `card:` keys for a layout, each length in its unit; the defaults leave the key out. */
+function layoutKeys({ padding_mm, padding_unit, columns, rows, slice_padding_mm, slice_padding_unit }) {
   const cut = columns > 1 || rows > 1 || slice_padding_mm > 0
   return {
-    padding: padding_mm > 0 ? mm(padding_mm) : null,
-    slices: cut ? `{ columns: ${columns}, rows: ${rows}, padding: ${mm(slice_padding_mm)} }` : null,
+    padding: padding_mm > 0 ? lengthText(padding_mm, padding_unit) : null,
+    slices: cut ? `{ columns: ${columns}, rows: ${rows}, padding: ${lengthText(slice_padding_mm, slice_padding_unit)} }` : null,
   }
 }
 
@@ -169,6 +168,12 @@ export default function App() {
   const rotateCard = useCallback(({ bearing }) => setDoc((d) => setCardKeys(d, { bearing })), [])
   const layoutCard = useCallback((layout) => setDoc((d) => setCardKeys(d, layoutKeys(layout))), [])
 
+  // A length keeps the unit it is written in; an unwritten one takes the paper's.
+  const units = useMemo(() => {
+    const paper = cardUnit(doc, 'width') ?? 'mm'
+    return { padding: cardUnit(doc, 'padding') ?? paper, gutter: cardUnit(doc, 'slices.padding') ?? paper }
+  }, [doc])
+
   /** Move the card onto the map's centre. */
   const centreCardOnMap = useCallback(() => {
     const c = mapApiRef.current?.center?.()
@@ -209,6 +214,7 @@ export default function App() {
       <main className="relative min-h-0 min-w-0 flex-1">
         <MapView
           card={card}
+          units={units}
           drawing={current}
           apiRef={mapApiRef}
           load={load}

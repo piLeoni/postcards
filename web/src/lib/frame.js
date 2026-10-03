@@ -130,7 +130,8 @@ const PAPERS = [
   { name: 'Letter', w: 11, h: 8.5, unit: 'in' },
   { name: '12×9 in', w: 12, h: 9, unit: 'in' },
 ]
-const MM_PER = { mm: 1, in: 25.4 }
+/** Millimetres in each unit a card length may be written in. */
+export const MM_PER = { mm: 1, cm: 10, in: 25.4 }
 
 /** Both orientations of every paper, in mm. */
 function papers() {
@@ -146,6 +147,9 @@ export function paperName(card) {
   const p = papers().find((p) => Math.abs(p.w_mm - card.width_mm) < 0.3 && Math.abs(p.h_mm - card.height_mm) < 0.3)
   return p?.name ?? null
 }
+
+/** A length in mm written in `unit`, to the thousandth: `6.35, 'in'` → "0.25in". */
+export const lengthText = (mm, unit = 'mm') => `${Math.round((mm / MM_PER[unit]) * 1000) / 1000}${unit}`
 
 /** Three significant figures: 24873 → 24900. */
 export function sig3(x) {
