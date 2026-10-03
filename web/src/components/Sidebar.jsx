@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Editor from '@monaco-editor/react'
 import { PRESETS } from '../lib/presets'
-import { setCardKeys } from '../lib/doc'
+import { setCardKeys, setTitle, styleOf, titleOf } from '../lib/doc'
 import { EDITOR_THEME, defineEditorTheme, editorFont } from '../lib/editorTheme'
 import Panel from './Panel'
 
@@ -28,6 +28,11 @@ const spotOf = (text) => {
 /** The engine's words, without the parser's own prefix. */
 const plain = (text) => sentence(text.replace(/^YAML: error: /, ''))
 
+const PRESET_STYLES = PRESETS.map((p) => [p, styleOf(p.doc)])
+
+/** A file name from a title: `Parks and buildings` → `parks-and-buildings`. */
+const slug = (s) => s.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+
 export default function Sidebar({ open, onClose, doc, setDoc, check, card, status, drawing, busy, onDraw }) {
   const [width, setWidth] = useState(() => clampWidth(Number(localStorage.getItem(WIDTH_KEY)) || 448))
   const [draft, setDraft] = useState(null)   // text typed but not applied yet
@@ -44,6 +49,14 @@ export default function Sidebar({ open, onClose, doc, setDoc, check, card, statu
   const shownRef = useRef(shown)
   shownRef.current = shown
   const dirty = draft != null && draft !== doc
+  const title = titleOf(shown) ?? ''
+  // The older profile (`map:`, `layers:`) has no title.
+  const titled = /^card\s*:/m.test(shown)
+  const style = useMemo(() => styleOf(shown), [shown])
+  const preset = PRESET_STYLES.find(([, s]) => s === style)?.[0] ?? null
+
+  /** A new title goes where the text being shown is: the draft while there is one. */
+  const retitle = (t) => (draft != null ? setDraft(setTitle(draft, t)) : setDoc(setTitle(doc, t)))
 
   // A drag or a preset rewrites the document; an edit in progress stays.
   useEffect(() => {
@@ -155,7 +168,7 @@ export default function Sidebar({ open, onClose, doc, setDoc, check, card, statu
     const url = URL.createObjectURL(new Blob([shown], { type: 'application/yaml' }))
     const a = document.createElement('a')
     a.href = url
-    a.download = 'postcard.yaml'
+    a.download = `${slug(title) || 'postcard'}.yaml`
     a.click()
     URL.revokeObjectURL(url)
   }
@@ -246,7 +259,7 @@ export default function Sidebar({ open, onClose, doc, setDoc, check, card, statu
           <button type="button" {...KEY} title="Load a YAML config" onClick={() => fileRef.current?.click()}>
             load
           </button>
-          <button type="button" {...KEY} title="Save the config as postcard.yaml" onClick={download}>
+          <button type="button" {...KEY} title="Save the config as a YAML file named after its title" onClick={download}>
             save
           </button>
           {/* Static, so the menu opens under the whole row rather than this button. */}
@@ -262,11 +275,14 @@ export default function Sidebar({ open, onClose, doc, setDoc, check, card, statu
                       type="button"
                       size-="small"
                       variant-="background0"
-                      className="h-auto w-full flex-col items-start justify-start px-[1ch] py-[0.5lh] text-left hover:bg-black hover:text-white hover:no-underline"
+                      aria-current={p === preset || undefined}
+                      className={`h-auto w-full flex-col items-start justify-start px-[1ch] py-[0.5lh] text-left hover:bg-black hover:text-white hover:no-underline ${
+                        p === preset ? 'bg-black text-white' : ''
+                      }`}
                       onClick={() => loadPreset(p)}
                     >
-                      <span className="font-bold">{p.name}</span>
-                      <span className="opacity-60">{p.hint}</span>
+                      <span className="font-bold">{p === preset ? `● ${p.name}` : p.name}</span>
+                      <span className="opacity-60">{p === preset ? `the style in use · ${p.hint}` : p.hint}</span>
                     </button>
                   </li>
                 ))}
@@ -291,6 +307,28 @@ export default function Sidebar({ open, onClose, doc, setDoc, check, card, statu
             onChange={(e) => { importFile(e.target.files?.[0]); e.target.value = '' }}
           />
         </div>
+        {titled && (
+          <div className="mt-[0.5lh] flex shrink-0 items-baseline gap-[1ch]">
+            <input
+              type="text"
+              spellCheck={false}
+              aria-label="Title"
+              title="The config's title: written in it as title:, so a shared config carries it"
+              placeholder="Untitled"
+              value={title}
+              className="h-auto min-w-0 flex-1 border-0 border-b border-dashed border-black/40 bg-transparent p-0 font-mono font-bold text-[length:inherit] leading-[1.6] outline-none placeholder:font-normal placeholder:text-black/40 focus:border-solid focus:border-black"
+              onChange={(e) => retitle(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === 'Escape') e.currentTarget.blur()
+              }}
+            />
+            {preset && (
+              <span className="min-w-0 shrink truncate opacity-60" title={`Styled as the preset “${preset.name}”`}>
+                {preset.name === title ? 'preset' : `preset · ${preset.name}`}
+              </span>
+            )}
+          </div>
+        )}
         {notice && (
           <p className={`mt-[0.5lh] shrink-0 break-words ${notice.error ? 'font-bold' : 'opacity-60'}`}>
             {notice.error ? `✗ ${sentence(notice.text)}` : sentence(notice.text)}

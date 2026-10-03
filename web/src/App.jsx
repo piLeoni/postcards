@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import MapView from './components/MapView'
 import Sidebar from './components/Sidebar'
 import { loadPostcards } from './lib/postcards'
-import { DEFAULT_DOC } from './lib/presets'
+import { START_DOC } from './lib/presets'
 import { cardUnit, setCardComment, setCardKeys } from './lib/doc'
 import { terrainPair } from './components/controls'
 
@@ -41,7 +41,7 @@ function saveFile(name, text) {
 export default function App() {
   const [engine, setEngine] = useState(null)
   const [engineError, setEngineError] = useState(null)
-  const [doc, setDoc] = useState(DEFAULT_DOC)
+  const [doc, setDoc] = useState(START_DOC)
   const [card, setCard] = useState(null)
   const [status, setStatus] = useState({ phase: 'loading' })
   const [drawing, setDrawing] = useState(null)

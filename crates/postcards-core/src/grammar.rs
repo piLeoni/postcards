@@ -377,6 +377,8 @@ pub struct Compose {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Grammar {
+    /// A name for the profile, carried with it when shared; nothing draws it.
+    pub title: Option<String>,
     pub card: crate::profile::MapSpec,
     /// Sections in the order they were written, each with its defs.
     pub sections: Vec<(Section, Vec<Def>)>,
@@ -488,6 +490,8 @@ pub enum GrammarError {
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Raw {
+    #[serde(default)]
+    title: Option<String>,
     card: crate::profile::MapSpec,
     #[serde(default, rename = "$features", deserialize_with = "ordered_defs")]
     features: Vec<(String, RawOp)>,
@@ -722,7 +726,7 @@ fn build(raw: Raw) -> Result<Grammar, GrammarError> {
         clip_default,
     };
 
-    let grammar = Grammar { card: raw.card, sections, draw, compose };
+    let grammar = Grammar { title: raw.title, card: raw.card, sections, draw, compose };
     validate(&grammar)?;
     Ok(grammar)
 }
@@ -1272,6 +1276,13 @@ compose:
         assert_eq!(g.defs(Section::Fills).len(), 1);
         let dissolved = Name::parse("$areas.dissolved").unwrap();
         assert_eq!(g.find(&dissolved).unwrap().op.section(), Section::Areas);
+    }
+
+    #[test]
+    fn a_title_is_optional_and_kept_as_written() {
+        assert_eq!(parse(YAML).unwrap().title, None);
+        let g = parse(&format!("title: \"Parks: and buildings\"\n{YAML}")).unwrap();
+        assert_eq!(g.title.as_deref(), Some("Parks: and buildings"));
     }
 
     #[test]

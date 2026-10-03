@@ -7,6 +7,7 @@
  * over each one, so a preset that stops parsing fails a test rather than a
  * browser. `examples/wasm_render.rs` renders them from a canned Overpass reply.
  */
+import { setTitle } from './doc'
 
 /**
  * Everything: parks, water, roads and buildings, in the CLI's own order and
@@ -180,6 +181,7 @@ export const MIXED_DOC = FULL_DOC.replace(
   '  ways:  { osm_select: { highway: true } }',
 )
 
+/** Each preset's document carries its name as `title:`, to be renamed like any other. */
 export const PRESETS = [
   {
     id: 'full',
@@ -211,4 +213,7 @@ export const PRESETS = [
     hint: 'the fastest draw',
     doc: SMALL_DOC,
   },
-]
+].map((p) => ({ ...p, doc: setTitle(p.doc, p.name) }))
+
+/** The card the app opens on. */
+export const START_DOC = PRESETS.find((p) => p.id === 'parks').doc

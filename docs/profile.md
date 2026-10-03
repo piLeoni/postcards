@@ -297,6 +297,7 @@ With the marker, the type is syntactic and the error comes at load:
 ## The four sections
 
 ```text
+title             a name for the profile (optional)         (schema, no marker)
 card              paper frame, centre, projection          (schema, no marker)
 $features         OSM selections: tag filters (Overpass) or tile layers
 $areas            areas  (multi-polygons in card mm)
@@ -307,9 +308,13 @@ draw              which names become ink, and how          (schema, no marker)
 compose           order, masks, selective clip              (schema, no marker)
 ```
 
-Sections **without** `$` (`card`, `draw`, `compose`) are the engine's schema.
+Sections **without** `$` (`title`, `card`, `draw`, `compose`) are the engine's schema.
 Sections **with** `$` are yours. That single visual rule tells you, on opening
 any profile, what is grammar and what is content.
+
+`title: Parks and buildings` names the profile, so a shared file carries its
+name; nothing draws it. The web app shows it under the config's buttons, to
+be renamed there, and names the saved file after it.
 
 `card.projection` picks how the ground lands on the paper:
 

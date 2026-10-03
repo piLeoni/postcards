@@ -52,7 +52,13 @@ want it and press "generate card".
   format the CLI reads, so anything you write there works in `postcards-rs map`
   too. `cargo run --example check_web_presets` parses each one, so a preset that
   stops parsing fails there rather than in a browser.
-- "load" and "save" in the sidebar read and write the config; "download",
+- "presets" replaces the style with a ready-made one; the card stays where
+  it is. The preset whose style the config has (everything but `title:` and
+  `card:`) is highlighted in the menu. Under the buttons, the config's
+  `title:` is written and renamed in place, with "preset" beside it while the
+  style is still a preset's; a preset brings its name as the title.
+- "load" and "save" in the sidebar read and write the config, saved under
+  its title; "download",
   in black in the map's corner once the card is drawn, saves the drawing as
   an SVG, one per sheet when the card is sliced. Beside it, "selection to
   map" brings the card to the middle of the map and "map to selection" the
