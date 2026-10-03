@@ -34,12 +34,15 @@ export default function Sidebar({ open, onClose, doc, setDoc, check, card, statu
   const [notice, setNotice] = useState(null)   // { text, error? }
   const [problem, setProblem] = useState(null)   // { kind: 'apply' | 'draw', title, text }
   const monacoRef = useRef(null)   // { editor, monaco }
+  const syncingRef = useRef(false)   // the editor is being brought to `shown`, not typed in
   const fileRef = useRef(null)
   const presetMenuRef = useRef(null)
   const noticeTimer = useRef(0)
   const applyDraftRef = useRef(() => {})
 
   const shown = draft ?? doc
+  const shownRef = useRef(shown)
+  shownRef.current = shown
   const dirty = draft != null && draft !== doc
 
   // A drag or a preset rewrites the document; an edit in progress stays.
@@ -52,6 +55,25 @@ export default function Sidebar({ open, onClose, doc, setDoc, check, card, statu
     setNotice({ text, error: isError })
     noticeTimer.current = setTimeout(() => setNotice(null), isError ? 8000 : 3000)
   }
+
+  // The editor follows the document by the smallest edit that gets it there:
+  // a drag rewrites a few digits, so only those change, and the view, the
+  // cursor and the undo history stay as they are.
+  useEffect(() => {
+    const model = monacoRef.current?.editor.getModel()
+    if (!model) return
+    const now = model.getValue()
+    if (now === shown) return
+    let a = 0
+    while (a < now.length && a < shown.length && now[a] === shown[a]) a++
+    let b = 0
+    while (b < now.length - a && b < shown.length - a && now[now.length - 1 - b] === shown[shown.length - 1 - b]) b++
+    const from = model.getPositionAt(a)
+    const to = model.getPositionAt(now.length - b)
+    syncingRef.current = true
+    model.pushEditOperations([], [{ range: { startLineNumber: from.lineNumber, startColumn: from.column, endLineNumber: to.lineNumber, endColumn: to.column }, text: shown.slice(a, shown.length - b) }], () => null)
+    syncingRef.current = false
+  }, [shown])
 
   /** Underline where the engine points, or nothing. */
   const mark = (text) => {
@@ -210,7 +232,7 @@ export default function Sidebar({ open, onClose, doc, setDoc, check, card, statu
 
       <Panel
         title={dirty ? 'Config ●' : 'Config'}
-        className="flex min-h-0 flex-1 flex-col"
+        className="relative flex min-h-0 flex-1 flex-col"
         aside={(
           <span
             className={`min-w-0 truncate ${dirty || failed ? 'font-bold' : 'opacity-60'}`}
@@ -297,11 +319,14 @@ export default function Sidebar({ open, onClose, doc, setDoc, check, card, statu
             height="100%"
             language="yaml"
             theme={EDITOR_THEME}
-            value={shown}
-            onChange={(v) => setDraft(v ?? '')}
+            defaultValue={shown}
+            onChange={(v) => {
+              if (!syncingRef.current) setDraft(v ?? '')
+            }}
             beforeMount={defineEditorTheme}
             onMount={(editor, monaco) => {
               monacoRef.current = { editor, monaco }
+              if (editor.getValue() !== shownRef.current) editor.setValue(shownRef.current)
               editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => applyDraftRef.current())
               // Monaco measures glyphs once; a web font that lands later
               // would leave the cursor out of step with the text.
@@ -323,6 +348,22 @@ export default function Sidebar({ open, onClose, doc, setDoc, check, card, statu
             }}
           />
         </div>
+        {/* Centred over the config it is about, with room even when the editor is short. */}
+        {problem && (
+          <div
+            role="alert"
+            className="absolute inset-x-0 top-1/2 z-20 flex max-h-[80%] -translate-y-1/2 flex-col bg-white"
+            style={{ boxShadow: '0 0 0 1px #000, 0 16px 44px rgb(0 0 0 / 0.3)' }}
+          >
+            <div className="flex shrink-0 items-center gap-[1ch] border-b border-black px-[1ch] py-[0.25lh]">
+              <span className="font-bold">✗ {problem.title}</span>
+              <button type="button" {...KEY} className="ml-auto" aria-label="Close" title="Close" onClick={clearProblem}>
+                ✕
+              </button>
+            </div>
+            <pre className="min-h-0 overflow-auto px-[1ch] py-[0.5lh] text-[11px] leading-snug break-words whitespace-pre-wrap">{plain(problem.text)}</pre>
+          </div>
+        )}
       </Panel>
 
       <details className="group shrink-0 border-t border-black py-[0.5lh]">
@@ -338,22 +379,6 @@ export default function Sidebar({ open, onClose, doc, setDoc, check, card, statu
         </ul>
       </details>
 
-      {/* Over the column's foot, so it has room even when the editor is short. */}
-      {problem && (
-        <div
-          role="alert"
-          className="absolute inset-x-[2ch] bottom-[1lh] z-20 flex max-h-[45%] flex-col bg-white"
-          style={{ boxShadow: '0 0 0 1px #000, 0 12px 32px rgb(0 0 0 / 0.18)' }}
-        >
-          <div className="flex shrink-0 items-center gap-[1ch] border-b border-black px-[1ch] py-[0.25lh]">
-            <span className="font-bold">✗ {problem.title}</span>
-            <button type="button" {...KEY} className="ml-auto" aria-label="Close" title="Close" onClick={clearProblem}>
-              ✕
-            </button>
-          </div>
-          <pre className="min-h-0 overflow-auto px-[1ch] py-[0.5lh] text-[11px] leading-snug break-words whitespace-pre-wrap">{plain(problem.text)}</pre>
-        </div>
-      )}
       <div
         role="separator"
         aria-orientation="vertical"

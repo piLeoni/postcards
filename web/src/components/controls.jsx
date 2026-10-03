@@ -80,9 +80,10 @@ function useDrag({ model, value, onChange, sign = 1, px = PX_PER_STEP, custom })
 const grabbed = (held) => `hover:bg-black hover:text-white ${held ? 'bg-black text-white' : ''}`
 
 /**
- * A short text field that writes as you type: what parses is written, the
- * arrows step it (Shift for bigger steps). Once left, it shows `value`. The
- * ↔ on its left drags this value alone (`px`, `sign` as for `Scrub`).
+ * A short text field. What is typed is written when confirmed, with Enter or
+ * by leaving the field, if it parses; Escape drops it. The arrows step the
+ * value at once (Shift for bigger steps), and the ↔ on its left drags it
+ * alone, live (`px`, `sign` as for `Scrub`).
  */
 export function Field({ label, title, model, value, onChange, px, sign, muted = false, className = '' }) {
   const ref = useRef(null)
@@ -90,10 +91,16 @@ export function Field({ label, title, model, value, onChange, px, sign, muted = 
   const drag = useDrag({ model, value, onChange, px, sign })
   // What was typed shows only while the field has the focus.
   const shown = draft != null && ref.current && document.activeElement === ref.current ? draft : model.text(value)
-  const put = (s) => {
-    setDraft(s)
-    const v = model.parse(s)
-    if (v != null) onChange(v)
+  // Enter and Escape settle the draft themselves; the blur they cause must not again.
+  const settledRef = useRef(false)
+  const commit = () => {
+    if (settledRef.current) {
+      settledRef.current = false
+      return
+    }
+    const v = draft != null ? model.parse(draft) : null
+    if (v != null && model.text(v) !== model.text(value)) onChange(v)
+    setDraft(null)
   }
   return (
     <span className="relative block min-w-0">
@@ -105,18 +112,28 @@ export function Field({ label, title, model, value, onChange, px, sign, muted = 
         title={title}
         value={shown}
         className={`${FIELD} pl-[2.2ch] ${muted ? 'text-black/45 focus:text-black' : ''} ${className}`}
-        onChange={(e) => put(e.target.value)}
+        onChange={(e) => setDraft(e.target.value)}
         onFocus={(e) => {
+          settledRef.current = false
           setDraft(null)
           e.target.select()
         }}
-        onBlur={() => setDraft(null)}
+        onBlur={commit}
         onKeyDown={(e) => {
-          if (e.key === 'Enter') e.currentTarget.blur()
+          if (e.key === 'Enter') {
+            commit()
+            settledRef.current = true
+            e.currentTarget.blur()
+          }
+          if (e.key === 'Escape') {
+            setDraft(null)
+            settledRef.current = true
+            e.currentTarget.blur()
+          }
           if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return
           e.preventDefault()
           const next = model.nudge(model.parse(shown) ?? value, e.key === 'ArrowUp' ? 1 : -1, e.shiftKey)
-          setDraft(model.text(next))
+          setDraft(null)
           onChange(next)
         }}
       />
