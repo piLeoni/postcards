@@ -139,8 +139,9 @@ retired.
 
 ## penfill
 
-Crate `penfill` **0.1** (AGPL-3.0-only; the scanline fills are a CuraEngine
-port). Depend on it directly:
+Crate `penfill` (MIT OR Apache-2.0; the line fills, zigzag, concentric and
+spiral were rewritten from a spec, `../penfill/docs/clean-room/spec.md`).
+Depend on it directly:
 
 ```toml
 penfill = "0.1"
