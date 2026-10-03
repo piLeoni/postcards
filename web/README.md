@@ -59,18 +59,21 @@ want it and press "generate card".
   map to the card.
 - An edit in the editor is applied only once the engine takes it: "apply"
   (or ⌘/Ctrl+Enter) on a config with a mistake keeps it as a draft, opens a
-  card over the column's foot with the engine's message, and underlines the
+  card centred over the config with the engine's message, and underlines the
   spot it points to. A loaded file with a mistake opens the same way; a draw
   that fails says why in the same card.
 - "transform" on the card opens the `card:` block as controls
   (`src/components/CardControls.jsx`): the place (move with latitude and
   longitude, rotate, scale, the terrain the card covers) and the output (the
-  paper's size, columns and rows, margin, gutter). The output only changes
-  when edited: a new terrain is a new scale, a new scale a new terrain, and a
-  new paper size takes in more or less terrain at the same scale.
+  paper's size, columns and rows, margin, gutter). A new terrain is a new
+  scale on the same paper, and a new paper size takes in more or less terrain
+  at the same scale. A new scale changes the terrain, or, with the switch
+  beside it on "output", the paper around the same terrain; the switch is
+  remembered in the browser.
   Every label drags its value sideways (Shift: 15° steps for the bearing,
-  bigger steps elsewhere) and every field takes it typed, the arrows stepping
-  it. Lengths take `mm`, `cm` or `in`, terrain `m`, `km`, `mi` or `ft`; a bare
-  number keeps the unit the field had. Every change is written into the
-  config as it happens; the drawing waits for "generate". The pieces live in
+  bigger steps elsewhere) and every field takes it typed, written on Enter or
+  on leaving the field (Escape drops it), the arrows stepping it. Lengths take
+  `mm`, `cm` or `in`, terrain `m`, `km`, `mi` or `ft`; a bare number keeps the
+  unit the field had. Drags and steps are written into the config as they
+  happen; the drawing waits for "generate". The pieces live in
   `src/components/controls.jsx`, ready for a settings panel in the sidebar.

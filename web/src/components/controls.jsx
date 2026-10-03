@@ -173,6 +173,36 @@ export function Scrub({ icon, label, title, model, value, onChange, sign, px, on
   )
 }
 
+/**
+ * One of a few options, side by side in a field's box; the chosen one is
+ * inverted. `options` are `[value, text]`.
+ */
+export function Choice({ label, title, options, value, onChange }) {
+  return (
+    <span role="radiogroup" aria-label={label} title={title} className="flex min-w-0 border border-black bg-white text-[0.9em] leading-[1.75] select-none">
+      {options.map(([v, text], i) => (
+        <span
+          key={v}
+          role="radio"
+          aria-checked={v === value}
+          tabIndex={v === value ? 0 : -1}
+          className={`min-w-0 flex-1 cursor-pointer text-center ${i ? 'border-l border-black' : ''} ${v === value ? 'bg-black text-white' : 'hover:bg-black/10'}`}
+          onClick={() => onChange(v)}
+          onKeyDown={(e) => {
+            const step = { ArrowLeft: -1, ArrowUp: -1, ArrowRight: 1, ArrowDown: 1 }[e.key]
+            if (e.key === 'Enter' || e.key === ' ') onChange(v)
+            else if (step) onChange(options[(i + step + options.length) % options.length][0])
+            else return
+            e.preventDefault()
+          }}
+        >
+          {text}
+        </span>
+      ))}
+    </span>
+  )
+}
+
 /** A titled group of rows on a grid of its own: `cols` is its Tailwind `grid-cols-*`. */
 export function Section({ title, cols, first = false, children }) {
   return (

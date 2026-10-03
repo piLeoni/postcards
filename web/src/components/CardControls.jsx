@@ -1,8 +1,15 @@
+import { useState } from 'react'
 import { lengthText } from '../lib/frame'
-import { angleModel, countModel, degreesModel, Field, lengthModel, MAX_SCALE, MIN_SCALE, Scrub, scaleModel, Section, SNAP_DEG, terrainModel } from './controls'
+import { angleModel, Choice, countModel, degreesModel, Field, lengthModel, MAX_SCALE, MIN_SCALE, Scrub, scaleModel, Section, SNAP_DEG, terrainModel } from './controls'
 
 /** Degrees the map turns per pixel a label is dragged. */
 const PX_PER_DEG = 2.5
+
+/** Where the scale switch is remembered: what a new scale changes, `terrain` or `output`. */
+const SCALE_CHANGES_KEY = 'postcards.scaleChanges'
+
+/** The smallest side a new scale may leave the paper, in mm. */
+const MIN_PAPER_MM = 1
 
 /** Both sections share one shape so their fields line up: a label, two values. */
 const COLS = 'grid-cols-[10ch_15ch_15ch]'
@@ -31,9 +38,10 @@ function slicesKey({ columns, rows, gutter }) {
  * panel works wherever the document does: the map's transform menu now, a
  * sidebar later.
  *
- * Output × scale = terrain, and the output only changes when it is edited:
- * a new terrain is a new scale, a new scale a new terrain, and a new output
- * size takes in more or less terrain at the same scale.
+ * Output × scale = terrain. A new terrain is a new scale on the same paper,
+ * and a new output size takes in more or less terrain at the same scale. A
+ * new scale changes the terrain, or, with the switch beside it on output,
+ * the paper around the same terrain.
  *
  * `onMove`, when given, is the pointer-down of a drag that moves the card on
  * the map; the move label uses it.
@@ -64,7 +72,23 @@ export default function CardControls({ card, units, onEdit, onMove }) {
     onEdit({ padding: some(p) ? xyText(p) : null })
   }
   const setGutter = (patch) => setSlices({ gutter: { ...gutter, ...patch } })
-  const setScale = (v) => onEdit({ scale: `"1:${Math.round(Math.min(MAX_SCALE, Math.max(MIN_SCALE, v)))}"` })
+  const [scaleChanges, setScaleChanges] = useState(() => (localStorage.getItem(SCALE_CHANGES_KEY) === 'output' ? 'output' : 'terrain'))
+  const chooseScaleChanges = (v) => {
+    setScaleChanges(v)
+    localStorage.setItem(SCALE_CHANGES_KEY, v)
+  }
+  const scaleText = (v) => `"1:${Math.round(Math.min(MAX_SCALE, Math.max(MIN_SCALE, v)))}"`
+  const setScale = (v) => onEdit({ scale: scaleText(v) })
+  // The scale row: the same paper over new terrain, or new paper around the same terrain.
+  const newScale = (v) => {
+    if (scaleChanges === 'terrain') return setScale(v)
+    const s = Math.min(v, (Math.min(terrainW.m, terrainH.m) * 1000) / MIN_PAPER_MM)
+    onEdit({
+      scale: scaleText(s),
+      width: lengthText((terrainW.m * 1000) / s, u.width),
+      height: lengthText((terrainH.m * 1000) / s, u.height),
+    })
+  }
   const setBearing = (b) => onEdit({ bearing: b })
   const setSlices = (patch) => onEdit({ slices: slicesKey({ columns, rows, gutter, ...patch }) })
   // Dragging a row's label moves both its values: sizes keep their shape.
@@ -98,9 +122,35 @@ export default function CardControls({ card, units, onEdit, onMove }) {
         <Field label="bearing" title={`Degrees clockwise; arrows step 1°, Shift ${SNAP_DEG}°`} model={angleModel} value={card.bearing ?? 0} px={PX_PER_DEG} onChange={setBearing} />
         <span />
 
-        <Scrub icon="⤡" label="scale" title="Drag to change the scale: more or less terrain on the same paper" model={scaleModel} value={card.scale} onChange={setScale} />
-        <Field label="scale" title="The scale, 1:N; the paper keeps its size" model={scaleModel} value={card.scale} onChange={setScale} />
-        <span />
+        <Scrub
+          icon="⤡"
+          label="scale"
+          title={
+            scaleChanges === 'terrain'
+              ? 'Drag to change the scale: more or less terrain on the same paper'
+              : 'Drag to change the scale: bigger or smaller paper around the same terrain'
+          }
+          model={scaleModel}
+          value={card.scale}
+          onChange={newScale}
+        />
+        <Field
+          label="scale"
+          title={scaleChanges === 'terrain' ? 'The scale, 1:N; the paper keeps its size' : 'The scale, 1:N; the terrain stays, the paper follows'}
+          model={scaleModel}
+          value={card.scale}
+          onChange={newScale}
+        />
+        <Choice
+          label="a new scale changes"
+          title="What a new scale changes: the terrain on the same paper, or the output around the same terrain"
+          options={[
+            ['terrain', 'terrain'],
+            ['output', 'output'],
+          ]}
+          value={scaleChanges}
+          onChange={chooseScaleChanges}
+        />
 
         <Scrub icon="▭" label="terrain" title="Drag to take in more or less terrain on the same paper: the scale follows" model={terrain} value={terrainW} onChange={growTerrain} />
         <Field
