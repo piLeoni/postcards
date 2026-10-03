@@ -320,7 +320,7 @@ be renamed there, and names the saved file after it.
 
 | `projection` | What it gives |
 |---|---|
-| `webmercator` (default) | A crop of the web map, north up, one scale for both axes (the web map's metres at the card's centre). The drawing matches the web app's Mapbox preview to the pixel. |
+| `webmercator` (default) | A crop of the web map, north up, one scale for both axes (the web map's metres at the card's centre). The drawing matches the web app's map preview to the pixel. |
 | `utm` | True distances and shapes, but north turns away from the page's up the further the card sits from its UTM zone's meridian: 0.5° in Berkeley, 1.4° in Boston, where a 6 in card's sides move 1.9 mm against the preview. |
 | a PROJ string | Any projection proj4rs knows: `aea`, `cea`, `eqc`, `geos`, `krovak`, `laea`, `lcc`, `merc`, `mill`, `moll`, `somerc`, `stere`, `sterea`, `tmerc`, `utm`. `{lat}` and `{lng}` stand for the card's centre: `"+proj=laea +lat_0={lat} +lon_0={lng}"`. The scale holds at the centre (a small square of ground keeps its area); the preview no longer matches. |
 

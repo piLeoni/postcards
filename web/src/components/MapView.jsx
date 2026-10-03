@@ -1,12 +1,235 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import mapboxgl from 'mapbox-gl'
-import 'mapbox-gl/dist/mapbox-gl.css'
+import { AttributionControl, MapLibreMap, setWorkerUrl } from 'maplibre-gl'
+import 'maplibre-gl/dist/maplibre-gl.css'
+// A worker, not a script: Vite serves the pre-bundled `maplibre-gl` from
+// `node_modules/.vite/deps`, where MapLibre's own `import.meta.url` probe
+// finds no worker next door and renders nothing at all. `?worker&url` hands
+// us a URL to a copy Vite builds for this, in dev and in `dist`. (MapLibre
+// puts the pool together once, on the first style that loads.)
+import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url'
 import { cardBox, FIT_PAD, groundKm, hasLayout, lengthText, sheetsOf, sig3, zoomToFit } from '../lib/frame'
 import CardControls from './CardControls'
 import { norm, terrainPair } from './controls'
 import LoadCard from './LoadCard'
 
-const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN || ''
+setWorkerUrl(workerUrl)
+
+/** The basemap: OpenFreeMap's Positron, the same OpenStreetMap data the card is drawn from. */
+const STYLE = 'https://tiles.openfreemap.org/styles/positron'
+/** The style carries no attribution of its own; the ODbL needs this one shown. */
+const CREDIT =
+  '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> contributors · ' +
+  '<a href="https://openfreemap.org" target="_blank" rel="noreferrer">OpenFreeMap</a>'
+
+/**
+ * Positron is a warm, green-grey style and paints its labels and roads darker
+ * than the paper the card is drawn on. Mapbox Light, which this map used to
+ * use, left the drawing's own ink to carry the sheet; so this map is redrawn
+ * from it, in the page's own greys.
+ *
+ * Every colour below is a CSS custom property, read from the page when the
+ * style is loaded. That is the same palette the UI is set in (`#fff` through
+ * `#888`), so the map and the app can only drift apart if the palette itself
+ * changes; point them elsewhere — a dark or high-contrast set — and the map
+ * follows, with no web map style to fork.
+ */
+const ROLES = {
+  ink: 'var(--foreground0)', // black: nothing on the basemap should reach this
+  hard: 'var(--foreground1)', // #444: letters and lines that have to be read
+  soft: 'var(--foreground2)', // #888: labels, the way the app sets quiet text
+  faint: 'var(--background3)', // #a3a3a3: minor names and road shields
+  edge: 'var(--background2)', // #d4d4d4: casing under the paper-white roads
+  line: 'var(--background1)', // #ebebeb: the roads themselves
+  paper: 'var(--background0)', // #fff: the sheet, and the halo behind a label
+  // The basemap sits *under* the drawing, so it has to stay lighter and
+  // quieter than the UI chrome: the app's own greys are the ink, not the
+  // ground. These shades are the map's alone, tuned a step or two off paper
+  // so the card's lines remain the darkest thing on screen.
+  land: '#f7f7f7', // the ground, barely off the sheet
+  wash: '#e6e6e6', // where Positron paints water: sea, lakes, streams
+  botanical: '#f0f0f0', // where Positron paints parks and woodland
+}
+
+/**
+ * Fold the `ROLES` into a map of `role -> resolved colour`. A role is either a
+ * custom property, read from the page so the map follows the palette, or a
+ * literal shade like `#c8c8c8`, used as-is.
+ */
+function palette(el) {
+  const style = getComputedStyle(el)
+  const read = new Map()
+  for (const [role, token] of Object.entries(ROLES)) {
+    if (token.startsWith('var(--')) read.set(role, style.getPropertyValue(token.slice(4, -1)).trim() || '#888')
+    else read.set(role, token)
+  }
+  return { color: (role) => read.get(role) }
+}
+
+/** One label layer, in the page's palette: soft grey with a wide halo. */
+function placePaint(id, c) {
+  if (!id.includes('label')) return null
+  // Country and state names are a size up from a city's: a touch darker.
+  const big = /country|state/.test(id)
+  // Labels sit on a very light ground, so they can be lighter than the UI's
+  // quiet text and still read; the halo does the work of separating them.
+  return {
+    'text-color': big ? c('hard') : c('faint'),
+    'text-halo-color': c('paper'),
+    'text-halo-width': 1.6,
+    'text-opacity': big ? 0.9 : 0.8,
+  }
+}
+
+/**
+ * Positron's roads are white over a grey casing; that is what reads as the
+ * black outline at a glance. In the page's greys the casing is a hair off the
+ * paper, the road itself is barely there, and the black lines stay the card's.
+ */
+function roadPaint(id, c) {
+  if (/casing/.test(id)) return { 'line-color': c('edge') }
+  if (/_subtle/.test(id) || /tunnel/.test(id)) return { 'line-color': c('line') }
+  return { 'line-color': c('paper') }
+}
+
+/**
+ * The layers Positron draws with a colour of its own: the paper, water, parks
+ * and woodland, buildings, boundaries. Upstream tints each a few steps warm,
+ * which a colour picker reads as a green-grey. They are mapped onto the page's
+ * greys, chosen to sit close to the values Positron uses, so the basemap keeps
+ * its lightness and only its hue changes.
+ *
+ * The `raster` source is Natural Earth's shaded relief: a hillshade, held at
+ * low opacity so it stays a hint under the hillshade the card draws itself.
+ */
+const FILLS = {
+  background: { 'background-color': 'paper' }, // the sheet
+  park: { 'fill-color': 'botanical' },
+  landcover_wood: { 'fill-color': 'botanical' },
+  landcover_ice_shelf: { 'fill-color': 'paper' },
+  landcover_glacier: { 'fill-color': 'paper' },
+  landuse_residential: { 'fill-color': 'land' },
+  water: { 'fill-color': 'wash' },
+  waterway: { 'line-color': 'wash' },
+  building: { 'fill-color': 'land', 'fill-outline-color': 'edge' },
+  road_area_pier: { 'fill-color': 'paper' },
+  road_pier: { 'line-color': 'paper' },
+  'aeroway-area': { 'fill-color': 'paper' },
+  'aeroway-runway': { 'line-color': 'paper' },
+  'aeroway-runway-casing': { 'line-color': 'edge' },
+  'aeroway-taxiway': { 'line-color': 'edge' },
+  boundary_2: { 'line-color': 'edge' },
+  boundary_3: { 'line-color': 'edge' },
+  boundary_disputed: { 'line-color': 'edge' },
+}
+
+/**
+ * The labels are drawn by MapLibre from SDF glyphs, not from the webfont the
+ * page already loads, so a custom face means generating and serving a glyph
+ * endpoint in the format MapLibre reads. We tried that (IBM Plex Mono) and it
+ * cost more than it bought: every range we did not generate fell through to
+ * the dev server's SPA fallback, which answers with HTML, and MapLibre tried
+ * to decode that as protobuf (`Unimplemented type: 4`) for every label.
+ *
+ * So we let the style keep the fontstack OpenFreeMap serves, Noto Sans, and
+ * do not touch `glyphs` or `text-font` at all. The basemap is a quiet ground
+ * under the drawing; its labels do not need our face to do their job.
+ */
+
+/** Every Positron id this map restyles, so a rename upstream is visible. */
+const POSITRON = [
+  ...Object.keys(FILLS),
+  'label_city',
+  'label_town',
+  'label_village',
+  'label_state',
+  'label_other',
+  'label_country_1',
+  'label_country_2',
+  'label_country_3',
+  'label_city_capital',
+  'water_name_point_label',
+  'water_name_line_label',
+  'waterway_line_label',
+  'highway-name-major',
+  'highway-name-minor',
+  'highway-name-path',
+  'highway_major_casing',
+  'highway_major_inner',
+  'highway_motorway_casing',
+  'highway_motorway_inner',
+  'highway_minor',
+  'highway_path',
+  'highway_motorway_bridge_casing',
+  'highway_motorway_bridge_inner',
+  'highway_motorway_subtle',
+  'highway_major_subtle',
+  'tunnel_motorway_casing',
+  'tunnel_motorway_inner',
+  'road_shield_us',
+  'highway-shield-us-interstate',
+  'highway-shield-non-us',
+]
+function calm(map) {
+  let layers
+  try {
+    layers = map.getStyle()?.layers
+  } catch {
+    return // The style went away before this ran (StrictMode's double mount).
+  }
+  const c = palette(map.getContainer()).color
+  // Every id we style is Positron's, and we style by id. If upstream renames
+  // or drops one the layer would quietly keep its warm tint rather than fail,
+  // so say so, once, naming only what we meant to change.
+  const ids = new Set(layers.map((l) => l.id))
+  const missing = POSITRON.filter((id) => !ids.has(id))
+  if (missing.length) console.warn('map: Positron no longer has', missing.join(', '), '— those keep their own colour')
+  for (const { id, type, 'source-layer': source } of layers ?? []) {
+    const set = (name, value) => {
+      try {
+        map.setPaintProperty(id, name, value)
+      } catch {
+        // Every layer here is Positron's; a member outside the set is not
+        // ours to style, and the map is all the better for skipping it.
+      }
+    }
+    // The shields are the black-outlined numbers on the roads; the card needs
+    // no route markers, and they are the darkest ink on the map. They are
+    // matched by id: unlike every other Positron layer they carry no
+    // `source-layer` of their own.
+    if (/shield/.test(id)) {
+      try {
+        map.setLayoutProperty(id, 'visibility', 'none')
+      } catch {
+        // Not ours to touch; a visible shield is better than a broken style.
+      }
+      continue
+    }
+    const fill = FILLS[id]
+    if (fill) {
+      for (const [name, role] of Object.entries(fill)) set(name, c(role))
+      continue
+    }
+    const place = placePaint(id, c)
+    if (place) {
+      for (const [name, value] of Object.entries(place)) set(name, value)
+    } else if (type === 'symbol') {
+      if (source === 'transportation') {
+        // Road names take the quiet grey; the shields above are gone.
+        set('text-color', c('faint'))
+        set('text-halo-color', c('paper'))
+        set('text-halo-width', 1.5)
+      } else {
+        // Buildings' and parks' names: barely there, like the app's disabled text.
+        set('text-color', c('faint'))
+        set('text-halo-color', c('paper'))
+        set('text-halo-width', 1.5)
+      }
+    } else if (source === 'transportation' && type === 'line' && /^(highway|tunnel)/.test(id)) {
+      // The roads: paper over a hairline of grey, in the app's palette.
+      for (const [name, value] of Object.entries(roadPaint(id, c))) set(name, value)
+    }
+  }
+}
 
 /** Space between the card and the label above it or the tags below it, px. */
 const GAP = 4
@@ -91,7 +314,7 @@ function Guides({ card }) {
  * bearing is the card's, so the rectangle stays level on screen and the
  * drawing, turned the same way by the engine, lies on the map.
  *
- * The rectangle is a DOM overlay, so it has to be redrawn on Mapbox's own
+ * The rectangle is a DOM overlay, so it has to be redrawn on the map's own
  * render tick, not on a React state change: React batches asynchronously and
  * lags the map by a frame, which is what makes overlays look like they are
  * stuttering. So we hook `render` and move the node directly.
@@ -143,7 +366,7 @@ export default function MapView({
   cardRef.current = editRef.current ? { ...card, ...editRef.current } : card
 
   // The overlay's screen box, computed and applied outside React so it can be
-  // set from inside Mapbox's render callback without a re-render per frame.
+  // set from inside the map's render callback without a re-render per frame.
   const place = useCallback(() => {
     const map = mapRef.current
     const el = overlayRef.current
@@ -181,18 +404,14 @@ export default function MapView({
     }
   }, [])
 
-  // Mapbox wants a token before anything else; bail early if there is none.
   useEffect(() => {
-    if (!MAPBOX_TOKEN) return
-    mapboxgl.accessToken = MAPBOX_TOKEN
-    const map = new mapboxgl.Map({
+    const map = new MapLibreMap({
       container: containerRef.current,
-      style: 'mapbox://styles/mapbox/light-v11',
+      style: STYLE,
       center: card ? [card.lng, card.lat] : [-122.256196, 37.8771145],
       bearing: card?.bearing ?? 0,
       zoom: 14,
       minZoom: 2,
-      projection: 'mercator',
       pitch: 0,
       maxPitch: 0,
       dragRotate: false,
@@ -201,20 +420,26 @@ export default function MapView({
       attributionControl: false,
     })
     mapRef.current = map
+    // Bottom left: the card's tags wait in the bottom right corner and would cover it.
+    map.addControl(new AttributionControl({ compact: true, customAttribution: CREDIT }), 'bottom-left')
     // The bearing belongs to the card: only `rotate` turns the map.
     map.touchZoomRotate.disableRotation()
     map.keyboard.disableRotation()
 
     map.on('error', (e) => {
       const err = e.error ?? {}
-      const url = String(err.url ?? '').replace(/access_token=[^&]+/, 'access_token=…')
-      console.error('mapbox:', err.status ?? '', err.message ?? String(err), url)
+      console.error('maplibre:', err.status ?? '', err.message ?? String(err), err.url ?? '')
     })
 
     map.on('load', () => {
       map.resize()
       readyRef.current = true
       place()
+    })
+
+    // Restyle the basemap on every load, so a `setStyle` swap keeps it too.
+    map.on('style.load', () => {
+      calm(map)
     })
 
     // The only surface App gets on the map: where its centre is, and how to
@@ -229,16 +454,16 @@ export default function MapView({
       }
     }
 
-    // Mapbox's render loop drives the overlay, so the two never disagree.
+    // The map's render loop drives the overlay, so the two never disagree.
     map.on('render', place)
 
     // The sidebar can be dragged wider: the canvas follows its container.
     // Resizing a canvas clears it, so it is drawn again at once, before the
-    // browser paints, or each step of a drag flashes black. Mapbox v3 has no
-    // public synchronous redraw; `_render` is the one `redraw()` used to call.
+    // browser paints, or each step of a drag flashes black. `redraw` does
+    // nothing until the style is in, so ask for a frame instead.
     const resized = new ResizeObserver(() => {
       map.resize()
-      if (typeof map._render === 'function') map._render(performance.now())
+      if (map.style) map.redraw()
       else map.triggerRepaint()
     })
     resized.observe(containerRef.current)
@@ -254,7 +479,7 @@ export default function MapView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // The rectangle lives on Mapbox's render tick; recompute once after any
+  // The rectangle lives on the map's render tick; recompute once after any
   // change that does not itself trigger a map render (sidebar edits, resize).
   useEffect(() => {
     place()
@@ -348,31 +573,12 @@ export default function MapView({
 
   const slices = drawing?.slices?.length ?? 0
 
-  if (!MAPBOX_TOKEN) {
-    return (
-      <div className="flex h-full w-full items-center justify-center bg-[var(--background1)] p-8">
-        <div box-="square" className="max-w-lg p-[2ch]">
-          <p className="font-bold">Mapbox token required</p>
-          <p className="mt-[0.5lh] opacity-70">
-            Create one at{' '}
-            <a className="underline" href="https://account.mapbox.com/access-tokens/" target="_blank" rel="noreferrer">
-              account.mapbox.com
-            </a>
-            , then put it in <code>web/.env.local</code>:
-          </p>
-          <pre className="mt-[0.5lh] bg-[var(--background1)] px-[1ch]">VITE_MAPBOX_TOKEN=pk.…</pre>
-          <p className="mt-[0.5lh] opacity-70">Restart <code>npm run dev</code> after saving.</p>
-        </div>
-      </div>
-    )
-  }
-
   return (
     <div className="relative h-full w-full min-w-0 overflow-hidden">
       <div ref={containerRef} className="h-full w-full" />
 
       {/*
-        Positioned with a transform on Mapbox's own render tick (see `place`),
+        Positioned with a transform on the map's own render tick (see `place`),
         so it can never be a frame behind the ground it sits on. Before the
         first draw it is a see-through frame, so the map it covers stays
         readable; once drawn it is a sheet of paper.

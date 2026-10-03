@@ -6,7 +6,7 @@
 //! from the page's up the further the card is from the zone's central
 //! meridian (1.4° in Boston). `webmercator` projects to EPSG:3857 with one
 //! scale for both axes, the cosine of the centre's latitude, as web maps count
-//! metres: the drawing is a crop of the Mapbox map the web app shows, to the
+//! metres: the drawing is a crop of the web map the app shows, to the
 //! pixel. A PROJ string goes through proj4rs, scaled so a small square of
 //! ground at the centre keeps its area at the card's scale. All of them then
 //! centre on the card, scale to mm, flip y, and turn by the bearing.

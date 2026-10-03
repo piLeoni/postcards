@@ -219,7 +219,7 @@ export function Section({ title, cols, first = false, children }) {
 
 const round3 = (v) => Math.round(v * 1000) / 1000
 
-/** A bearing in (-180, 180], as Mapbox reports it. */
+/** A bearing in (-180, 180], as the map reports it. */
 export const norm = (b) => {
   const r = ((((b + 180) % 360) + 360) % 360) - 180
   return r === -180 ? 180 : r

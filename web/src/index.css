@@ -108,19 +108,19 @@ aside :is(h1, h2, h3, p, div, header, section) {
   color: #000;
 }
 
-/* Hide Mapbox chrome: attribution, logo, leftover controls. The card is the
-   subject of this page, not the basemap. */
-.mapboxgl-ctrl-attrib,
-.mapboxgl-ctrl-logo,
-.mapboxgl-ctrl-bottom-left,
-.mapboxgl-ctrl-bottom-right,
-.mapboxgl-ctrl-top-left,
-.mapboxgl-ctrl-top-right,
-.mapboxgl-ctrl-attrib-inner,
-a.mapboxgl-ctrl-logo {
+/* The card is the subject of this page, not the basemap: no logo, and the
+   credit the ODbL asks for set small, like the tags on the map. */
+.maplibregl-ctrl-logo {
   display: none !important;
-  visibility: hidden !important;
-  pointer-events: none !important;
+}
+.maplibregl-ctrl.maplibregl-ctrl-attrib {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1.5;
+  background-color: rgb(255 255 255 / 0.9);
+}
+.maplibregl-ctrl-attrib a {
+  color: inherit;
 }
 
 /* The card wins over the map: black lines on paper, in milliseconds.

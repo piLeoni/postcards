@@ -8,7 +8,7 @@
  * CLI draws it in millimetres.
  */
 
-/** Web Mercator, as Mapbox uses. */
+/** Web Mercator, as the web map uses. */
 const EARTH_M = 40075016.686
 const R = 6378137
 const TILE_PX = 512

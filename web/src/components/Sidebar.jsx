@@ -220,7 +220,7 @@ export default function Sidebar({ open, onClose, doc, setDoc, check, card, statu
       style={{ color: '#000', backgroundColor: '#fff', '--side-w': `${width}px` }}
     >
       <Panel
-        title="draw.land"
+        title={<span className="tracking-[0.2em]">DRAWLAND</span>}
         className="shrink-0"
         aside={(
           <>
@@ -232,8 +232,9 @@ export default function Sidebar({ open, onClose, doc, setDoc, check, card, statu
         )}
       >
         <p className="opacity-60">
-          Maps drawn for a pen plotter. Put the card where you want it
-          on the map, then generate it; the config below is the whole card.
+          Any place on Earth as a line drawing: a clean, layered SVG for a
+          pen plotter, a laser cutter or any vector editor. Frame your card on
+          the map and generate it; every layer is yours to tune below.
         </p>
       </Panel>
 
@@ -381,13 +382,13 @@ export default function Sidebar({ open, onClose, doc, setDoc, check, card, statu
       <details className="group shrink-0 border-t border-black py-[0.5lh]">
         <summary className="flex cursor-pointer list-none items-center gap-[1ch] select-none">
           <span className="font-bold">Map data</span>
-          <span className="min-w-0 truncate opacity-60">OpenStreetMap · OpenFreeMap · Overpass · Mapbox</span>
+          <span className="min-w-0 truncate opacity-60">OpenStreetMap · OpenFreeMap · Overpass</span>
           <span className="ml-auto transition-transform group-open:rotate-90">›</span>
         </summary>
         <ul className="mt-[0.5lh] opacity-60">
           <li>Features and sea: © OpenMapTiles © OpenStreetMap contributors, tiles from OpenFreeMap.</li>
           <li>With osm_select: © OpenStreetMap contributors, through Overpass.</li>
-          <li>Basemap: © Mapbox © OpenStreetMap.</li>
+          <li>Basemap: © OpenMapTiles © OpenStreetMap contributors, Positron style from OpenFreeMap, drawn with MapLibre.</li>
         </ul>
       </details>
 

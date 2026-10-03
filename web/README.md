@@ -1,6 +1,7 @@
 # draw.land web
 
-The card on a map: a Mapbox map underneath, the drawing on top of it, and the
+The card on a map: a MapLibre map underneath (OpenFreeMap's Positron style, no
+token), the drawing on top of it, and the
 profile in a sidebar you can edit and redraw. The drawing is the same
 `drawland-core` the CLI uses, compiled to WebAssembly, so what you see is what
 `drawland map` writes.
@@ -10,7 +11,6 @@ profile in a sidebar you can edit and redraw. The drawing is the same
 ./web/build-wasm.sh
 
 cd web
-cp .env.example .env.local        # put a Mapbox token in it
 npm install
 npm run dev
 ```
