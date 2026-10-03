@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Editor from '@monaco-editor/react'
 import { PRESETS } from '../lib/presets'
-import { setCardKeys, setTitle, styleOf, titleOf } from '../lib/doc'
+import { setCardKeys, styleOf, titleOf } from '../lib/doc'
 import { EDITOR_THEME, defineEditorTheme, editorFont } from '../lib/editorTheme'
 import Panel from './Panel'
 
@@ -50,14 +50,8 @@ export default function Sidebar({ open, onClose, doc, setDoc, check, card, statu
   shownRef.current = shown
   const dirty = draft != null && draft !== doc
   const title = titleOf(shown) ?? ''
-  // The older profile (`map:`, `layers:`) has no title.
-  const titled = /^card\s*:/m.test(shown)
   const style = useMemo(() => styleOf(shown), [shown])
   const preset = PRESET_STYLES.find(([, s]) => s === style)?.[0] ?? null
-
-  /** A new title goes where the text being shown is: the draft while there is one. */
-  const retitle = (t) => (draft != null ? setDraft(setTitle(draft, t)) : setDoc(setTitle(doc, t)))
-
   // A drag or a preset rewrites the document; an edit in progress stays.
   useEffect(() => {
     if (draft === doc) setDraft(null)
@@ -307,21 +301,6 @@ export default function Sidebar({ open, onClose, doc, setDoc, check, card, statu
             onChange={(e) => { importFile(e.target.files?.[0]); e.target.value = '' }}
           />
         </div>
-        {titled && (
-          <input
-            type="text"
-            spellCheck={false}
-            aria-label="Title"
-            title="The config's title: written in it as title:, so a shared config carries it"
-            placeholder="Untitled"
-            value={title}
-            className="mt-[0.5lh] h-auto w-full min-w-0 shrink-0 border border-black bg-white px-[1ch] font-mono text-[length:inherit] leading-[1.6] placeholder:text-black/40"
-            onChange={(e) => retitle(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === 'Escape') e.currentTarget.blur()
-            }}
-          />
-        )}
         {notice && (
           <p className={`mt-[0.5lh] shrink-0 break-words ${notice.error ? 'font-bold' : 'opacity-60'}`}>
             {notice.error ? `✗ ${sentence(notice.text)}` : sentence(notice.text)}

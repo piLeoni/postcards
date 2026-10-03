@@ -54,9 +54,8 @@ want it and press "generate card".
   stops parsing fails there rather than in a browser.
 - "presets" replaces the style with a ready-made one; the card stays where
   it is. The preset whose style the config has (everything but `title:` and
-  `card:`) is highlighted in the menu. Under the buttons, the config's
-  `title:` is a field of its own, written into the config as it is typed; a
-  preset brings its name as the title.
+  `card:`) is highlighted in the menu. A preset brings its name as the
+  config's `title:`, which "save" names the file after.
 - "load" and "save" in the sidebar read and write the config, saved under
   its title; "download",
   in black in the map's corner once the card is drawn, saves the drawing as
