@@ -323,9 +323,11 @@ At a city's scale most projections draw the same streets; what tells them
 apart is how they turn north. `"+proj=lcc +lat_1=30 +lat_2=60 +lon_0=-100"`
 over Boston tilts the card about 20°.
 
-`card.warp` bends the finished drawing, fills included, after compose. Every
-warp keeps the card's edge where it is, so nothing slides off the paper. One
-warp or a list, applied in order:
+`card.warp` bends the ground right after projecting: features, the sea and
+the card's frame, before anything is drawn from them. Areas, roads and rings
+come out bent; fills are laid afterwards, so patterns stay flat, and roads
+keep their width. Every warp keeps the card's edge where it is, so nothing
+slides off the paper. One warp or a list, applied in order:
 
 | `warp` | What it does |
 |---|---|

@@ -111,11 +111,13 @@ pub fn run_with(grammar: &Grammar, card: &Card, inputs: Inputs, draw: &Task) -> 
 
     let project = draw.child("project", "project", (inputs.features.len() + inputs.tiles.len()) as u64, "features");
     let projector = crate::projection::Projector::new(card);
+    let warp = &grammar.card.warp;
+    let (w, h) = (card.width_mm, card.height_mm);
     let projected = |features: Vec<Feature>| -> Vec<Feature> {
         features
             .into_par_iter()
             .map(|mut f| {
-                f.geometry = projector.project_geometry(&f.geometry);
+                f.geometry = warp.bend(w, h, &projector.project_geometry(&f.geometry));
                 project.tick();
                 f
             })
@@ -124,8 +126,12 @@ pub fn run_with(grammar: &Grammar, card: &Card, inputs: Inputs, draw: &Task) -> 
     let features = projected(inputs.features);
     let tiles = projected(inputs.tiles);
     let frame = MultiPolygon::new(vec![card.query_polygon()]);
-    let ocean = inputs.ocean.map(|o| projector.project_geometry(&geom::intersection(&o, &frame)));
-    let engine = Engine { of: card, card: projector.project_geometry(&frame), ocean: ocean.unwrap_or_else(geom::empty) };
+    let ocean = inputs.ocean.map(|o| warp.bend_area(w, h, &projector.project_geometry(&geom::intersection(&o, &frame))));
+    let engine = Engine {
+        of: card,
+        card: warp.bend_area(w, h, &projector.project_geometry(&frame)),
+        ocean: ocean.unwrap_or_else(geom::empty),
+    };
     project.ok("");
 
     let values = evaluate(grammar, &Found { osm: &features, tiles: &tiles }, &engine, draw)?;
@@ -152,14 +158,6 @@ pub fn run_with(grammar: &Grammar, card: &Card, inputs: Inputs, draw: &Task) -> 
     let compose_task = draw.child("compose", "compose", 0, "");
     let groups = compose(grammar, &values, &fills, &compose_task)?;
     compose_task.ok(&format!("{} groups", groups.len()));
-    let groups = if grammar.card.warp.is_empty() {
-        groups
-    } else {
-        let warp_task = draw.child("warp", "warp", 0, "");
-        let bent = grammar.card.warp.apply(card.width_mm, card.height_mm, groups);
-        warp_task.ok("");
-        bent
-    };
 
     let svg_task = draw.child("svg", "svg", 0, "");
     let svg = write_svg(card.width_mm, card.height_mm, &groups);

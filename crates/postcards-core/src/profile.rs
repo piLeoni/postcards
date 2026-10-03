@@ -102,7 +102,7 @@ pub struct MapSpec {
     pub bearing: f64,
     #[serde(default)]
     pub projection: ProjectionMode,
-    /// Distortions of the finished drawing, in order; the card's edge stays.
+    /// Distortions of the ground before drawing, in order; the card's edge stays.
     #[serde(default)]
     pub warp: crate::warp::Warps,
 }

@@ -1,14 +1,15 @@
-//! Distortions of the finished drawing (`card.warp`): every stroke, fills
-//! included, is bent in card millimetres after compose, the way a lens bends
-//! a picture. Each warp keeps the card's edge where it is, so nothing slides
-//! off the paper and no blank strip opens along a side.
+//! Distortions of the ground (`card.warp`): every feature, the sea and the
+//! card's frame are bent in card millimetres right after projecting, before
+//! anything is drawn from them. Areas, roads and rings come out bent; the
+//! fills laid inside them stay flat patterns, as on any other card. Each
+//! warp keeps the card's edge where it is, so nothing slides off the paper
+//! and no blank strip opens along a side.
 
-use crate::geom::Lines;
 use crate::units::Mm;
-use geo::{Coord, LineString};
+use geo::{Coord, Densify, Euclidean, Geometry, GeometryCollection, MapCoords, MultiPolygon};
 use serde::Deserialize;
 
-/// Longest step left in a stroke before it is bent: a straight segment
+/// Longest step left in an edge before it is bent: a straight segment
 /// stays straight under a warp unless it is cut finer.
 const STEP_MM: f64 = 0.2;
 
@@ -55,34 +56,29 @@ impl Warps {
         self.0.is_empty()
     }
 
-    /// Every group's strokes, bent, on a `width × height` mm card.
-    pub fn apply(&self, width: f64, height: f64, groups: Vec<(String, Lines)>) -> Vec<(String, Lines)> {
+    /// A geometry in card mm on a `width × height` mm card, bent.
+    pub fn bend(&self, width: f64, height: f64, g: &Geometry<f64>) -> Geometry<f64> {
         if self.is_empty() {
-            return groups;
+            return g.clone();
         }
-        groups
-            .into_iter()
-            .map(|(id, lines)| {
-                let bent = lines.iter().map(|l| self.bend(width, height, l)).collect();
-                (id, bent)
-            })
-            .collect()
+        let at = |c: Coord<f64>| self.point(width, height, c);
+        match g {
+            Geometry::LineString(l) => Geometry::LineString(Euclidean.densify(l, STEP_MM).map_coords(at)),
+            Geometry::MultiLineString(l) => Geometry::MultiLineString(Euclidean.densify(l, STEP_MM).map_coords(at)),
+            Geometry::Polygon(p) => Geometry::Polygon(Euclidean.densify(p, STEP_MM).map_coords(at)),
+            Geometry::MultiPolygon(p) => Geometry::MultiPolygon(self.bend_area(width, height, p)),
+            Geometry::GeometryCollection(c) => {
+                Geometry::GeometryCollection(GeometryCollection(c.iter().map(|g| self.bend(width, height, g)).collect()))
+            }
+            other => other.map_coords(at),
+        }
     }
 
-    fn bend(&self, width: f64, height: f64, line: &LineString<f64>) -> LineString<f64> {
-        let mut out: Vec<Coord<f64>> = Vec::with_capacity(line.0.len());
-        for (i, c) in line.0.iter().enumerate() {
-            if i > 0 {
-                let a = line.0[i - 1];
-                let steps = (((c.x - a.x).hypot(c.y - a.y)) / STEP_MM).ceil().max(1.0) as usize;
-                for s in 1..steps {
-                    let t = s as f64 / steps as f64;
-                    out.push(self.point(width, height, Coord { x: a.x + (c.x - a.x) * t, y: a.y + (c.y - a.y) * t }));
-                }
-            }
-            out.push(self.point(width, height, *c));
+    pub fn bend_area(&self, width: f64, height: f64, area: &MultiPolygon<f64>) -> MultiPolygon<f64> {
+        if self.is_empty() {
+            return area.clone();
         }
-        LineString::new(out)
+        Euclidean.densify(area, STEP_MM).map_coords(|c| self.point(width, height, c))
     }
 
     fn point(&self, width: f64, height: f64, c: Coord<f64>) -> Coord<f64> {
@@ -168,10 +164,13 @@ mod tests {
     }
 
     #[test]
-    fn straight_strokes_bend() {
-        let line = LineString::from(vec![(10.0, 50.0), (140.0, 50.0)]);
-        let out = warps("{ wave: { amplitude: 2mm, wavelength: 20mm } }").apply(150.0, 100.0, vec![("g".into(), vec![line])]);
-        let bent = &out[0].1[0];
+    fn straight_edges_bend() {
+        let line = geo::LineString::from(vec![(10.0, 50.0), (140.0, 50.0)]);
+        let Geometry::LineString(bent) =
+            warps("{ wave: { amplitude: 2mm, wavelength: 20mm } }").bend(150.0, 100.0, &Geometry::LineString(line))
+        else {
+            unreachable!()
+        };
         assert!(bent.0.len() > 600, "cut into 0.2 mm steps");
         assert!(bent.0.iter().any(|c| (c.y - 50.0).abs() > 1.0));
     }

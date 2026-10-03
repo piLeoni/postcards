@@ -53,17 +53,18 @@ pub fn render(profile: &Profile, card: &Card, inputs: Inputs) -> Result<Rendered
     }
 
     let projector = Projector::new(card);
+    let (warp, w, h) = (&profile.map.warp, card.width_mm, card.height_mm);
     let features: Vec<Feature> = inputs
         .features
         .into_par_iter()
         .map(|mut f| {
-            f.geometry = projector.project_geometry(&f.geometry);
+            f.geometry = warp.bend(w, h, &projector.project_geometry(&f.geometry));
             f
         })
         .collect();
     let ocean = inputs.ocean.map(|o| {
         let area = MultiPolygon::new(vec![card.query_polygon()]);
-        projector.project_geometry(&geom::intersection(&o, &area))
+        warp.bend_area(w, h, &projector.project_geometry(&geom::intersection(&o, &area)))
     });
 
     let ids: Vec<String> = stack.iter().map(|l| l.id.clone()).collect();
@@ -110,7 +111,7 @@ pub fn render(profile: &Profile, card: &Card, inputs: Inputs) -> Result<Rendered
     }
     let parts: Vec<(String, LayerParts)> = ids.into_iter().zip(done.into_iter().map(Option::unwrap)).collect();
 
-    let groups = profile.map.warp.apply(card.width_mm, card.height_mm, compose(&parts));
+    let groups = compose(&parts);
     Ok(Rendered {
         svg: write_svg(card.width_mm, card.height_mm, &groups),
         groups: groups.iter().map(|(id, lines)| (id.clone(), lines.len())).collect(),
