@@ -79,7 +79,7 @@ card:
   height: 4in
   scale: "1:10000"
   bearing: 0
-  projection: utm
+  projection: webmercator
   # address: "1730 Highland Pl, Berkeley, CA 94709"   # --address / --lat --lng la scavalcano
 
 

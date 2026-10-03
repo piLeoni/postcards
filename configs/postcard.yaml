@@ -11,7 +11,7 @@ map:
   height: 4in
   scale: "1:10000"
   bearing: 0
-  projection: utm          # utm | webmercator
+  projection: webmercator          # utm | webmercator
   # Default location; --address / --lat --lng override.
   # address: "1730 Highland Pl, Berkeley, CA 94709"
   # lat: 37.8771145

@@ -18,7 +18,7 @@ export const FULL_DOC = `card:
   height: 4in
   scale: "1:8000"
   bearing: 0
-  projection: utm
+  projection: webmercator
   lat: 37.8771145
   lng: -122.256196
 
@@ -91,7 +91,7 @@ export const DEFAULT_DOC = `card:
   height: 4in
   scale: "1:8000"
   bearing: 0
-  projection: utm
+  projection: webmercator
   lat: 37.8771145
   lng: -122.256196
 

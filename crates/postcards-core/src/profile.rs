@@ -49,8 +49,10 @@ pub struct Profile {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum ProjectionMode {
-    #[default]
+    /// True distances; north turns with the distance from the zone's meridian.
     Utm,
+    /// A crop of the web map, north up: what the web app's preview shows.
+    #[default]
     Webmercator,
 }
 

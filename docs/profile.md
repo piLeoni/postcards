@@ -311,6 +311,13 @@ Sections **without** `$` (`card`, `draw`, `compose`) are the engine's schema.
 Sections **with** `$` are yours. That single visual rule tells you, on opening
 any profile, what is grammar and what is content.
 
+`card.projection` picks how the ground lands on the paper:
+
+| `projection` | What it gives |
+|---|---|
+| `webmercator` (default) | A crop of the web map, north up, one scale for both axes (the web map's metres at the card's centre). The drawing matches the web app's Mapbox preview to the pixel. |
+| `utm` | True distances and shapes, but north turns away from the page's up the further the card sits from its UTM zone's meridian: 0.5° in Berkeley, 1.4° in Boston, where a 6 in card's sides move 1.9 mm against the preview. |
+
 ---
 
 ## The kit: every operation has a name
@@ -604,7 +611,7 @@ card:
   height: 4in
   scale: "1:10000"
   bearing: 0
-  projection: utm
+  projection: webmercator
 
 $features:
   garden: { osm_select: { leisure: garden } }

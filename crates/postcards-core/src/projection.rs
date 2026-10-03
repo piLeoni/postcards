@@ -2,15 +2,17 @@
 //!
 //! `utm` projects into the UTM zone of the card centre (transverse Mercator,
 //! Krüger series to n⁶ — the algorithm PROJ uses, so points agree with pyproj
-//! far below plotting resolution). `webmercator` projects to EPSG:3857 and
-//! corrects the scale at the centre with geodesic distances, so the drawing
-//! lines up with Web Mercator tiles. Both then centre on the card, scale to
-//! mm, flip y, and turn by the bearing.
+//! far below plotting resolution), so distances are true but north turns away
+//! from the page's up the further the card is from the zone's central
+//! meridian (1.4° in Boston). `webmercator` projects to EPSG:3857 with one
+//! scale for both axes, the cosine of the centre's latitude, as web maps count
+//! metres: the drawing is a crop of the Mapbox map the web app shows, to the
+//! pixel. Both then centre on the card, scale to mm, flip y, and turn by the
+//! bearing.
 
 use crate::card::Card;
 use crate::profile::ProjectionMode;
 use geo::{Coord, MapCoords};
-use geographiclib_rs::{Geodesic, InverseGeodesic};
 
 const WGS84_A: f64 = 6_378_137.0;
 const WGS84_F: f64 = 1.0 / 298.257_223_563;
@@ -79,12 +81,6 @@ fn merc_forward(lon: f64, lat: f64) -> (f64, f64) {
     (x, y)
 }
 
-fn merc_inverse(x: f64, y: f64) -> (f64, f64) {
-    let lon = (x / WGS84_A).to_degrees();
-    let lat = (2.0 * (y / WGS84_A).exp().atan() - std::f64::consts::FRAC_PI_2).to_degrees();
-    (lon, lat)
-}
-
 #[derive(Debug, Clone)]
 enum Base {
     Utm(Utm),
@@ -114,15 +110,8 @@ impl Projector {
                 (Base::Utm(utm), c, 1.0, 1.0)
             }
             ProjectionMode::Webmercator => {
-                let (cx, cy) = merc_forward(lon, lat);
-                let g = Geodesic::wgs84();
-                let (lon1, lat1) = merc_inverse(cx, cy);
-                let (lon2, lat2) = merc_inverse(cx + 1.0, cy);
-                let (lon3, lat3) = merc_inverse(cx, cy + 1.0);
-                let x_m: f64 = g.inverse(lat1, lon1, lat2, lon2);
-                let y_m: f64 = g.inverse(lat1, lon1, lat3, lon3);
-                let nz = |v: f64| if v == 0.0 { 1.0 } else { v };
-                (Base::Merc, (cx, cy), nz(x_m), nz(y_m))
+                let k = lat.to_radians().cos();
+                (Base::Merc, merc_forward(lon, lat), k, k)
             }
         };
         // Shapely's rotate(-bearing) about the card centre, in page space.
@@ -184,8 +173,6 @@ mod tests {
         let cases = [
             (ProjectionMode::Utm, 0.0, [(106.685924534, 34.498819133), (19.001922261, 90.543444644)]),
             (ProjectionMode::Utm, 30.0, [(94.450994671, 21.439800991), (46.536733953, 113.817871565)]),
-            (ProjectionMode::Webmercator, 0.0, [(106.802799038, 34.691484859), (18.72705208, 90.187000159)]),
-            (ProjectionMode::Webmercator, 30.0, [(94.648543823, 21.548217151), (46.12046715, 113.646616676)]),
         ];
         for (projection, bearing, expected) in cases {
             let card = Card {
@@ -203,6 +190,36 @@ mod tests {
                 assert_abs_diff_eq!(y, ey, epsilon = 1e-6);
             }
         }
+    }
+
+    #[test]
+    fn webmercator_is_a_crop_of_the_web_map() {
+        // Boston, 2° off its UTM zone's meridian: UTM turns north by 1.4°.
+        let card = |projection| Card {
+            center: (-71.079, 42.3617),
+            width_mm: 152.4,
+            height_mm: 101.6,
+            scale: 8000.0,
+            bearing: 0.0,
+            projection,
+        };
+        let p = Projector::new(&card(ProjectionMode::Webmercator));
+        // A web map's pixel is square, cos(latitude) metres per Mercator metre.
+        let k = 42.3617_f64.to_radians().cos() * card(ProjectionMode::Webmercator).mm_per_m();
+        let (cx, cy) = merc_forward(-71.079, 42.3617);
+        for (dx, dy) in [(500.0, 0.0), (0.0, 400.0), (-300.0, -250.0)] {
+            let (lon, lat) = {
+                let (x, y) = (cx + dx, cy + dy);
+                ((x / WGS84_A).to_degrees(), (2.0 * (y / WGS84_A).exp().atan() - std::f64::consts::FRAC_PI_2).to_degrees())
+            };
+            let (x, y) = p.project(lon, lat);
+            assert_abs_diff_eq!(x, 76.2 + dx * k, epsilon = 1e-9);
+            assert_abs_diff_eq!(y, 50.8 - dy * k, epsilon = 1e-9);
+        }
+        let north = (-71.079, 42.368);
+        assert_abs_diff_eq!(p.project(north.0, north.1).0, 76.2, epsilon = 1e-9);
+        let utm = Projector::new(&card(ProjectionMode::Utm)).project(north.0, north.1);
+        assert!((utm.0 - 76.2).abs() > 0.1, "UTM leans: {}", utm.0);
     }
 
     #[test]
