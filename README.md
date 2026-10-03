@@ -1,4 +1,4 @@
-# postcards
+# draw.land
 
 Turn any address into a pen-plotter postcard map. OpenStreetMap data is
 fetched, projected onto the card and drawn as distinct layers (buildings
@@ -19,8 +19,8 @@ for now.
 or directly:
 
 ```bash
-cargo run --release -p postcards-cli -- map --address "Piazza Maggiore, Bologna" -o map.svg
-cargo run --release -p postcards-cli -- map --lat 37.8771 --lng -122.2562 --profile configs/examples/steps.yaml
+cargo run --release -p drawland-cli -- map --address "Piazza Maggiore, Bologna" -o map.svg
+cargo run --release -p drawland-cli -- map --lat 37.8771 --lng -122.2562 --profile configs/examples/steps.yaml
 ```
 
 | Flag | Does |
@@ -43,8 +43,8 @@ modules. [`docs/profile.md`](docs/profile.md) is the profile grammar.
 
 | Path | Role |
 |---|---|
-| `crates/postcards-core` | Profile, planner, projection, OSM → features, layers, compose, SVG. No I/O. |
-| `crates/postcards-cli` | The `postcards-rs` binary: geocoding, Overpass, vector tiles, cache |
+| `crates/drawland-core` | Profile, planner, projection, OSM → features, layers, compose, SVG. No I/O. |
+| `crates/drawland-cli` | The `drawland` binary: geocoding, Overpass, vector tiles, cache |
 | `configs/` | Profiles |
 | `data/` | Address lists |
 | `docs/plan.md` | The Rust rewrite: decisions, status, next phases |
@@ -56,7 +56,7 @@ modules. [`docs/profile.md`](docs/profile.md) is the profile grammar.
 cargo test
 ```
 
-postcards builds against sibling checkouts of its own libraries, developed
+draw.land builds against sibling checkouts of its own libraries, developed
 alongside it: penfill in `../penfill` (fills) and terramask in `../terramask`
 (the sea, from vector tiles); burin-map in `../burin-map` comes next, for
 terrain.

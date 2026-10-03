@@ -1,6 +1,6 @@
 /**
  * The download's progress events, sent from the worker: the page's twin of
- * the core's `Task` (`postcards-core/src/progress.rs`), with the same
+ * the core's `Task` (`drawland-core/src/progress.rs`), with the same
  * `begin`, `total`, `step`, `end` and `log` events the engine sends for the
  * drawing. The page applies both to the engine's `Board`, which decides how
  * every row reads, for the page as for the terminal.

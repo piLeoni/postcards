@@ -1,16 +1,16 @@
 [package]
-name = "postcards-wasm"
+name = "drawland-wasm"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 publish = false
-description = "WebAssembly bindings for postcards: profile + OSM data in, SVG out"
+description = "WebAssembly bindings for draw.land: profile + OSM data in, SVG out"
 
 [lib]
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-postcards-core.workspace = true
+drawland-core.workspace = true
 penfill.workspace = true
 terramask.workspace = true
 geo.workspace = true

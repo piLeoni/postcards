@@ -1,16 +1,16 @@
-//! `postcards-rs map`: a profile and a place in, the layered map SVG out.
+//! `drawland map`: a profile and a place in, the layered map SVG out.
 
 mod osm_http;
 mod term;
 
 use clap::{Parser, Subcommand};
-use postcards_core::card::{fetch_keys, Card};
-use postcards_core::grammar::Grammar;
-use postcards_core::osm::{features_from_overpass, Feature};
-use postcards_core::pipeline::{render, Inputs};
-use postcards_core::profile::{Format, Profile};
-use postcards_core::progress::{thousands, Event, Level, Progress, Task};
-use postcards_core::tiles::{self, Tiles};
+use drawland_core::card::{fetch_keys, Card};
+use drawland_core::grammar::Grammar;
+use drawland_core::osm::{features_from_overpass, Feature};
+use drawland_core::pipeline::{render, Inputs};
+use drawland_core::profile::{Format, Profile};
+use drawland_core::progress::{thousands, Event, Level, Progress, Task};
+use drawland_core::tiles::{self, Tiles};
 use std::collections::BTreeMap;
 use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
@@ -18,7 +18,7 @@ use std::process::ExitCode;
 use term::Term;
 
 #[derive(Parser)]
-#[command(name = "postcards-rs", about = "Postcard maps for pen plotters")]
+#[command(name = "drawland", about = "draw.land: maps drawn for pen plotters")]
 struct Cli {
     #[command(subcommand)]
     command: Command,
@@ -264,10 +264,10 @@ fn map_v3(
     let Fetched { osm: features, tiles, ocean } = fetch(http, download, &card, &needs)?;
 
     let draw = Task::begin(term, "draw", None, "draw", 0, "");
-    let rendered = postcards_core::grammar_run::run_with(
+    let rendered = drawland_core::grammar_run::run_with(
         &grammar,
         &card,
-        postcards_core::grammar_run::Inputs { features, tiles, ocean, sources: &sources },
+        drawland_core::grammar_run::Inputs { features, tiles, ocean, sources: &sources },
         &draw,
     )
     .map_err(|e| e.to_string())?;

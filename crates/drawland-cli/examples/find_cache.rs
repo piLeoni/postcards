@@ -1,8 +1,8 @@
 //! Print the cache file for the v3 proposal card, so the web app can be tested
 //! against the same Overpass reply the CLI uses.
-use postcards_core::card::{overpass_query, Card};
-use postcards_core::grammar::Grammar;
-use postcards_core::profile::Format;
+use drawland_core::card::{overpass_query, Card};
+use drawland_core::grammar::Grammar;
+use drawland_core::profile::Format;
 
 fn quote_plus(s: &str) -> String {
     let mut out = String::with_capacity(s.len() * 3);

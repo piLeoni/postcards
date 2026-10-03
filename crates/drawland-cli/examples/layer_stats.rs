@@ -4,13 +4,13 @@
 //! reference/python/parity/layer_stats.py. No ocean (offline).
 
 use geo::Area;
-use postcards_core::card::{Card, OSM_TAGS};
-use postcards_core::fill::Sources;
-use postcards_core::geom::line_length;
-use postcards_core::osm::features_from_overpass;
-use postcards_core::profile::{Format, Profile};
-use postcards_core::projection::Projector;
-use postcards_core::themes::{self, Context};
+use drawland_core::card::{Card, OSM_TAGS};
+use drawland_core::fill::Sources;
+use drawland_core::geom::line_length;
+use drawland_core::osm::features_from_overpass;
+use drawland_core::profile::{Format, Profile};
+use drawland_core::projection::Projector;
+use drawland_core::themes::{self, Context};
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();

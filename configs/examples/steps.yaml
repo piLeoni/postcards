@@ -5,7 +5,7 @@
 #   Overpass query grows to include it);
 # - buildings: the buildings/v1 look rebuilt from steps (no inner walls).
 #
-#   postcards-rs map --profile configs/examples/steps.yaml --address "…"
+#   drawland map --profile configs/examples/steps.yaml --address "…"
 #
 # Steps run in order over a working selection, area and lines:
 #   select {tags, except, underground}   pick features (any listed tag matches)

@@ -1,13 +1,13 @@
 /**
  * A draw, off the page's thread: the download (Overpass when the card asks
  * it anything, then the vector tiles), then the engine, the same steps as
- * `postcards-rs map`. The page sends `{ type: 'draw', token, doc,
+ * `drawland map`. The page sends `{ type: 'draw', token, doc,
  * lat, lng }` and gets back every progress event as `{ type: 'event', token,
  * e }`, then `{ type: 'done', … }` or `{ type: 'error', … }`. Running here,
  * the engine's events reach the page while it works, so the bars move.
  */
 
-import { loadPostcards } from './postcards'
+import { loadDrawland } from './drawland'
 import { fetchOverpass } from './overpass'
 import { fetchTiles } from './tiles'
 import { Task } from './progress'
@@ -25,7 +25,7 @@ async function run({ token, doc, lat, lng }) {
   current = ac
   const emit = (e) => self.postMessage({ type: 'event', token, e })
   try {
-    const engine = await loadPostcards()
+    const engine = await loadDrawland()
     const download = Task.begin(emit, 'download', null, 'download')
     download.log('info', `centre ${lat.toFixed(7)}, ${lng.toFixed(7)}`)
     const job = new engine.Job(doc, lat, lng)

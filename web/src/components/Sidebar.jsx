@@ -13,7 +13,7 @@ const KEY = { 'size-': 'small', 'variant-': 'background1' }
 /* ---------------------------------------------------------------- */
 
 /** The column's width on a wide screen, in px: dragged by its left edge, kept. */
-const WIDTH_KEY = 'postcards.sidebarWidth'
+const WIDTH_KEY = 'drawland.sidebarWidth'
 const MIN_WIDTH = 320
 const clampWidth = (w) => Math.round(Math.min(Math.max(w, MIN_WIDTH), window.innerWidth * 0.7))
 const REPO = 'https://github.com/piLeoni/postcards'
@@ -88,7 +88,7 @@ export default function Sidebar({ open, onClose, doc, setDoc, check, card, statu
     const model = m?.editor.getModel()
     if (!model) return
     const at = text && spotOf(text)
-    m.monaco.editor.setModelMarkers(model, 'postcards', at && at.line <= model.getLineCount()
+    m.monaco.editor.setModelMarkers(model, 'drawland', at && at.line <= model.getLineCount()
       ? [{
           severity: m.monaco.MarkerSeverity.Error,
           message: plain(text).split('\n')[0],
@@ -220,7 +220,7 @@ export default function Sidebar({ open, onClose, doc, setDoc, check, card, statu
       style={{ color: '#000', backgroundColor: '#fff', '--side-w': `${width}px` }}
     >
       <Panel
-        title="Postcards"
+        title="draw.land"
         className="shrink-0"
         aside={(
           <>
@@ -232,7 +232,7 @@ export default function Sidebar({ open, onClose, doc, setDoc, check, card, statu
         )}
       >
         <p className="opacity-60">
-          Map postcards drawn for a pen plotter. Put the card where you want it
+          Maps drawn for a pen plotter. Put the card where you want it
           on the map, then generate it; the config below is the whole card.
         </p>
       </Panel>

@@ -1,4 +1,4 @@
-# Map profile for postcards-rs: the card, its layers, and how each is drawn.
+# Map profile for drawland: the card, its layers, and how each is drawn.
 #
 # Fill generators (penfill): rectilinear zigzag lines grid triangles honeycomb
 #   dots waves wave_grid scales sunburst spiral concentric hilbert stipple

@@ -1,5 +1,5 @@
 # configs/postcard.yaml scritto nella grammatica v3 (docs/profile.md).
-# IMPLEMENTATO: postcards-core::grammar lo legge e lo valida. Serve a vedere come
+# IMPLEMENTATO: drawland-core::grammar lo legge e lo valida. Serve a vedere come
 # la cartolina di oggi verrebbe scritta, e a tenere allineati documento e parser.
 #
 # ============================================================================

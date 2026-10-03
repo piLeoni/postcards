@@ -41,8 +41,8 @@ an anchor `&name`) and the parser rejects it. `!` and `%` are reserved too.
 
 ## Implementation status
 
-The grammar is implemented and **runs**. `postcards-core::grammar` parses and
-validates it; `postcards-core::grammar_run` evaluates it against OSM data and
+The grammar is implemented and **runs**. `drawland-core::grammar` parses and
+validates it; `drawland-core::grammar_run` evaluates it against OSM data and
 writes the SVG. The CLI picks the v3 path by itself when the file starts with
 `card:` or `$features:`.
 
@@ -840,7 +840,7 @@ Load-time errors, each naming the offending key:
 - An id in `order` that is not in `draw`; an id in `occludes` that is not in
   `draw`.
 
-Debug (later): `postcards-rs def show '$areas.dissolved' -o dissolved.svg`.
+Debug (later): `drawland def show '$areas.dissolved' -o dissolved.svg`.
 
 ---
 

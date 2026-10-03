@@ -11,9 +11,9 @@ fn main() {
     let mut checked = 0;
     let mut failed = 0;
     for doc in templates(&text) {
-        match postcards_core::grammar::Grammar::parse(&doc, postcards_core::profile::Format::Yaml) {
+        match drawland_core::grammar::Grammar::parse(&doc, drawland_core::profile::Format::Yaml) {
             Ok(g) => {
-                println!("ok    {} bytes · {} areas · {} fills · {} drawn", doc.len(), g.defs(postcards_core::grammar::Section::Areas).len(), g.defs(postcards_core::grammar::Section::Fills).len(), g.draw.len());
+                println!("ok    {} bytes · {} areas · {} fills · {} drawn", doc.len(), g.defs(drawland_core::grammar::Section::Areas).len(), g.defs(drawland_core::grammar::Section::Fills).len(), g.draw.len());
                 checked += 1;
             }
             Err(e) => {

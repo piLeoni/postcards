@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# ./generate.sh "address" [postcards-rs map flags]
+# ./generate.sh "address" [drawland map flags]
 # writes exports/<address_slug>/map.svg unless -o is given.
 set -euo pipefail
 
 cd "$(dirname "$0")"
 
-run() { cargo run -q --release -p postcards-cli -- map "$@"; }
+run() { cargo run -q --release -p drawland-cli -- map "$@"; }
 
 if [ "$#" -eq 0 ]; then
     run --help

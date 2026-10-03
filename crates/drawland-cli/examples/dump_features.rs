@@ -3,9 +3,9 @@
 //! osmnx (reference/python/parity/dump_features.py).
 
 use geo::Area;
-use postcards_core::card::{Card, OSM_TAGS};
-use postcards_core::osm::{features_from_overpass, Element};
-use postcards_core::profile::ProjectionMode;
+use drawland_core::card::{Card, OSM_TAGS};
+use drawland_core::osm::{features_from_overpass, Element};
+use drawland_core::profile::ProjectionMode;
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();

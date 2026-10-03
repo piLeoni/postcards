@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/postcards-core", "crates/postcards-cli", "crates/postcards-wasm"]
+members = ["crates/drawland-core", "crates/drawland-cli", "crates/drawland-wasm"]
 resolver = "2"
 
 [workspace.package]
@@ -8,7 +8,7 @@ edition = "2021"
 license = "AGPL-3.0-only"
 
 [workspace.dependencies]
-postcards-core = { path = "crates/postcards-core" }
+drawland-core = { path = "crates/drawland-core" }
 penfill = { path = "../penfill" }
 # Reads tiles only; the CLI turns `fetch` on, the page downloads them itself.
 terramask = { path = "../terramask/crates/terramask", version = "0.2.0", default-features = false }

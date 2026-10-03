@@ -1,9 +1,9 @@
-# postcards web
+# draw.land web
 
 The card on a map: a Mapbox map underneath, the drawing on top of it, and the
 profile in a sidebar you can edit and redraw. The drawing is the same
-`postcards-core` the CLI uses, compiled to WebAssembly, so what you see is what
-`postcards-rs map` writes.
+`drawland-core` the CLI uses, compiled to WebAssembly, so what you see is what
+`drawland map` writes.
 
 ```sh
 # from the repo root, once (rebuild after any change in crates/)
@@ -20,7 +20,7 @@ want it and press "generate card".
 
 ## How it works
 
-- `crates/postcards-wasm` is the engine: `cardInfo`, `osmRequest` /
+- `crates/drawland-wasm` is the engine: `cardInfo`, `osmRequest` /
   `osmPick` / `osmEvict`, `overpassPolicy`, `tileSource`, a `Job` (read the
   Overpass reply when `needsOsm`, add the `tiles` it asks for, `readTiles`,
   draw) and a `Board` that lays out the progress. No filesystem, no network on
@@ -28,7 +28,7 @@ want it and press "generate card".
 - `src/lib/draw.worker.js` runs a draw off the page's thread: the download
   (Overpass only for a card with `osm_select`, then the vector tiles), then
   the engine. Its progress events go through the engine's `Board`, the
-  same one that lays out the terminal for `postcards-rs map`, and
+  same one that lays out the terminal for `drawland map`, and
   `LoadCard.jsx` paints its lines.
 - `src/lib/tiles.js` fetches the vector tiles the card needs (OpenFreeMap,
   read by terramask inside the engine): what `tiles_select` picks and the sea.
@@ -44,12 +44,12 @@ want it and press "generate card".
   days) and a card is drawn from any stored reply that covers it: each
   download asks for a quarter more ground on every side, so moving the card a
   little or zooming in does not download again. The rules are the engine's
-  (`postcards_core::osm_cache`), the same the CLI follows in `cache/overpass/`.
+  (`drawland_core::osm_cache`), the same the CLI follows in `cache/overpass/`.
 - `src/components/MapView.jsx` puts the two together: the card rectangle is
   centred on the map, `width × height` at `1:N`, and the SVG is stretched to
   fill exactly that rectangle.
 - `src/lib/presets.js` holds the card documents the app ships. They are the
-  format the CLI reads, so anything you write there works in `postcards-rs map`
+  format the CLI reads, so anything you write there works in `drawland map`
   too. `cargo run --example check_web_presets` parses each one, so a preset that
   stops parsing fails there rather than in a browser.
 - "presets" replaces the style with a ready-made one; the card stays where

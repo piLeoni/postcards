@@ -6,12 +6,12 @@
 //! `cargo run --release --example wasm_render -- <preset-id> [cache.json] [out.svg]`
 //! `preset-id` is one of `full`, `parks`, `buildings` (see web/src/lib/presets.js).
 
-use postcards_core::card::Card;
-use postcards_core::grammar::Grammar;
-use postcards_core::grammar_run::{run, Inputs};
-use postcards_core::osm::features_from_overpass;
-use postcards_core::profile::Format;
-use postcards_core::tiles;
+use drawland_core::card::Card;
+use drawland_core::grammar::Grammar;
+use drawland_core::grammar_run::{run, Inputs};
+use drawland_core::osm::features_from_overpass;
+use drawland_core::profile::Format;
+use drawland_core::tiles;
 use std::collections::BTreeMap;
 
 fn main() {

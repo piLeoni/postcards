@@ -6,8 +6,8 @@
 //! codes would only litter it, so each task prints one plain line when it
 //! ends and each log when it comes.
 
-use postcards_core::board::{plain, Board, Line};
-use postcards_core::progress::{Event, Progress};
+use drawland_core::board::{plain, Board, Line};
+use drawland_core::progress::{Event, Progress};
 use std::io::{IsTerminal, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};

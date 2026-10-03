@@ -8,7 +8,7 @@
  * ours and would bring colour back.
  */
 
-export const EDITOR_THEME = 'postcards-grey'
+export const EDITOR_THEME = 'drawland-grey'
 
 // Darker than burin-map's: this document is mostly `{ }` flow maps, so
 // punctuation is a large share of what is on screen.

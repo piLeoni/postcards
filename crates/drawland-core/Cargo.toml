@@ -1,6 +1,6 @@
 [package]
-name = "postcards-core"
-description = "Map postcards for pen plotters: OSM features to a layered SVG. No I/O."
+name = "drawland-core"
+description = "Maps drawn for pen plotters: OSM features to a layered SVG. No I/O."
 version.workspace = true
 edition.workspace = true
 license.workspace = true

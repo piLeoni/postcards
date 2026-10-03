@@ -6,7 +6,7 @@ import { angleModel, Choice, countModel, degreesModel, Field, lengthModel, MAX_S
 const PX_PER_DEG = 2.5
 
 /** Where the scale switch is remembered: what a new scale changes, `terrain` or `output`. */
-const SCALE_CHANGES_KEY = 'postcards.scaleChanges'
+const SCALE_CHANGES_KEY = 'drawland.scaleChanges'
 
 /** The smallest side a new scale may leave the paper, in mm. */
 const MIN_PAPER_MM = 1

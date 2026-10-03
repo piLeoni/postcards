@@ -1,6 +1,6 @@
-# Plan: postcards in Rust — penfill patterns, declarative profile, burin later
+# Plan: draw.land in Rust — penfill patterns, declarative profile, burin later
 
-**The map stage of postcards is rewritten in Rust, and it produces SVG —
+**The map stage of draw.land (formerly postcards) is rewritten in Rust, and it produces SVG —
 only SVG.** Work happens on the `rust-rewrite` branch. The project is Rust
 only: the whole Python pipeline (map stage, vpype `optimize`,
 `export_gcode`, `upload`) now lives in `reference/python/`, kept to read and
@@ -121,18 +121,18 @@ profile ever needs arbitrary CRSs; the two modes above do not.
 ```text
 Cargo.toml                 # workspace
 crates/
-  postcards-core/          # no I/O: profile, planner, projection, OSM → features,
+  drawland-core/          # no I/O: profile, planner, projection, OSM → features,
                            # geometry ops, layers, compose, SVG writer, penfill
-  postcards-cli/           # the binary: HTTP (Nominatim, Overpass, ocean tiles),
+  drawland-cli/           # the binary: HTTP (Nominatim, Overpass, ocean tiles),
                            # disk cache, subcommands map | fill
-  postcards-wasm/          # later: browser host over the same core
+  drawland-wasm/          # later: browser host over the same core
 configs/                   # profiles
 reference/python/          # the former Python pipeline, read-only
 ```
 
 Core stays free of network and filesystem so it builds for `wasm32`
 unchanged. Hosts fetch bytes and hand them to core. The binary is still
-called `postcards-rs`; it can take the plain name now that the Python CLI is
+called `drawland`; it can take the plain name now that the Python CLI is
 retired.
 
 ---
@@ -147,7 +147,7 @@ Depend on it directly:
 penfill = "0.1"
 ```
 
-Contract — the one postcards fills already follow:
+Contract — the one the Python fills already follow:
 
 - Input: a `penfill::Region` in **millimetres** (outer rings and holes) plus
   `spacing`, `angle`, `seed`, and per-generator options.
@@ -177,7 +177,7 @@ kind; the schema does not change.
 
 ### Mapping today's algorithms
 
-| postcards today | penfill | Notes |
+| Python prototype | penfill | Notes |
 |-----------------|---------|-------|
 | `rectilinear` | `rectilinear` | same |
 | `zigzag` | `zigzag` | penfill lifts the pen where a hop would leave the shape; no `connector` modes |
@@ -186,8 +186,8 @@ kind; the schema does not change.
 | `hilbert` | `hilbert` | same |
 | `dots` | `dots` | `mark`, `angle`; `lattice` becomes available |
 | `waves` | `waves` | same |
-| `grid` | `grid` | **different**: postcards = two zigzag passes; penfill = two plain hatches |
-| `honeycomb` | `triangles` (closest) | **different**: postcards = three zigzags at 60°; penfill `honeycomb` draws hexagon cells |
+| `grid` | `grid` | **different**: Python = two zigzag passes; penfill = two plain hatches |
+| `honeycomb` | `triangles` (closest) | **different**: Python = three zigzags at 60°; penfill `honeycomb` draws hexagon cells |
 
 - `connector = "boundary"` (used for buildings today) has no penfill
   equivalent. penfill's zigzag is the reference look; judge on a plotted
@@ -196,7 +196,7 @@ kind; the schema does not change.
   is two `zigzag` fills on the same region.
 - Every other penfill generator (`grass`, `wood`, `stipple`, `gravel`,
   `scales`, `pat`, …) is available from the first release.
-- **Strokes are not fills.** Outline dash/dot stays in postcards core;
+- **Strokes are not fills.** Outline dash/dot stays in the draw.land core;
   penfill does not dash lines.
 
 ---
@@ -277,7 +277,7 @@ what a future terrain layer needs.
 
 Overpass replies are cached by the CLI on disk (`cache/overpass/`) and by
 the page in the browser's Cache Storage, with the same rules
-(`postcards_core::osm_cache`): a download asks for a quarter more ground on
+(`drawland_core::osm_cache`): a download asks for a quarter more ground on
 every side, and any stored reply whose ground and keys cover a card serves
 it, so a card moved a little or zoomed in is not downloaded again. Features
 are read against the card's own outline, so a bigger reply draws the same
@@ -377,7 +377,7 @@ geometry; mm user space `0 0 width_mm height_mm`.
 
 ### Phase 1 — Parity map stage
 
-- Cargo workspace with `postcards-core` and `postcards-cli`.
+- Cargo workspace with `drawland-core` and `drawland-cli`.
 - Profile v1 (YAML / JSON5): `map`, `layers` (each a module + `FillSpec` +
   stroke style), `compose.order`, `svg`. A default profile that renders
   what `configs/fluidnc.toml` renders today.
@@ -386,17 +386,17 @@ geometry; mm user space `0 0 width_mm height_mm`.
 - Core: OSM → features (port of `osmnx.features`), bounds, projection,
   penfill fills, dashing, the four themes as modules (`buildings/v1`,
   `parks/v1`, `water/v1`, `roads/v1`) with the Python logic, compose, SVG.
-- `postcards-rs map` writes an SVG the Python `optimize` / `gcode` accept
+- `drawland map` writes an SVG the Python `optimize` / `gcode` accept
   as-is.
 
 Done when the three fixtures pass the layer comparison.
 
 **Status (branch `rust-rewrite`).** Implemented end to end:
-`postcards-rs map --profile configs/postcard.yaml (--address … | --lat … --lng …)`.
+`drawland map --profile configs/postcard.yaml (--address … | --lat … --lng …)`.
 Fixtures run offline from the shared `./cache`, since the Overpass query and
 cache keys are identical to osmnx's. The parity tools are in
 `reference/python/parity/` (SVG comparison, feature dump, pre-compose
-layer stats) and `crates/postcards-cli/examples/`. Results against Python on
+layer stats) and `crates/drawland-cli/examples/`. Results against Python on
 the three cards:
 
 - Features: identical to osmnx (same 4105 elements and areas on the Ferry
@@ -458,7 +458,7 @@ that don't exist.
   like the slivers a polygon overlay leaves. A shrunk sliver came back
   hundreds of metres wide. penfill now runs on `i_overlay` instead, which
   handles those slivers; maps render about 1.8× faster, and the penfill WASM
-  build needs no C++ toolchain. postcards depends on the local `../penfill`
+  build needs no C++ toolchain. draw.land depends on the local `../penfill`
   until both are stable enough to publish together.
 
 Not done: the parity themes stay modules. Building inner walls, park kinds
@@ -468,7 +468,7 @@ and leftovers, and water with ocean tiles don't fit the current steps.
 
 **Done.** The whole Python pipeline, downstream stages included, moved to
 `reference/python/` (last Python state committed first). It is not run or
-tested. `generate.sh` runs `postcards-rs map` and writes
+tested. `generate.sh` runs `drawland map` and writes
 `exports/<slug>/map.svg`.
 
 Next: agree on the profile grammar in [`profile.md`](profile.md) (v2:
@@ -476,7 +476,7 @@ Next: agree on the profile grammar in [`profile.md`](profile.md) (v2:
 
 ### Phase 4 — WASM
 
-- `postcards-wasm` over the same core: browser fetch for Nominatim and
+- `drawland-wasm` over the same core: browser fetch for Nominatim and
   Overpass (proxy if CORS requires), render, download SVG.
 - Document bundle size (penfill, projection).
 
@@ -504,7 +504,7 @@ Next: agree on the profile grammar in [`profile.md`](profile.md) (v2:
 
 ## Decisions already made
 
-- **postcards is Rust only and outputs SVG only.** The Python pipeline is
+- **draw.land is Rust only and outputs SVG only.** The Python pipeline is
   kept in `reference/python/` to read. No bindings. vpype, G-code and upload
   are out of scope for now.
 - **Geocoding is ported** (same Nominatim request as osmnx).
@@ -531,7 +531,7 @@ Next: agree on the profile grammar in [`profile.md`](profile.md) (v2:
   planned stand-in. Check against the fixtures.
 - **After the SVG:** path optimisation, G-code and upload, in Rust, are a
   later design.
-- **License:** postcards has no `LICENSE`; the binary links AGPL penfill.
+- **License:** draw.land has no `LICENSE` yet; penfill is MIT OR Apache-2.0.
 
 ---
 

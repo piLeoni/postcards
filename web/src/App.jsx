@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import MapView from './components/MapView'
 import Sidebar from './components/Sidebar'
-import { loadPostcards } from './lib/postcards'
+import { loadDrawland } from './lib/drawland'
 import { START_DOC } from './lib/presets'
 import { cardUnit, setCardComment, setCardKeys } from './lib/doc'
 import { terrainPair } from './components/controls'
@@ -63,7 +63,7 @@ export default function App() {
   const mapApiRef = useRef(null)
 
   useEffect(() => {
-    loadPostcards()
+    loadDrawland()
       .then(setEngine)
       .catch((e) => {
         setEngineError(e instanceof Error ? e.message : String(e))

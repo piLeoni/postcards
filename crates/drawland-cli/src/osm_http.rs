@@ -2,22 +2,22 @@
 //!
 //! Overpass replies go in `<cache>/overpass/`, one `<name>.json` each with a
 //! `<name>.meta.json` saying what ground and keys it covers; which one a card
-//! uses, and which are deleted, follows `postcards_core::osm_cache`, as in
+//! uses, and which are deleted, follows `drawland_core::osm_cache`, as in
 //! the browser, with a bigger budget. Nominatim lookups are
 //! `<cache>/<sha1 of the GET url>.json`.
 
-use postcards_core::card::{
+use drawland_core::card::{
     overpass_error, overpass_slot_wait_s, overpass_status_url, Card, OVERPASS_ENDPOINTS, OVERPASS_ENDPOINT_TIMEOUT_S,
     OVERPASS_MAX_SLOT_WAIT_S, OVERPASS_ROUND_PAUSE_S,
 };
-use postcards_core::osm_cache::{self, Entry};
-use postcards_core::progress::{Level, Task};
+use drawland_core::osm_cache::{self, Entry};
+use drawland_core::progress::{Level, Task};
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 const NOMINATIM_URL: &str = "https://nominatim.openstreetmap.org/search";
-const USER_AGENT: &str = "postcards (https://github.com/piLeoni/postcards)";
+const USER_AGENT: &str = "draw.land (https://draw.land)";
 pub const OVERPASS_TIMEOUT_S: u32 = 180;
 
 pub struct Http {
@@ -271,10 +271,10 @@ fn short(e: ureq::Error) -> String {
     }
 }
 
-/// The servers to try, in order: `POSTCARDS_OVERPASS` (comma separated)
+/// The servers to try, in order: `DRAWLAND_OVERPASS` (comma separated)
 /// replaces the usual mirrors, to test a server or the retries.
 fn endpoints() -> Vec<String> {
-    match std::env::var("POSTCARDS_OVERPASS") {
+    match std::env::var("DRAWLAND_OVERPASS") {
         Ok(list) if !list.trim().is_empty() => list.split(',').map(|s| s.trim().to_string()).collect(),
         _ => OVERPASS_ENDPOINTS.iter().map(|s| s.to_string()).collect(),
     }

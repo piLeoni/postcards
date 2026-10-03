@@ -1,4 +1,4 @@
-//! postcards map stage: OSM features in, a layered SVG in card millimetres out.
+//! draw.land map stage: OSM features in, a layered SVG in card millimetres out.
 
 pub mod card;
 pub mod compose;

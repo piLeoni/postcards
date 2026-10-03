@@ -1,10 +1,10 @@
-//! WebAssembly bindings for postcards.
+//! WebAssembly bindings for draw.land.
 //!
 //! The browser gets the pipeline after the download: the card document plus
 //! the Overpass JSON its query returned and the vector tiles it asked for, out
 //! comes the SVG, with the same
 //! progress events the command line draws in the terminal. Nothing here
-//! touches the filesystem or the network, so the same `postcards-core` the CLI
+//! touches the filesystem or the network, so the same `drawland-core` the CLI
 //! uses runs unchanged in a page.
 //!
 //! A document is either the v3 grammar (`card:`, `$features`, `$areas`, `draw`,
@@ -12,18 +12,18 @@
 //! `Profile::parse` tell which by what the text contains, so the caller just
 //! pastes what it has.
 
-use postcards_core::card::{
+use drawland_core::card::{
     overpass_error, overpass_slot_wait_s, overpass_status_url, Card, OVERPASS_ENDPOINTS, OVERPASS_ENDPOINT_TIMEOUT_S,
     OVERPASS_MAX_SLOT_WAIT_S, OVERPASS_ROUND_PAUSE_S,
 };
-use postcards_core::osm_cache;
+use drawland_core::osm_cache;
 use geo::MultiPolygon;
-use postcards_core::grammar::Grammar;
-use postcards_core::osm::{features_from_overpass, Feature};
-use postcards_core::tiles::{self, Tiles, TILES};
-use postcards_core::profile::{Format, Profile};
-use postcards_core::board::{Board, Line};
-use postcards_core::progress::{thousands, Event, Level, Progress, Task};
+use drawland_core::grammar::Grammar;
+use drawland_core::osm::{features_from_overpass, Feature};
+use drawland_core::tiles::{self, Tiles, TILES};
+use drawland_core::profile::{Format, Profile};
+use drawland_core::board::{Board, Line};
+use drawland_core::progress::{thousands, Event, Level, Progress, Task};
 use std::collections::BTreeMap;
 use terramask::TileId;
 use wasm_bindgen::prelude::*;
@@ -58,12 +58,12 @@ impl Rendered {
 }
 
 /// What this document and centre need from Overpass, as JSON: `{ need,
-/// fetch, query }` (see `postcards_core::osm_cache::Request`). `need` is the
+/// fetch, query }` (see `drawland_core::osm_cache::Request`). `need` is the
 /// card's ground and keys, which a stored reply must cover; `fetch` the
 /// padded ground `query` asks for, to store the reply under.
 ///
 /// The centre comes from the document unless `lat`/`lng` override it, the same
-/// way `postcards-rs map --lat --lng` does.
+/// way `drawland map --lat --lng` does.
 #[wasm_bindgen(js_name = osmRequest)]
 pub fn osm_request(doc: &str, lat: Option<f64>, lng: Option<f64>) -> Result<String, JsValue> {
     let mut d = Doc::load(doc)?;
@@ -101,7 +101,7 @@ pub fn osm_evict(entries: &str, now: f64) -> Result<Vec<u32>, JsValue> {
 /// `webmercator`, `utm` or the PROJ string.
 #[wasm_bindgen(js_name = cardInfo)]
 pub fn card_info(doc: &str) -> Result<JsValue, JsValue> {
-    use postcards_core::profile::ProjectionMode;
+    use drawland_core::profile::ProjectionMode;
     let d = Doc::load(doc)?;
     let spec = d.spec();
     let o = js_sys::Object::new();
@@ -459,7 +459,7 @@ impl Doc {
     }
 
     /// The `card:` (or older `map:`) block as written.
-    fn spec(&self) -> &postcards_core::profile::MapSpec {
+    fn spec(&self) -> &drawland_core::profile::MapSpec {
         match &self.body {
             Body::Grammar(g) => &g.card,
             Body::Profile(p) => &p.map,
@@ -477,10 +477,10 @@ impl Doc {
     ) -> Result<Out, String> {
         match &self.body {
             Body::Grammar(g) => {
-                let out = postcards_core::grammar_run::run_with(
+                let out = drawland_core::grammar_run::run_with(
                     g,
                     &self.card,
-                    postcards_core::grammar_run::Inputs { features, tiles, ocean, sources },
+                    drawland_core::grammar_run::Inputs { features, tiles, ocean, sources },
                     draw,
                 )
                 .map_err(|e| e.to_string())?;
@@ -488,10 +488,10 @@ impl Doc {
             }
             Body::Profile(p) => {
                 let task = draw.child("render", "render", 0, "");
-                let out = postcards_core::pipeline::render(
+                let out = drawland_core::pipeline::render(
                     p,
                     &self.card,
-                    postcards_core::pipeline::Inputs { features, ocean, sources },
+                    drawland_core::pipeline::Inputs { features, ocean, sources },
                 )
                 .map_err(|e| e.to_string())?;
                 task.ok(&format!("{} groups", out.groups.len()));
@@ -501,7 +501,7 @@ impl Doc {
     }
 }
 
-fn default_center(map: &postcards_core::profile::MapSpec) -> (f64, f64) {
+fn default_center(map: &drawland_core::profile::MapSpec) -> (f64, f64) {
     (map.lng.unwrap_or(0.0), map.lat.unwrap_or(0.0))
 }
 

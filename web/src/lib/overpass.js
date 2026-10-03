@@ -1,5 +1,5 @@
 /**
- * Overpass, the way the command line asks it (`postcards-cli/src/osm_http.rs`):
+ * Overpass, the way the command line asks it (`drawland-cli/src/osm_http.rs`):
  * the servers and the rounds come from the core (`overpassPolicy`), every try
  * is a row under `download` counting the bytes as they arrive, a wait between
  * rounds counts down on `download` itself, and a failed try is logged with
@@ -10,7 +10,7 @@
  * (`osmPick`, `osmEvict`): the same rules the command line follows on disk.
  *
  * Runs in the draw worker. `VITE_OVERPASS_URL` (comma separated) replaces the
- * servers, as `POSTCARDS_OVERPASS` does for the command line.
+ * servers, as `DRAWLAND_OVERPASS` does for the command line.
  */
 
 const FROM_ENV = import.meta.env.VITE_OVERPASS_URL || ''
@@ -213,8 +213,21 @@ function ageWords(s) {
   return `fetched ${Math.floor(s / 86400)} days ago`
 }
 
-const CACHE_NAME = 'postcards-overpass-v1'
-const ORIGIN = 'https://postcards.invalid/overpass/'
+const CACHE_NAME = 'drawland-overpass-v1'
+const ORIGIN = 'https://drawland.invalid/overpass/'
+const OLD_CACHE_NAME = 'postcards-overpass-v1'
+const OLD_ORIGIN = 'https://postcards.invalid/overpass/'
+
+/** Replies kept before the app was renamed from postcards, moved over once. */
+async function adoptOldCache(cache) {
+  if (!(await caches.has(OLD_CACHE_NAME))) return
+  const old = await caches.open(OLD_CACHE_NAME)
+  for (const r of await old.keys()) {
+    const reply = await old.match(r)
+    if (reply && r.url.startsWith(OLD_ORIGIN)) await cache.put(ORIGIN + r.url.slice(OLD_ORIGIN.length), reply)
+  }
+  await caches.delete(OLD_CACHE_NAME)
+}
 
 /**
  * Where replies are kept: Cache Storage, each under a made-up URL that
@@ -233,6 +246,7 @@ async function openStore() {
   }
   if (typeof caches === 'undefined') return memoryStore(keyOf, metaOf)
   const cache = await caches.open(CACHE_NAME)
+  await adoptOldCache(cache)
   return {
     list: async () => (await cache.keys()).map((r) => ({ key: r.url, meta: metaOf(r.url) })).filter((s) => s.meta),
     read: async (key) => (await cache.match(key))?.text() ?? null,
