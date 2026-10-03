@@ -13,8 +13,8 @@ import { lengthText, MM_PER, sig3 } from '../lib/frame'
  * Shift does while dragging instead.
  */
 
-/** A field fills its grid cell; the columns decide the width. */
-const FIELD = 'h-auto w-full min-w-0 border border-black bg-white px-1 text-right font-mono text-[10px] leading-[1.6]'
+/** A field fills its grid cell; the columns decide the width, the host the type size. */
+const FIELD = 'h-auto w-full min-w-0 border border-black bg-white px-1 text-right font-mono text-[length:inherit] leading-[1.6]'
 
 /** Pixels dragged per step of a label. */
 const PX_PER_STEP = 4
@@ -160,7 +160,7 @@ export function Scrub({ icon, label, title, model, value, onChange, sign, px, on
 export function Section({ title, cols, first = false, children }) {
   return (
     <div className={first ? '' : 'mt-1 border-t border-black/20 pt-1'}>
-      <div className="px-1 pb-0.5 text-[9px] uppercase tracking-wider opacity-50">{title}</div>
+      <div className="px-1 pb-0.5 text-[0.9em] uppercase tracking-wider opacity-50">{title}</div>
       <div className={`grid items-center gap-x-1.5 gap-y-1 ${cols}`}>{children}</div>
     </div>
   )

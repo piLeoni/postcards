@@ -5,7 +5,7 @@ import { angleModel, countModel, degreesModel, Field, lengthModel, MAX_SCALE, MI
 const PX_PER_DEG = 2.5
 
 /** Both sections share one shape so their fields line up: a label, two values. */
-const COLS = 'grid-cols-[10ch_14ch_14ch]'
+const COLS = 'grid-cols-[10ch_15ch_15ch]'
 
 /** `5mm` for one length both ways, `[5mm, 3mm]` (across, down) for two. */
 function xyText({ x, y }) {
@@ -79,7 +79,7 @@ export default function CardControls({ card, units, onEdit, onMove }) {
   const both = (model) => ({ nudge: (v, n, shift) => ({ x: model.nudge(v.x, n, shift), y: model.nudge(v.y, n, shift) }) })
 
   return (
-    <div className="w-max font-mono text-[10px]">
+    <div className="w-max font-mono text-[11px]">
       <Section title="place" cols={COLS} first>
         <Scrub icon="✥" label="move" title="Drag to move the card across the map" onPointerDown={onMove} />
         <Field label="latitude" title="Latitude of the card's centre" model={lat} value={card.lat} onChange={(v) => onEdit({ lat: v })} />
