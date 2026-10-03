@@ -5,8 +5,29 @@ import { loadPostcards } from './lib/postcards'
 import { DEFAULT_DOC } from './lib/presets'
 import { setCardKeys } from './lib/doc'
 
-/** Where the card is and how big: a drawing is only good for one of these. */
-const placeOf = (c) => (c ? [c.lat, c.lng, c.width_mm, c.height_mm, c.scale, c.bearing].join() : '')
+/** Where the card is, how big and how it is cut: a drawing is only good for one of these. */
+const placeOf = (c) =>
+  c ? [c.lat, c.lng, c.width_mm, c.height_mm, c.scale, c.bearing, c.padding_mm, c.columns, c.rows, c.slice_padding_mm].join() : ''
+
+const mm = (v) => `${Math.round(v * 100) / 100}mm`
+
+/** The `card:` keys for a layout; the defaults leave the key out. */
+function layoutKeys({ padding_mm, columns, rows, slice_padding_mm }) {
+  const cut = columns > 1 || rows > 1 || slice_padding_mm > 0
+  return {
+    padding: padding_mm > 0 ? mm(padding_mm) : null,
+    slices: cut ? `{ columns: ${columns}, rows: ${rows}, padding: ${mm(slice_padding_mm)} }` : null,
+  }
+}
+
+function saveFile(name, text) {
+  const url = URL.createObjectURL(new Blob([text], { type: 'image/svg+xml' }))
+  const a = document.createElement('a')
+  a.href = url
+  a.download = name
+  a.click()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
 
 export default function App() {
   const [engine, setEngine] = useState(null)
@@ -102,7 +123,7 @@ export default function App() {
         changed()
         if (msg.e.kind === 'begin' && msg.e.id === 'draw') setStatus({ phase: 'working', detail: 'Drawing…' })
       } else if (msg.type === 'done') {
-        setDrawing({ svg: msg.svg, groups: msg.groups, ms: msg.ms, bytes: msg.bytes, at })
+        setDrawing({ svg: msg.svg, groups: msg.groups, slices: msg.slices ?? [], ms: msg.ms, bytes: msg.bytes, at })
         setStatus({ phase: 'ready' })
         // Let the finished tree be readable for a moment before it goes.
         setTimeout(() => {
@@ -131,18 +152,22 @@ export default function App() {
     if (drawing && drawing.at !== here) setDrawing(null)
   }, [drawing, here])
 
-  const downloadSvg = useCallback(() => {
+  // A cut card downloads one file per sheet, a moment apart: browsers drop
+  // downloads fired in the same instant.
+  const downloadSvg = useCallback(async () => {
     if (!current || !card) return
-    const url = URL.createObjectURL(new Blob([current.svg], { type: 'image/svg+xml' }))
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `postcard_${card.lat.toFixed(4)}_${card.lng.toFixed(4)}_1-${Math.round(card.scale)}.svg`
-    a.click()
-    URL.revokeObjectURL(url)
+    const base = `postcard_${card.lat.toFixed(4)}_${card.lng.toFixed(4)}_1-${Math.round(card.scale)}`
+    const files = current.slices?.length ? current.slices.map(([name, svg]) => [`${base}_${name}.svg`, svg]) : [[`${base}.svg`, current.svg]]
+    for (const [i, [name, svg]] of files.entries()) {
+      if (i > 0) await new Promise((r) => setTimeout(r, 300))
+      saveFile(name, svg)
+    }
   }, [current, card])
 
   const moveCard = useCallback(({ lat, lng }) => setDoc((d) => setCardKeys(d, { lat, lng })), [])
   const resizeCard = useCallback(({ scale }) => setDoc((d) => setCardKeys(d, { scale: `"1:${scale}"` })), [])
+  const rotateCard = useCallback(({ bearing }) => setDoc((d) => setCardKeys(d, { bearing })), [])
+  const layoutCard = useCallback((layout) => setDoc((d) => setCardKeys(d, layoutKeys(layout))), [])
 
   /** Move the card onto the map's centre. */
   const centreCardOnMap = useCallback(() => {
@@ -192,6 +217,8 @@ export default function App() {
           onDownload={downloadSvg}
           onMoveCard={moveCard}
           onResizeCard={resizeCard}
+          onRotateCard={rotateCard}
+          onLayoutCard={layoutCard}
           onCardToCentre={centreCardOnMap}
           onCentreOnCard={centreMapOnCard}
         />

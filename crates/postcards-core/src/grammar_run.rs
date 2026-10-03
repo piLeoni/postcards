@@ -25,7 +25,6 @@ use crate::grammar::{Clip, Def, Grammar, Mask, Name, Op, Section, UnionRules};
 use crate::osm::Feature;
 use crate::progress::{thousands, Level, Task};
 use crate::steps::Selector;
-use crate::svg::write_svg;
 use geo::MultiPolygon;
 use rayon::prelude::*;
 use std::collections::{BTreeMap, BTreeSet};
@@ -77,6 +76,8 @@ pub struct Outputs {
     pub svg: String,
     /// `(group id, stroke count)` in draw order.
     pub groups: Vec<(String, usize)>,
+    /// `(name, svg)` per sheet when the card is cut (`card.slices`).
+    pub slices: Vec<(String, String)>,
 }
 
 pub struct Inputs<'a> {
@@ -160,10 +161,12 @@ pub fn run_with(grammar: &Grammar, card: &Card, inputs: Inputs, draw: &Task) -> 
     compose_task.ok(&format!("{} groups", groups.len()));
 
     let svg_task = draw.child("svg", "svg", 0, "");
-    let svg = write_svg(card.width_mm, card.height_mm, &groups);
-    let strokes: usize = groups.iter().map(|(_, l)| l.len()).sum();
-    svg_task.ok(&format!("{} strokes · {:.1} MB", thousands(strokes as u64), svg.len() as f64 / 1e6));
-    Ok(Outputs { svg, groups: groups.iter().map(|(id, l)| (id.clone(), l.len())).collect() })
+    let spec = &grammar.card;
+    let paper = crate::sheets::lay_out(card.width_mm, card.height_mm, spec.padding.0, &spec.slices, groups);
+    let strokes: usize = paper.groups.iter().map(|(_, n)| n).sum();
+    let cut = if paper.slices.is_empty() { String::new() } else { format!(" · {} slices", paper.slices.len()) };
+    svg_task.ok(&format!("{} strokes · {:.1} MB{cut}", thousands(strokes as u64), paper.svg.len() as f64 / 1e6));
+    Ok(Outputs { svg: paper.svg, groups: paper.groups, slices: paper.slices })
 }
 
 /// The features a selection picks from, in card millimetres.
@@ -641,6 +644,8 @@ mod tests {
             bearing: 0.0,
             projection: crate::profile::ProjectionMode::default(),
             warp: Default::default(),
+            padding: Default::default(),
+            slices: Default::default(),
         };
         Card::new(&map, (0.0, 0.0))
     }

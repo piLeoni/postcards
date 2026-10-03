@@ -1,14 +1,24 @@
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import mapboxgl from 'mapbox-gl'
 import 'mapbox-gl/dist/mapbox-gl.css'
-import { cardBox, FIT_PAD, groundKm, paperName, sig3, zoomToFit } from '../lib/frame'
+import { cardBox, FIT_PAD, groundKm, hasLayout, paperName, sheetsOf, sig3, zoomToFit } from '../lib/frame'
 import LoadCard from './LoadCard'
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN || ''
 
-/** Scales the resize handle can reach, `1:N`. */
+/** Scales the scale handle can reach, `1:N`. */
 const MIN_SCALE = 500
 const MAX_SCALE = 2_000_000
+
+/** Degrees the map turns per pixel dragged sideways, and the Shift step. */
+const DEG_PER_PX = 0.4
+const SNAP_DEG = 15
+
+/** A bearing in (-180, 180], as Mapbox reports it. */
+const norm = (b) => {
+  const r = ((((b + 180) % 360) + 360) % 360) - 180
+  return r === -180 ? 180 : r
+}
 
 /** Space between the card and the label above it or the tags below it, px. */
 const GAP = 4
@@ -35,23 +45,77 @@ function Tag({ title, onClick, className = 'cursor-pointer', children, ...rest }
   )
 }
 
-/** "A6 · 148 × 105 mm · 1:8000 · 1.18 × 0.84 km". */
+/** "A6 · 148 × 105 mm · 1:8000 · 1.18 × 0.84 km · 30° · 3 × 2 slices". */
 function sizeText(card) {
   const g = groundKm(card)
   if (!g) return ''
   const paper = paperName(card)
-  return `${paper ? `${paper} · ` : ''}${sig3(card.width_mm)} × ${sig3(card.height_mm)} mm · 1:${sig3(card.scale)} · ${sig3(g[0])} × ${sig3(g[1])} km`
+  const turned = Math.abs(norm(card.bearing ?? 0)) > 0.05 ? ` · ${sig3(norm(card.bearing))}°` : ''
+  const cut = (card.columns ?? 1) * (card.rows ?? 1) > 1 ? ` · ${card.columns} × ${card.rows} slices` : ''
+  return `${paper ? `${paper} · ` : ''}${sig3(card.width_mm)} × ${sig3(card.height_mm)} mm · 1:${sig3(card.scale)} · ${sig3(g[0])} × ${sig3(g[1])} km${turned}${cut}`
+}
+
+/** A small number field in the transform menu, writing as you type. */
+function Field({ label, value, min = 0, step = 1, unit, onChange }) {
+  return (
+    <label className="flex items-center justify-between gap-2">
+      <span>{label}</span>
+      <span className="flex items-center gap-1">
+        <input
+          type="number"
+          min={min}
+          step={step}
+          value={value}
+          className="w-12 border border-black bg-white px-1 text-right font-mono text-[10px]"
+          onChange={(e) => {
+            const v = Number(e.target.value)
+            if (Number.isFinite(v) && v >= min) onChange(v)
+          }}
+        />
+        {unit ? <span className="w-5 opacity-60">{unit}</span> : <span className="w-5" />}
+      </span>
+    </label>
+  )
+}
+
+/** The dashed lines where the card is cut, and the dotted margins drawn on. */
+function Guides({ card }) {
+  if (!hasLayout(card)) return null
+  const [w, h] = [card.width_mm, card.height_mm]
+  const cols = Math.max(1, card.columns ?? 1)
+  const rows = Math.max(1, card.rows ?? 1)
+  const line = { vectorEffect: 'non-scaling-stroke', fill: 'none' }
+  return (
+    <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none">
+      {sheetsOf(card).map((s, i) => {
+        const [x0, y0, x1, y1] = s.inner
+        return x1 > x0 && y1 > y0 ? (
+          <rect key={i} x={x0} y={y0} width={x1 - x0} height={y1 - y0} stroke="#888" strokeDasharray="1 3" strokeWidth={1} {...line} />
+        ) : null
+      })}
+      {Array.from({ length: cols - 1 }, (_, i) => (w * (i + 1)) / cols).map((x) => (
+        <line key={`c${x}`} x1={x} y1={0} x2={x} y2={h} stroke="#d00" strokeDasharray="5 4" strokeWidth={1} {...line} />
+      ))}
+      {Array.from({ length: rows - 1 }, (_, i) => (h * (i + 1)) / rows).map((y) => (
+        <line key={`r${y}`} x1={0} y1={y} x2={w} y2={y} stroke="#d00" strokeDasharray="5 4" strokeWidth={1} {...line} />
+      ))}
+    </svg>
+  )
 }
 
 /**
  * The map, with the card drawn on top of it.
  *
  * The card is pinned to the ground: it has a lon/lat of its own and stays
- * there while you drag the map around underneath. Only the card's own handles
- * change it: `drag` moves it, `resize` changes its scale about its centre
- * (the paper stays the size the document says), and the result is written
- * into the document's `card:` block, so scrolling the map never drags your
- * card out of place.
+ * there while you drag the map around underneath. Only the tools in its
+ * `transform` menu change it: `move` moves it, `scale` changes its scale about
+ * its centre (the paper stays the size the document says), `rotate` turns the
+ * map under it, and the result is written into the document's `card:` block,
+ * so scrolling the map never drags your card out of place.
+ *
+ * The card always faces you: a bearing turns the map, not the card. The map's
+ * bearing is the card's, so the rectangle stays level on screen and the
+ * drawing, turned the same way by the engine, lies on the map.
  *
  * The rectangle is a DOM overlay, so it has to be redrawn on Mapbox's own
  * render tick, not on a React state change: React batches asynchronously and
@@ -68,9 +132,12 @@ export default function MapView({
   onDownload,
   onMoveCard,
   onResizeCard,
+  onRotateCard,
+  onLayoutCard,
   onCardToCentre,
   onCentreOnCard,
 }) {
+  const [menu, setMenu] = useState(false)
   const containerRef = useRef(null)
   const mapRef = useRef(null)
   const overlayRef = useRef(null)
@@ -92,6 +159,7 @@ export default function MapView({
     Math.abs(card.lat - edit.lat) < 1e-6 &&
     Math.abs(card.lng - edit.lng) < 1e-6 &&
     Math.abs(card.scale - edit.scale) < 0.5 &&
+    Math.abs(norm(card.bearing ?? 0) - norm(edit.bearing ?? 0)) < 1e-6 &&
     Math.abs(card.width_mm - edit.width_mm) < 0.01 &&
     Math.abs(card.height_mm - edit.height_mm) < 0.01
   ) {
@@ -143,6 +211,7 @@ export default function MapView({
       container: containerRef.current,
       style: 'mapbox://styles/mapbox/light-v11',
       center: card ? [card.lng, card.lat] : [-122.256196, 37.8771145],
+      bearing: card?.bearing ?? 0,
       zoom: 14,
       minZoom: 2,
       projection: 'mercator',
@@ -154,6 +223,9 @@ export default function MapView({
       attributionControl: false,
     })
     mapRef.current = map
+    // The bearing belongs to the card: only `rotate` turns the map.
+    map.touchZoomRotate.disableRotation()
+    map.keyboard.disableRotation()
 
     map.on('error', (e) => {
       const err = e.error ?? {}
@@ -210,6 +282,17 @@ export default function MapView({
     place()
   })
 
+  // A bearing written in the document turns the map about the card, so the
+  // card stays where it is on screen. During a rotate the map already turns.
+  const bearing = norm(card?.bearing ?? 0)
+  useEffect(() => {
+    const map = mapRef.current
+    const c = cardRef.current
+    if (!map || (editRef.current && !editRef.current.done)) return
+    if (Math.abs(norm(map.getBearing() - bearing)) < 1e-6) return
+    map.easeTo({ bearing, around: c ? [c.lng, c.lat] : undefined, duration: 0 })
+  }, [bearing])
+
   // When the card's ground size changes in the document, zoom out only if it
   // no longer fits the map: a card that still fits keeps the zoom, so a new
   // width reads as a wider card, not as the map moving. A resize on the map
@@ -241,8 +324,8 @@ export default function MapView({
       // The drawing is of where the card was: it goes as soon as the card moves.
       if (!moved) onEditCard?.()
       moved = true
-      const { lat, lng, scale, width_mm, height_mm } = from
-      editRef.current = { lat, lng, scale, width_mm, height_mm, ...step(map, from, ev.clientX - start.x, ev.clientY - start.y, ev) }
+      const { lat, lng, scale, bearing, width_mm, height_mm } = from
+      editRef.current = { lat, lng, scale, bearing, width_mm, height_mm, ...step(map, from, ev.clientX - start.x, ev.clientY - start.y, ev) }
       cardRef.current = { ...from, ...editRef.current }
       place()
     }
@@ -289,8 +372,31 @@ export default function MapView({
       },
     )
 
-  // The card has left the map view entirely; hide rather than clamp, so the
-  // box never turns into a stray black sliver on an edge.
+  // Sideways drag turns the map about the card's centre, so the card stays
+  // put and level; dragging right turns the map clockwise, like a dial under
+  // your finger. Shift snaps to whole steps.
+  const startRotate = (e) =>
+    follow(
+      e,
+      (map, from, dx, _dy, ev) => {
+        let b = (from.bearing ?? 0) - dx * DEG_PER_PX
+        if (ev.shiftKey) b = Math.round(b / SNAP_DEG) * SNAP_DEG
+        b = norm(Math.round(b * 10) / 10)
+        map.easeTo({ bearing: b, around: [from.lng, from.lat], duration: 0 })
+        return { bearing: b }
+      },
+      (to) => onRotateCard?.({ bearing: to.bearing }),
+    )
+
+  const layout = {
+    padding_mm: card?.padding_mm ?? 0,
+    columns: card?.columns ?? 1,
+    rows: card?.rows ?? 1,
+    slice_padding_mm: card?.slice_padding_mm ?? 0,
+  }
+  const setLayout = (patch) => onLayoutCard?.({ ...layout, ...patch })
+  const slices = drawing?.slices?.length ?? 0
+
   if (!MAPBOX_TOKEN) {
     return (
       <div className="flex h-full w-full items-center justify-center bg-[var(--background1)] p-8">
@@ -333,6 +439,7 @@ export default function MapView({
             dangerouslySetInnerHTML={{ __html: drawing.svg }}
           />
         ) : null}
+        {card && <Guides card={card} />}
       </div>
 
       {card && (
@@ -345,30 +452,61 @@ export default function MapView({
 
       {card && drawing?.svg && (
         <div ref={downloadRef} className="absolute left-0 top-0 z-20 flex" style={{ display: 'none', willChange: 'transform' }}>
-          <Tag title="Save the drawing as an SVG" aria-label="Download the card" onClick={onDownload}>
-            ↓ download
+          <Tag
+            title={slices ? `Save each of the ${slices} slices as its own SVG` : 'Save the drawing as an SVG'}
+            aria-label="Download the card"
+            onClick={onDownload}
+          >
+            {slices ? `↓ download ${slices} slices` : '↓ download'}
           </Tag>
         </div>
       )}
 
       {card && (
-        <div ref={tagsRef} className="absolute left-0 top-0 z-20 flex gap-1" style={{ display: 'none', willChange: 'transform' }}>
+        <div ref={tagsRef} className="absolute left-0 top-0 z-20" style={{ display: 'none', willChange: 'transform' }}>
           <Tag
-            title="Drag the card across the map"
-            aria-label="Drag the card"
-            className="cursor-grab active:cursor-grabbing"
-            onPointerDown={startDrag}
+            title="Move, scale and rotate the card; cut it into slices"
+            aria-label="Transform the card"
+            aria-expanded={menu}
+            className={`cursor-pointer ${menu ? 'bg-black! text-white!' : ''}`}
+            onClick={() => setMenu((m) => !m)}
           >
-            ⠿ drag
+            ✥ transform {menu ? '▴' : '▾'}
           </Tag>
-          <Tag
-            title="Drag to change the scale; the paper stays the same size"
-            aria-label="Resize the card"
-            className="cursor-nwse-resize"
-            onPointerDown={startResize}
-          >
-            ⤡ resize
-          </Tag>
+          {menu && (
+            <div className="absolute right-0 top-full mt-1 flex w-44 flex-col gap-1 bg-white/95 p-1.5 font-mono text-[10px] shadow-[0_2px_8px_rgba(0,0,0,0.18)]">
+              <Tag
+                title="Drag the card across the map"
+                aria-label="Drag the card"
+                className="cursor-grab active:cursor-grabbing"
+                onPointerDown={startDrag}
+              >
+                ⠿ move
+              </Tag>
+              <Tag
+                title="Drag to change the scale; the paper stays the same size"
+                aria-label="Resize the card"
+                className="cursor-nwse-resize"
+                onPointerDown={startResize}
+              >
+                ⤡ scale
+              </Tag>
+              <Tag
+                title={`Drag left or right to turn the map under the card; hold Shift for ${SNAP_DEG}° steps`}
+                aria-label="Rotate the card"
+                className="cursor-ew-resize"
+                onPointerDown={startRotate}
+              >
+                ↻ rotate · {sig3(bearing)}°
+              </Tag>
+              <div className="mt-1 flex flex-col gap-1 border-t border-black/30 pt-1.5">
+                <Field label="columns" min={1} value={layout.columns} onChange={(v) => setLayout({ columns: Math.round(v) || 1 })} />
+                <Field label="rows" min={1} value={layout.rows} onChange={(v) => setLayout({ rows: Math.round(v) || 1 })} />
+                <Field label="gutter" step={0.5} unit="mm" value={layout.slice_padding_mm} onChange={(v) => setLayout({ slice_padding_mm: v })} />
+                <Field label="padding" step={0.5} unit="mm" value={layout.padding_mm} onChange={(v) => setLayout({ padding_mm: v })} />
+              </div>
+            </div>
+          )}
         </div>
       )}
 

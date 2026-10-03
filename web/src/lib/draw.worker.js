@@ -51,6 +51,7 @@ async function run({ token, doc, lat, lng }) {
         token,
         svg: out.svg,
         groups: out.groups,
+        slices: out.slices,
         ms: Math.round(performance.now() - t0),
         bytes,
       })

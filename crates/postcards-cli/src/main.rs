@@ -121,7 +121,7 @@ fn map(term: &Term, http: &osm_http::Http, profile_path: &Path, place: Place, ou
     let task = draw.child("render", "render", 0, "");
     let rendered = render(&profile, &card, Inputs { features, ocean, sources: &sources }).map_err(|e| e.to_string())?;
     task.ok(&format!("{} groups", rendered.groups.len()));
-    save(draw, output, &rendered.svg)?;
+    save(draw, output, &rendered.svg, &rendered.slices)?;
     Ok(rendered.groups)
 }
 
@@ -199,11 +199,18 @@ fn read_tiles(
     Ok((features, ocean))
 }
 
-/// Writes the SVG as the last row under `draw`, which ends with it.
-fn save(draw: Task, output: &Path, svg: &str) -> Result<(), String> {
+/// Writes the SVG as the last row under `draw`, which ends with it; a card
+/// cut into slices also writes each sheet next to it, `map_r1c2.svg`.
+fn save(draw: Task, output: &Path, svg: &str, slices: &[(String, String)]) -> Result<(), String> {
     let task = draw.child("save", "save", 0, "");
-    std::fs::write(output, svg).map_err(|e| format!("{}: {e}", output.display()))?;
-    task.ok(&output.display().to_string());
+    let write = |path: &Path, text: &str| std::fs::write(path, text).map_err(|e| format!("{}: {e}", path.display()));
+    write(output, svg)?;
+    let stem = output.file_stem().and_then(|s| s.to_str()).unwrap_or("map");
+    for (name, text) in slices {
+        write(&output.with_file_name(format!("{stem}_{name}.svg")), text)?;
+    }
+    let cut = if slices.is_empty() { String::new() } else { format!(" + {} slices", slices.len()) };
+    task.ok(&format!("{}{cut}", output.display()));
     draw.ok("");
     Ok(())
 }
@@ -264,6 +271,6 @@ fn map_v3(
         &draw,
     )
     .map_err(|e| e.to_string())?;
-    save(draw, output, &rendered.svg)?;
+    save(draw, output, &rendered.svg, &rendered.slices)?;
     Ok(rendered.groups)
 }

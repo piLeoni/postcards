@@ -341,6 +341,27 @@ card:
   warp: [{ twirl: 45 }, { fisheye: 0.3 }]
 ```
 
+`card.bearing` turns the ground under the card, in degrees clockwise like the
+web map's bearing; the paper stays square to the page. In the web app the
+transform menu's ↻ rotate turns it by dragging left and right, in 15° steps
+with Shift.
+
+`card.padding` leaves a blank margin inside the paper's edge: the paper keeps
+its size and the drawing stops short of it. `card.slices` cuts the card into
+`columns × rows` sheets of equal size, each written as its own SVG
+(`card_r1c2.svg`: row 1, column 2, next to `card.svg`; the web app downloads
+one file per sheet). `slices.padding` is a gutter inside every sheet, so the
+sheets hang side by side like a triptych with the map hidden in the gaps:
+
+```yaml
+card:
+  padding: 5mm
+  slices: { columns: 3, rows: 2, padding: 2mm }
+```
+
+The web app writes all three from the transform menu, live, and draws the cut
+lines and the sheets' margins over the card.
+
 ---
 
 ## The kit: every operation has a name

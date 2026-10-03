@@ -105,6 +105,12 @@ pub struct MapSpec {
     /// Distortions of the ground before drawing, in order; the card's edge stays.
     #[serde(default)]
     pub warp: crate::warp::Warps,
+    /// Blank margin inside the paper's edge; the paper keeps its size.
+    #[serde(default)]
+    pub padding: Mm,
+    /// The card cut into sheets, each written on its own.
+    #[serde(default)]
+    pub slices: crate::sheets::Slices,
 }
 
 fn default_width() -> Mm {

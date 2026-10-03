@@ -89,6 +89,35 @@ export function cardBox(map, card) {
   return { x: c.x - w / 2, y: c.y - h / 2, w, h }
 }
 
+/**
+ * The card's sheets in card mm, as the engine cuts them (`sheets.rs`): each
+ * `{ at, inner }` as `[x0, y0, x1, y1]`, `inner` being the part drawn on.
+ */
+export function sheetsOf(card) {
+  const cols = Math.max(1, card.columns ?? 1)
+  const rows = Math.max(1, card.rows ?? 1)
+  const pad = card.padding_mm ?? 0
+  const gap = card.slice_padding_mm ?? 0
+  const [w, h] = [card.width_mm, card.height_mm]
+  const [sw, sh] = [w / cols, h / rows]
+  const out = []
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const [x0, y0] = [c * sw, r * sh]
+      out.push({
+        at: [x0, y0, x0 + sw, y0 + sh],
+        inner: [Math.max(x0 + gap, pad), Math.max(y0 + gap, pad), Math.min(x0 + sw - gap, w - pad), Math.min(y0 + sh - gap, h - pad)],
+      })
+    }
+  }
+  return out
+}
+
+/** Whether the card is cut or padded at all. */
+export function hasLayout(card) {
+  return (card?.columns ?? 1) > 1 || (card?.rows ?? 1) > 1 || (card?.padding_mm ?? 0) > 0 || (card?.slice_padding_mm ?? 0) > 0
+}
+
 /** Standard paper sizes, named in the card's label; landscape, in their own units. */
 const PAPERS = [
   { name: 'A6', w: 148, h: 105, unit: 'mm' },

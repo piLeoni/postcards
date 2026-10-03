@@ -8,7 +8,6 @@ use crate::geom;
 use crate::osm::Feature;
 use crate::profile::Profile;
 use crate::projection::Projector;
-use crate::svg::write_svg;
 use crate::themes::{self, Context, LayerParts};
 use geo::MultiPolygon;
 use rayon::prelude::*;
@@ -37,6 +36,8 @@ pub struct Rendered {
     pub svg: String,
     /// `(group id, stroke count)` in draw order.
     pub groups: Vec<(String, usize)>,
+    /// `(name, svg)` per sheet when the card is cut (`map.slices`).
+    pub slices: Vec<(String, String)>,
 }
 
 pub fn render(profile: &Profile, card: &Card, inputs: Inputs) -> Result<Rendered, RenderError> {
@@ -111,11 +112,9 @@ pub fn render(profile: &Profile, card: &Card, inputs: Inputs) -> Result<Rendered
     }
     let parts: Vec<(String, LayerParts)> = ids.into_iter().zip(done.into_iter().map(Option::unwrap)).collect();
 
-    let groups = compose(&parts);
-    Ok(Rendered {
-        svg: write_svg(card.width_mm, card.height_mm, &groups),
-        groups: groups.iter().map(|(id, lines)| (id.clone(), lines.len())).collect(),
-    })
+    let map = &profile.map;
+    let paper = crate::sheets::lay_out(card.width_mm, card.height_mm, map.padding.0, &map.slices, compose(&parts));
+    Ok(Rendered { svg: paper.svg, groups: paper.groups, slices: paper.slices })
 }
 
 #[cfg(test)]

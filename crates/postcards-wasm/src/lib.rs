@@ -33,6 +33,7 @@ use wasm_bindgen::prelude::*;
 pub struct Rendered {
     svg: String,
     groups: js_sys::Array,
+    slices: js_sys::Array,
 }
 
 #[wasm_bindgen]
@@ -47,6 +48,12 @@ impl Rendered {
     #[wasm_bindgen(getter)]
     pub fn groups(&self) -> js_sys::Array {
         self.groups.clone()
+    }
+
+    /// `[["r1c1", svg], …]` when the card is cut into slices; empty otherwise.
+    #[wasm_bindgen(getter)]
+    pub fn slices(&self) -> js_sys::Array {
+        self.slices.clone()
     }
 }
 
@@ -88,10 +95,12 @@ pub fn osm_evict(entries: &str, now: f64) -> Result<Vec<u32>, JsValue> {
 
 /// The card's centre and size, so the page can place the rectangle on the map.
 ///
-/// Returns `{ lat, lng, width_mm, height_mm, scale, bearing }`.
+/// Returns `{ lat, lng, width_mm, height_mm, scale, bearing, padding_mm,
+/// columns, rows, slice_padding_mm }`.
 #[wasm_bindgen(js_name = cardInfo)]
 pub fn card_info(doc: &str) -> Result<JsValue, JsValue> {
     let d = Doc::load(doc)?;
+    let spec = d.spec();
     let o = js_sys::Object::new();
     for (k, v) in [
         ("lat", d.card.center.1),
@@ -100,6 +109,10 @@ pub fn card_info(doc: &str) -> Result<JsValue, JsValue> {
         ("height_mm", d.card.height_mm),
         ("scale", d.card.scale),
         ("bearing", d.card.bearing),
+        ("padding_mm", spec.padding.0),
+        ("columns", spec.slices.columns.max(1) as f64),
+        ("rows", spec.slices.rows.max(1) as f64),
+        ("slice_padding_mm", spec.slices.padding.0),
     ] {
         js_sys::Reflect::set(&o, &JsValue::from_str(k), &JsValue::from_f64(v)).ok();
     }
@@ -257,7 +270,11 @@ impl Job {
         for (id, n) in out.groups {
             groups.push(&JsValue::from(js_sys::Array::of2(&JsValue::from_str(&id), &JsValue::from_f64(n as f64))));
         }
-        Ok(Rendered { svg: out.svg, groups })
+        let slices = js_sys::Array::new();
+        for (name, svg) in out.slices {
+            slices.push(&JsValue::from(js_sys::Array::of2(&JsValue::from_str(&name), &JsValue::from_str(&svg))));
+        }
+        Ok(Rendered { svg: out.svg, groups, slices })
     }
 }
 
@@ -409,6 +426,7 @@ enum Body {
 struct Out {
     svg: String,
     groups: Vec<(String, usize)>,
+    slices: Vec<(String, String)>,
 }
 
 impl Doc {
@@ -429,6 +447,14 @@ impl Doc {
         Ok(Doc { card, keys, selectors: Vec::new(), ocean: true, body: Body::Profile(Box::new(profile)) })
     }
 
+    /// The `card:` (or older `map:`) block as written.
+    fn spec(&self) -> &postcards_core::profile::MapSpec {
+        match &self.body {
+            Body::Grammar(g) => &g.card,
+            Body::Profile(p) => &p.map,
+        }
+    }
+
     /// The drawing, its steps as rows under `draw`.
     fn render(
         &self,
@@ -447,7 +473,7 @@ impl Doc {
                     draw,
                 )
                 .map_err(|e| e.to_string())?;
-                Ok(Out { svg: out.svg, groups: out.groups })
+                Ok(Out { svg: out.svg, groups: out.groups, slices: out.slices })
             }
             Body::Profile(p) => {
                 let task = draw.child("render", "render", 0, "");
@@ -458,7 +484,7 @@ impl Doc {
                 )
                 .map_err(|e| e.to_string())?;
                 task.ok(&format!("{} groups", out.groups.len()));
-                Ok(Out { svg: out.svg, groups: out.groups })
+                Ok(Out { svg: out.svg, groups: out.groups, slices: out.slices })
             }
         }
     }

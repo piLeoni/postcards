@@ -15,6 +15,7 @@ pub mod progress;
 pub mod board;
 pub mod projection;
 pub mod steps;
+pub mod sheets;
 pub mod svg;
 pub mod tiles;
 pub mod themes;

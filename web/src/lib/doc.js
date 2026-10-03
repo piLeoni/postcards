@@ -8,8 +8,9 @@ const round7 = (v) => Math.round(v * 1e7) / 1e7
 
 /**
  * Set keys of the top-level `card:` block, e.g. `{ lat, lng }` after the card
- * is dragged. A key already there is rewritten in place; a missing one is
- * added at the end of the block, indented like its siblings.
+ * is dragged. A key already there is rewritten in place (a block value under
+ * it goes, the new value is written inline); a missing one is added at the
+ * end of the block, indented like its siblings. `null` removes the key.
  */
 export function setCardKeys(text, patch) {
   const lines = text.split('\n')
@@ -23,11 +24,21 @@ export function setCardKeys(text, patch) {
 
   for (const [key, raw] of Object.entries(patch)) {
     const value = typeof raw === 'number' ? round7(raw) : raw
-    const re = new RegExp(`^(\\s+${key}\\s*:\\s*)([^#]*?)(\\s*(#.*)?)$`)
+    const re = new RegExp(`^(${indent}${key}\\s*:\\s*)([^#]*?)(\\s*(#.*)?)$`)
     const at = lines.slice(start + 1, end).findIndex((l) => re.test(l))
     if (at >= 0) {
-      lines[start + 1 + at] = lines[start + 1 + at].replace(re, `$1${value}$3`)
-    } else {
+      const i = start + 1 + at
+      // The lines indented under the key are its block value.
+      let under = 0
+      while (i + 1 + under < end && lines[i + 1 + under].match(/^\s*/)[0].length > indent.length && lines[i + 1 + under].trim()) under++
+      if (value === null || value === undefined) {
+        lines.splice(i, 1 + under)
+        end -= 1 + under
+      } else {
+        lines.splice(i, 1 + under, lines[i].replace(re, `$1${value}$3`))
+        end -= under
+      }
+    } else if (value !== null && value !== undefined) {
       lines.splice(end, 0, `${indent}${key}: ${value}`)
       end++
     }

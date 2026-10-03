@@ -53,4 +53,8 @@ want it and press "generate card".
   too. `cargo run --example check_web_presets` parses each one, so a preset that
   stops parsing fails there rather than in a browser.
 - "load" and "save" in the sidebar read and write the config; "download"
-  under a drawn card saves the drawing as an SVG.
+  under a drawn card saves the drawing as an SVG, one per sheet when the card
+  is sliced.
+- "transform" on the card opens move, scale and rotate (drag each; Shift
+  snaps the rotation to 15°), and the slices and padding fields. Each one
+  writes its `card:` key into the config as it changes.
