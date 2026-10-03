@@ -168,12 +168,34 @@ $areas:
   roads:     { module_roads: {} }`,
 )
 
+/**
+ * The everything card with each layer from the source that suits it: roads
+ * from Overpass (widths and lanes), in a request for \`highway\` alone, so
+ * small and more likely to get through; the rest and the sea from tiles.
+ */
+export const MIXED_DOC = FULL_DOC.replace(
+  '  ways:  { tiles_select: [roads, paths] }',
+  '  ways:  { osm_select: { highway: true } }',
+)
+
 export const PRESETS = [
   {
     id: 'full',
-    name: 'Everything',
-    hint: 'roads, trails, parks, water, buildings',
+    name: 'Everything · vector tiles',
+    hint: 'roads, trails, parks, water, buildings; all from OpenFreeMap',
     doc: FULL_DOC,
+  },
+  {
+    id: 'mixed',
+    name: 'Everything · tiles, roads from Overpass',
+    hint: 'the same card; only the roads asked of Overpass',
+    doc: MIXED_DOC,
+  },
+  {
+    id: 'overpass',
+    name: 'Everything · Overpass',
+    hint: 'the same card, all from Overpass',
+    doc: OVERPASS_DOC,
   },
   {
     id: 'parks',
@@ -186,11 +208,5 @@ export const PRESETS = [
     name: 'Buildings only',
     hint: 'the fastest draw',
     doc: SMALL_DOC,
-  },
-  {
-    id: 'overpass',
-    name: 'Everything · Overpass',
-    hint: 'the same card, from Overpass',
-    doc: OVERPASS_DOC,
   },
 ]

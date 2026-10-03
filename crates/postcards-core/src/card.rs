@@ -80,9 +80,9 @@ impl Card {
 pub const OSM_TAGS: &[&str] =
     &["building", "highway", "railway", "natural", "water", "landuse", "amenity", "leisure", "waterway"];
 
-/// Keys to ask Overpass for: the standard set, then whatever else the profile
-/// selects on. Asking for the standard set even when a profile needs less
-/// keeps one cached reply per place, shared by every profile.
+/// Keys to ask Overpass for with the older profile: the standard set, then
+/// whatever else the profile selects on, since its themes read keys they
+/// never declare. A grammar document asks for its own keys alone.
 pub fn fetch_keys(needed: &[String]) -> Vec<String> {
     let mut keys: Vec<String> = OSM_TAGS.iter().map(|k| k.to_string()).collect();
     for k in needed {

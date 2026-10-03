@@ -357,6 +357,21 @@ cut by two tiles is one feature again, with the tile's attributes as tags
 files per card on a CDN, cached for years; Overpass has every OSM tag but is
 slow and often busy. A card that uses only `tiles_select` never asks Overpass.
 
+The two mix, feature set by feature set. Overpass is asked for the keys the
+card's `osm_select`s name and nothing else, so taking only the roads from it
+(where `width` and `lanes` give real widths; the tiles have neither) keeps the
+request small: over Berkeley `highway=*` alone is 1.4 MB against 4.2 MB for
+the whole card. `configs/compare/` holds the card three ways: `tiles.yaml`,
+`mixed.yaml` (roads from Overpass, the rest from tiles) and `overpass.yaml`.
+
+```yaml
+$features:
+  bldg: { tiles_select: buildings }
+  ways: { osm_select: { highway: true } }
+$areas:
+  roads: { module_roads: { from: $features.ways } }
+```
+
 | OSM tags (Overpass) | Tiles |
 |---|---|
 | `building=*` | `buildings` |

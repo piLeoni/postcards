@@ -114,7 +114,7 @@ fn map(term: &Term, http: &osm_http::Http, profile_path: &Path, place: Place, ou
     let download = Task::begin(term, "download", None, "download", 0, "");
     let center = locate(&download, http, place, profile.map.address.clone(), (profile.map.lat, profile.map.lng))?;
     let card = Card::new(&profile.map, center);
-    let needs = Needs { keys: profile.osm_keys(), tiles: Vec::new(), ocean: true };
+    let needs = Needs { keys: fetch_keys(&profile.osm_keys()), tiles: Vec::new(), ocean: true };
     let Fetched { osm: features, ocean, .. } = fetch(http, download, &card, &needs)?;
 
     let draw = Task::begin(term, "draw", None, "draw", 0, "");
@@ -125,8 +125,8 @@ fn map(term: &Term, http: &osm_http::Http, profile_path: &Path, place: Place, ou
     Ok(rendered.groups)
 }
 
-/// What a document reads: the OSM keys it selects on (none: no Overpass at
-/// all), its `tiles_select` items, and whether it draws the sea.
+/// What a document reads: the OSM keys to ask Overpass for (none: no Overpass
+/// at all), its `tiles_select` items, and whether it draws the sea.
 struct Needs {
     keys: Vec<String>,
     tiles: Vec<String>,
@@ -149,10 +149,9 @@ fn fetch(http: &osm_http::Http, download: Task, card: &Card, needs: &Needs) -> R
     let osm = if needs.keys.is_empty() {
         None
     } else {
-        let keys = fetch_keys(&needs.keys);
-        let json = http.overpass(card, &keys, &download)?;
+        let json = http.overpass(card, &needs.keys, &download)?;
         let task = download.child("read", "read OSM", 0, "");
-        let keys: Vec<&str> = keys.iter().map(String::as_str).collect();
+        let keys: Vec<&str> = needs.keys.iter().map(String::as_str).collect();
         let features = features_from_overpass(&json, &area, &keys).map_err(|e| e.to_string())?;
         let found = format!("{} features", thousands(features.len() as u64));
         task.ok(&found);
