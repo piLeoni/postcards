@@ -182,7 +182,8 @@ function Guides({ card }) {
     <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none">
       {sheetsOf(card).map((s, i) => {
         const [x0, y0, x1, y1] = s.inner
-        return x1 > x0 && y1 > y0 ? (
+        const margin = s.inner.some((v, k) => Math.abs(v - s.at[k]) > 1e-6)
+        return margin && x1 > x0 && y1 > y0 ? (
           <rect key={i} x={x0} y={y0} width={x1 - x0} height={y1 - y0} stroke="#888" strokeDasharray="1 3" strokeWidth={1} {...line} />
         ) : null
       })}
