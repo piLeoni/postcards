@@ -21,7 +21,6 @@ const sentence = (s) => s.charAt(0).toUpperCase() + s.slice(1)
 
 export default function Sidebar({ open, onClose, doc, setDoc, card, status, drawing, busy, onDraw }) {
   const [width, setWidth] = useState(() => clampWidth(Number(localStorage.getItem(WIDTH_KEY)) || 448))
-  const [expanded, setExpanded] = useState(false)   // the editor widened to the most the column takes
   const [draft, setDraft] = useState(null)   // text typed but not applied yet
   const [notice, setNotice] = useState(null)   // { text, error? }
   const fileRef = useRef(null)
@@ -85,7 +84,6 @@ export default function Sidebar({ open, onClose, doc, setDoc, card, status, draw
 
   const resize = (e) => {
     e.preventDefault()
-    setExpanded(false)
     const move = (ev) => setWidth(clampWidth(window.innerWidth - ev.clientX))
     const up = () => {
       window.removeEventListener('pointermove', move)
@@ -125,7 +123,7 @@ export default function Sidebar({ open, onClose, doc, setDoc, card, status, draw
       className={`fixed inset-x-0 bottom-0 z-40 flex h-[85vh] min-h-0 w-full min-w-0 flex-col border-t border-black bg-white px-[2ch] transition-transform duration-200 lg:relative lg:z-30 lg:h-full lg:shadow-[-4px_0_14px_rgba(0,0,0,0.16)] lg:w-[var(--side-w)] lg:shrink-0 lg:translate-y-0 lg:pointer-events-auto lg:border-t-0 lg:border-l ${
         open ? 'translate-y-0' : 'pointer-events-none translate-y-full'
       }`}
-      style={{ color: '#000', backgroundColor: '#fff', '--side-w': `${expanded ? clampWidth(Infinity) : width}px` }}
+      style={{ color: '#000', backgroundColor: '#fff', '--side-w': `${width}px` }}
     >
       <Panel
         title="Postcards"
@@ -139,10 +137,24 @@ export default function Sidebar({ open, onClose, doc, setDoc, card, status, draw
           </>
         )}
       >
-        <p className="mb-[0.5lh] opacity-60">
+        <p className="opacity-60">
           Map postcards drawn for a pen plotter. Put the card where you want it
           on the map, then generate it; the config below is the whole card.
         </p>
+      </Panel>
+
+      <Panel
+        title={dirty ? 'Config ●' : 'Config'}
+        className="flex min-h-0 flex-1 flex-col"
+        aside={(
+          <span
+            className={`min-w-0 truncate ${dirty || failed ? 'font-bold' : 'opacity-60'}`}
+            title={dirty ? undefined : statusText}
+          >
+            {dirty ? 'Edited, not applied' : failed ? `✗ ${statusText}` : `${drawing ? '●' : '○'} ${statusText}`}
+          </span>
+        )}
+      >
         <div className="relative flex shrink-0 flex-wrap gap-[1ch]">
           <button type="button" {...KEY} title="Load a YAML config" onClick={() => fileRef.current?.click()}>
             load
@@ -174,6 +186,16 @@ export default function Sidebar({ open, onClose, doc, setDoc, card, status, draw
               </ul>
             </div>
           </details>
+          <button
+            type="button"
+            size-="small"
+            variant-={busy ? 'background1' : 'foreground0'}
+            className="ml-auto"
+            disabled={busy || !card}
+            onClick={onDraw}
+          >
+            {drawing ? 'REGENERATE CARD' : 'GENERATE CARD'}
+          </button>
           <input
             ref={fileRef}
             type="file"
@@ -187,55 +209,25 @@ export default function Sidebar({ open, onClose, doc, setDoc, card, status, draw
             {notice.error ? `✗ ${sentence(notice.text)}` : sentence(notice.text)}
           </p>
         )}
-      </Panel>
-
-      <Panel
-        title={dirty ? 'Config ●' : 'Config'}
-        className="flex min-h-0 flex-1 flex-col"
-        aside={(
-          <span
-            className={`min-w-0 truncate ${dirty || failed ? 'font-bold' : 'opacity-60'}`}
-            title={dirty ? undefined : statusText}
-          >
-            {dirty ? 'Edited, not applied' : failed ? `✗ ${statusText}` : `${drawing ? '●' : '○'} ${statusText}`}
-          </span>
-        )}
-      >
-        <div className="flex shrink-0 gap-[1ch]">
-          <button type="button" {...KEY} disabled={!dirty} onClick={() => setDraft(null)}>
-            revert
-          </button>
-          <button type="button" size-="small" variant-={dirty ? 'foreground0' : 'background1'} disabled={!dirty} title="⌘/Ctrl + Enter" onClick={applyDraft}>
-            apply
-          </button>
-          <button type="button" {...KEY} title="Copy the config" onClick={copy}>
-            copy
-          </button>
-          <button
-            type="button"
-            size-="small"
-            variant-={busy ? 'background1' : 'foreground0'}
-            className="ml-auto"
-            disabled={busy || !card}
-            onClick={onDraw}
-          >
-            {drawing ? 'REGENERATE CARD' : 'GENERATE CARD'}
-          </button>
-        </div>
         {!dirty && empty.length > 0 && (
           <p className="mt-[0.5lh] shrink-0 break-words">! Nothing drawn for {empty.join(', ')}</p>
         )}
         <div className="relative mt-[0.5lh] min-h-0 flex-1 overflow-hidden border border-black pt-[0.5lh]">
-          <button
-            type="button"
-            {...KEY}
-            className="absolute top-[0.25lh] right-[1ch] z-10 hidden lg:inline-flex"
-            title={expanded ? 'Back to the column width' : 'Widen the editor'}
-            aria-label={expanded ? 'Narrow the editor' : 'Widen the editor'}
-            onClick={() => setExpanded((x) => !x)}
-          >
-            {expanded ? '⤡' : '⤢'}
-          </button>
+          <div className="absolute top-[0.25lh] right-[2ch] z-10 flex gap-[1ch]">
+            {dirty && (
+              <>
+                <button type="button" {...KEY} title="Back to the config as it was" onClick={() => setDraft(null)}>
+                  revert
+                </button>
+                <button type="button" size-="small" variant-="foreground0" title="⌘/Ctrl + Enter" onClick={applyDraft}>
+                  apply
+                </button>
+              </>
+            )}
+            <button type="button" {...KEY} title="Copy the config" onClick={copy}>
+              copy
+            </button>
+          </div>
           <Editor
             height="100%"
             language="yaml"
@@ -288,7 +280,6 @@ export default function Sidebar({ open, onClose, doc, setDoc, card, status, draw
         className="absolute inset-y-0 left-0 z-10 hidden w-[7px] -translate-x-1/2 cursor-col-resize hover:bg-black/10 lg:block"
         onPointerDown={resize}
         onDoubleClick={() => {
-          setExpanded(false)
           setWidth(448)
           localStorage.removeItem(WIDTH_KEY)
         }}
