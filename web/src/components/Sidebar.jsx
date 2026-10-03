@@ -325,6 +325,8 @@ export default function Sidebar({ open, onClose, doc, setDoc, check, card, statu
               copy
             </button>
           </div>
+          {/* Under the buttons, so the config can still be reverted or applied. */}
+          {problem && <div aria-hidden className="absolute inset-0 z-[5] cursor-pointer bg-white/65" title="Close" onClick={clearProblem} />}
           <Editor
             height="100%"
             language="yaml"
@@ -362,16 +364,16 @@ export default function Sidebar({ open, onClose, doc, setDoc, check, card, statu
         {problem && (
           <div
             role="alert"
-            className="absolute inset-x-0 top-1/2 z-20 flex max-h-[80%] -translate-y-1/2 flex-col bg-white"
+            className="absolute inset-x-[2ch] top-1/2 z-20 flex max-h-[80%] min-h-[min(12lh,80%)] -translate-y-1/2 flex-col bg-white"
             style={{ boxShadow: '0 0 0 1px #000, 0 16px 44px rgb(0 0 0 / 0.3)' }}
           >
-            <div className="flex shrink-0 items-center gap-[1ch] border-b border-black px-[1ch] py-[0.25lh]">
+            <div className="flex shrink-0 items-center gap-[1ch] border-b border-black py-[0.25lh] pr-[1ch] pl-[2ch]">
               <span className="font-bold">✗ {problem.title}</span>
               <button type="button" {...KEY} className="ml-auto" aria-label="Close" title="Close" onClick={clearProblem}>
                 ✕
               </button>
             </div>
-            <pre className="min-h-0 overflow-auto px-[1ch] py-[0.5lh] text-[11px] leading-snug break-words whitespace-pre-wrap">{plain(problem.text)}</pre>
+            <pre className="min-h-0 flex-1 overflow-auto px-[2ch] py-[0.75lh] text-[11px] leading-snug break-words whitespace-pre-wrap">{plain(problem.text)}</pre>
           </div>
         )}
       </Panel>
