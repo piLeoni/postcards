@@ -159,7 +159,7 @@ function AngleField({ value, onChange }) {
     <Field
       label="bearing"
       title={`The map's turn under the card, in degrees clockwise; arrows step 1°, Shift ${SNAP_DEG}°`}
-      text={`${sig3(value) || 0}°`}
+      text={`${Math.round(value * 1000) / 1000 || 0}°`}
       parse={parse}
       step={(s, dir, shift) => {
         const v = parse(s) ?? value
@@ -171,7 +171,7 @@ function AngleField({ value, onChange }) {
   )
 }
 
-/** The dashed lines where the card is cut, and the dotted margins drawn on. */
+/** The lines where the card is cut, like its outline, and the dotted margins drawn on. */
 function Guides({ card }) {
   if (!hasLayout(card)) return null
   const [w, h] = [card.width_mm, card.height_mm]
@@ -187,10 +187,10 @@ function Guides({ card }) {
         ) : null
       })}
       {Array.from({ length: cols - 1 }, (_, i) => (w * (i + 1)) / cols).map((x) => (
-        <line key={`c${x}`} x1={x} y1={0} x2={x} y2={h} stroke="#d00" strokeDasharray="5 4" strokeWidth={1} {...line} />
+        <line key={`c${x}`} x1={x} y1={0} x2={x} y2={h} stroke="#000" strokeWidth={1} {...line} />
       ))}
       {Array.from({ length: rows - 1 }, (_, i) => (h * (i + 1)) / rows).map((y) => (
-        <line key={`r${y}`} x1={0} y1={y} x2={w} y2={y} stroke="#d00" strokeDasharray="5 4" strokeWidth={1} {...line} />
+        <line key={`r${y}`} x1={0} y1={y} x2={w} y2={y} stroke="#000" strokeWidth={1} {...line} />
       ))}
     </svg>
   )
@@ -489,7 +489,7 @@ export default function MapView({
       (map, from, dx, _dy, ev) => {
         let b = (from.bearing ?? 0) - dx * DEG_PER_PX
         if (ev.shiftKey) b = Math.round(b / SNAP_DEG) * SNAP_DEG
-        b = norm(Math.round(b * 10) / 10)
+        b = norm(Math.round(b))
         map.easeTo({ bearing: b, around: [from.lng, from.lat], duration: 0 })
         return { bearing: b }
       },
@@ -581,7 +581,7 @@ export default function MapView({
             className={`cursor-pointer ${menu ? 'bg-black! text-white!' : ''}`}
             onClick={() => setMenu((m) => !m)}
           >
-            ✥ transform {menu ? '▴' : '▾'}
+            transform {menu ? '▴' : '▾'}
           </Tag>
           {menu && (
             <div className="absolute right-0 top-full mt-1 grid w-max grid-cols-[auto_auto_auto_auto] items-center gap-x-1.5 gap-y-1 bg-white/95 p-1.5 font-mono text-[10px] shadow-[0_2px_8px_rgba(0,0,0,0.18)]">
@@ -591,7 +591,7 @@ export default function MapView({
                 className="col-span-2 cursor-grab active:cursor-grabbing"
                 onPointerDown={startDrag}
               >
-                ⠿ move
+                ✥ move
               </Tag>
               <Tag
                 title="Drag to change the scale; the paper stays the same size"
