@@ -3,19 +3,32 @@ import MapView from './components/MapView'
 import Sidebar from './components/Sidebar'
 import { loadPostcards } from './lib/postcards'
 import { DEFAULT_DOC } from './lib/presets'
-import { cardUnit, setCardKeys } from './lib/doc'
-import { lengthText } from './lib/frame'
+import { cardUnit, setCardComment, setCardKeys } from './lib/doc'
+import { sig3 } from './lib/frame'
+import { groundPair } from './components/controls'
 
-/** Where the card is, how big and how it is cut: a drawing is only good for one of these. */
+/** Where the card is, how big, how it is cut and drawn: a drawing is only good for one of these. */
 const placeOf = (c) =>
-  c ? [c.lat, c.lng, c.width_mm, c.height_mm, c.scale, c.bearing, c.padding_mm, c.columns, c.rows, c.slice_padding_mm].join() : ''
+  c
+    ? [c.lat, c.lng, c.width_mm, c.height_mm, c.scale, c.bearing, c.padding_mm, c.columns, c.rows, c.slice_padding_mm, c.projection].join()
+    : ''
 
-/** The `card:` keys for a layout, each length in its unit; the defaults leave the key out. */
-function layoutKeys({ padding_mm, padding_unit, columns, rows, slice_padding_mm, slice_padding_unit }) {
-  const cut = columns > 1 || rows > 1 || slice_padding_mm > 0
+/**
+ * The unit each length of `card:` is written in. One not written takes the
+ * paper's; the ground takes km beside metric paper and mi beside inches.
+ */
+function unitsOf(doc) {
+  const width = cardUnit(doc, 'width') ?? 'mm'
+  const paper = ['mm', 'cm', 'in'].includes(width) ? width : 'mm'
   return {
-    padding: padding_mm > 0 ? lengthText(padding_mm, padding_unit) : null,
-    slices: cut ? `{ columns: ${columns}, rows: ${rows}, padding: ${lengthText(slice_padding_mm, slice_padding_unit)} }` : null,
+    width: paper,
+    height: cardUnit(doc, 'height') ?? paper,
+    padding: cardUnit(doc, 'padding') ?? paper,
+    gutter: cardUnit(doc, 'slices.padding') ?? paper,
+    ground:
+      cardUnit(doc, 'ground') ??
+      doc.match(/^\s+scale\s*:.*#\s*ground [\d.]+ × [\d.]+ (m|km|mi|ft)\b/m)?.[1] ??
+      (paper === 'in' ? 'mi' : 'km'),
   }
 }
 
@@ -163,16 +176,29 @@ export default function App() {
     }
   }, [current, card])
 
-  const moveCard = useCallback(({ lat, lng }) => setDoc((d) => setCardKeys(d, { lat, lng })), [])
-  const resizeCard = useCallback(({ scale }) => setDoc((d) => setCardKeys(d, { scale: `"1:${scale}"` })), [])
-  const rotateCard = useCallback(({ bearing }) => setDoc((d) => setCardKeys(d, { bearing })), [])
-  const layoutCard = useCallback((layout) => setDoc((d) => setCardKeys(d, layoutKeys(layout))), [])
+  /**
+   * Write keys of `card:`, then note on the held line what the other side of
+   * paper × scale = ground comes to: `scale: "1:8000"   # ground 1.22 × 0.813 km`.
+   */
+  const editCard = useCallback(
+    (patch) =>
+      setDoc((d) => {
+        const text = setCardKeys(d, patch)
+        if (!engine) return text
+        try {
+          const c = JSON.parse(JSON.stringify(engine.cardInfo(text)))
+          return c.ground_locked
+            ? setCardComment(text, 'ground', `scale 1:${sig3(c.scale)}`)
+            : setCardComment(text, 'scale', `ground ${groundPair(c, unitsOf(text).ground)}`)
+        } catch {
+          return text
+        }
+      }),
+    [engine],
+  )
+  const moveCard = useCallback(({ lat, lng }) => editCard({ lat, lng }), [editCard])
 
-  // A length keeps the unit it is written in; an unwritten one takes the paper's.
-  const units = useMemo(() => {
-    const paper = cardUnit(doc, 'width') ?? 'mm'
-    return { padding: cardUnit(doc, 'padding') ?? paper, gutter: cardUnit(doc, 'slices.padding') ?? paper }
-  }, [doc])
+  const units = useMemo(() => unitsOf(doc), [doc])
 
   /** Move the card onto the map's centre. */
   const centreCardOnMap = useCallback(() => {
@@ -222,9 +248,7 @@ export default function App() {
           onEditCard={() => setDrawing(null)}
           onDownload={downloadSvg}
           onMoveCard={moveCard}
-          onResizeCard={resizeCard}
-          onRotateCard={rotateCard}
-          onLayoutCard={layoutCard}
+          onCardKeys={editCard}
           onCardToCentre={centreCardOnMap}
           onCentreOnCard={centreMapOnCard}
         />

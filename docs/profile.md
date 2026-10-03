@@ -341,6 +341,13 @@ card:
   warp: [{ twirl: 45 }, { fisheye: 0.3 }]
 ```
 
+Paper × scale = ground: `card.scale` (`"1:8000"`) or `card.ground`, the
+card's width on the ground (`1.2km`; `m`, `km`, `mi` or `ft`), whichever you
+want held when the paper changes size. With `scale`, a bigger paper shows
+more ground; with `ground`, the same ground is drawn bigger and the scale
+follows. When both are written, `ground` wins. The web app writes the held
+one and notes the other beside it: `ground: 1.2km   # scale 1:8000`.
+
 `card.bearing` turns the ground under the card, in degrees clockwise like the
 web map's bearing; the paper stays square to the page. In the web app the
 transform menu's ↻ rotate turns it by dragging left and right, in 15° steps

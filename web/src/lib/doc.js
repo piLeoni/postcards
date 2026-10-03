@@ -18,7 +18,10 @@ function cardBlock(lines) {
   return { start, end, indent }
 }
 
-const UNITS = { mm: 'mm', cm: 'cm', in: 'in', inch: 'in', inches: 'in', '"': 'in' }
+const UNITS = {
+  mm: 'mm', cm: 'cm', in: 'in', inch: 'in', inches: 'in', '"': 'in',
+  m: 'm', km: 'km', mi: 'mi', mile: 'mi', miles: 'mi', ft: 'ft', feet: 'ft',
+}
 
 /**
  * The unit a length of the `card:` block is written in: `'padding'` for
@@ -40,6 +43,22 @@ export function cardUnit(text, key) {
   if (inner) value = value.match(new RegExp(`\\b${inner}\\s*:\\s*([^,}\\n]*)`))?.[1] ?? ''
   const unit = value.trim().match(/^[\d.]+\s*([a-z"]+)/i)?.[1]?.toLowerCase()
   return UNITS[unit] ?? null
+}
+
+/**
+ * Put `# comment` at the end of a `card:` key's line, in place of any comment
+ * already there; nothing happens when the key is not written.
+ */
+export function setCardComment(text, key, comment) {
+  const lines = text.split('\n')
+  const b = cardBlock(lines)
+  if (!b) return text
+  const re = new RegExp(`^(${b.indent}${key}\\s*:\\s*[^#]*?)\\s*(#.*)?$`)
+  const at = lines.slice(b.start + 1, b.end).findIndex((l) => re.test(l))
+  if (at < 0) return text
+  const i = b.start + 1 + at
+  lines[i] = lines[i].replace(re, (_, head) => `${head}   # ${comment}`)
+  return lines.join('\n')
 }
 
 /**

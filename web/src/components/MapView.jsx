@@ -1,24 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import mapboxgl from 'mapbox-gl'
 import 'mapbox-gl/dist/mapbox-gl.css'
-import { cardBox, FIT_PAD, groundKm, hasLayout, lengthText, MM_PER, paperName, sheetsOf, sig3, zoomToFit } from '../lib/frame'
+import { cardBox, FIT_PAD, groundKm, hasLayout, lengthText, sheetsOf, sig3, zoomToFit } from '../lib/frame'
+import CardControls from './CardControls'
+import { groundPair, norm } from './controls'
 import LoadCard from './LoadCard'
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN || ''
-
-/** Scales the scale handle can reach, `1:N`. */
-const MIN_SCALE = 500
-const MAX_SCALE = 2_000_000
-
-/** Degrees the map turns per pixel dragged sideways, and the Shift step. */
-const DEG_PER_PX = 0.4
-const SNAP_DEG = 15
-
-/** A bearing in (-180, 180], as Mapbox reports it. */
-const norm = (b) => {
-  const r = ((((b + 180) % 360) + 360) % 360) - 180
-  return r === -180 ? 180 : r
-}
 
 /** Space between the card and the label above it or the tags below it, px. */
 const GAP = 4
@@ -45,130 +33,18 @@ function Tag({ title, onClick, className = 'cursor-pointer', children, ...rest }
   )
 }
 
-/** "A6 · 148 × 105 mm · 1:8000 · 1.18 × 0.84 km · 30° · 3 × 2 slices". */
-function sizeText(card) {
-  const g = groundKm(card)
-  if (!g) return ''
-  const paper = paperName(card)
-  const turned = Math.abs(norm(card.bearing ?? 0)) > 0.05 ? ` · ${sig3(norm(card.bearing))}°` : ''
+/** "6 × 4 in", or "6in × 40mm" when the two sides are written in different units. */
+function paperText(card, units) {
+  const [w, h] = [lengthText(card.width_mm, units.width), lengthText(card.height_mm, units.height)]
+  return units.width === units.height ? `${w.replace(units.width, '')} × ${h.replace(units.height, '')} ${units.width}` : `${w} × ${h}`
+}
+
+/** "6 × 4 in · 1:8000 · 0.758 × 0.505 mi · 30° · 3 × 2 slices", each in the unit the document uses. */
+function sizeText(card, units) {
+  if (!groundKm(card)) return ''
+  const turned = Math.abs(norm(card.bearing ?? 0)) > 0.05 ? ` · ${Math.round(norm(card.bearing) * 1000) / 1000}°` : ''
   const cut = (card.columns ?? 1) * (card.rows ?? 1) > 1 ? ` · ${card.columns} × ${card.rows} slices` : ''
-  return `${paper ? `${paper} · ` : ''}${sig3(card.width_mm)} × ${sig3(card.height_mm)} mm · 1:${sig3(card.scale)} · ${sig3(g[0])} × ${sig3(g[1])} km${turned}${cut}`
-}
-
-/** Every field in the transform menu is this wide, so they line up. */
-const FIELD = 'h-auto w-[8ch] min-w-0 border border-black bg-white px-1 text-right font-mono text-[10px] leading-[1.6]'
-
-/**
- * A short text field in the transform menu that writes as you type. `parse`
- * turns the text into a value (or `null`, written nothing); the arrows call
- * `step(text, ±1, shift)` for the next text. Once left, it shows the document.
- */
-function Field({ label, title, text, parse, step, onChange }) {
-  const ref = useRef(null)
-  const [draft, setDraft] = useState(null)
-  // What was typed shows only while the field has the focus.
-  const shown = draft != null && ref.current && document.activeElement === ref.current ? draft : text
-  const put = (s) => {
-    setDraft(s)
-    const v = parse(s)
-    if (v != null) onChange(v)
-  }
-  return (
-    <input
-      ref={ref}
-      type="text"
-      inputMode="decimal"
-      spellCheck={false}
-      aria-label={label}
-      title={title}
-      value={shown}
-      className={FIELD}
-      onChange={(e) => put(e.target.value)}
-      onFocus={(e) => {
-        setDraft(null)
-        e.target.select()
-      }}
-      onBlur={() => setDraft(null)}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter') e.currentTarget.blur()
-        if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return
-        e.preventDefault()
-        const next = step(shown, e.key === 'ArrowUp' ? 1 : -1, e.shiftKey)
-        if (next != null) put(next)
-      }}
-    />
-  )
-}
-
-/** One arrow step of a length in its own unit. */
-const LENGTH_STEP = { mm: 0.5, cm: 0.05, in: 0.05 }
-const LENGTH = /^\s*(\d*\.?\d+)\s*(mm|cm|in|inch|inches|")?\s*$/i
-const unitOf = (u) => ({ inch: 'in', inches: 'in', '"': 'in' })[u] ?? u
-
-/** "0.25in" → `{ mm: 6.35, unit: 'in' }`; a bare number takes `unit`. */
-function parseLength(s, unit) {
-  const m = s.match(LENGTH)
-  if (!m) return null
-  const u = m[2] ? unitOf(m[2].toLowerCase()) : unit
-  return { mm: Number(m[1]) * MM_PER[u], unit: u }
-}
-
-function stepLength(s, unit, dir, shift) {
-  const v = parseLength(s, unit)
-  if (!v) return null
-  const n = v.mm / MM_PER[v.unit] + dir * LENGTH_STEP[v.unit] * (shift ? 10 : 1)
-  return lengthText(Math.max(0, n) * MM_PER[v.unit], v.unit)
-}
-
-/** A length field: written with its unit, a bare number keeps the one it had. */
-function LengthField({ label, title, mm, unit, onChange }) {
-  return (
-    <Field
-      label={label}
-      title={title}
-      text={lengthText(mm, unit)}
-      parse={(s) => parseLength(s, unit)}
-      step={(s, dir, shift) => stepLength(s, unit, dir, shift)}
-      onChange={onChange}
-    />
-  )
-}
-
-/** A whole number from 1 up; Shift steps by ten. */
-function CountField({ label, title, value, onChange }) {
-  const parse = (s) => (/^\s*\d+\s*$/.test(s) && Number(s) >= 1 ? Number(s) : null)
-  return (
-    <Field
-      label={label}
-      title={title}
-      text={String(value)}
-      parse={parse}
-      step={(s, dir, shift) => String(Math.max(1, (parse(s) ?? value) + dir * (shift ? 10 : 1)))}
-      onChange={onChange}
-    />
-  )
-}
-
-/** Degrees, in (-180, 180]; Shift steps by the snap. */
-function AngleField({ value, onChange }) {
-  const parse = (s) => {
-    const m = s.match(/^\s*(-?\d*\.?\d+)\s*°?\s*$/)
-    return m ? norm(Number(m[1])) : null
-  }
-  return (
-    <Field
-      label="bearing"
-      title={`The map's turn under the card, in degrees clockwise; arrows step 1°, Shift ${SNAP_DEG}°`}
-      text={`${Math.round(value * 1000) / 1000 || 0}°`}
-      parse={parse}
-      step={(s, dir, shift) => {
-        const v = parse(s) ?? value
-        const n = shift ? (Math.round(v / SNAP_DEG) + dir) * SNAP_DEG : Math.round(v) + dir
-        return `${norm(n)}°`
-      }}
-      onChange={onChange}
-    />
-  )
+  return `${paperText(card, units)} · 1:${sig3(card.scale)} · ${groundPair(card, units.ground)}${turned}${cut}`
 }
 
 /** The lines where the card is cut, like its outline, and the dotted margins drawn on. */
@@ -226,9 +102,7 @@ export default function MapView({
   onEditCard,
   onDownload,
   onMoveCard,
-  onResizeCard,
-  onRotateCard,
-  onLayoutCard,
+  onCardKeys,
   onCardToCentre,
   onCentreOnCard,
 }) {
@@ -260,6 +134,8 @@ export default function MapView({
   ) {
     editRef.current = null
   }
+  const unitsRef = useRef(units)
+  unitsRef.current = units ?? { width: 'mm', height: 'mm', ground: 'km' }
   const cardRef = useRef(card)
   cardRef.current = editRef.current ? { ...card, ...editRef.current } : card
 
@@ -290,7 +166,7 @@ export default function MapView({
     // never covered, and `GAP` away from it.
     if (downloadRef.current) downloadRef.current.style.transform = `translate(${b.x}px, ${b.y + b.h + GAP}px)`
     if (labelRef.current) {
-      labelRef.current.textContent = sizeText(cardRef.current)
+      labelRef.current.textContent = sizeText(cardRef.current, unitsRef.current)
       labelRef.current.style.transform = `translate(${b.x}px, ${b.y - GAP}px) translateY(-100%)`
     }
     if (tagsRef.current) {
@@ -463,49 +339,6 @@ export default function MapView({
       (to) => onMoveCard?.({ lat: to.lat, lng: to.lng }),
     )
 
-  // The centre stays put and the corner follows the pointer along the
-  // diagonal: the scale changes, the paper stays the size the document says.
-  const startResize = (e) =>
-    follow(
-      e,
-      (map, from, dx, dy) => {
-        const b = cardBox(map, from)
-        const [vx, vy] = [b.w / 2, b.h / 2]
-        const f = Math.max(0.05, ((vx + dx) * vx + (vy + dy) * vy) / (vx * vx + vy * vy))
-        return { scale: Math.min(MAX_SCALE, Math.max(MIN_SCALE, sig3(from.scale * f))) }
-      },
-      (to) => {
-        const g = groundKm({ ...cardRef.current, scale: to.scale })
-        if (g) lastFitRef.current = g.map(sig3).join('x')
-        onResizeCard?.({ scale: to.scale })
-      },
-    )
-
-  // Sideways drag turns the map about the card's centre, so the card stays
-  // put and level; dragging right turns the map clockwise, like a dial under
-  // your finger. Shift snaps to whole steps.
-  const startRotate = (e) =>
-    follow(
-      e,
-      (map, from, dx, _dy, ev) => {
-        let b = (from.bearing ?? 0) - dx * DEG_PER_PX
-        if (ev.shiftKey) b = Math.round(b / SNAP_DEG) * SNAP_DEG
-        b = norm(Math.round(b))
-        map.easeTo({ bearing: b, around: [from.lng, from.lat], duration: 0 })
-        return { bearing: b }
-      },
-      (to) => onRotateCard?.({ bearing: to.bearing }),
-    )
-
-  const layout = {
-    padding_mm: card?.padding_mm ?? 0,
-    padding_unit: units?.padding ?? 'mm',
-    columns: card?.columns ?? 1,
-    rows: card?.rows ?? 1,
-    slice_padding_mm: card?.slice_padding_mm ?? 0,
-    slice_padding_unit: units?.gutter ?? 'mm',
-  }
-  const setLayout = (patch) => onLayoutCard?.({ ...layout, ...patch })
   const slices = drawing?.slices?.length ?? 0
 
   if (!MAPBOX_TOKEN) {
@@ -576,7 +409,7 @@ export default function MapView({
       {card && (
         <div ref={tagsRef} className="absolute left-0 top-0 z-20" style={{ display: 'none', willChange: 'transform' }}>
           <Tag
-            title="Move, scale and rotate the card; cut it into slices"
+            title="Place, paper, terrain, orientation and slices of the card"
             aria-label="Transform the card"
             aria-expanded={menu}
             className={`cursor-pointer ${menu ? 'bg-black! text-white!' : ''}`}
@@ -585,53 +418,8 @@ export default function MapView({
             transform {menu ? '▴' : '▾'}
           </Tag>
           {menu && (
-            <div className="absolute right-0 top-full mt-1 grid w-max grid-cols-[auto_auto_auto_auto] items-center gap-x-1.5 gap-y-1 bg-white/95 p-1.5 font-mono text-[10px] shadow-[0_2px_8px_rgba(0,0,0,0.18)]">
-              <Tag
-                title="Drag the card across the map"
-                aria-label="Drag the card"
-                className="col-span-2 cursor-grab active:cursor-grabbing"
-                onPointerDown={startDrag}
-              >
-                ✥ move
-              </Tag>
-              <Tag
-                title="Drag to change the scale; the paper stays the same size"
-                aria-label="Resize the card"
-                className="col-span-2 cursor-nwse-resize"
-                onPointerDown={startResize}
-              >
-                ⤡ scale
-              </Tag>
-              <Tag
-                title={`Drag left or right to turn the map under the card; hold Shift for ${SNAP_DEG}° steps`}
-                aria-label="Rotate the card"
-                className="col-span-3 cursor-ew-resize"
-                onPointerDown={startRotate}
-              >
-                ↻ rotate
-              </Tag>
-              <AngleField value={bearing} onChange={(b) => onRotateCard?.({ bearing: b })} />
-              <div className="col-span-4 my-0.5 border-t border-black/30" />
-              <span className="opacity-70">columns</span>
-              <CountField label="columns" title="Sheets across" value={layout.columns} onChange={(columns) => setLayout({ columns })} />
-              <span className="opacity-70">rows</span>
-              <CountField label="rows" title="Sheets down" value={layout.rows} onChange={(rows) => setLayout({ rows })} />
-              <span className="opacity-70">gutter</span>
-              <LengthField
-                label="gutter"
-                title="Blank margin inside every sheet; type mm, cm or in, a bare number keeps the unit"
-                mm={layout.slice_padding_mm}
-                unit={layout.slice_padding_unit}
-                onChange={({ mm, unit }) => setLayout({ slice_padding_mm: mm, slice_padding_unit: unit })}
-              />
-              <span className="opacity-70">padding</span>
-              <LengthField
-                label="padding"
-                title="Blank margin inside the paper's edge; type mm, cm or in, a bare number keeps the unit"
-                mm={layout.padding_mm}
-                unit={layout.padding_unit}
-                onChange={({ mm, unit }) => setLayout({ padding_mm: mm, padding_unit: unit })}
-              />
+            <div className="absolute right-0 top-full mt-1 max-h-[70vh] overflow-y-auto bg-white/95 p-1.5 shadow-[0_2px_8px_rgba(0,0,0,0.18)]">
+              <CardControls card={card} units={units} onEdit={onCardKeys} onMove={startDrag} />
             </div>
           )}
         </div>

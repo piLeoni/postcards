@@ -55,9 +55,12 @@ want it and press "generate card".
 - "load" and "save" in the sidebar read and write the config; "download"
   under a drawn card saves the drawing as an SVG, one per sheet when the card
   is sliced.
-- "transform" on the card opens move, scale and rotate (drag each; Shift
-  snaps the rotation to 15°), the bearing in degrees, and the slices and
-  padding fields. Lengths take `mm`, `cm` or `in`; a bare number keeps the
-  unit the field had (the paper's, at first), and the arrows step it (Shift
-  for ten steps). Every change, drags included, is written into the config's
-  `card:` block as it happens; the drawing waits for "generate".
+- "transform" on the card opens the `card:` block as controls
+  (`src/components/CardControls.jsx`): place, paper, terrain (scale and
+  ground, a padlock on the one the config holds), orientation and slices.
+  Every label drags its value sideways (Shift: 15° steps for the bearing,
+  bigger steps elsewhere) and every field takes it typed, the arrows stepping
+  it. Lengths take `mm`, `cm` or `in`, ground `m`, `km`, `mi` or `ft`; a bare
+  number keeps the unit the field had. Every change is written into the
+  config as it happens; the drawing waits for "generate". The pieces live in
+  `src/components/controls.jsx`, ready for a settings panel in the sidebar.
