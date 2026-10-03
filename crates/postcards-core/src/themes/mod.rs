@@ -4,6 +4,7 @@
 mod buildings;
 mod parks;
 mod roads;
+pub use roads::Roads;
 mod water;
 
 use crate::card::Card;
@@ -77,8 +78,8 @@ pub fn render(layer: &LayerSpec, ctx: &Context, above: &[String]) -> Result<Laye
 }
 
 /// The compiled roads module, reachable from the grammar executor.
-pub fn roads_render(layer: &LayerSpec, ctx: &Context) -> Result<LayerParts, FillError> {
-    roads::render(layer, ctx)
+pub fn roads_render(layer: &LayerSpec, ctx: &Context) -> Result<Roads, FillError> {
+    roads::build(layer, ctx)
 }
 
 /// Every fill spec the layer would use, fully merged, for up-front checks.

@@ -183,7 +183,8 @@ draw:
   - { id: water_fill, from: $fills.wet }
   - { id: roads_out, from: roads.outlines, stroke: solid }
   - { id: roads_trail, from: roads.trails, stroke: solid }
-  - { id: roads_det, from: roads.details }
+  - { id: roads_center, from: roads.centerlines, stroke: { style: dash, dash: 0.3mm, gap: 0.35mm } }
+  - { id: roads_seam, from: roads.seams, stroke: solid }
   - { id: bldg_wall, from: $lines.shared_walls, stroke: solid }
   - { id: bldg_fill, from: $fills.bldg }
   - { id: bldg_ring, from: $lines.building_outline, stroke: solid }
@@ -205,7 +206,8 @@ compose:
     - water_fill
     - roads_out
     - roads_trail
-    - roads_det
+    - roads_center
+    - roads_seam
     - bldg_wall
     - bldg_fill
     - bldg_ring
@@ -216,16 +218,16 @@ compose:
   masks:
     parks_cover:
       from: $areas.parks_ext
-      occludes: [water_fill, water_ring, roads_out, roads_trail, roads_det, bldg_wall, bldg_fill, bldg_ring]
+      occludes: [water_fill, water_ring, roads_out, roads_trail, roads_center, roads_seam, bldg_wall, bldg_fill, bldg_ring]
     wet_cover:
       from: $areas.wet
-      occludes: [parks_fill_g, parks_fill_p, parks_fill_w, parks_fill_r, parks_fill_x, parks_ring, roads_out, roads_trail, roads_det, bldg_wall, bldg_fill, bldg_ring]
+      occludes: [parks_fill_g, parks_fill_p, parks_fill_w, parks_fill_r, parks_fill_x, parks_ring, roads_out, roads_trail, roads_center, roads_seam, bldg_wall, bldg_fill, bldg_ring]
     roads_cover:
       from: roads.area
       occludes: [parks_fill_g, parks_fill_p, parks_fill_w, parks_fill_r, parks_fill_x, parks_ring, water_fill, water_ring]
     bldg_cover:
       from: $areas.dissolved
-      occludes: [parks_fill_g, parks_fill_p, parks_fill_w, parks_fill_r, parks_fill_x, parks_ring, water_fill, water_ring, roads_out, roads_trail, roads_det]
+      occludes: [parks_fill_g, parks_fill_p, parks_fill_w, parks_fill_r, parks_fill_x, parks_ring, water_fill, water_ring, roads_out, roads_trail, roads_center, roads_seam]
 
   clip:
     default: auto     # ogni id tagliato dalle maschere sopra di lui che lo elencano

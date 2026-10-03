@@ -40,7 +40,8 @@ draw:
   - { id: water_fill, from: $fills.water_fill }
   - { id: roads_out,  from: roads.outlines, stroke: solid }
   - { id: roads_trail, from: roads.trails, stroke: solid }
-  - { id: roads_det,  from: roads.details }
+  - { id: roads_center, from: roads.centerlines, stroke: { style: dash, dash: 0.3mm, gap: 0.35mm } }
+  - { id: roads_seam, from: roads.seams, stroke: solid }
   - { id: bldg_fill,  from: $fills.bldg_fill }
   - { id: bldg_ring,  from: $lines.bldg_ring, stroke: solid }
 
@@ -52,19 +53,20 @@ compose:
     - water_fill
     - roads_out
     - roads_trail
-    - roads_det
+    - roads_center
+    - roads_seam
     - bldg_fill
     - bldg_ring
   masks:
     parks_cover:
       from: $areas.parks
-      occludes: [water_fill, water_ring, roads_out, roads_trail, roads_det, bldg_fill, bldg_ring]
+      occludes: [water_fill, water_ring, roads_out, roads_trail, roads_center, roads_seam, bldg_fill, bldg_ring]
     wet_cover:
       from: $areas.water
-      occludes: [park_ring, park_fill, roads_out, roads_trail, roads_det, bldg_fill, bldg_ring]
+      occludes: [park_ring, park_fill, roads_out, roads_trail, roads_center, roads_seam, bldg_fill, bldg_ring]
     roads_cover:
       from: roads.area
       occludes: [park_ring, park_fill, water_ring, water_fill]
     bldg_cover:
       from: $areas.buildings
-      occludes: [park_ring, park_fill, water_ring, water_fill, roads_out, roads_trail, roads_det]
+      occludes: [park_ring, park_fill, water_ring, water_fill, roads_out, roads_trail, roads_center, roads_seam]

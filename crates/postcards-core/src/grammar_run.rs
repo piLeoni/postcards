@@ -46,8 +46,8 @@ enum Value {
     Features(Vec<Feature>),
     Area(MultiPolygon<f64>),
     Lines(Lines),
-    /// `module_roads` output, carrying all four at once.
-    Module { area: MultiPolygon<f64>, outlines: Lines, details: Lines, trails: Lines },
+    /// `module_roads` output, carrying all of them at once.
+    Module { area: MultiPolygon<f64>, outlines: Lines, details: Lines, trails: Lines, centerlines: Lines, seams: Lines },
 }
 
 impl Value {
@@ -331,8 +331,16 @@ fn eval_module(module: &str, features: &[Feature], card: &Card) -> Result<Value,
                 sources: &sources,
                 masks: &BTreeMap::new(),
             };
-            let parts = crate::themes::roads_render(&layer, &ctx).map_err(|e| e.to_string())?;
-            Ok(Value::Module { area: parts.mask, outlines: parts.outlines, details: parts.details, trails: parts.trails })
+            let roads = crate::themes::roads_render(&layer, &ctx).map_err(|e| e.to_string())?;
+            let parts = roads.parts;
+            Ok(Value::Module {
+                area: parts.mask,
+                outlines: parts.outlines,
+                details: parts.details,
+                trails: parts.trails,
+                centerlines: roads.centerlines,
+                seams: roads.seams,
+            })
         }
         other => Err(format!("module_{other} is not known")),
     }
@@ -349,7 +357,7 @@ fn module_lines(
     group: &str,
     masks_by_id: &mut BTreeMap<String, MultiPolygon<f64>>,
 ) -> Result<Option<Lines>, RunError> {
-    let Value::Module { area, outlines, details, trails } = value else {
+    let Value::Module { area, outlines, details, trails, centerlines, seams } = value else {
         return Err(RunError::Plan(format!("module_{module} did not produce module outputs")));
     };
     Ok(match output {
@@ -360,9 +368,11 @@ fn module_lines(
         "outlines" => Some(outlines.clone()),
         "details" => Some(details.clone()),
         "trails" => Some(trails.clone()),
+        "centerlines" => Some(centerlines.clone()),
+        "seams" => Some(seams.clone()),
         other => {
             return Err(RunError::Plan(format!(
-                "module {module}: unknown output {other:?} (area, outlines, details, trails)"
+                "module {module}: unknown output {other:?} (area, outlines, details, trails, centerlines, seams)"
             )))
         }
     })

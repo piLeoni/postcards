@@ -261,7 +261,20 @@ fn node_key(layer: i64, c: Coord<f64>) -> (i64, u64, u64) {
     (layer, snap(c.x), snap(c.y))
 }
 
+/// The module's drawing, with its details also kept apart: the centre lines
+/// whole (undashed, cut where a higher deck passes over) and the bridge seams.
+pub struct Roads {
+    /// `details` holds the centre lines dashed, then the seams.
+    pub parts: LayerParts,
+    pub centerlines: Lines,
+    pub seams: Lines,
+}
+
 pub(crate) fn render(layer: &LayerSpec, ctx: &Context) -> Result<LayerParts, FillError> {
+    build(layer, ctx).map(|r| r.parts)
+}
+
+pub(crate) fn build(layer: &LayerSpec, ctx: &Context) -> Result<Roads, FillError> {
     let feats: Vec<(&Feature, i64)> = ctx
         .features
         .iter()
@@ -270,7 +283,7 @@ pub(crate) fn render(layer: &LayerSpec, ctx: &Context) -> Result<LayerParts, Fil
         .filter(|(f, l)| *l >= 0 && !below_ground(f, &["layer"]))
         .collect();
     if feats.is_empty() {
-        return Ok(LayerParts::default());
+        return Ok(Roads { parts: LayerParts::default(), centerlines: vec![], seams: vec![] });
     }
 
     let scale_ratio = 1.0 / (ctx.card.scale / 1000.0) * BUFFER_FUDGE;
@@ -367,9 +380,7 @@ pub(crate) fn render(layer: &LayerSpec, ctx: &Context) -> Result<LayerParts, Fil
     }
     let outer = MultiLineString::new(geom::rings(&carriageway));
 
-    let mut details: Lines = Vec::new();
-
-    // Higher decks erase the centre-lines underneath, then what is left is dashed.
+    // Higher decks erase the centre-lines underneath.
     let elevated_union = merge(&by_layer.values().flatten().cloned().collect::<Vec<_>>());
     let mut higher_deck: BTreeMap<i64, MultiPolygon<f64>> = BTreeMap::new();
     let mut above = geom::empty();
@@ -380,13 +391,13 @@ pub(crate) fn render(layer: &LayerSpec, ctx: &Context) -> Result<LayerParts, Fil
             above = geom::union_multi([&above, &deck]);
         }
     }
+    let mut centerlines: Lines = Vec::new();
     for (lyr, lines) in &centerlines_by_layer {
         let empty = geom::empty();
         let cutter = if *lyr <= 0 { &elevated_union } else { higher_deck.get(lyr).unwrap_or(&empty) };
-        for piece in geom::clip_lines(lines, cutter, true) {
-            details.extend(dashed_centerline(&piece));
-        }
+        centerlines.extend(geom::clip_lines(lines, cutter, true));
     }
+    let mut all_seams: Lines = Vec::new();
 
     // Bridge seams: each deck minus everything above it; only edges that are
     // not the outer silhouette are drawn.
@@ -409,8 +420,10 @@ pub(crate) fn render(layer: &LayerSpec, ctx: &Context) -> Result<LayerParts, Fil
             let cap = geom::buffer(&endpoints[i], 0.005);
             seams = keep_longer(geom::clip_lines(&seams, &cap, true), 0.05);
         }
-        details.extend(seams);
+        all_seams.extend(seams);
     }
+    let mut details: Lines = centerlines.iter().flat_map(dashed_centerline).collect();
+    details.extend(all_seams.iter().cloned());
 
     // Trails stay out of the carriageway and of its gap closing: they add no
     // outline, only their own narrow cut to the mask.
@@ -423,13 +436,14 @@ pub(crate) fn render(layer: &LayerSpec, ctx: &Context) -> Result<LayerParts, Fil
     let mut trails = geom::clip_lines(&ground_trails, &carriageway, true);
     trails.extend(raised_trails);
 
-    Ok(LayerParts {
+    let parts = LayerParts {
         outlines: fill::stroke(geom::rings(&carriageway), &layer_stroke(StrokeSpec::default(), layer)),
         details,
         trails,
         filling: vec![],
         mask: merge(&covered),
-    })
+    };
+    Ok(Roads { parts, centerlines, seams: all_seams })
 }
 
 #[cfg(test)]
@@ -518,6 +532,50 @@ mod tests {
         assert_eq!(geom::rings(&parts.mask).len(), 3, "residential, service and the track's strip");
         assert!(parts.mask.contains(&Point::new(25.0, 10.0)));
         assert!(parts.outlines.iter().all(|l| l.0.iter().all(|c| c.y > 15.0)), "the track has no outline");
+    }
+
+    #[test]
+    fn centre_lines_come_whole_and_dashed() {
+        use crate::card::Card;
+        use crate::fill::Sources;
+        use crate::profile::{MapSpec, ProjectionMode};
+        use crate::units::{Mm, Scale};
+        use geo::line_string;
+
+        let way = |tags: &[(&str, &str)], y: f64| Feature {
+            geometry: Geometry::LineString(line_string![(x: 10.0, y: y), (x: 40.0, y: y)]),
+            ..feature(tags)
+        };
+        let map = MapSpec {
+            address: None,
+            lat: None,
+            lng: None,
+            width: Mm(100.0),
+            height: Mm(50.0),
+            scale: Scale(5000.0),
+            bearing: 0.0,
+            projection: ProjectionMode::default(),
+        };
+        let card = Card::new(&map, (0.0, 0.0));
+        let features = vec![way(&[("highway", "residential"), ("lanes", "2")], 30.0), way(&[("highway", "residential")], 10.0)];
+        let ctx = Context { card: &card, features: &features, ocean: None, sources: &Sources::new(), masks: &BTreeMap::new() };
+        let layer = LayerSpec {
+            id: "roads".into(),
+            module: Some("roads/v1".into()),
+            steps: None,
+            enabled: None,
+            fill: None,
+            kinds: Vec::new(),
+            options: BTreeMap::new(),
+            stroke: None,
+        };
+        let roads = build(&layer, &ctx).unwrap();
+
+        assert_eq!(roads.centerlines.len(), 1, "two lanes make 6 m; one lane of 4 m has none");
+        assert!(roads.centerlines[0].0.iter().all(|c| c.y == 30.0));
+        assert!(roads.seams.is_empty());
+        let dashes = dashed_centerline(&roads.centerlines[0]).len();
+        assert!(dashes > 10 && roads.parts.details.len() == dashes, "details keep the dashed form");
     }
 
     #[test]

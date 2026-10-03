@@ -411,8 +411,21 @@ It defines fixed outputs the profile may use or ignore — for roads/v1:
 |---|---|
 | `roads.area` | the carriageway plus the strip each trail covers (the mask) |
 | `roads.outlines` | the carriageway boundary |
-| `roads.details` | centre lines and bridge seams, already generated |
+| `roads.centerlines` | a centre line down each road 6 m wide or more, whole: dash it (or not) with the draw's `stroke` |
+| `roads.seams` | where a bridge deck crosses over the road below |
+| `roads.details` | the centre lines already dashed (0.3 mm on, 0.35 mm off) plus the seams |
 | `roads.trails` | footways, paths, tracks, steps, cycleways, bridleways as single lines |
+
+The width comes from OSM's `width` or `lanes` (3 m a lane) when Overpass
+gives them; tile roads have neither, so their class decides (secondary and
+up are 6 m or more). Style the centre lines like any line, or leave the draw
+out to have none:
+
+```yaml
+draw:
+  - { id: roads_center, from: roads.centerlines, stroke: { style: dash, dash: 0.3mm, gap: 0.35mm } }
+  - { id: roads_seam,   from: roads.seams, stroke: solid }
+```
 
 The module's internal names are **not** module-prefixed (`roads.area`, not
 `module_roads.area`): the `module_` prefix belongs to the *definition*, and the
