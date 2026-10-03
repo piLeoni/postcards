@@ -98,10 +98,6 @@ pub struct MapSpec {
     pub height: Mm,
     #[serde(default)]
     pub scale: Scale,
-    /// The card's width on the ground; when written, it sets the scale for
-    /// the paper's width and `scale` is not read.
-    #[serde(default)]
-    pub ground: Option<crate::units::Ground>,
     #[serde(default)]
     pub bearing: f64,
     #[serde(default)]

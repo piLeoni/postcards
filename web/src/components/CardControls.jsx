@@ -1,5 +1,5 @@
 import { lengthText } from '../lib/frame'
-import { angleModel, countModel, degreesModel, Field, groundModel, groundText, lengthModel, Lock, Scrub, scaleModel, Section, SNAP_DEG } from './controls'
+import { angleModel, countModel, degreesModel, Field, lengthModel, Scrub, scaleModel, Section, SNAP_DEG, terrainModel } from './controls'
 
 /** Degrees the map turns per pixel a label is dragged. */
 const PX_PER_DEG = 2.5
@@ -12,29 +12,29 @@ function slicesKey({ columns, rows, gutter }) {
 
 /**
  * The `card:` block as controls, in two sections: where the card is on the
- * map (move, rotate, scale), and the paper (size, slices, margins). Every
- * label drags its value sideways and every field takes it typed. A change
- * goes out as `onEdit(patch)`, keys of `card:` as YAML text (`null` removes
- * one), so the panel works wherever the document does: the map's transform
- * menu now, a sidebar later.
+ * map (move, rotate, scale, the terrain it covers) and the output (the
+ * paper's size, slices and margins). Every label drags its value sideways
+ * and every field takes it typed. A change goes out as `onEdit(patch)`, keys
+ * of `card:` as YAML text (`null` removes one), so the panel works wherever
+ * the document does: the map's transform menu now, a sidebar later.
  *
- * Paper × scale = ground. The document holds the scale or the ground width,
- * whichever is locked; the other follows from the paper and is shown muted.
- * Typing into the muted one takes the lock.
+ * Output × scale = terrain, and the scale is what holds them together: a
+ * new scale changes the terrain and keeps the output, a new terrain or a new
+ * output changes the other at the same scale.
  *
  * `onMove`, when given, is the pointer-down of a drag that moves the card on
  * the map; the move label uses it.
  */
 export default function CardControls({ card, units, onEdit, onMove }) {
-  const u = { width: 'mm', height: 'mm', padding: 'mm', gutter: 'mm', ground: 'km', ...units }
+  const u = { width: 'mm', height: 'mm', padding: 'mm', gutter: 'mm', terrain: 'km', ...units }
   const width = { mm: card.width_mm, unit: u.width }
   const height = { mm: card.height_mm, unit: u.height }
   const padding = { mm: card.padding_mm ?? 0, unit: u.padding }
   const gutter = { mm: card.slice_padding_mm ?? 0, unit: u.gutter }
   const columns = card.columns ?? 1
   const rows = card.rows ?? 1
-  const groundW = { m: (card.width_mm / 1000) * card.scale, unit: u.ground }
-  const groundLocked = Boolean(card.ground_locked)
+  const terrainW = { m: (card.width_mm / 1000) * card.scale, unit: u.terrain }
+  const terrainH = { m: (card.height_mm / 1000) * card.scale, unit: u.terrain }
 
   const lat = degreesModel(85)
   const lng = degreesModel(180)
@@ -42,15 +42,21 @@ export default function CardControls({ card, units, onEdit, onMove }) {
   const paperH = lengthModel(u.height, { min: 1 })
   const margin = lengthModel(u.padding)
   const gap = lengthModel(u.gutter)
-  const ground = groundModel(u.ground)
+  const terrain = terrainModel(u.terrain)
 
+  /** The paper for `m` metres of terrain at the card's scale. */
+  const paperFor = (m, unit) => lengthText((m * 1000) / card.scale, unit)
   const setWidth = (v) => onEdit({ width: lengthText(v.mm, v.unit) })
   const setHeight = (v) => onEdit({ height: lengthText(v.mm, v.unit) })
   const setPadding = (v) => onEdit({ padding: v.mm > 0 ? lengthText(v.mm, v.unit) : null })
-  const setScale = (v) => onEdit({ scale: `"1:${Math.round(v)}"`, ground: null })
-  const setGround = (g) => onEdit({ ground: groundText(g.m, g.unit), scale: null })
-  const setSlices = (patch) => onEdit({ slices: slicesKey({ columns, rows, gutter, ...patch }) })
+  const setScale = (v) => onEdit({ scale: `"1:${Math.round(v)}"` })
   const setBearing = (b) => onEdit({ bearing: b })
+  const setSlices = (patch) => onEdit({ slices: slicesKey({ columns, rows, gutter, ...patch }) })
+  // Dragging the terrain grows both sides together.
+  const growTerrain = (t) => {
+    const k = t.m / terrainW.m
+    onEdit({ width: paperFor(terrainW.m * k, u.width), height: paperFor(terrainH.m * k, u.height) })
+  }
 
   return (
     <div className="w-max font-mono text-[10px]">
@@ -72,29 +78,31 @@ export default function CardControls({ card, units, onEdit, onMove }) {
         <Field label="bearing" title={`Degrees clockwise; arrows step 1°, Shift ${SNAP_DEG}°`} model={angleModel} value={card.bearing ?? 0} onChange={setBearing} />
         <span />
 
-        <Scrub icon="⤡" label="scale" title="Drag to change the scale; the paper keeps its size" model={scaleModel} value={card.scale} onChange={setScale} />
-        <span className="flex items-center gap-0.5">
-          <Lock
-            locked={!groundLocked}
-            title={groundLocked ? 'Hold the scale instead: a new paper size shows more or less ground' : 'The scale is held: a new paper size shows more or less ground'}
-            onToggle={() => groundLocked && setScale(card.scale)}
-          />
-          <Field label="scale" title="The scale, 1:N" model={scaleModel} value={card.scale} muted={groundLocked} onChange={setScale} />
-        </span>
-        <span className="flex items-center gap-0.5">
-          <Lock
-            locked={groundLocked}
-            title={groundLocked ? 'The ground is held: a new paper size changes the scale' : 'Hold the ground instead: a new paper size changes the scale'}
-            onToggle={() => !groundLocked && setGround(groundW)}
-          />
-          <Field label="ground" title="The ground across the card: m, km, mi or ft" model={ground} value={groundW} muted={!groundLocked} onChange={setGround} />
-        </span>
+        <Scrub icon="⤡" label="scale" title="Drag to change the scale: more or less terrain on the same paper" model={scaleModel} value={card.scale} onChange={setScale} />
+        <Field label="scale" title="The scale, 1:N; the paper keeps its size" model={scaleModel} value={card.scale} onChange={setScale} />
+        <span />
+
+        <Scrub icon="▭" label="terrain" title="Drag to take in more or less terrain at the same scale: the paper follows" model={terrain} value={terrainW} onChange={growTerrain} />
+        <Field
+          label="terrain width"
+          title="The terrain across the card: m, km, mi or ft; the paper's width follows"
+          model={terrain}
+          value={terrainW}
+          onChange={(t) => onEdit({ width: paperFor(t.m, u.width) })}
+        />
+        <Field
+          label="terrain height"
+          title="The terrain down the card: m, km, mi or ft; the paper's height follows"
+          model={terrain}
+          value={terrainH}
+          onChange={(t) => onEdit({ height: paperFor(t.m, u.height) })}
+        />
       </Section>
 
-      <Section title="paper" cols="grid-cols-[auto_8ch_auto_8ch]">
-        <Scrub label="width" title="Drag or type the paper's width: mm, cm or in" model={paperW} value={width} onChange={setWidth} />
+      <Section title="output" cols="grid-cols-[auto_8ch_auto_8ch]">
+        <Scrub label="width" title="Drag or type the paper's width: mm, cm or in; the terrain follows" model={paperW} value={width} onChange={setWidth} />
         <Field label="paper width" model={paperW} value={width} onChange={setWidth} />
-        <Scrub label="height" title="Drag or type the paper's height: mm, cm or in" model={paperH} value={height} onChange={setHeight} />
+        <Scrub label="height" title="Drag or type the paper's height: mm, cm or in; the terrain follows" model={paperH} value={height} onChange={setHeight} />
         <Field label="paper height" model={paperH} value={height} onChange={setHeight} />
 
         <Scrub label="columns" title="Sheets across" model={countModel} value={columns} px={12} onChange={(v) => setSlices({ columns: v })} />

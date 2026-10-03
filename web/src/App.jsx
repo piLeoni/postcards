@@ -4,8 +4,7 @@ import Sidebar from './components/Sidebar'
 import { loadPostcards } from './lib/postcards'
 import { DEFAULT_DOC } from './lib/presets'
 import { cardUnit, setCardComment, setCardKeys } from './lib/doc'
-import { sig3 } from './lib/frame'
-import { groundPair } from './components/controls'
+import { terrainPair } from './components/controls'
 
 /** Where the card is, how big, how it is cut and drawn: a drawing is only good for one of these. */
 const placeOf = (c) =>
@@ -15,7 +14,8 @@ const placeOf = (c) =>
 
 /**
  * The unit each length of `card:` is written in. One not written takes the
- * paper's; the ground takes km beside metric paper and mi beside inches.
+ * paper's; the terrain keeps the unit noted beside the scale, or takes km
+ * beside metric paper and mi beside inches.
  */
 function unitsOf(doc) {
   const width = cardUnit(doc, 'width') ?? 'mm'
@@ -25,10 +25,7 @@ function unitsOf(doc) {
     height: cardUnit(doc, 'height') ?? paper,
     padding: cardUnit(doc, 'padding') ?? paper,
     gutter: cardUnit(doc, 'slices.padding') ?? paper,
-    ground:
-      cardUnit(doc, 'ground') ??
-      doc.match(/^\s+scale\s*:.*#\s*ground [\d.]+ × [\d.]+ (m|km|mi|ft)\b/m)?.[1] ??
-      (paper === 'in' ? 'mi' : 'km'),
+    terrain: doc.match(/^\s+scale\s*:.*#\s*terrain [\d.]+ × [\d.]+ (m|km|mi|ft)\b/m)?.[1] ?? (paper === 'in' ? 'mi' : 'km'),
   }
 }
 
@@ -177,8 +174,8 @@ export default function App() {
   }, [current, card])
 
   /**
-   * Write keys of `card:`, then note on the held line what the other side of
-   * paper × scale = ground comes to: `scale: "1:8000"   # ground 1.22 × 0.813 km`.
+   * Write keys of `card:`, then note beside the scale the terrain that paper
+   * × scale comes to: `scale: "1:8000"   # terrain 1.22 × 0.813 km`.
    */
   const editCard = useCallback(
     (patch) =>
@@ -187,9 +184,7 @@ export default function App() {
         if (!engine) return text
         try {
           const c = JSON.parse(JSON.stringify(engine.cardInfo(text)))
-          return c.ground_locked
-            ? setCardComment(text, 'ground', `scale 1:${sig3(c.scale)}`)
-            : setCardComment(text, 'scale', `ground ${groundPair(c, unitsOf(text).ground)}`)
+          return setCardComment(text, 'scale', `terrain ${terrainPair(c, unitsOf(text).terrain)}`)
         } catch {
           return text
         }

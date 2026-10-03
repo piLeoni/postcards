@@ -23,7 +23,7 @@ impl Card {
             center,
             width_mm: map.width.0,
             height_mm: map.height.0,
-            scale: map.ground.map_or(map.scale.0, |g| g.0 * 1000.0 / map.width.0),
+            scale: map.scale.0,
             bearing: map.bearing,
             projection: map.projection.clone(),
         }
@@ -212,14 +212,6 @@ mod tests {
             bearing: 0.0,
             projection: ProjectionMode::Utm,
         }
-    }
-
-    #[test]
-    fn ground_sets_the_scale() {
-        let map: MapSpec = serde_saphyr::from_str("width: 6in\nscale: \"1:5000\"\nground: 1.524km\n").unwrap();
-        assert!((Card::new(&map, (0.0, 0.0)).scale - 10000.0).abs() < 1e-6, "ground wins over scale");
-        let map: MapSpec = serde_saphyr::from_str("width: 6in\nscale: \"1:5000\"\n").unwrap();
-        assert_eq!(Card::new(&map, (0.0, 0.0)).scale, 5000.0);
     }
 
     #[test]

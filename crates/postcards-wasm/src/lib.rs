@@ -96,9 +96,8 @@ pub fn osm_evict(entries: &str, now: f64) -> Result<Vec<u32>, JsValue> {
 /// The card's centre and size, so the page can place the rectangle on the map.
 ///
 /// Returns `{ lat, lng, width_mm, height_mm, scale, bearing, padding_mm,
-/// columns, rows, slice_padding_mm, ground_locked, projection }`:
-/// `ground_locked` is 1 when the document writes `ground` (it sets the scale),
-/// `projection` is `webmercator`, `utm` or the PROJ string.
+/// columns, rows, slice_padding_mm, projection }`, the projection as
+/// `webmercator`, `utm` or the PROJ string.
 #[wasm_bindgen(js_name = cardInfo)]
 pub fn card_info(doc: &str) -> Result<JsValue, JsValue> {
     use postcards_core::profile::ProjectionMode;
@@ -122,7 +121,6 @@ pub fn card_info(doc: &str) -> Result<JsValue, JsValue> {
         ("columns", spec.slices.columns.max(1) as f64),
         ("rows", spec.slices.rows.max(1) as f64),
         ("slice_padding_mm", spec.slices.padding.0),
-        ("ground_locked", if spec.ground.is_some() { 1.0 } else { 0.0 }),
     ] {
         js_sys::Reflect::set(&o, &JsValue::from_str(k), &JsValue::from_f64(v)).ok();
     }

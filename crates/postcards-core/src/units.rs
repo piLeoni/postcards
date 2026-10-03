@@ -10,8 +10,7 @@ use std::fmt;
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct Mm(pub f64);
 
-/// `"6 in"` → `(6.0, "in")`, the unit lowercased.
-fn number_and_unit(text: &str) -> Result<(f64, String), String> {
+pub fn parse_length_mm(text: &str) -> Result<f64, String> {
     let s = text.trim();
     let split = s
         .find(|c: char| !(c.is_ascii_digit() || c == '.' || c == '-' || c == '+' || c == 'e' || c == 'E'))
@@ -21,12 +20,7 @@ fn number_and_unit(text: &str) -> Result<(f64, String), String> {
         .trim()
         .parse()
         .map_err(|_| format!("invalid length {text:?}"))?;
-    Ok((value, unit.trim().to_ascii_lowercase()))
-}
-
-pub fn parse_length_mm(text: &str) -> Result<f64, String> {
-    let (value, unit) = number_and_unit(text)?;
-    let factor = match unit.as_str() {
+    let factor = match unit.trim().to_ascii_lowercase().as_str() {
         "" | "mm" | "millimeter" | "millimeters" | "millimetre" | "millimetres" => 1.0,
         "cm" => 10.0,
         "m" => 1000.0,
@@ -56,51 +50,6 @@ impl<'de> Deserialize<'de> for Mm {
             }
             fn visit_str<E: de::Error>(self, v: &str) -> Result<Mm, E> {
                 parse_length_mm(v).map(Mm).map_err(E::custom)
-            }
-        }
-        d.deserialize_any(V)
-    }
-}
-
-/// A distance on the ground in metres. Deserializes from a bare number (m)
-/// or a string with a unit: `m`, `km`, `mi`, `ft`.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Ground(pub f64);
-
-pub fn parse_ground_m(text: &str) -> Result<f64, String> {
-    let (value, unit) = number_and_unit(text)?;
-    let factor = match unit.as_str() {
-        "" | "m" | "meter" | "meters" | "metre" | "metres" => 1.0,
-        "km" => 1000.0,
-        "mi" | "mile" | "miles" => 1609.344,
-        "ft" | "foot" | "feet" => 0.3048,
-        other => return Err(format!("unknown ground unit {other:?} in {text:?} (use m, km, mi or ft)")),
-    };
-    if value <= 0.0 {
-        return Err(format!("invalid ground size {text:?}"));
-    }
-    Ok(value * factor)
-}
-
-impl<'de> Deserialize<'de> for Ground {
-    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
-        struct V;
-        impl Visitor<'_> for V {
-            type Value = Ground;
-            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
-                f.write_str("a ground distance: a number of metres or a string like \"1.2km\" or \"0.75mi\"")
-            }
-            fn visit_f64<E: de::Error>(self, v: f64) -> Result<Ground, E> {
-                Ok(Ground(v))
-            }
-            fn visit_i64<E: de::Error>(self, v: i64) -> Result<Ground, E> {
-                Ok(Ground(v as f64))
-            }
-            fn visit_u64<E: de::Error>(self, v: u64) -> Result<Ground, E> {
-                Ok(Ground(v as f64))
-            }
-            fn visit_str<E: de::Error>(self, v: &str) -> Result<Ground, E> {
-                parse_ground_m(v).map(Ground).map_err(E::custom)
             }
         }
         d.deserialize_any(V)
@@ -168,14 +117,6 @@ mod tests {
         assert_eq!(parse_length_mm("152.4").unwrap(), 152.4);
         assert_eq!(parse_length_mm("3cm").unwrap(), 30.0);
         assert!(parse_length_mm("3furlongs").is_err());
-    }
-
-    #[test]
-    fn ground() {
-        assert_eq!(parse_ground_m("1.2km").unwrap(), 1200.0);
-        assert_eq!(parse_ground_m("800").unwrap(), 800.0);
-        assert!((parse_ground_m("0.5 mi").unwrap() - 804.672).abs() < 1e-9);
-        assert!(parse_ground_m("3in").is_err());
     }
 
     #[test]

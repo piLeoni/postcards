@@ -124,36 +124,6 @@ export function Section({ title, cols, first = false, children }) {
   )
 }
 
-/** A padlock that says which of two linked values the document holds. */
-export function Lock({ locked, title, onToggle }) {
-  return (
-    <span
-      role="button"
-      tabIndex={0}
-      title={title}
-      aria-label={title}
-      aria-pressed={locked}
-      className={`inline-flex h-[1.4em] w-[1.4em] shrink-0 cursor-pointer items-center justify-center ${locked ? '' : 'opacity-35 hover:opacity-100'}`}
-      onPointerDown={(e) => e.stopPropagation()}
-      onClick={(e) => {
-        e.stopPropagation()
-        onToggle()
-      }}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault()
-          onToggle()
-        }
-      }}
-    >
-      <svg viewBox="0 0 10 12" className="h-[1em] w-[1em]" fill="none" stroke="currentColor" strokeWidth="1.2">
-        <rect x="1" y="5" width="8" height="6.4" fill={locked ? 'currentColor' : 'none'} />
-        <path d={locked ? 'M3 5V3.2a2 2 0 0 1 4 0V5' : 'M3 5V3.2a2 2 0 0 1 4 0'} />
-      </svg>
-    </span>
-  )
-}
-
 /* ---------------------------------------------------------------- */
 /*  Models                                                          */
 /* ---------------------------------------------------------------- */
@@ -190,26 +160,26 @@ export function lengthModel(unit, { min = 0 } = {}) {
   }
 }
 
-/** Metres in each unit a ground distance may be written in. */
+/** Metres in each unit a terrain distance may be written in. */
 export const M_PER = { m: 1, km: 1000, mi: 1609.344, ft: 0.3048 }
-const GROUND_UNITS = { m: 'm', km: 'km', mi: 'mi', mile: 'mi', miles: 'mi', ft: 'ft', feet: 'ft' }
+const TERRAIN_UNITS = { m: 'm', km: 'km', mi: 'mi', mile: 'mi', miles: 'mi', ft: 'ft', feet: 'ft' }
 
-/** "1.22km": a ground distance in metres, written in `unit`, three figures. */
-export const groundText = (m, unit = 'km') => `${sig3(m / M_PER[unit])}${unit}`
+/** "1.22km": a distance on the terrain in metres, written in `unit`, three figures. */
+export const terrainText = (m, unit = 'km') => `${sig3(m / M_PER[unit])}${unit}`
 
-/** "1.22 × 0.813 km": the card's ground, paper × scale, in one unit. */
-export function groundPair(card, unit = 'km') {
+/** "1.22 × 0.813 km": the card's terrain, paper × scale, in one unit. */
+export function terrainPair(card, unit = 'km') {
   const [w, h] = [card.width_mm, card.height_mm].map((v) => sig3(((v / 1000) * card.scale) / M_PER[unit]))
   return `${w} × ${h} ${unit}`
 }
 
-/** A ground distance, `{ m, unit }`: m, km, mi or ft; each step is 2% (Shift 20%). */
-export function groundModel(unit) {
+/** A terrain distance, `{ m, unit }`: m, km, mi or ft; each step is 2% (Shift 20%). */
+export function terrainModel(unit) {
   return {
-    text: (v) => groundText(v.m, v.unit),
+    text: (v) => terrainText(v.m, v.unit),
     parse: (s) => {
       const m = s.match(/^\s*(\d*\.?\d+)\s*([a-z]+)?\s*$/i)
-      const u = m && (m[2] ? GROUND_UNITS[m[2].toLowerCase()] : unit)
+      const u = m && (m[2] ? TERRAIN_UNITS[m[2].toLowerCase()] : unit)
       return u && Number(m[1]) > 0 ? { m: Number(m[1]) * M_PER[u], unit: u } : null
     },
     nudge: (v, n, shift) => ({ m: sig3(v.m / M_PER[v.unit] * (shift ? 1.2 : 1.02) ** n) * M_PER[v.unit], unit: v.unit }),

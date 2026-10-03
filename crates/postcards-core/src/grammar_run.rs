@@ -646,7 +646,6 @@ mod tests {
             warp: Default::default(),
             padding: Default::default(),
             slices: Default::default(),
-            ground: None,
         };
         Card::new(&map, (0.0, 0.0))
     }

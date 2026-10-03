@@ -514,7 +514,6 @@ mod tests {
             warp: Default::default(),
             padding: Default::default(),
             slices: Default::default(),
-            ground: None,
         };
         let card = Card::new(&map, (0.0, 0.0));
         let features = vec![way("residential", 30.0), way("track", 10.0), way("service", 20.0)];
@@ -562,7 +561,6 @@ mod tests {
             warp: Default::default(),
             padding: Default::default(),
             slices: Default::default(),
-            ground: None,
         };
         let card = Card::new(&map, (0.0, 0.0));
         let features = vec![way(&[("highway", "residential"), ("lanes", "2")], 30.0), way(&[("highway", "residential")], 10.0)];

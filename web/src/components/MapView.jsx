@@ -3,7 +3,7 @@ import mapboxgl from 'mapbox-gl'
 import 'mapbox-gl/dist/mapbox-gl.css'
 import { cardBox, FIT_PAD, groundKm, hasLayout, lengthText, sheetsOf, sig3, zoomToFit } from '../lib/frame'
 import CardControls from './CardControls'
-import { groundPair, norm } from './controls'
+import { norm, terrainPair } from './controls'
 import LoadCard from './LoadCard'
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN || ''
@@ -44,7 +44,7 @@ function sizeText(card, units) {
   if (!groundKm(card)) return ''
   const turned = Math.abs(norm(card.bearing ?? 0)) > 0.05 ? ` · ${Math.round(norm(card.bearing) * 1000) / 1000}°` : ''
   const cut = (card.columns ?? 1) * (card.rows ?? 1) > 1 ? ` · ${card.columns} × ${card.rows} slices` : ''
-  return `${paperText(card, units)} · 1:${sig3(card.scale)} · ${groundPair(card, units.ground)}${turned}${cut}`
+  return `${paperText(card, units)} · 1:${sig3(card.scale)} · ${terrainPair(card, units.terrain)}${turned}${cut}`
 }
 
 /** The lines where the card is cut, like its outline, and the dotted margins drawn on. */
@@ -135,7 +135,7 @@ export default function MapView({
     editRef.current = null
   }
   const unitsRef = useRef(units)
-  unitsRef.current = units ?? { width: 'mm', height: 'mm', ground: 'km' }
+  unitsRef.current = units ?? { width: 'mm', height: 'mm', terrain: 'km' }
   const cardRef = useRef(card)
   cardRef.current = editRef.current ? { ...card, ...editRef.current } : card
 
