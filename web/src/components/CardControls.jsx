@@ -5,7 +5,7 @@ import { angleModel, countModel, degreesModel, Field, lengthModel, MAX_SCALE, MI
 const PX_PER_DEG = 2.5
 
 /** Both sections share one shape so their fields line up: a label, two values. */
-const COLS = 'grid-cols-[10ch_13ch_13ch]'
+const COLS = 'grid-cols-[10ch_14ch_14ch]'
 
 /** `5mm` for one length both ways, `[5mm, 3mm]` (across, down) for two. */
 function xyText({ x, y }) {
@@ -24,8 +24,9 @@ function slicesKey({ columns, rows, gutter }) {
 /**
  * The `card:` block as controls, in two sections: where the card is on the
  * map (move, rotate, scale, the terrain it covers) and the output (the
- * paper's size, slices, margins and gutter). Every label drags its value
- * sideways and every field takes it typed. A change goes out as
+ * paper's size, slices, margins and gutter). Every label drags its row's
+ * values sideways, together; every field's ↔ drags it alone, and every field
+ * takes it typed. A change goes out as
  * `onEdit(patch)`, keys of `card:` as YAML text (`null` removes one), so the
  * panel works wherever the document does: the map's transform menu now, a
  * sidebar later.
@@ -94,7 +95,7 @@ export default function CardControls({ card, units, onEdit, onMove }) {
           px={PX_PER_DEG}
           onChange={setBearing}
         />
-        <Field label="bearing" title={`Degrees clockwise; arrows step 1°, Shift ${SNAP_DEG}°`} model={angleModel} value={card.bearing ?? 0} onChange={setBearing} />
+        <Field label="bearing" title={`Degrees clockwise; arrows step 1°, Shift ${SNAP_DEG}°`} model={angleModel} value={card.bearing ?? 0} px={PX_PER_DEG} onChange={setBearing} />
         <span />
 
         <Scrub icon="⤡" label="scale" title="Drag to change the scale: more or less terrain on the same paper" model={scaleModel} value={card.scale} onChange={setScale} />
@@ -124,8 +125,8 @@ export default function CardControls({ card, units, onEdit, onMove }) {
         <Field label="height" title="The paper's height: mm, cm or in; the terrain follows" model={paperH} value={height} onChange={setHeight} />
 
         <Scrub icon="⊞" label="slices" title="Drag to cut the paper into more or fewer sheets" model={sheets} value={{ columns, rows }} px={12} onChange={setSlices} />
-        <Field label="columns" title="Sheets across" model={countModel} value={columns} onChange={(v) => setSlices({ columns: v })} />
-        <Field label="rows" title="Sheets down" model={countModel} value={rows} onChange={(v) => setSlices({ rows: v })} />
+        <Field label="columns" title="Sheets across" model={countModel} value={columns} px={12} onChange={(v) => setSlices({ columns: v })} />
+        <Field label="rows" title="Sheets down" model={countModel} value={rows} px={12} onChange={(v) => setSlices({ rows: v })} />
 
         <Scrub icon="▣" label="margin" title="Drag to widen or narrow the blank margin inside the paper's edge" model={both(margin)} value={padding} onChange={setPadding} />
         <Field label="margin across" title="Blank margin at the paper's left and right edges: mm, cm or in" model={margin} value={padding.x} onChange={(x) => setPadding({ x })} />

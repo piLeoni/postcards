@@ -20,71 +20,14 @@ const FIELD = 'h-auto w-full min-w-0 border border-black bg-white px-1 text-righ
 const PX_PER_STEP = 4
 
 /**
- * A short text field that writes as you type: what parses is written, the
- * arrows step it (Shift for bigger steps). Once left, it shows `value`.
- */
-export function Field({ label, title, model, value, onChange, muted = false, className = '' }) {
-  const ref = useRef(null)
-  const [draft, setDraft] = useState(null)
-  // What was typed shows only while the field has the focus.
-  const shown = draft != null && ref.current && document.activeElement === ref.current ? draft : model.text(value)
-  const put = (s) => {
-    setDraft(s)
-    const v = model.parse(s)
-    if (v != null) onChange(v)
-  }
-  return (
-    <input
-      ref={ref}
-      type="text"
-      spellCheck={false}
-      aria-label={label}
-      title={title}
-      value={shown}
-      className={`${FIELD} ${muted ? 'text-black/45 focus:text-black' : ''} ${className}`}
-      onChange={(e) => put(e.target.value)}
-      onFocus={(e) => {
-        setDraft(null)
-        e.target.select()
-      }}
-      onBlur={() => setDraft(null)}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter') e.currentTarget.blur()
-        if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return
-        e.preventDefault()
-        const next = model.nudge(model.parse(shown) ?? value, e.key === 'ArrowUp' ? 1 : -1, e.shiftKey)
-        setDraft(model.text(next))
-        onChange(next)
-      }}
-    />
-  )
-}
-
-/**
- * A label that edits its value when dragged sideways: one step every `px`
+ * Dragging sideways to step `value` through `model`: one step every `px`
  * pixels, written at most once a frame, Shift for the model's snap (or its
- * bigger steps). `sign: -1` turns the drag around. `onPointerDown` replaces
- * the sideways drag with one of the caller's (moving the card on the map).
+ * bigger steps); `sign: -1` turns it around. `custom`, when given, is a drag
+ * of the caller's instead. `held` is true from press to release: the pointer
+ * outruns what it grabbed, and what it passes over must not light up instead.
  */
-export function Scrub({ icon, label, title, model, value, onChange, sign = 1, px = PX_PER_STEP, onPointerDown, children }) {
-  // Held from press to release: the pointer outruns the label, and what it
-  // passes over must not light up instead.
+function useDrag({ model, value, onChange, sign = 1, px = PX_PER_STEP, custom }) {
   const [held, setHeld] = useState(false)
-  const hold = (e) => {
-    // A pointer already gone (or a synthetic one) cannot be captured.
-    try {
-      e.currentTarget.setPointerCapture(e.pointerId)
-    } catch {}
-    setHeld(true)
-    const release = () => {
-      setHeld(false)
-      window.removeEventListener('pointerup', release)
-      window.removeEventListener('pointercancel', release)
-    }
-    window.addEventListener('pointerup', release)
-    window.addEventListener('pointercancel', release)
-    ;(onPointerDown ?? scrub)(e)
-  }
   const scrub = (e) => {
     e.preventDefault()
     e.stopPropagation()
@@ -115,15 +58,96 @@ export function Scrub({ icon, label, title, model, value, onChange, sign = 1, px
     window.addEventListener('pointermove', move)
     window.addEventListener('pointerup', up)
   }
+  const onPointerDown = (e) => {
+    // A pointer already gone (or a synthetic one) cannot be captured.
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId)
+    } catch {}
+    setHeld(true)
+    const release = () => {
+      setHeld(false)
+      window.removeEventListener('pointerup', release)
+      window.removeEventListener('pointercancel', release)
+    }
+    window.addEventListener('pointerup', release)
+    window.addEventListener('pointercancel', release)
+    ;(custom ?? scrub)(e)
+  }
+  return { held, onPointerDown }
+}
+
+/** What a draggable thing looks like: lit while hovered, and while held. */
+const grabbed = (held) => `hover:bg-black hover:text-white ${held ? 'bg-black text-white' : ''}`
+
+/**
+ * A short text field that writes as you type: what parses is written, the
+ * arrows step it (Shift for bigger steps). Once left, it shows `value`. The
+ * ↔ on its left drags this value alone (`px`, `sign` as for `Scrub`).
+ */
+export function Field({ label, title, model, value, onChange, px, sign, muted = false, className = '' }) {
+  const ref = useRef(null)
+  const [draft, setDraft] = useState(null)
+  const drag = useDrag({ model, value, onChange, px, sign })
+  // What was typed shows only while the field has the focus.
+  const shown = draft != null && ref.current && document.activeElement === ref.current ? draft : model.text(value)
+  const put = (s) => {
+    setDraft(s)
+    const v = model.parse(s)
+    if (v != null) onChange(v)
+  }
+  return (
+    <span className="relative block min-w-0">
+      <input
+        ref={ref}
+        type="text"
+        spellCheck={false}
+        aria-label={label}
+        title={title}
+        value={shown}
+        className={`${FIELD} pl-[2.2ch] ${muted ? 'text-black/45 focus:text-black' : ''} ${className}`}
+        onChange={(e) => put(e.target.value)}
+        onFocus={(e) => {
+          setDraft(null)
+          e.target.select()
+        }}
+        onBlur={() => setDraft(null)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') e.currentTarget.blur()
+          if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return
+          e.preventDefault()
+          const next = model.nudge(model.parse(shown) ?? value, e.key === 'ArrowUp' ? 1 : -1, e.shiftKey)
+          setDraft(model.text(next))
+          onChange(next)
+        }}
+      />
+      <span
+        aria-hidden
+        title={`Drag to change the ${label} alone`}
+        className={`absolute inset-y-px left-px flex w-[1.8ch] cursor-ew-resize items-center justify-center text-black/35 select-none ${grabbed(drag.held)}`}
+        onPointerDown={drag.onPointerDown}
+      >
+        ↔
+      </span>
+    </span>
+  )
+}
+
+/**
+ * A label that edits its value when dragged sideways (see `useDrag`).
+ * `onPointerDown` replaces the sideways drag with one of the caller's
+ * (moving the card on the map).
+ */
+export function Scrub({ icon, label, title, model, value, onChange, sign, px, onPointerDown, children }) {
+  const drag = useDrag({ model, value, onChange, sign, px, custom: onPointerDown })
   const draggable = Boolean(onPointerDown || model)
   return (
     <span
       title={title}
       aria-label={label}
       className={`flex items-center gap-1 whitespace-nowrap px-1 select-none ${
-        draggable ? `hover:bg-black hover:text-white ${onPointerDown ? 'cursor-grab active:cursor-grabbing' : 'cursor-ew-resize'}` : ''
-      } ${held ? 'bg-black text-white' : ''}`}
-      onPointerDown={draggable ? hold : undefined}
+        draggable ? `${grabbed(drag.held)} ${onPointerDown ? 'cursor-grab active:cursor-grabbing' : 'cursor-ew-resize'}` : ''
+      }`}
+      onPointerDown={draggable ? drag.onPointerDown : undefined}
     >
       {icon && <span className="w-[1.5ch] text-center">{icon}</span>}
       <span>{label}</span>
