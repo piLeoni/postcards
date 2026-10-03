@@ -152,6 +152,14 @@ pub fn run_with(grammar: &Grammar, card: &Card, inputs: Inputs, draw: &Task) -> 
     let compose_task = draw.child("compose", "compose", 0, "");
     let groups = compose(grammar, &values, &fills, &compose_task)?;
     compose_task.ok(&format!("{} groups", groups.len()));
+    let groups = if grammar.card.warp.is_empty() {
+        groups
+    } else {
+        let warp_task = draw.child("warp", "warp", 0, "");
+        let bent = grammar.card.warp.apply(card.width_mm, card.height_mm, groups);
+        warp_task.ok("");
+        bent
+    };
 
     let svg_task = draw.child("svg", "svg", 0, "");
     let svg = write_svg(card.width_mm, card.height_mm, &groups);
@@ -634,6 +642,7 @@ mod tests {
             scale: Scale(10000.0),
             bearing: 0.0,
             projection: crate::profile::ProjectionMode::default(),
+            warp: Default::default(),
         };
         Card::new(&map, (0.0, 0.0))
     }

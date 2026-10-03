@@ -317,6 +317,27 @@ any profile, what is grammar and what is content.
 |---|---|
 | `webmercator` (default) | A crop of the web map, north up, one scale for both axes (the web map's metres at the card's centre). The drawing matches the web app's Mapbox preview to the pixel. |
 | `utm` | True distances and shapes, but north turns away from the page's up the further the card sits from its UTM zone's meridian: 0.5° in Berkeley, 1.4° in Boston, where a 6 in card's sides move 1.9 mm against the preview. |
+| a PROJ string | Any projection proj4rs knows: `aea`, `cea`, `eqc`, `geos`, `krovak`, `laea`, `lcc`, `merc`, `mill`, `moll`, `somerc`, `stere`, `sterea`, `tmerc`, `utm`. `{lat}` and `{lng}` stand for the card's centre: `"+proj=laea +lat_0={lat} +lon_0={lng}"`. The scale holds at the centre (a small square of ground keeps its area); the preview no longer matches. |
+
+At a city's scale most projections draw the same streets; what tells them
+apart is how they turn north. `"+proj=lcc +lat_1=30 +lat_2=60 +lon_0=-100"`
+over Boston tilts the card about 20°.
+
+`card.warp` bends the finished drawing, fills included, after compose. Every
+warp keeps the card's edge where it is, so nothing slides off the paper. One
+warp or a list, applied in order:
+
+| `warp` | What it does |
+|---|---|
+| `{ fisheye: 0.6 }` | Magnifies the centre, from 0 to about 1; a negative value pinches it. |
+| `{ twirl: 90 }` | Turns the centre by that many degrees, less and less towards the edge. |
+| `{ wave: { amplitude: 1.5mm, wavelength: 25mm } }` | Ripples both ways, calming to nothing at the edge. |
+
+```yaml
+card:
+  projection: webmercator
+  warp: [{ twirl: 45 }, { fisheye: 0.3 }]
+```
 
 ---
 

@@ -25,7 +25,7 @@ impl Card {
             height_mm: map.height.0,
             scale: map.scale.0,
             bearing: map.bearing,
-            projection: map.projection,
+            projection: map.projection.clone(),
         }
     }
 
@@ -43,6 +43,9 @@ impl Card {
     /// are found by walking geodesics from the centre, so the sides are the
     /// requested ground distance apart at any latitude.
     pub fn query_polygon(&self) -> Polygon<f64> {
+        if let Some(frame) = self.projected_frame() {
+            return frame;
+        }
         let g = Geodesic::wgs84();
         let (lon, lat) = self.center;
         let (w, h) = self.ground_size_m();
@@ -61,6 +64,31 @@ impl Card {
         let sw = walk(south, west, w / 2.0);
         let ring: Vec<Coord<f64>> = [ne, nw, sw, se, ne].iter().map(|&(x, y)| Coord { x, y }).collect();
         Polygon::new(LineString::new(ring), vec![])
+    }
+
+    /// For a PROJ projection, the card's edge taken back to the ground: the
+    /// projection may turn or shear the ground under the card, which a
+    /// rectangle walked from the centre would miss.
+    fn projected_frame(&self) -> Option<Polygon<f64>> {
+        if !matches!(self.projection, ProjectionMode::Proj(_)) {
+            return None;
+        }
+        const PER_SIDE: usize = 16;
+        let p = crate::projection::Projector::new(self);
+        let (w, h) = (self.width_mm, self.height_mm);
+        let edge = (0..PER_SIDE * 4).map(|i| {
+            let t = (i % PER_SIDE) as f64 / PER_SIDE as f64;
+            match i / PER_SIDE {
+                0 => (w * t, 0.0),
+                1 => (w, h * t),
+                2 => (w * (1.0 - t), h),
+                _ => (0.0, h * (1.0 - t)),
+            }
+        });
+        let mut ring: Vec<Coord<f64>> =
+            edge.map(|(x, y)| p.unproject(x, y).map(|(x, y)| Coord { x, y })).collect::<Option<_>>()?;
+        ring.push(ring[0]);
+        Some(Polygon::new(LineString::new(ring), vec![]))
     }
 
     /// `[west, south, east, north]` of the unrotated card area.

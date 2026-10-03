@@ -7,8 +7,9 @@
 //! meridian (1.4° in Boston). `webmercator` projects to EPSG:3857 with one
 //! scale for both axes, the cosine of the centre's latitude, as web maps count
 //! metres: the drawing is a crop of the Mapbox map the web app shows, to the
-//! pixel. Both then centre on the card, scale to mm, flip y, and turn by the
-//! bearing.
+//! pixel. A PROJ string goes through proj4rs, scaled so a small square of
+//! ground at the centre keeps its area at the card's scale. All of them then
+//! centre on the card, scale to mm, flip y, and turn by the bearing.
 
 use crate::card::Card;
 use crate::profile::ProjectionMode;
@@ -81,10 +82,66 @@ fn merc_forward(lon: f64, lat: f64) -> (f64, f64) {
     (x, y)
 }
 
+/// A PROJ projection, from WGS84 lon/lat.
+#[derive(Clone)]
+struct Proj {
+    from: proj4rs::proj::Proj,
+    to: proj4rs::proj::Proj,
+}
+
+impl std::fmt::Debug for Proj {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Proj")
+    }
+}
+
+impl Proj {
+    fn new(definition: &str) -> Result<Proj, String> {
+        let from = proj4rs::proj::Proj::from_proj_string("+proj=longlat +datum=WGS84").map_err(|e| e.to_string())?;
+        let to = proj4rs::proj::Proj::from_proj_string(definition).map_err(|e| format!("{definition:?}: {e}"))?;
+        Ok(Proj { from, to })
+    }
+
+    /// Projected `(x, y)`; NaN where the projection has no value (the far
+    /// side of the globe for a geostationary view).
+    fn forward(&self, lon: f64, lat: f64) -> (f64, f64) {
+        let mut p = (lon.to_radians(), lat.to_radians(), 0.0);
+        match proj4rs::transform::transform(&self.from, &self.to, &mut p) {
+            Ok(()) => (p.0, p.1),
+            Err(_) => (f64::NAN, f64::NAN),
+        }
+    }
+
+    fn inverse(&self, x: f64, y: f64) -> Option<(f64, f64)> {
+        let mut p = (x, y, 0.0);
+        proj4rs::transform::transform(&self.to, &self.from, &mut p).ok()?;
+        Some((p.0.to_degrees(), p.1.to_degrees()))
+    }
+
+    /// Projected units per ground metre at `(lon, lat)`: the square root of
+    /// how much a small square of ground grows, so area keeps its scale even
+    /// where the projection stretches one way more than the other.
+    fn units_per_m(&self, lon: f64, lat: f64) -> f64 {
+        use geographiclib_rs::{DirectGeodesic, Geodesic};
+        const STEP_M: f64 = 10.0;
+        let g = Geodesic::wgs84();
+        let at = |azimuth: f64| {
+            let (lat2, lon2): (f64, f64) = g.direct(lat, lon, azimuth, STEP_M);
+            self.forward(lon2, lat2)
+        };
+        let o = self.forward(lon, lat);
+        let (e, n) = (at(90.0), at(0.0));
+        let (ex, ey, nx, ny) = (e.0 - o.0, e.1 - o.1, n.0 - o.0, n.1 - o.1);
+        let k = (ex * ny - ey * nx).abs().sqrt() / STEP_M;
+        if k.is_finite() && k > 0.0 { k } else { 1.0 }
+    }
+}
+
 #[derive(Debug, Clone)]
 enum Base {
     Utm(Utm),
     Merc,
+    Proj(Box<Proj>),
 }
 
 /// lon/lat → card mm for one card.
@@ -103,16 +160,27 @@ impl Projector {
     pub fn new(card: &Card) -> Projector {
         let (lon, lat) = card.center;
         let mm_per_m = card.mm_per_m();
-        let (base, center, fx, fy) = match card.projection {
+        let webmercator = || {
+            let k = lat.to_radians().cos();
+            (Base::Merc, merc_forward(lon, lat), k, k)
+        };
+        let (base, center, fx, fy) = match &card.projection {
             ProjectionMode::Utm => {
                 let utm = Utm::new(Utm::zone_for(lon), lat < 0.0);
                 let c = utm.forward(lon, lat);
                 (Base::Utm(utm), c, 1.0, 1.0)
             }
-            ProjectionMode::Webmercator => {
-                let k = lat.to_radians().cos();
-                (Base::Merc, merc_forward(lon, lat), k, k)
-            }
+            ProjectionMode::Webmercator => webmercator(),
+            // The profile checked the string when it was read; only a centre
+            // the projection cannot reach is left to fail here.
+            ProjectionMode::Proj(template) => match Proj::new(&ProjectionMode::proj_string(template, card.center)) {
+                Ok(p) => {
+                    let k = 1.0 / p.units_per_m(lon, lat);
+                    let c = p.forward(lon, lat);
+                    if c.0.is_finite() && c.1.is_finite() { (Base::Proj(Box::new(p)), c, k, k) } else { webmercator() }
+                }
+                Err(_) => webmercator(),
+            },
         };
         // Shapely's rotate(-bearing) about the card centre, in page space.
         let theta = (-card.bearing).to_radians();
@@ -131,10 +199,20 @@ impl Projector {
         let (x, y) = match &self.base {
             Base::Utm(u) => u.forward(lon, lat),
             Base::Merc => merc_forward(lon, lat),
+            Base::Proj(p) => p.forward(lon, lat),
         };
         let dx = (x - self.center.0) * self.sx;
         let dy = (y - self.center.1) * self.sy;
         (self.half.0 + dx * self.cos_b - dy * self.sin_b, self.half.1 + dx * self.sin_b + dy * self.cos_b)
+    }
+
+    /// Card mm back to `(lon, lat)`, for a PROJ projection; `None` for the
+    /// built-in ones, whose ground area is a geodesic rectangle anyway.
+    pub fn unproject(&self, x: f64, y: f64) -> Option<(f64, f64)> {
+        let Base::Proj(p) = &self.base else { return None };
+        let (px, py) = (x - self.half.0, y - self.half.1);
+        let (dx, dy) = (px * self.cos_b + py * self.sin_b, -px * self.sin_b + py * self.cos_b);
+        p.inverse(self.center.0 + dx / self.sx, self.center.1 + dy / self.sy)
     }
 
     pub fn project_geometry<G: MapCoords<f64, f64, Output = G>>(&self, g: &G) -> G {
@@ -220,6 +298,51 @@ mod tests {
         assert_abs_diff_eq!(p.project(north.0, north.1).0, 76.2, epsilon = 1e-9);
         let utm = Projector::new(&card(ProjectionMode::Utm)).project(north.0, north.1);
         assert!((utm.0 - 76.2).abs() > 0.1, "UTM leans: {}", utm.0);
+    }
+
+    #[test]
+    fn proj_strings_keep_the_scale_at_the_centre() {
+        use geographiclib_rs::{DirectGeodesic, Geodesic};
+        let card = |projection: &str| Card {
+            center: (-71.079, 42.3617),
+            width_mm: 152.4,
+            height_mm: 101.6,
+            scale: 8000.0,
+            bearing: 0.0,
+            projection: ProjectionMode::Proj(projection.into()),
+        };
+        let g = Geodesic::wgs84();
+        for def in ["+proj=tmerc +lat_0={lat} +lon_0={lng} +ellps=WGS84", "+proj=laea +lat_0={lat} +lon_0={lng}"] {
+            let c = card(def);
+            let p = Projector::new(&c);
+            let (x, y) = p.project(c.center.0, c.center.1);
+            assert_abs_diff_eq!(x, 76.2, epsilon = 1e-6);
+            assert_abs_diff_eq!(y, 50.8, epsilon = 1e-6);
+            // 500 m east is 500 m at 1:8000 = 62.5 mm, and north stays up.
+            let (lat2, lon2): (f64, f64) = g.direct(c.center.1, c.center.0, 90.0, 500.0);
+            let (x, _) = p.project(lon2, lat2);
+            assert_abs_diff_eq!(x - 76.2, 62.5, epsilon = 0.05);
+            let (lat3, lon3): (f64, f64) = g.direct(c.center.1, c.center.0, 0.0, 400.0);
+            let (x, y) = p.project(lon3, lat3);
+            assert_abs_diff_eq!(x, 76.2, epsilon = 0.01);
+            assert_abs_diff_eq!(50.8 - y, 50.0, epsilon = 0.05);
+            // The frame, taken back to the ground, is the card's own rectangle.
+            let back = c.query_polygon();
+            let plain = Card { projection: ProjectionMode::Utm, ..c.clone() }.query_polygon();
+            use geo::BoundingRect;
+            let (a, b) = (back.bounding_rect().unwrap(), plain.bounding_rect().unwrap());
+            assert_abs_diff_eq!(a.min().x, b.min().x, epsilon = 1e-4);
+            assert_abs_diff_eq!(a.max().y, b.max().y, epsilon = 1e-4);
+        }
+    }
+
+    #[test]
+    fn projections_read_from_the_card() {
+        let read = |p: &str| serde_saphyr::from_str::<crate::profile::MapSpec>(&format!("projection: \"{p}\"")).map(|m| m.projection);
+        assert_eq!(read("webmercator").unwrap(), ProjectionMode::Webmercator);
+        assert!(matches!(read("+proj=lcc +lat_1=40 +lat_2=44 +lon_0={lng}").unwrap(), ProjectionMode::Proj(_)));
+        assert!(read("+proj=nonsense").is_err());
+        assert!(read("mercator").unwrap_err().to_string().contains("PROJ string"));
     }
 
     #[test]

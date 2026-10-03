@@ -110,7 +110,7 @@ pub fn render(profile: &Profile, card: &Card, inputs: Inputs) -> Result<Rendered
     }
     let parts: Vec<(String, LayerParts)> = ids.into_iter().zip(done.into_iter().map(Option::unwrap)).collect();
 
-    let groups = compose(&parts);
+    let groups = profile.map.warp.apply(card.width_mm, card.height_mm, compose(&parts));
     Ok(Rendered {
         svg: write_svg(card.width_mm, card.height_mm, &groups),
         groups: groups.iter().map(|(id, lines)| (id.clone(), lines.len())).collect(),

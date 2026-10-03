@@ -46,14 +46,41 @@ pub struct Profile {
     pub compose: ComposeSpec,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Default)]
-#[serde(rename_all = "lowercase")]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum ProjectionMode {
     /// True distances; north turns with the distance from the zone's meridian.
     Utm,
     /// A crop of the web map, north up: what the web app's preview shows.
     #[default]
     Webmercator,
+    /// A PROJ string (`+proj=lcc +lat_1=40 +lat_2=44 +lon_0={lng}`), where
+    /// `{lat}` and `{lng}` stand for the card's centre.
+    Proj(String),
+}
+
+impl ProjectionMode {
+    /// The PROJ string with the card's centre written in.
+    pub fn proj_string(template: &str, (lon, lat): (f64, f64)) -> String {
+        template.replace("{lat}", &lat.to_string()).replace("{lng}", &lon.to_string())
+    }
+}
+
+impl<'de> Deserialize<'de> for ProjectionMode {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let text = String::deserialize(d)?;
+        match text.trim() {
+            "utm" => Ok(ProjectionMode::Utm),
+            "webmercator" => Ok(ProjectionMode::Webmercator),
+            s if s.contains("+proj=") => {
+                proj4rs::proj::Proj::from_proj_string(&ProjectionMode::proj_string(s, (0.0, 0.0)))
+                    .map_err(|e| serde::de::Error::custom(format!("projection {s:?}: {e}")))?;
+                Ok(ProjectionMode::Proj(s.to_string()))
+            }
+            s => Err(serde::de::Error::custom(format!(
+                "projection {s:?}: use utm, webmercator, or a PROJ string such as \"+proj=laea +lat_0={{lat}} +lon_0={{lng}}\""
+            ))),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -75,6 +102,9 @@ pub struct MapSpec {
     pub bearing: f64,
     #[serde(default)]
     pub projection: ProjectionMode,
+    /// Distortions of the finished drawing, in order; the card's edge stays.
+    #[serde(default)]
+    pub warp: crate::warp::Warps,
 }
 
 fn default_width() -> Mm {

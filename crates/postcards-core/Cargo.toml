@@ -10,6 +10,7 @@ penfill = { workspace = true }
 terramask = { workspace = true }
 geo = { workspace = true }
 geographiclib-rs = { workspace = true }
+proj4rs = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 serde-saphyr = { workspace = true }
