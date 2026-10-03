@@ -308,26 +308,19 @@ export default function Sidebar({ open, onClose, doc, setDoc, check, card, statu
           />
         </div>
         {titled && (
-          <div className="mt-[0.5lh] flex shrink-0 items-baseline gap-[1ch]">
-            <input
-              type="text"
-              spellCheck={false}
-              aria-label="Title"
-              title="The config's title: written in it as title:, so a shared config carries it"
-              placeholder="Untitled"
-              value={title}
-              className="h-auto min-w-0 flex-1 border-0 border-b border-dashed border-black/40 bg-transparent p-0 font-mono font-bold text-[length:inherit] leading-[1.6] outline-none placeholder:font-normal placeholder:text-black/40 focus:border-solid focus:border-black"
-              onChange={(e) => retitle(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === 'Escape') e.currentTarget.blur()
-              }}
-            />
-            {preset && (
-              <span className="min-w-0 shrink truncate opacity-60" title={`Styled as the preset “${preset.name}”`}>
-                {preset.name === title ? 'preset' : `preset · ${preset.name}`}
-              </span>
-            )}
-          </div>
+          <input
+            type="text"
+            spellCheck={false}
+            aria-label="Title"
+            title="The config's title: written in it as title:, so a shared config carries it"
+            placeholder="Untitled"
+            value={title}
+            className="mt-[0.5lh] h-auto w-full min-w-0 shrink-0 border border-black bg-white px-[1ch] font-mono text-[length:inherit] leading-[1.6] placeholder:text-black/40"
+            onChange={(e) => retitle(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === 'Escape') e.currentTarget.blur()
+            }}
+          />
         )}
         {notice && (
           <p className={`mt-[0.5lh] shrink-0 break-words ${notice.error ? 'font-bold' : 'opacity-60'}`}>
