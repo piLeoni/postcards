@@ -409,7 +409,7 @@ export default function MapView({
       {card && (
         <div ref={tagsRef} className="absolute left-0 top-0 z-20" style={{ display: 'none', willChange: 'transform' }}>
           <Tag
-            title="Place, paper, terrain, orientation and slices of the card"
+            title="Move, rotate and scale the card; its paper, slices and margins"
             aria-label="Transform the card"
             aria-expanded={menu}
             className={`cursor-pointer ${menu ? 'bg-black! text-white!' : ''}`}

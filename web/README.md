@@ -56,8 +56,9 @@ want it and press "generate card".
   under a drawn card saves the drawing as an SVG, one per sheet when the card
   is sliced.
 - "transform" on the card opens the `card:` block as controls
-  (`src/components/CardControls.jsx`): place, paper, terrain (scale and
-  ground, a padlock on the one the config holds), orientation and slices.
+  (`src/components/CardControls.jsx`): the place (move with latitude and
+  longitude, rotate, scale beside the ground, a padlock on the one the config
+  holds) and the paper (size, columns and rows, padding and gutter).
   Every label drags its value sideways (Shift: 15° steps for the bearing,
   bigger steps elsewhere) and every field takes it typed, the arrows stepping
   it. Lengths take `mm`, `cm` or `in`, ground `m`, `km`, `mi` or `ft`; a bare

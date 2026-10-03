@@ -107,18 +107,19 @@ export function Scrub({ icon, label, title, model, value, onChange, sign = 1, px
       }`}
       onPointerDown={onPointerDown ?? (model ? scrub : undefined)}
     >
-      {icon ? <span className="w-[1.5ch] text-center">{icon}</span> : <span className="w-[1.5ch]" />}
+      {icon && <span className="w-[1.5ch] text-center">{icon}</span>}
       <span>{label}</span>
       {children}
     </span>
   )
 }
 
-/** A heading over a group of rows, spanning the grid. */
-export function Section({ title, first = false }) {
+/** A titled group of rows on a grid of its own: `cols` is its Tailwind `grid-cols-*`. */
+export function Section({ title, cols, first = false, children }) {
   return (
-    <div className={`col-span-3 px-1 pt-1 text-[9px] uppercase tracking-wider opacity-50 ${first ? '' : 'mt-1 border-t border-black/20'}`}>
-      {title}
+    <div className={first ? '' : 'mt-1 border-t border-black/20 pt-1'}>
+      <div className="px-1 pb-0.5 text-[9px] uppercase tracking-wider opacity-50">{title}</div>
+      <div className={`grid items-center gap-x-1.5 gap-y-1 ${cols}`}>{children}</div>
     </div>
   )
 }
@@ -132,7 +133,7 @@ export function Lock({ locked, title, onToggle }) {
       title={title}
       aria-label={title}
       aria-pressed={locked}
-      className={`ml-auto inline-flex h-[1.4em] w-[1.4em] cursor-pointer items-center justify-center ${locked ? '' : 'opacity-35 hover:opacity-100'}`}
+      className={`inline-flex h-[1.4em] w-[1.4em] shrink-0 cursor-pointer items-center justify-center ${locked ? '' : 'opacity-35 hover:opacity-100'}`}
       onPointerDown={(e) => e.stopPropagation()}
       onClick={(e) => {
         e.stopPropagation()
