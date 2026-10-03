@@ -12,6 +12,8 @@ const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN || ''
 const GAP = 4
 /** Pixels the tags keep from the map's edges. */
 const EDGE = 8
+/** What floats over the map: the card, its menu, the buttons in the corner. */
+const RAISED = 'shadow-[0_2px_8px_rgba(0,0,0,0.18)]'
 
 /** A small tag on the map that acts as a button; not a WebTUI key. */
 function Tag({ title, onClick, className = 'cursor-pointer', children, ...rest }) {
@@ -114,7 +116,6 @@ export default function MapView({
   const overlayRef = useRef(null)
   const labelRef = useRef(null)
   const tagsRef = useRef(null)
-  const downloadRef = useRef(null)
   const awayRef = useRef(null)
   const readyRef = useRef(false)
   const lastFitRef = useRef('')
@@ -151,7 +152,7 @@ export default function MapView({
     const { clientWidth: W, clientHeight: H } = map.getContainer()
     const away = !b || b.x > W || b.y > H || b.x + b.w < 0 || b.y + b.h < 0
     if (awayRef.current) awayRef.current.style.display = cardRef.current && away ? '' : 'none'
-    const parts = [labelRef, tagsRef, downloadRef]
+    const parts = [labelRef, tagsRef]
     if (away || b.w < 4 || b.h < 4) {
       el.style.display = 'none'
       for (const r of parts) if (r.current) r.current.style.display = 'none'
@@ -163,10 +164,8 @@ export default function MapView({
     el.style.width = `${b.w}px`
     el.style.height = `${b.h}px`
     // Written here rather than by React, so a resize reads live.
-    // The label over the top edge, the tags under the bottom one, `download`
-    // flush left and the handles flush right; all outside, so the drawing is
-    // never covered, and `GAP` away from it.
-    if (downloadRef.current) downloadRef.current.style.transform = `translate(${b.x}px, ${b.y + b.h + GAP}px)`
+    // The label over the top edge and the tags under the bottom one, flush
+    // right; both outside, so the drawing is never covered, and `GAP` away.
     if (labelRef.current) {
       labelRef.current.textContent = sizeText(cardRef.current, unitsRef.current)
       labelRef.current.style.transform = `translate(${b.x}px, ${b.y - GAP}px) translateY(-100%)`
@@ -380,7 +379,7 @@ export default function MapView({
       */}
       <div
         ref={overlayRef}
-        className={`pointer-events-none absolute left-0 top-0 overflow-hidden shadow-[0_2px_8px_rgba(0,0,0,0.18)] ${
+        className={`pointer-events-none absolute left-0 top-0 overflow-hidden ${RAISED} ${
           drawing?.svg ? 'bg-white' : 'border border-black bg-white/20'
         }`}
         style={{ display: 'none', willChange: 'transform' }}
@@ -402,18 +401,6 @@ export default function MapView({
         />
       )}
 
-      {card && drawing?.svg && (
-        <div ref={downloadRef} className="absolute left-0 top-0 z-20 flex" style={{ display: 'none', willChange: 'transform' }}>
-          <Tag
-            title={slices ? `Save each of the ${slices} slices as its own SVG` : 'Save the drawing as an SVG'}
-            aria-label="Download the card"
-            onClick={onDownload}
-          >
-            {slices ? `↓ download ${slices} slices` : '↓ download'}
-          </Tag>
-        </div>
-      )}
-
       {card && (
         <div ref={tagsRef} className="absolute left-0 top-0 z-[25] flex flex-col items-end" style={{ display: 'none', willChange: 'transform' }}>
           <Tag
@@ -426,7 +413,7 @@ export default function MapView({
             transform {menu ? '▴' : '▾'}
           </Tag>
           {menu && (
-            <div className="mt-1 max-h-[70vh] overflow-y-auto bg-white/95 p-1.5 shadow-[0_2px_8px_rgba(0,0,0,0.18)]">
+            <div className={`mt-1 max-h-[70vh] overflow-y-auto bg-white/95 p-1.5 ${RAISED}`}>
               <CardControls card={card} units={units} onEdit={onCardKeys} onMove={startDrag} />
             </div>
           )}
@@ -434,12 +421,26 @@ export default function MapView({
       )}
 
       {card && (
-        <div className="absolute top-2 right-2 z-20 flex gap-1">
+        <div className="absolute top-2 right-2 z-20 flex gap-1.5">
           <span ref={awayRef} className="bg-white/90 px-1.5 py-0.5 font-mono text-[10px] whitespace-nowrap opacity-60" style={{ display: 'none' }}>
-            The card is out of view
+            The selection is out of view
           </span>
-          <Tag title="Move the card to the middle of the map" onClick={onCardToCentre}>card to centre</Tag>
-          <Tag title="Move the map so the card is in the middle" onClick={onCentreOnCard}>centre on card</Tag>
+          {drawing?.svg && (
+            <Tag
+              title={slices ? `Save each of the ${slices} slices as its own SVG` : 'Save the drawing as an SVG'}
+              aria-label="Download the card"
+              className={`cursor-pointer bg-black! text-white! hover:underline ${RAISED}`}
+              onClick={onDownload}
+            >
+              {slices ? `↓ download ${slices} slices` : '↓ download'}
+            </Tag>
+          )}
+          <Tag title="Move the selection to the middle of the map" className={`cursor-pointer ${RAISED}`} onClick={onCardToCentre}>
+            selection to map
+          </Tag>
+          <Tag title="Move the map so the selection is in the middle" className={`cursor-pointer ${RAISED}`} onClick={onCentreOnCard}>
+            map to selection
+          </Tag>
         </div>
       )}
 

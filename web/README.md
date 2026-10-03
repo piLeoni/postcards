@@ -52,9 +52,11 @@ want it and press "generate card".
   format the CLI reads, so anything you write there works in `postcards-rs map`
   too. `cargo run --example check_web_presets` parses each one, so a preset that
   stops parsing fails there rather than in a browser.
-- "load" and "save" in the sidebar read and write the config; "download"
-  under a drawn card saves the drawing as an SVG, one per sheet when the card
-  is sliced.
+- "load" and "save" in the sidebar read and write the config; "download",
+  in black in the map's corner once the card is drawn, saves the drawing as
+  an SVG, one per sheet when the card is sliced. Beside it, "selection to
+  map" brings the card to the middle of the map and "map to selection" the
+  map to the card.
 - "transform" on the card opens the `card:` block as controls
   (`src/components/CardControls.jsx`): the place (move with latitude and
   longitude, rotate, scale, the terrain the card covers) and the output (the

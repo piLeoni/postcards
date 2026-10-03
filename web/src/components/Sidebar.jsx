@@ -122,7 +122,7 @@ export default function Sidebar({ open, onClose, doc, setDoc, card, status, draw
 
   return (
     <aside
-      className={`fixed inset-x-0 bottom-0 z-40 flex h-[85vh] min-h-0 w-full min-w-0 flex-col border-t border-black bg-white px-[2ch] transition-transform duration-200 lg:relative lg:z-auto lg:h-full lg:w-[var(--side-w)] lg:shrink-0 lg:translate-y-0 lg:pointer-events-auto lg:border-t-0 lg:border-l ${
+      className={`fixed inset-x-0 bottom-0 z-40 flex h-[85vh] min-h-0 w-full min-w-0 flex-col border-t border-black bg-white px-[2ch] transition-transform duration-200 lg:relative lg:z-30 lg:h-full lg:shadow-[-4px_0_14px_rgba(0,0,0,0.16)] lg:w-[var(--side-w)] lg:shrink-0 lg:translate-y-0 lg:pointer-events-auto lg:border-t-0 lg:border-l ${
         open ? 'translate-y-0' : 'pointer-events-none translate-y-full'
       }`}
       style={{ color: '#000', backgroundColor: '#fff', '--side-w': `${expanded ? clampWidth(Infinity) : width}px` }}
