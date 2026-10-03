@@ -58,9 +58,9 @@ want it and press "generate card".
 - "transform" on the card opens the `card:` block as controls
   (`src/components/CardControls.jsx`): the place (move with latitude and
   longitude, rotate, scale, the terrain the card covers) and the output (the
-  paper's size, columns and rows, padding and gutter). The scale ties output
-  and terrain: a new scale changes the terrain on the same paper, a new
-  terrain or paper size changes the other at the same scale.
+  paper's size, columns and rows, margin, gutter). The output only changes
+  when edited: a new terrain is a new scale, a new scale a new terrain, and a
+  new paper size takes in more or less terrain at the same scale.
   Every label drags its value sideways (Shift: 15° steps for the bearing,
   bigger steps elsewhere) and every field takes it typed, the arrows stepping
   it. Lengths take `mm`, `cm` or `in`, terrain `m`, `km`, `mi` or `ft`; a bare

@@ -56,6 +56,29 @@ impl<'de> Deserialize<'de> for Mm {
     }
 }
 
+/// A length across and one down, in mm: one length for both (`5mm`) or a
+/// pair, across first (`[5mm, 3mm]`).
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct MmXY {
+    pub x: f64,
+    pub y: f64,
+}
+
+impl<'de> Deserialize<'de> for MmXY {
+    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum Form {
+            One(Mm),
+            Two([Mm; 2]),
+        }
+        Ok(match Form::deserialize(d).map_err(|_| de::Error::custom("a length, or two: [across, down]"))? {
+            Form::One(Mm(v)) => MmXY { x: v, y: v },
+            Form::Two([Mm(x), Mm(y)]) => MmXY { x, y },
+        })
+    }
+}
+
 /// Map scale as its denominator: `1:10000` is `10000.0`.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Scale(pub f64);
@@ -117,6 +140,15 @@ mod tests {
         assert_eq!(parse_length_mm("152.4").unwrap(), 152.4);
         assert_eq!(parse_length_mm("3cm").unwrap(), 30.0);
         assert!(parse_length_mm("3furlongs").is_err());
+    }
+
+    #[test]
+    fn one_length_or_two() {
+        let one: MmXY = serde_saphyr::from_str("0.25in").unwrap();
+        assert_eq!(one, MmXY { x: 6.35, y: 6.35 });
+        let two: MmXY = serde_saphyr::from_str("[5mm, 3]").unwrap();
+        assert_eq!(two, MmXY { x: 5.0, y: 3.0 });
+        assert!(serde_saphyr::from_str::<MmXY>("[1, 2, 3]").is_err());
     }
 
     #[test]

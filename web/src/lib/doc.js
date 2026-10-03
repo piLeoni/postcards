@@ -25,7 +25,7 @@ const UNITS = {
 
 /**
  * The unit a length of the `card:` block is written in: `'padding'` for
- * `padding: 0.25in`, `'slices.padding'` for the gutter inside `slices:`
+ * `padding: 0.25in`, `'slices.gutter'` for the gutter inside `slices:`
  * (flow or block). `null` when the key is not there or carries no unit.
  */
 export function cardUnit(text, key) {
@@ -40,8 +40,8 @@ export function cardUnit(text, key) {
   while (i + 1 + under < b.end && lines[i + 1 + under].match(/^\s*/)[0].length > b.indent.length) under++
   let value = lines.slice(i, i + 1 + under).join(' ').replace(/#.*$/gm, '')
   value = value.slice(value.indexOf(':') + 1)
-  if (inner) value = value.match(new RegExp(`\\b${inner}\\s*:\\s*([^,}\\n]*)`))?.[1] ?? ''
-  const unit = value.trim().match(/^[\d.]+\s*([a-z"]+)/i)?.[1]?.toLowerCase()
+  if (inner) value = value.match(new RegExp(`\\b${inner}\\s*:\\s*(\\[[^\\]]*\\]|[^,}\\n]*)`))?.[1] ?? ''
+  const unit = value.trim().match(/^\[?\s*[\d.]+\s*([a-z"]+)/i)?.[1]?.toLowerCase()
   return UNITS[unit] ?? null
 }
 

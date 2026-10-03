@@ -95,8 +95,9 @@ pub fn osm_evict(entries: &str, now: f64) -> Result<Vec<u32>, JsValue> {
 
 /// The card's centre and size, so the page can place the rectangle on the map.
 ///
-/// Returns `{ lat, lng, width_mm, height_mm, scale, bearing, padding_mm,
-/// columns, rows, slice_padding_mm, projection }`, the projection as
+/// Returns `{ lat, lng, width_mm, height_mm, scale, bearing, padding_x_mm,
+/// padding_y_mm, columns, rows, gutter_x_mm, gutter_y_mm, projection }`, the
+/// projection as
 /// `webmercator`, `utm` or the PROJ string.
 #[wasm_bindgen(js_name = cardInfo)]
 pub fn card_info(doc: &str) -> Result<JsValue, JsValue> {
@@ -117,10 +118,12 @@ pub fn card_info(doc: &str) -> Result<JsValue, JsValue> {
         ("height_mm", d.card.height_mm),
         ("scale", d.card.scale),
         ("bearing", d.card.bearing),
-        ("padding_mm", spec.padding.0),
+        ("padding_x_mm", spec.padding.x),
+        ("padding_y_mm", spec.padding.y),
         ("columns", spec.slices.columns.max(1) as f64),
         ("rows", spec.slices.rows.max(1) as f64),
-        ("slice_padding_mm", spec.slices.padding.0),
+        ("gutter_x_mm", spec.slices.gutter.x),
+        ("gutter_y_mm", spec.slices.gutter.y),
     ] {
         js_sys::Reflect::set(&o, &JsValue::from_str(k), &JsValue::from_f64(v)).ok();
     }

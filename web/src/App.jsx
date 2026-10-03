@@ -9,7 +9,7 @@ import { terrainPair } from './components/controls'
 /** Where the card is, how big, how it is cut and drawn: a drawing is only good for one of these. */
 const placeOf = (c) =>
   c
-    ? [c.lat, c.lng, c.width_mm, c.height_mm, c.scale, c.bearing, c.padding_mm, c.columns, c.rows, c.slice_padding_mm, c.projection].join()
+    ? [c.lat, c.lng, c.width_mm, c.height_mm, c.scale, c.bearing, c.padding_x_mm, c.padding_y_mm, c.columns, c.rows, c.gutter_x_mm, c.gutter_y_mm, c.projection].join()
     : ''
 
 /**
@@ -24,7 +24,7 @@ function unitsOf(doc) {
     width: paper,
     height: cardUnit(doc, 'height') ?? paper,
     padding: cardUnit(doc, 'padding') ?? paper,
-    gutter: cardUnit(doc, 'slices.padding') ?? paper,
+    gutter: cardUnit(doc, 'slices.gutter') ?? paper,
     terrain: doc.match(/^\s+scale\s*:.*#\s*terrain [\d.]+ × [\d.]+ (m|km|mi|ft)\b/m)?.[1] ?? (paper === 'in' ? 'mi' : 'km'),
   }
 }

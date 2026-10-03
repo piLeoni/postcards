@@ -162,7 +162,7 @@ pub fn run_with(grammar: &Grammar, card: &Card, inputs: Inputs, draw: &Task) -> 
 
     let svg_task = draw.child("svg", "svg", 0, "");
     let spec = &grammar.card;
-    let paper = crate::sheets::lay_out(card.width_mm, card.height_mm, spec.padding.0, &spec.slices, groups);
+    let paper = crate::sheets::lay_out(card.width_mm, card.height_mm, spec.padding, &spec.slices, groups);
     let strokes: usize = paper.groups.iter().map(|(_, n)| n).sum();
     let cut = if paper.slices.is_empty() { String::new() } else { format!(" · {} slices", paper.slices.len()) };
     svg_task.ok(&format!("{} strokes · {:.1} MB{cut}", thousands(strokes as u64), paper.svg.len() as f64 / 1e6));

@@ -1,7 +1,7 @@
 //! The declarative profile: map frame, layers, stacking. YAML is the primary
 //! format; JSON5 is accepted for the same schema.
 
-use crate::units::{Mm, Scale};
+use crate::units::{Mm, MmXY, Scale};
 use serde::de::{self, Deserializer, MapAccess, Visitor};
 use serde::Deserialize;
 use serde_json::Value;
@@ -105,9 +105,10 @@ pub struct MapSpec {
     /// Distortions of the ground before drawing, in order; the card's edge stays.
     #[serde(default)]
     pub warp: crate::warp::Warps,
-    /// Blank margin inside the paper's edge; the paper keeps its size.
+    /// Blank margin inside the paper's edge, across and down; the paper keeps
+    /// its size.
     #[serde(default)]
-    pub padding: Mm,
+    pub padding: MmXY,
     /// The card cut into sheets, each written on its own.
     #[serde(default)]
     pub slices: crate::sheets::Slices,

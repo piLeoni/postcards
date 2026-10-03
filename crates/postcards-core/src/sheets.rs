@@ -1,11 +1,12 @@
 //! The paper the drawing goes on: a blank `padding` inside the card's edge,
-//! and the card cut into `slices`, `columns × rows` sheets of equal size, each
-//! with its own blank margin (`slices.padding`), like the panels of a
-//! triptych. Both crop the composed drawing; nothing is moved or scaled.
+//! and the card cut into `slices`, `columns × rows` sheets of equal size with
+//! a blank `slices.gutter` between their drawings, half on each side of a
+//! cut, like the panels of a triptych. Both crop the composed drawing;
+//! nothing is moved or scaled.
 
 use crate::geom::Lines;
 use crate::svg::write_svg;
-use crate::units::Mm;
+use crate::units::MmXY;
 use geo::{Coord, LineString};
 use serde::Deserialize;
 
@@ -16,9 +17,10 @@ pub struct Slices {
     pub columns: u32,
     #[serde(default = "one")]
     pub rows: u32,
-    /// Blank margin inside each sheet's edge.
+    /// Blank space between neighbouring sheets' drawings, across and down;
+    /// the outer edges keep the card's padding.
     #[serde(default)]
-    pub padding: Mm,
+    pub gutter: MmXY,
 }
 
 fn one() -> u32 {
@@ -27,7 +29,7 @@ fn one() -> u32 {
 
 impl Default for Slices {
     fn default() -> Self {
-        Slices { columns: 1, rows: 1, padding: Mm(0.0) }
+        Slices { columns: 1, rows: 1, gutter: MmXY::default() }
     }
 }
 
@@ -44,20 +46,20 @@ pub struct Sheet {
 }
 
 /// The sheets of a `width × height` mm card, row by row.
-pub fn sheets(width: f64, height: f64, padding: f64, slices: &Slices) -> Vec<Sheet> {
+pub fn sheets(width: f64, height: f64, padding: MmXY, slices: &Slices) -> Vec<Sheet> {
     let (cols, rows) = (slices.columns.max(1), slices.rows.max(1));
     let (sw, sh) = (width / cols as f64, height / rows as f64);
-    let gap = slices.padding.0;
+    let (hx, hy) = (slices.gutter.x / 2.0, slices.gutter.y / 2.0);
     let mut out = Vec::new();
     for r in 0..rows {
         for c in 0..cols {
             let (x0, y0) = (c as f64 * sw, r as f64 * sh);
             let at = [x0, y0, x0 + sw, y0 + sh];
             let inner = [
-                (x0 + gap).max(padding),
-                (y0 + gap).max(padding),
-                (x0 + sw - gap).min(width - padding),
-                (y0 + sh - gap).min(height - padding),
+                if c == 0 { padding.x } else { x0 + hx },
+                if r == 0 { padding.y } else { y0 + hy },
+                if c + 1 == cols { width - padding.x } else { x0 + sw - hx },
+                if r + 1 == rows { height - padding.y } else { y0 + sh - hy },
             ];
             out.push(Sheet { name: format!("r{}c{}", r + 1, c + 1), at, inner });
         }
@@ -76,9 +78,9 @@ pub struct Paper {
 
 /// Lay the composed groups on the paper: cropped to the padding and the
 /// sheets' margins, then cut into one drawing per sheet.
-pub fn lay_out(width: f64, height: f64, padding: f64, slices: &Slices, groups: Vec<(String, Lines)>) -> Paper {
+pub fn lay_out(width: f64, height: f64, padding: MmXY, slices: &Slices, groups: Vec<(String, Lines)>) -> Paper {
     let sheets = sheets(width, height, padding, slices);
-    let cropped = padding > 0.0 || slices.padding.0 > 0.0 || sheets.len() > 1;
+    let cropped = padding.x > 0.0 || padding.y > 0.0 || sheets.len() > 1;
     let whole: Vec<(String, Lines)> = if cropped {
         groups.iter().map(|(id, lines)| (id.clone(), sheets.iter().flat_map(|s| clip(lines, s.inner)).collect())).collect()
     } else {
@@ -190,14 +192,19 @@ mod tests {
 
     #[test]
     fn sheets_share_the_card_and_keep_their_margins() {
-        let s = sheets(150.0, 100.0, 5.0, &Slices { columns: 3, rows: 2, padding: Mm(2.0) });
+        let even = |v| MmXY { x: v, y: v };
+        let s = sheets(150.0, 100.0, even(5.0), &Slices { columns: 3, rows: 2, gutter: even(4.0) });
         assert_eq!(s.len(), 6);
         assert_eq!(s[0].name, "r1c1");
         assert_eq!(s[5].name, "r2c3");
         assert_eq!(s[0].at, [0.0, 0.0, 50.0, 50.0]);
-        // The card's padding wins on the outside edges, the sheet's on the inner ones.
+        // The card's padding on the outside edges, half the gutter on each side of a cut.
         assert_eq!(s[0].inner, [5.0, 5.0, 48.0, 48.0]);
         assert_eq!(s[4].inner, [52.0, 52.0, 98.0, 95.0]);
+        let thin = sheets(150.0, 100.0, even(0.0), &Slices { columns: 2, rows: 1, gutter: even(6.0) });
+        assert_eq!(thin[0].inner, [0.0, 0.0, 72.0, 100.0], "a gutter leaves the outer edges alone");
+        let apart = sheets(150.0, 100.0, MmXY { x: 6.0, y: 2.0 }, &Slices { columns: 2, rows: 2, gutter: MmXY { x: 8.0, y: 0.0 } });
+        assert_eq!(apart[3].inner, [79.0, 50.0, 144.0, 98.0], "across and down apart");
     }
 
     #[test]
@@ -212,11 +219,11 @@ mod tests {
     #[test]
     fn a_cut_card_writes_one_drawing_per_sheet() {
         let across = LineString::from(vec![(0.0, 50.0), (150.0, 50.0)]);
-        let paper = lay_out(150.0, 100.0, 0.0, &Slices { columns: 2, rows: 1, padding: Mm(3.0) }, vec![("g".into(), vec![across])]);
+        let paper = lay_out(150.0, 100.0, MmXY::default(), &Slices { columns: 2, rows: 1, gutter: MmXY { x: 6.0, y: 6.0 } }, vec![("g".into(), vec![across])]);
         assert_eq!(paper.groups, vec![("g".to_string(), 2)], "the gutter splits the line");
         assert_eq!(paper.slices.len(), 2);
         assert!(paper.slices[1].1.contains("width=\"75mm\""), "{}", &paper.slices[1].1[..200]);
-        let one = lay_out(150.0, 100.0, 0.0, &Slices::default(), vec![("g".into(), vec![])]);
+        let one = lay_out(150.0, 100.0, MmXY::default(), &Slices::default(), vec![("g".into(), vec![])]);
         assert!(one.slices.is_empty());
     }
 }

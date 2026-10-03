@@ -96,8 +96,8 @@ export function cardBox(map, card) {
 export function sheetsOf(card) {
   const cols = Math.max(1, card.columns ?? 1)
   const rows = Math.max(1, card.rows ?? 1)
-  const pad = card.padding_mm ?? 0
-  const gap = card.slice_padding_mm ?? 0
+  const [px, py] = [card.padding_x_mm ?? 0, card.padding_y_mm ?? 0]
+  const [hx, hy] = [(card.gutter_x_mm ?? 0) / 2, (card.gutter_y_mm ?? 0) / 2]
   const [w, h] = [card.width_mm, card.height_mm]
   const [sw, sh] = [w / cols, h / rows]
   const out = []
@@ -106,7 +106,12 @@ export function sheetsOf(card) {
       const [x0, y0] = [c * sw, r * sh]
       out.push({
         at: [x0, y0, x0 + sw, y0 + sh],
-        inner: [Math.max(x0 + gap, pad), Math.max(y0 + gap, pad), Math.min(x0 + sw - gap, w - pad), Math.min(y0 + sh - gap, h - pad)],
+        inner: [
+          c === 0 ? px : x0 + hx,
+          r === 0 ? py : y0 + hy,
+          c === cols - 1 ? w - px : x0 + sw - hx,
+          r === rows - 1 ? h - py : y0 + sh - hy,
+        ],
       })
     }
   }
@@ -115,7 +120,7 @@ export function sheetsOf(card) {
 
 /** Whether the card is cut or padded at all. */
 export function hasLayout(card) {
-  return (card?.columns ?? 1) > 1 || (card?.rows ?? 1) > 1 || (card?.padding_mm ?? 0) > 0 || (card?.slice_padding_mm ?? 0) > 0
+  return (card?.columns ?? 1) > 1 || (card?.rows ?? 1) > 1 || (card?.padding_x_mm ?? 0) > 0 || (card?.padding_y_mm ?? 0) > 0
 }
 
 /** Standard paper sizes, named in the card's label; landscape, in their own units. */

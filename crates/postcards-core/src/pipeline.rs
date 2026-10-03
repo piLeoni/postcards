@@ -113,7 +113,7 @@ pub fn render(profile: &Profile, card: &Card, inputs: Inputs) -> Result<Rendered
     let parts: Vec<(String, LayerParts)> = ids.into_iter().zip(done.into_iter().map(Option::unwrap)).collect();
 
     let map = &profile.map;
-    let paper = crate::sheets::lay_out(card.width_mm, card.height_mm, map.padding.0, &map.slices, compose(&parts));
+    let paper = crate::sheets::lay_out(card.width_mm, card.height_mm, map.padding, &map.slices, compose(&parts));
     Ok(Rendered { svg: paper.svg, groups: paper.groups, slices: paper.slices })
 }
 

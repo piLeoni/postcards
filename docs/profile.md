@@ -343,8 +343,8 @@ card:
 
 Paper × scale = terrain. The card writes the paper (`width`, `height`) and
 the `scale`; the terrain follows. The web app notes it beside the scale,
-`scale: "1:8000"   # terrain 1.22 × 0.813 km`, and lets you edit it: a wider
-terrain is a wider paper at the same scale.
+`scale: "1:8000"   # terrain 1.22 × 0.813 km`, and lets you edit it: more
+terrain on the same paper is a smaller scale.
 
 `card.bearing` turns the ground under the card, in degrees clockwise like the
 web map's bearing; the paper stays square to the page. In the web app the
@@ -355,17 +355,19 @@ with Shift.
 its size and the drawing stops short of it. `card.slices` cuts the card into
 `columns × rows` sheets of equal size, each written as its own SVG
 (`card_r1c2.svg`: row 1, column 2, next to `card.svg`; the web app downloads
-one file per sheet). `slices.padding` is a gutter inside every sheet, so the
-sheets hang side by side like a triptych with the map hidden in the gaps:
+one file per sheet). `slices.gutter` is the blank between neighbouring
+sheets' drawings, half on each side of a cut; the outer edges keep the card's
+padding. The sheets hang side by side like a triptych with the map hidden in
+the gaps. Both take one length, or two, across then down:
 
 ```yaml
 card:
-  padding: 5mm
-  slices: { columns: 3, rows: 2, padding: 2mm }
+  padding: [5mm, 3mm]
+  slices: { columns: 3, rows: 2, gutter: 4mm }
 ```
 
 The web app writes all three from the transform menu, live, and draws the cut
-lines and the sheets' margins over the card.
+lines and the margins over the card.
 
 ---
 
