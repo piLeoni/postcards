@@ -10,6 +10,8 @@ const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN || ''
 
 /** Space between the card and the label above it or the tags below it, px. */
 const GAP = 4
+/** Pixels the tags keep from the map's edges. */
+const EDGE = 8
 
 /** A small tag on the map that acts as a button; not a WebTUI key. */
 function Tag({ title, onClick, className = 'cursor-pointer', children, ...rest }) {
@@ -169,8 +171,14 @@ export default function MapView({
       labelRef.current.textContent = sizeText(cardRef.current, unitsRef.current)
       labelRef.current.style.transform = `translate(${b.x}px, ${b.y - GAP}px) translateY(-100%)`
     }
+    // The tags, and the menu open under them, stay on the map: past its right
+    // or bottom edge they wait in that corner, so the card can be worked on
+    // zoomed in on any part of it.
     if (tagsRef.current) {
-      tagsRef.current.style.transform = `translate(${b.x + b.w}px, ${b.y + b.h + GAP}px) translateX(-100%)`
+      const t = tagsRef.current
+      const x = Math.max(Math.min(b.x + b.w, W - EDGE), t.offsetWidth + EDGE)
+      const y = Math.max(Math.min(b.y + b.h + GAP, H - t.offsetHeight - EDGE), EDGE)
+      t.style.transform = `translate(${x}px, ${y}px) translateX(-100%)`
     }
   }, [])
 
@@ -407,7 +415,7 @@ export default function MapView({
       )}
 
       {card && (
-        <div ref={tagsRef} className="absolute left-0 top-0 z-20" style={{ display: 'none', willChange: 'transform' }}>
+        <div ref={tagsRef} className="absolute left-0 top-0 z-[25] flex flex-col items-end" style={{ display: 'none', willChange: 'transform' }}>
           <Tag
             title="Move, rotate and scale the card; its paper, slices and margins"
             aria-label="Transform the card"
@@ -418,7 +426,7 @@ export default function MapView({
             transform {menu ? '▴' : '▾'}
           </Tag>
           {menu && (
-            <div className="absolute right-0 top-full mt-1 max-h-[70vh] overflow-y-auto bg-white/95 p-1.5 shadow-[0_2px_8px_rgba(0,0,0,0.18)]">
+            <div className="mt-1 max-h-[70vh] overflow-y-auto bg-white/95 p-1.5 shadow-[0_2px_8px_rgba(0,0,0,0.18)]">
               <CardControls card={card} units={units} onEdit={onCardKeys} onMove={startDrag} />
             </div>
           )}

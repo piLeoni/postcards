@@ -67,6 +67,24 @@ export function Field({ label, title, model, value, onChange, muted = false, cla
  * the sideways drag with one of the caller's (moving the card on the map).
  */
 export function Scrub({ icon, label, title, model, value, onChange, sign = 1, px = PX_PER_STEP, onPointerDown, children }) {
+  // Held from press to release: the pointer outruns the label, and what it
+  // passes over must not light up instead.
+  const [held, setHeld] = useState(false)
+  const hold = (e) => {
+    // A pointer already gone (or a synthetic one) cannot be captured.
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId)
+    } catch {}
+    setHeld(true)
+    const release = () => {
+      setHeld(false)
+      window.removeEventListener('pointerup', release)
+      window.removeEventListener('pointercancel', release)
+    }
+    window.addEventListener('pointerup', release)
+    window.addEventListener('pointercancel', release)
+    ;(onPointerDown ?? scrub)(e)
+  }
   const scrub = (e) => {
     e.preventDefault()
     e.stopPropagation()
@@ -104,8 +122,8 @@ export function Scrub({ icon, label, title, model, value, onChange, sign = 1, px
       aria-label={label}
       className={`flex items-center gap-1 whitespace-nowrap px-1 select-none ${
         draggable ? `hover:bg-black hover:text-white ${onPointerDown ? 'cursor-grab active:cursor-grabbing' : 'cursor-ew-resize'}` : ''
-      }`}
-      onPointerDown={onPointerDown ?? (model ? scrub : undefined)}
+      } ${held ? 'bg-black text-white' : ''}`}
+      onPointerDown={draggable ? hold : undefined}
     >
       {icon && <span className="w-[1.5ch] text-center">{icon}</span>}
       <span>{label}</span>

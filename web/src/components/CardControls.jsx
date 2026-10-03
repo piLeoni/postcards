@@ -4,6 +4,9 @@ import { angleModel, countModel, degreesModel, Field, lengthModel, Scrub, scaleM
 /** Degrees the map turns per pixel a label is dragged. */
 const PX_PER_DEG = 2.5
 
+/** Both sections share one shape so their fields line up: a label, two values. */
+const COLS = 'grid-cols-[10ch_13ch_13ch]'
+
 /** The `slices:` key for a cut; the default (one sheet, no gutter) leaves it out. */
 function slicesKey({ columns, rows, gutter }) {
   const cut = columns > 1 || rows > 1 || gutter.mm > 0
@@ -52,15 +55,30 @@ export default function CardControls({ card, units, onEdit, onMove }) {
   const setScale = (v) => onEdit({ scale: `"1:${Math.round(v)}"` })
   const setBearing = (b) => onEdit({ bearing: b })
   const setSlices = (patch) => onEdit({ slices: slicesKey({ columns, rows, gutter, ...patch }) })
-  // Dragging the terrain grows both sides together.
+  // Dragging a row's label moves both its values: sizes keep their shape.
   const growTerrain = (t) => {
     const k = t.m / terrainW.m
     onEdit({ width: paperFor(terrainW.m * k, u.width), height: paperFor(terrainH.m * k, u.height) })
   }
+  const growPaper = (v) => {
+    const k = v.mm / width.mm
+    onEdit({ width: lengthText(v.mm, u.width), height: lengthText(height.mm * k, u.height) })
+  }
+  const sheets = {
+    nudge: (v, n, shift) => ({ columns: countModel.nudge(v.columns, n, shift), rows: countModel.nudge(v.rows, n, shift) }),
+  }
+  const margins = {
+    nudge: (v, n, shift) => ({ padding: margin.nudge(v.padding, n, shift), gutter: gap.nudge(v.gutter, n, shift) }),
+  }
+  const setMargins = (v) =>
+    onEdit({
+      padding: v.padding.mm > 0 ? lengthText(v.padding.mm, v.padding.unit) : null,
+      slices: slicesKey({ columns, rows, gutter: v.gutter }),
+    })
 
   return (
     <div className="w-max font-mono text-[10px]">
-      <Section title="place" cols="grid-cols-[auto_13ch_13ch]" first>
+      <Section title="place" cols={COLS} first>
         <Scrub icon="✥" label="move" title="Drag to move the card across the map" onPointerDown={onMove} />
         <Field label="latitude" title="Latitude of the card's centre" model={lat} value={card.lat} onChange={(v) => onEdit({ lat: v })} />
         <Field label="longitude" title="Longitude of the card's centre" model={lng} value={card.lng} onChange={(v) => onEdit({ lng: v })} />
@@ -99,21 +117,18 @@ export default function CardControls({ card, units, onEdit, onMove }) {
         />
       </Section>
 
-      <Section title="output" cols="grid-cols-[auto_8ch_auto_8ch]">
-        <Scrub label="width" title="Drag or type the paper's width: mm, cm or in; the terrain follows" model={paperW} value={width} onChange={setWidth} />
-        <Field label="paper width" model={paperW} value={width} onChange={setWidth} />
-        <Scrub label="height" title="Drag or type the paper's height: mm, cm or in; the terrain follows" model={paperH} value={height} onChange={setHeight} />
-        <Field label="paper height" model={paperH} value={height} onChange={setHeight} />
+      <Section title="output" cols={COLS}>
+        <Scrub icon="□" label="size" title="Drag to grow or shrink the paper at the same scale: the terrain follows" model={paperW} value={width} onChange={growPaper} />
+        <Field label="width" title="The paper's width: mm, cm or in; the terrain follows" model={paperW} value={width} onChange={setWidth} />
+        <Field label="height" title="The paper's height: mm, cm or in; the terrain follows" model={paperH} value={height} onChange={setHeight} />
 
-        <Scrub label="columns" title="Sheets across" model={countModel} value={columns} px={12} onChange={(v) => setSlices({ columns: v })} />
-        <Field label="columns" model={countModel} value={columns} onChange={(v) => setSlices({ columns: v })} />
-        <Scrub label="rows" title="Sheets down" model={countModel} value={rows} px={12} onChange={(v) => setSlices({ rows: v })} />
-        <Field label="rows" model={countModel} value={rows} onChange={(v) => setSlices({ rows: v })} />
+        <Scrub icon="⊞" label="slices" title="Drag to cut the paper into more or fewer sheets" model={sheets} value={{ columns, rows }} px={12} onChange={setSlices} />
+        <Field label="columns" title="Sheets across" model={countModel} value={columns} onChange={(v) => setSlices({ columns: v })} />
+        <Field label="rows" title="Sheets down" model={countModel} value={rows} onChange={(v) => setSlices({ rows: v })} />
 
-        <Scrub label="padding" title="Blank margin inside the paper's edge" model={margin} value={padding} onChange={setPadding} />
-        <Field label="padding" model={margin} value={padding} onChange={setPadding} />
-        <Scrub label="gutter" title="Blank margin inside every sheet" model={gap} value={gutter} onChange={(v) => setSlices({ gutter: v })} />
-        <Field label="gutter" model={gap} value={gutter} onChange={(v) => setSlices({ gutter: v })} />
+        <Scrub icon="▣" label="margins" title="Drag to widen or narrow both margins" model={margins} value={{ padding, gutter }} onChange={setMargins} />
+        <Field label="padding" title="Blank margin inside the paper's edge" model={margin} value={padding} onChange={setPadding} />
+        <Field label="gutter" title="Blank margin inside every sheet" model={gap} value={gutter} onChange={(v) => setSlices({ gutter: v })} />
       </Section>
     </div>
   )

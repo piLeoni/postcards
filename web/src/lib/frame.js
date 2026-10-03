@@ -148,8 +148,14 @@ export function paperName(card) {
   return p?.name ?? null
 }
 
-/** A length in mm written in `unit`, to the thousandth: `6.35, 'in'` → "0.25in". */
-export const lengthText = (mm, unit = 'mm') => `${Math.round((mm / MM_PER[unit]) * 1000) / 1000}${unit}`
+/** Decimals a paper length keeps: a tenth of a millimetre, a hundredth of a cm or inch. */
+const LENGTH_DECIMALS = { mm: 1, cm: 2, in: 2 }
+
+/** A length in mm written in `unit`, to its decimals: `6.35, 'in'` → "0.25in". */
+export const lengthText = (mm, unit = 'mm') => {
+  const f = 10 ** LENGTH_DECIMALS[unit]
+  return `${Math.round((mm / MM_PER[unit]) * f) / f}${unit}`
+}
 
 /** Three significant figures: 24873 → 24900. */
 export function sig3(x) {
