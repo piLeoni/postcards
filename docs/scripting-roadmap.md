@@ -252,13 +252,45 @@ Done when: a script filtering and recolouring burin lines draws in the CLI and
 on the web, its time shows on its own row, and a second edit of the function
 does not redraw burin.
 
+## 14. burin-map's own page on JavaScript
+
+The engine is already there — `burin-map-core`'s `script.rs` and `burin.d.ts`
+(`burin.batch`, `burin.water`, `burin.shore`, `burin.atlas`, the expression
+helpers) — built as draw.land's dependency in step 10. This step is the front
+end on top of it, so burin's own app stops being YAML/JSON5/CLI only.
+
+The gate the old "Later" line carried — *if draw.land's library has proved
+itself* — is met: steps 1–11 built and tested that surface, and the bands this
+step's sibling added are the first change it took in its stride.
+
+- [x] A `js` view beside YAML / JSON5 / CLI in `web/src/lib/views.js`, its own
+      Monaco language, and `detectView` reading a `.js` file.
+- [x] The library the page's editor sees: `burin.*` from `burin.d.ts`, loaded
+      the way draw.land loads `drawland.d.ts` (extra lib, `checkJs`), so
+      autocomplete works in the page.
+- [x] Run a JS document: evaluate it through `burin-map-wasm` into an `Atlas`,
+      draw it, and show it — the same draw the other views drive, so presets,
+      progress rows and the pan/zoom overlay are unchanged.
+- [x] A JS preset, so a fresh page has a living example (the `contours` preset,
+      written as a loop over `burin.batch`).
+- [x] The CLI view's `--` flags and the YAML model stay working: the three
+      existing views are the shape of the same document, and JS is a fourth
+      spelling of it, not a replacement.
+
+Done: burin-map's page opens on a JavaScript document, autocompletes against
+`burin.d.ts`, draws it, and the YAML/JSON5/CLI views still work. The
+interpreter is `burin-map-script` over Boa, its own WASM module loaded only
+when a document runs; `evaluate` returns the atlas JSON, and the page turns
+that into its model. Two script presets ship with it (Contour belts, Scripted
+hills). `burin-map-core`'s `band_of` and a water pass's `where` now read both
+the script's camelCase and the saved snake_case, so a saved atlas reads back.
+
 ## Later
 
 - burin's expression tree on the GPU (WGSL).
 - More fields in `p`: `slope`, `aspect`, `x`, `y`.
 - Per-point values for burin's spacing and dash density, and penfill's
   spacing.
-- burin-map's own app on JavaScript, if draw.land's library has proved itself.
 - Terramask scripting, same library shape.
 - `lines.raw(points)`, if it earns its place.
 - Starlark front end, only if JavaScript falls short.
