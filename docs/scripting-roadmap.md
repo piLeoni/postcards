@@ -5,6 +5,13 @@ something that builds, passes its tests and can be merged on its own. No
 compatibility layers: what JavaScript replaces is deleted. Branch:
 `js-scripting`.
 
+> **Read [`front-ends.md`](front-ends.md) first.** It records the decision made
+> after step 14: the document is one typed graph, languages are interchangeable
+> front ends that emit it, and the web app ships **one** front end, not a tab
+> per format. Step 14 below is done in substance but was built the wrong way
+> round (a fourth view, a `burin.atlas()` builder, a model↔atlas layer) and is
+> to be re-shaped, not reverted.
+
 ## 1. Card → output
 
 The map is not always a card. Rename before the library exists, so its API
@@ -284,6 +291,13 @@ when a document runs; `evaluate` returns the atlas JSON, and the page turns
 that into its model. Two script presets ship with it (Contour belts, Scripted
 hills). `burin-map-core`'s `band_of` and a water pass's `where` now read both
 the script's camelCase and the saved snake_case, so a saved atlas reads back.
+
+**Re-shape needed (see [`front-ends.md`](front-ends.md)).** This step was built
+as a fourth view beside YAML/JSON5/CLI, with a `burin.atlas()` builder and a
+model↔atlas layer. The interpreter, the WASM split and the `band_of` fix stay;
+the view, the builder and the model layer go. burin-map's web app becomes JS
+only, presets become script files, the document API becomes bare calls
+(`burin.batch(…)` … `burin.draw()`), and the CLI gains `--script`.
 
 ## Later
 
