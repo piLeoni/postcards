@@ -200,15 +200,24 @@ compact, and the same JSON a preset saves.
 
 [`plan.md`](plan.md) phase 5, with the script as its front end.
 
-- [ ] `burin-map-core` by path; elevation fetched for the output through
-      terramask, in the CLI and in the page.
-- [ ] Bindings: `burin.terrain()`, `.batch({...})` with every batch field and
-      style parameter in the library description (and so in the `.d.ts`).
-- [ ] burin's lines in the graph: drawn, clipped and masked like any other
-      lines.
+- [x] `burin-map-core` by path; elevation fetched for the output through
+      terramask, in the CLI and in the page (Terrarium, the same tiles burin
+      reads; only fetched when a def draws terrain).
+- [x] `lines.terrain({ in, color, width, angle, layer, shore, …style })` in the
+      library description (and so in the `.d.ts`). `color` and `width` are
+      burin's own trees, through its `batch_from`.
+- [x] burin's lines in the graph: drawn, clipped and masked like any other
+      lines, in the CLI and on the web.
+- [ ] ~~`burin.terrain()` / `.batch({...})` with every batch field~~: `terrain`
+      is `lines.*`, like the rest of the library, not a second namespace. The
+      batch fields beyond `color`/`width`/`angle`/`layer` ride in `style` by
+      burin's names, so the full front end (dots, fills, water) is still open.
+- [ ] Contours in a loop over elevation bands: burin's `where` (band) is not
+      exposed yet, so a script cannot yet say "the 200 m contour".
 
 Done when: a script draws contours in a loop over elevation bands, in the CLI
-and on the web.
+and on the web. *Part done: terrain streamlines and the shore draw on both
+sides; the bands are the piece left.*
 
 ## 12. Per-point functions
 
