@@ -172,16 +172,29 @@ import of an edited script.
 In `../burin-map`, built and tested there. Independent of steps 2–9: can
 start any time.
 
-- [ ] An expression tree with its evaluator (scalars and colours; fields,
-      arithmetic, comparisons, `? :`, `&&` / `||`, `Math` functions, `lerp`,
-      `clamp`, `smoothstep`, `mix`, `ramp`), replacing the string parser in
-      `color_expr.rs` as the core representation. burin's own document
-      strings parse into the same tree.
-- [ ] A typed Rust API for building a drawing from batches, so callers do not
-      go through the document.
+- [x] An expression tree with its evaluator (scalars and colours; fields,
+      arithmetic, comparisons, `? :`, `&&` / `||`, the scalar functions, and
+      `lerp` / `mix` between colours), replacing the string parser in
+      `color_expr.rs` as the core representation. A document carries the same
+      tree as JSON.
+- [x] A typed Rust API for building a drawing from batches, so callers do not
+      go through the document: `Batch` / `WaterBatch` / `Shoreline` builders
+      and `Atlas`.
 
 Done when: burin's examples render the same SVG as before; burin-map's CLI,
-web, Python and Node builds pass.
+web, Python and Node builds pass. **Done**: `color_expr.rs` is gone;
+`expr.rs` and `atlas.rs` replace it; 57 core tests, 3 atlas parity tests and
+the CLI's 21 pass. A typed atlas and the document that says the same thing
+draw the identical drawing (paths and runs equal), and a script's atlas saves
+as the document's JSON.
+
+How it came out: `Expr` is a scalar or a colour, and a scalar used as a colour
+is a grey, so `color` and `width` take the same trees. `burin-map-core::script`
+reads the options a JavaScript front end passes — the shape `burin.d.ts`
+declares — into those batches without an interpreter, and the WASM and Node
+bindings expose it; the CLI reads a script's atlas from the same `--style-json`
+a document uses. Trees are written as `["lerp", "#e8dcc8", "#2a1810", "tone"]`:
+compact, and the same JSON a preset saves.
 
 ## 11. burin in draw.land
 
