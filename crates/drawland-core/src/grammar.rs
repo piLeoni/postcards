@@ -145,6 +145,23 @@ pub struct Terrain {
     pub style: serde_json::Map<String, serde_json::Value>,
     /// Draw the shore (the zero contour) as well.
     pub shore: bool,
+    /// The heights a fill keeps to, as burin writes them: `elevMin`, `elevMax`
+    /// and the depths. Empty for streamlines, which cover the ground they can.
+    pub band: serde_json::Map<String, serde_json::Value>,
+    /// What to draw: streamlines along the slope, or a fill of the band.
+    pub draw: TerrainDraw,
+}
+
+/// What a `tools_terrain` def draws.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum TerrainDraw {
+    /// Pen-and-ink hatching along the slope; the default.
+    #[default]
+    Lines,
+    /// A flat fill of the band: what a contour belt between two heights is.
+    Fill,
+    /// Stippling, denser where the shading is darker.
+    Dots,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -921,6 +938,10 @@ fn parse_op(raw: RawOp, section: Section) -> Result<Op, GrammarError> {
                 shore: Option<bool>,
                 #[serde(default)]
                 style: Option<serde_json::Map<String, serde_json::Value>>,
+                #[serde(default)]
+                r#where: Option<serde_json::Map<String, serde_json::Value>>,
+                #[serde(default)]
+                draw: Option<String>,
             }
             let raw: Raw = json(&value, "tools_terrain")?;
             Op::Terrain(Terrain {
@@ -931,6 +952,17 @@ fn parse_op(raw: RawOp, section: Section) -> Result<Op, GrammarError> {
                 layer: raw.layer,
                 style: raw.style.unwrap_or_default(),
                 shore: raw.shore.unwrap_or(false),
+                band: raw.r#where.unwrap_or_default(),
+                draw: match raw.draw.as_deref() {
+                    None | Some("lines") => TerrainDraw::Lines,
+                    Some("fill") => TerrainDraw::Fill,
+                    Some("dots") => TerrainDraw::Dots,
+                    Some(other) => {
+                        return Err(GrammarError::Invalid(format!(
+                            "tools_terrain draws lines, a fill or dots, not {other:?}"
+                        )))
+                    }
+                },
             })
         }
         "tools_rings" => match &value {
@@ -1235,6 +1267,18 @@ pub fn op_to_json(op: &Op) -> Value {
             }
             if !t.style.is_empty() {
                 body.insert("style".into(), Value::Object(t.style.clone()));
+            }
+            if !t.band.is_empty() {
+                body.insert("where".into(), Value::Object(t.band.clone()));
+            }
+            match t.draw {
+                TerrainDraw::Lines => {}
+                TerrainDraw::Fill => {
+                    body.insert("draw".into(), Value::String("fill".into()));
+                }
+                TerrainDraw::Dots => {
+                    body.insert("draw".into(), Value::String("dots".into()));
+                }
             }
             ("tools_terrain", Value::Object(body))
         }

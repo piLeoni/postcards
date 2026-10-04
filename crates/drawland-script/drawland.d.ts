@@ -194,15 +194,36 @@ declare const lines: {
   clip(of: Lines, within: Area, options?: { invert?: boolean }): Lines
   /**
    * Pen-and-ink terrain in `in`, drawn by burin from the elevation under the
-   * output: streamlines along the slope, coloured and weighted per dash.
-   * Needs the terrain tiles, which the host reads on its own when a script
-   * draws terrain.
+   * output: streamlines along the slope, coloured and weighted per dash, or a
+   * flat fill of a height band with `draw: "fill"` and `where`. Needs the
+   * terrain tiles, which the host reads on its own when a script draws terrain.
    */
   terrain(options?: TerrainOptions): Lines
+  /**
+   * One contour belt between two heights, as a flat fill of the band:
+   * `lines.contours({ from: 200, to: 400 })`. Call it in a loop over heights
+   * to stack the belts, each drawn as its own layer.
+   */
+  contours(options?: ContoursOptions): Lines
 }
 
 /** Burin's terrain line styles: how the streamlines are drawn, and stippled. */
-type TerrainDraw = "lines" | "curls" | "waves" | "dots"
+type TerrainStroke = "lines" | "curls" | "waves" | "dots"
+
+/** What `lines.terrain` draws: hatching, a fill of a band, or stippling. */
+type TerrainMode = "lines" | "fill" | "dots"
+
+/** The heights or depths a batch keeps to, in metres; unset limits are open. */
+type TerrainWhere = {
+  /** The lowest height to draw, in metres. */
+  elevMin?: number
+  /** The highest height to draw, in metres. */
+  elevMax?: number
+  /** The deepest water to draw, in metres below the surface. */
+  depthMin?: number
+  /** The shallowest water to draw, in metres below the surface. */
+  depthMax?: number
+}
 
 /** What `lines.terrain` draws, and how, as burin names the parameters. */
 type TerrainOptions = {
@@ -214,6 +235,10 @@ type TerrainOptions = {
   layer?: string
   /** Draw the shore, the zero contour. Default false. */
   shore?: boolean
+  /** Hatching (the default), a fill of `where`, or stippling. */
+  draw?: TerrainMode
+  /** The heights or depths to keep to. A fill usually wants one. */
+  where?: TerrainWhere
   /**
    * The colour at each dash, as burin reads one: a hex string, a grey, an rgb
    * triple, or a tree over the fields (`["lerp", …]`). A constant is `"#000"`.
@@ -227,6 +252,16 @@ type TerrainOptions = {
   /** Style parameters, by burin's names (`line_space`, `stroke`, …). */
   style?: Record<string, number>
 } & Record<string, unknown>
+
+/** What `lines.contours` draws: one belt of heights, as a fill. */
+type ContoursOptions = Omit<TerrainOptions, "draw" | "where"> & {
+  /** The lowest height of the belt, in metres. */
+  from?: number
+  /** The highest height of the belt, in metres. */
+  to?: number
+  /** Other bands, if you need a depth instead of a height. */
+  where?: TerrainWhere
+}
 
 /** Patterns inside areas, by penfill. */
 declare const fills: {  /** The area filled with a pattern: lines, ready to draw. */

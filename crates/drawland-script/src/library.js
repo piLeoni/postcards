@@ -138,9 +138,12 @@
     // streamlines along the slope, coloured and weighted per dash. The colour
     // and the width are burin's own trees (`shade`/`width`), so the same
     // expressions that style a batch at burin's front ends work here.
+    //
+    // `draw: "fill"` with a `where` band makes a contour belt; `lines.contours`
+    // below is the shorthand for a loop over them.
     terrain(options = {}) {
       object(options, "lines.terrain options");
-      const { in: area, color, width, angle, layer, shore, style, ...rest } = options;
+      const { in: area, color, width, angle, layer, shore, style, where, draw, ...rest } = options;
       const op = { tools_terrain: {} };
       if (area !== undefined) op.tools_terrain.in_area = need(area, Area, "lines.terrain in");
       if (color !== undefined) op.tools_terrain.color = color;
@@ -148,10 +151,39 @@
       if (angle !== undefined) op.tools_terrain.angle = angle;
       if (layer !== undefined) op.tools_terrain.layer = layer;
       if (shore !== undefined) op.tools_terrain.shore = !!shore;
+      if (draw !== undefined) {
+        if (draw !== "lines" && draw !== "fill" && draw !== "dots") {
+          throw new Error(`lines.terrain draw must be "lines", "fill" or "dots", not ${JSON.stringify(draw)}`);
+        }
+        op.tools_terrain.draw = draw;
+      }
+      if (where !== undefined) {
+        object(where, "lines.terrain where");
+        const w = {};
+        for (const k of ["elevMin", "elevMax", "depthMin", "depthMax"]) {
+          if (where[k] !== undefined) {
+            if (typeof where[k] !== "number" || !isFinite(where[k])) {
+              throw new Error(`lines.terrain where.${k} must be a number of metres`);
+            }
+            w[k] = where[k];
+          }
+        }
+        if (Object.keys(w).length) op.tools_terrain.where = w;
+      }
       // `style` and any other key are burin style parameters, by name.
       const params = { ...(style && typeof style === "object" ? style : {}), ...rest };
       if (Object.keys(params).length) op.tools_terrain.style = params;
       return make(Lines, "lines", op);
+    },
+    // One contour belt between two heights, as a flat fill: `lines.contours({
+    // from: 200, to: 400 })`. Call it in a loop to stack the belts.
+    contours(options = {}) {
+      object(options, "lines.contours options");
+      const { from, to, ...rest } = options;
+      const where = { ...(rest.where || {}) };
+      if (from !== undefined) where.elevMin = from;
+      if (to !== undefined) where.elevMax = to;
+      return this.terrain({ ...rest, where, draw: "fill" });
     },
   };
 

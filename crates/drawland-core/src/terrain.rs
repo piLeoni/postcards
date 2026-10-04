@@ -84,17 +84,33 @@ impl Grid {
     }
 }
 
-/// Build the atlas from a `tools_terrain` spec: one batch of streamlines, whose
-/// colour, width and style are burin's own JSON batch, so a script says the
-/// same thing here as it does at burin's own front ends.
+/// Build the atlas from a `tools_terrain` spec: one batch, whose colour, width,
+/// band and style are burin's own JSON batch, so a script says the same thing
+/// here as it does at burin's own front ends. `draw` picks hatching, a fill of
+/// the band, or stippling.
 pub fn atlas_of(spec: &Spec) -> Result<Atlas, String> {
     let mut atlas = Atlas::new();
     if spec.shore {
         atlas.shore(burin_map_core::water::Shoreline::default());
     }
     let mut body = serde_json::Map::new();
+    body.insert(
+        "draw".into(),
+        serde_json::Value::String(
+            match spec.draw {
+                crate::grammar::TerrainDraw::Lines => "lines",
+                crate::grammar::TerrainDraw::Fill => "fill",
+                crate::grammar::TerrainDraw::Dots => "dots",
+            }
+            .into(),
+        ),
+    );
     if let Some(color) = &spec.color {
-        body.insert("shade".into(), color.clone());
+        // `color` is the line's own; a fill's flat colour is the same idea.
+        body.insert(
+            if spec.draw == crate::grammar::TerrainDraw::Fill { "color".into() } else { "shade".into() },
+            color.clone(),
+        );
     }
     if let Some(width) = &spec.width {
         body.insert("width".into(), width.clone());
@@ -104,6 +120,9 @@ pub fn atlas_of(spec: &Spec) -> Result<Atlas, String> {
     }
     if spec.angle != 0.0 {
         body.insert("angle".into(), serde_json::json!(spec.angle));
+    }
+    if !spec.band.is_empty() {
+        body.insert("where".into(), serde_json::Value::Object(spec.band.clone()));
     }
     for (k, v) in &spec.style {
         body.insert(k.clone(), v.clone());
@@ -133,44 +152,63 @@ pub fn draw(grid: &Grid, spec: &Spec, output: &Output, area: Option<&MultiPolygo
     Ok(d)
 }
 
-/// A drawing's dashes as draw.land lines, in output millimetres.
+/// A drawing's dashes as draw.land lines, in output millimetres. Fills come
+/// through as their rings: a `tools_terrain` def that draws a band is a fill,
+/// and its rings are the belt.
 pub fn lines(d: &Drawing, at: &Placed) -> Lines {
-    d.paths
+    let mut out: Lines = d
+        .paths
         .iter()
         .filter(|l| l.len() >= 2)
-        .map(|l| {
-            LineString::new(
-                l.iter()
-                    .map(|p| Coord { x: at.x0 + p[0] as f64 * at.kx, y: at.y0 + p[1] as f64 * at.ky })
-                    .collect(),
-            )
-        })
-        .collect()
+        .map(|l| placed_line(l, at))
+        .collect();
+    for f in &d.fills {
+        out.extend(f.rings.iter().filter(|r| r.len() >= 2).map(|r| placed_line(r, at)));
+    }
+    out
+}
+
+/// One burin line, in output millimetres.
+fn placed_line(l: &burin_map_core::Line, at: &Placed) -> LineString<f64> {
+    LineString::new(
+        l.iter()
+            .map(|p| Coord { x: at.x0 + p[0] as f64 * at.kx, y: at.y0 + p[1] as f64 * at.ky })
+            .collect(),
+    )
 }
 
 /// The same, grouped by the layer each run belongs to, in draw order: what a
-/// script gets back per layer name (the batch's, or `terrain`).
+/// script gets back per layer name (the batch's, or `terrain`). Fills are
+/// their own layer, at the point they sit in the drawing.
 pub fn layers(d: &Drawing, at: &Placed) -> Vec<(String, Lines)> {
     let mut out: Vec<(String, Lines)> = Vec::new();
     let mut start = 0usize;
-    for (pen, end) in &d.runs {
-        let layer = pen.layer.clone().unwrap_or_else(|| "terrain".into());
-        let mine: Lines = d.paths[start..*end]
-            .iter()
-            .filter(|l| l.len() >= 2)
-            .map(|l| {
-                LineString::new(
-                    l.iter()
-                        .map(|p| Coord { x: at.x0 + p[0] as f64 * at.kx, y: at.y0 + p[1] as f64 * at.ky })
-                        .collect(),
-                )
-            })
-            .collect();
-        match out.iter_mut().find(|(name, _)| *name == layer) {
-            Some((_, all)) => all.extend(mine),
-            None => out.push((layer, mine)),
+    let mut fills = d.fills.iter().peekable();
+    let push = |out: &mut Vec<(String, Lines)>, name: String, mine: Lines| match out
+        .iter_mut()
+        .find(|(n, _)| *n == name)
+    {
+        Some((_, all)) => all.extend(mine),
+        None => out.push((name, mine)),
+    };
+    for (i, (pen, end)) in d.runs.iter().enumerate() {
+        // Anything filled under this run comes first.
+        while fills.peek().is_some_and(|f| f.above <= i) {
+            let f = fills.next().unwrap();
+            let name = f.pen.layer.clone().unwrap_or_else(|| "terrain".into());
+            let mine: Lines = f.rings.iter().filter(|r| r.len() >= 2).map(|r| placed_line(r, at)).collect();
+            push(&mut out, name, mine);
         }
+        let layer = pen.layer.clone().unwrap_or_else(|| "terrain".into());
+        let mine: Lines = d.paths[start..*end].iter().filter(|l| l.len() >= 2).map(|l| placed_line(l, at)).collect();
+        push(&mut out, layer, mine);
         start = *end;
+    }
+    // A fill above every run (a drawing of fills only).
+    for f in fills {
+        let name = f.pen.layer.clone().unwrap_or_else(|| "terrain".into());
+        let mine: Lines = f.rings.iter().filter(|r| r.len() >= 2).map(|r| placed_line(r, at)).collect();
+        push(&mut out, name, mine);
     }
     out
 }
@@ -200,3 +238,4 @@ pub fn point_in(a: &MultiPolygon<f64>, x: f64, y: f64) -> bool {
 pub fn clip_to(lines: &Lines, area: &MultiPolygon<f64>) -> Lines {
     geom::clip_lines(lines, area, false)
 }
+

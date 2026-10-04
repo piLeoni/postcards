@@ -208,16 +208,20 @@ compact, and the same JSON a preset saves.
       burin's own trees, through its `batch_from`.
 - [x] burin's lines in the graph: drawn, clipped and masked like any other
       lines, in the CLI and on the web.
-- [ ] ~~`burin.terrain()` / `.batch({...})` with every batch field~~: `terrain`
+- [x] ~~`burin.terrain()` / `.batch({...})` with every batch field~~: `terrain`
       is `lines.*`, like the rest of the library, not a second namespace. The
       batch fields beyond `color`/`width`/`angle`/`layer` ride in `style` by
-      burin's names, so the full front end (dots, fills, water) is still open.
-- [ ] Contours in a loop over elevation bands: burin's `where` (band) is not
-      exposed yet, so a script cannot yet say "the 200 m contour".
+      burin's names. `draw` picks hatching, a fill or dots, and `where` is the
+      band. Water batches are still to come.
+- [x] Contours in a loop over elevation bands: `lines.contours({ from, to })`
+      is a flat fill of the band, drawn as its own layer, so a loop stacks the
+      belts. `where` reaches burin through its `batch_from` (terramask being
+      the same tiles burin reads). Fills come back as their rings, so a belt is
+      clipped and masked like any other lines.
 
 Done when: a script draws contours in a loop over elevation bands, in the CLI
-and on the web. *Part done: terrain streamlines and the shore draw on both
-sides; the bands are the piece left.*
+and on the web. `configs/contours.js`: hatching under seven belts, 8 groups,
+both sides.
 
 ## 12. Per-point functions
 

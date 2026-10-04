@@ -47,6 +47,71 @@ fn loops_and_functions_make_ordinary_graphs() {
 }
 
 #[test]
+fn a_script_draws_contours_in_a_loop_over_elevation_bands() {
+    // Step 11's own criterion: a loop over height bands, each a contour belt
+    // drawn as its own layer, from the elevation under the output.
+    let g = evaluate(
+        "// Contour belts every 200 m, light where high.\n\
+         const bands = [0, 200, 400, 600]\n\
+         for (let i = 0; i < bands.length - 1; i++) {\n\
+           const from = bands[i], to = bands[i + 1]\n\
+           draw({\n\
+             id: `band_${from}`,\n\
+             from: lines.contours({ from, to, color: '#8a7a5c', style: { line_space: 7 } }),\n\
+             stroke: 'solid',\n\
+           })\n\
+         }\n",
+    )
+    .unwrap();
+    // Three belts from four cuts, three draws, three layers.
+    assert_eq!(g.groups(), ["band_0", "band_200", "band_400"]);
+    assert_eq!(g.terrains().len(), 3, "each band is a terrain def");
+
+    // The bands keep the heights the loop wrote, and survive JSON.
+    let bands: Vec<serde_json::Value> = g
+        .terrains()
+        .iter()
+        .map(|t| serde_json::Value::Object(t.band.clone()))
+        .collect();
+    assert_eq!(bands[0]["elevMin"], 0.0);
+    assert_eq!(bands[0]["elevMax"], 200.0);
+    assert_eq!(bands[2]["elevMin"], 400.0);
+    assert_eq!(bands[2]["elevMax"], 600.0);
+    let back = Grammar::from_json(&g.to_json().to_string()).unwrap();
+    assert_eq!(back, g, "the graph survives JSON");
+
+    // A 64×64 cone from the sea up to 900 m, so every band is crossed: heights
+    // below 0 at the corners, the summit at the centre.
+    let width = 64usize;
+    let elev: Vec<f32> = (0..width * width)
+        .map(|i| {
+            let (x, y) = ((i % width) as f32, (i / width) as f32);
+            let cx = x - width as f32 / 2.0;
+            let cy = y - width as f32 / 2.0;
+            900.0 - (cx * cx + cy * cy) / 1.1
+        })
+        .collect();
+    assert!(elev.iter().cloned().fold(f32::MIN, f32::max) > 600.0, "the summit clears the top band");
+    assert!(elev.iter().cloned().fold(f32::MAX, f32::min) < 0.0, "the corners are sea");
+    let output = Output::new(&g.output, (-122.256196, 37.8771145));
+    let bounds = drawland_core::terrain::bounds_of(&output);
+    let merc = [0.0, 0.0, 1000.0 * width as f64, 1000.0 * width as f64];
+    let terrain = drawland_core::terrain::Grid::new(bounds, merc, elev, width);
+
+    let out = run(
+        &g,
+        &output,
+        Inputs { features: vec![], tiles: vec![], ocean: None, sources: &BTreeMap::new(), terrain: Some(terrain) },
+    )
+    .unwrap();
+    assert_eq!(out.groups.len(), 3, "three contour belts");
+    for (name, lines) in &out.groups {
+        assert!(*lines > 0, "the belt under {name} filled something");
+    }
+    assert!(out.svg.contains("<g id=\"band_200\">"));
+}
+
+#[test]
 fn the_postcard_script_renders_without_osm_data() {
     // configs/postcard.js is the CLI's default and the library's living
     // example: it must load, survive JSON, and come out of the whole pipeline
