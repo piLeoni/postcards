@@ -148,6 +148,23 @@ Done when: every `color_expr` / `width_expr` example in burin's `SYNTAX.md`
 has a JS equivalent that renders the same, plus tests for a ternary, a `ramp`
 and an error.
 
+## 13. `postprocess`
+
+The opt-in slow path: real JavaScript over finished lines.
+
+- [ ] `postprocess(lines, fn)` node: lines in as `Float32Array`s, lines out
+      with optional `color`, `width`, `layer`; output validated.
+- [ ] Its input cached, so editing the function re-runs only the JavaScript.
+- [ ] Its own progress row (`JS postprocess · <draw id>`) with lines and time,
+      in the terminal and the page; a summary line when it took a noticeable
+      share of the run.
+- [ ] Web editor: last run time next to each `postprocess(...)` call.
+- [ ] Pre-run presets that use it fall back to loading the interpreter.
+
+Done when: a script filtering and recolouring burin lines draws in the CLI and
+on the web, its time shows on its own row, and a second edit of the function
+does not redraw burin.
+
 ## Later
 
 - burin's expression tree on the GPU (WGSL).

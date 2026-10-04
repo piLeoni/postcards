@@ -256,6 +256,57 @@ burin-map's own app adopts JavaScript too. The same tree can later drive other
 per-point values — burin's spacing or dash density, penfill's spacing — once
 those read a value per point.
 
+## Three speeds
+
+What a script asks for runs at one of three speeds, and the slow one is
+explicit in the syntax:
+
+1. **Built-in options — native.** `angle`, `space`, `where`, `width_steps`,
+   masks, clips, fills: values handed to Rust. Most styling lives here.
+2. **Per-point functions — near native.** `color: (p) => …`, `width: (p) => …`,
+   compiled to an expression tree before drawing ([above](#per-point-functions)),
+   evaluated in parallel. No interpreter while drawing.
+3. **`postprocess` — real JavaScript, opt-in.** Anything the first two cannot
+   say, written as an ordinary function over finished lines:
+
+   ```js
+   const relief = burin.terrain()
+   // …batches…
+   const tidy = postprocess(relief, (lines) =>
+     lines.filter((l) => l.points.length > 2)
+          .map((l, i) => ({ ...l, color: i % 2 ? "#333" : "#999" })))
+   draw({ id: "relief", from: tidy })
+   ```
+
+`postprocess` is a node in the graph like any other: lines in, lines out, from
+any source (burin, penfill fills, roads). Its rules:
+
+- **Per line, not per point.** Each line reaches JavaScript once, its points as
+  a flat `Float32Array`; the function returns lines (points, and optionally
+  `color`, `width`, `layer`). Copying in and out and running on one thread is
+  the cost, and on a dense map it can take seconds.
+- **Only who uses it pays.** The engine's fast paths never call JavaScript;
+  burin, penfill and the operations stay as they are.
+- **Cached upstream.** Its input is kept, so editing a post-processor re-runs
+  only the JavaScript, not the drawing before it.
+- **Same sandbox**, and pure: no state kept between calls, the same lines give
+  the same result.
+- **It needs the interpreter while drawing**, so a preset that uses it cannot
+  be drawn from its pre-run graph alone (see [Loading](#loading-presets-without-the-interpreter)).
+
+### Making the cost visible
+
+The user should see that the time goes to their JavaScript, not wonder why the
+map is slow. The progress board (`board.rs`, shared by the terminal and the
+page) already times each row:
+
+- each `postprocess` is **its own row**, labelled as JavaScript and with the
+  draw id it feeds (`JS postprocess · relief`), counting lines, with its time;
+- at the end, when post-processing took a noticeable share, **one summary
+  line**: *"1.8 s of 2.6 s in JavaScript post-processing (relief)"*;
+- in the web editor, the `postprocess(...)` call can carry its last run time
+  next to it (a Monaco code lens), so the cost sits where it is written.
+
 ## Second choice: Starlark
 
 If Boa disappoints (size, startup, correctness), the front end is swapped for
