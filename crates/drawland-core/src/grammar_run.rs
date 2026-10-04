@@ -614,8 +614,7 @@ fn clip_for(grammar: &Grammar, id: &str) -> Clip {
 mod tests {
     use super::*;
     use crate::profile::OutputSpec;
-    use crate::grammar::Grammar;
-    use crate::profile::Format;
+    use crate::grammar::from_yaml;
     use crate::units::{Mm, Scale};
 
     fn output() -> Output {
@@ -638,7 +637,7 @@ mod tests {
     /// A grammar with no OSM data: only the parts that need no fetch.
     fn run_yaml(yaml: &str) -> Result<Rendered, RunError> {
         let text = format!("output: {{ width: 100mm, height: 50mm }}\n{yaml}");
-        let grammar = Grammar::parse(&text, Format::Yaml).expect("profile loads");
+        let grammar = from_yaml(&text).expect("profile loads");
         run(
             &grammar,
             &output(),
@@ -715,7 +714,7 @@ mod tests {
              $lines:\n  ring: { tools_rings: $areas.frame }\n\
              $fills:\n  waves: { tools_fill: { in: $areas.wet, pattern: lines, spacing: 1mm } }\n\
              draw:\n  - { id: sea, from: $fills.waves }\n  - { id: ring, from: $lines.ring, stroke: solid }\n";
-        let grammar = Grammar::parse(text, Format::Yaml).unwrap();
+        let grammar = from_yaml(text).unwrap();
         let ocean = MultiPolygon::new(vec![output().query_polygon()]);
         let out = run(&grammar, &output(), Inputs { features: vec![], tiles: vec![], ocean: Some(ocean), sources: &BTreeMap::new() })
             .unwrap();
@@ -728,24 +727,7 @@ mod tests {
     fn a_loop_is_reported_rather_than_hung() {
         // Grammar validation rejects loops already; keep the executor honest.
         let text = "output: { width: 100mm, height: 50mm }\n$areas:\n  a: { tools_union: [$areas.b] }\n  b: { tools_grow: { of: $areas.a, by: 1mm } }\n";
-        let grammar = Grammar::parse(text, Format::Yaml);
+        let grammar = from_yaml(text);
         assert!(grammar.is_err(), "a loop must not load");
-    }
-
-    #[test]
-    fn the_proposal_renders_without_osm_data() {
-        // No features: parks and water come out empty, but the output, the module
-        // and the masks all have to survive the whole pipeline.
-        let text = include_str!("../../../configs/proposal/postcard.yaml");
-        let grammar = Grammar::parse(text, Format::Yaml).unwrap();
-        let out = run(
-            &grammar,
-            &output(),
-            Inputs { features: vec![], tiles: vec![], ocean: None, sources: &BTreeMap::new() },
-        )
-        .unwrap();
-        assert!(!out.svg.is_empty());
-        // The groups the profile names must all be present.
-        assert!(out.groups.iter().any(|(id, _)| id == "bldg_ring"));
     }
 }

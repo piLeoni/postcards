@@ -13,10 +13,9 @@ geographiclib-rs = { workspace = true }
 proj4rs = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-serde-saphyr = { workspace = true }
-json5 = { workspace = true }
 thiserror = { workspace = true }
 rayon = { workspace = true }
 
 [dev-dependencies]
+serde-saphyr = { workspace = true }
 approx = { workspace = true }

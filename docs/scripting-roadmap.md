@@ -97,7 +97,8 @@ Done when: each error case has a test with the expected line.
 
 - [x] One library description in `drawland-script` (functions, arguments,
       allowed values, docs), used by the bindings.
-- [x] Generate `drawland.d.ts` from it at build time.
+- [x] ~~Generate `drawland.d.ts` from it at build time~~: the `.d.ts` is the
+      description, kept in step by tests (below).
 - [x] Monaco: JavaScript mode, `allowJs` + `checkJs`, the `.d.ts` as an extra
       lib.
 
@@ -128,11 +129,22 @@ on a JS document, with tests next to `doc.js`'s.
 
 ## 8. YAML out
 
-- [ ] Presets and `configs/` rewritten in JS.
-- [ ] The YAML / JSON5 grammar parser, `grammar::validate`'s reference checks
+- [x] Presets and `configs/` rewritten in JS.
+- [x] The YAML / JSON5 grammar parser, `grammar::validate`'s reference checks
       and `doc.js`'s YAML editing deleted.
-- [ ] `profile.md` replaced by the library reference (generated from the
+- [x] `profile.md` replaced by the library reference (generated from the
       library description where possible).
+
+How it came out: the engine reads graph JSON only (`Grammar::from_json`);
+`profile::Format`, the `json5` crate and the CLI's YAML fallback are gone,
+and `serde-saphyr` is a dev-dependency (the grammar's unit tests still write
+their small graphs in YAML, converted to JSON). `grammar::validate` stays: it
+checks the JSON, which can come from a saved file, and its errors now carry
+script positions. `configs/postcard.js` is the CLI's default;
+`configs/compare/*.yaml` were the same cards as the web presets
+`full`/`mixed`/`overpass`, so they went rather than being copied. The old
+`$expressions` / `~name` placeholders went too: step 12 replaces them.
+[`library.md`](library.md) is written by hand from the `.d.ts`.
 
 ## 9. Presets and lazy loading
 

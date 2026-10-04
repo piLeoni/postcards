@@ -1,8 +1,8 @@
 /**
  * A greyscale theme for the editor, in step with the black-and-white page:
- * what is what is told by tone, weight and slant, not by colour. Names (YAML
- * keys) are black and bold, values mid-grey, comments light and italic,
- * punctuation lightest.
+ * what is what is told by tone, weight and slant, not by colour. Keywords
+ * (`const`, `for`) are black and bold, names and values near-black, strings
+ * mid-grey, comments light and italic, punctuation lightest.
  *
  * Built without inheriting from `vs`: its token rules are more specific than
  * ours and would bring colour back.
@@ -10,7 +10,7 @@
 
 export const EDITOR_THEME = 'drawland-grey'
 
-// Darker than burin-map's: this document is mostly `{ }` flow maps, so
+// Darker than burin-map's: a profile is mostly calls on `{ }` objects, so
 // punctuation is a large share of what is on screen.
 const NAME = '000000'
 const VALUE = '262626'
@@ -28,10 +28,12 @@ export function defineEditorTheme(monaco) {
       { token: 'string.key', foreground: NAME, fontStyle: 'bold' },
       { token: 'attribute.name', foreground: NAME, fontStyle: 'bold' },
       { token: 'number', foreground: VALUE },
-      { token: 'keyword', foreground: VALUE },
+      { token: 'keyword', foreground: NAME, fontStyle: 'bold' },
+      { token: 'identifier', foreground: VALUE },
       { token: 'variable', foreground: VALUE },
       { token: 'type.identifier', foreground: VALUE },
       { token: 'string', foreground: TEXT },
+      { token: 'regexp', foreground: TEXT },
       { token: 'comment', foreground: HELP, fontStyle: 'italic' },
       { token: 'delimiter', foreground: MARK },
       { token: 'operators', foreground: MARK },

@@ -321,8 +321,8 @@ compose:
 svg:        # units, layer naming
 ```
 
-The profile only covers the map. The grammar is being redesigned in
-[`profile.md`](profile.md).
+The profile only covers the map. Profiles are now JavaScript; see
+[`library.md`](library.md).
 
 Later, without a schema change:
 
@@ -471,8 +471,8 @@ and leftovers, and water with ocean tiles don't fit the current steps.
 tested. `generate.sh` runs `drawland map` and writes
 `exports/<slug>/map.svg`.
 
-Next: agree on the profile grammar in [`profile.md`](profile.md) (v2:
-`defs` / `draw` / `compose`) before any parser work.
+Next (done since): a profile grammar with `defs` / `draw` / `compose`, which
+became the graph that JavaScript profiles build ([`library.md`](library.md)).
 
 ### Phase 4 — WASM
 
@@ -537,7 +537,7 @@ Next: agree on the profile grammar in [`profile.md`](profile.md) (v2:
 
 ## Related docs
 
-- [`profile.md`](profile.md) — the profile grammar (proposal).
+- [`library.md`](library.md) — profiles: the JavaScript library reference.
 - [`../reference/python/docs/pipeline.md`](../reference/python/docs/pipeline.md) — the Python pipeline.
 - [`../reference/python/docs/fills.md`](../reference/python/docs/fills.md) — the Python fill configuration; replaced by penfill.
 - [`../reference/python/docs/roads.md`](../reference/python/docs/roads.md) — roads rules for `roads/v1`.

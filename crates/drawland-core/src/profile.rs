@@ -6,24 +6,6 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Value;
 use std::collections::BTreeMap;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Format {
-    Yaml,
-    Json5,
-}
-
-impl Format {
-    /// `.json5` / `.json` read as JSON5, everything else as YAML.
-    pub fn from_path(path: &str) -> Format {
-        let lower = path.to_ascii_lowercase();
-        if lower.ends_with(".json5") || lower.ends_with(".json") {
-            Format::Json5
-        } else {
-            Format::Yaml
-        }
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum ProjectionMode {
     /// True distances; north turns with the distance from the zone's meridian.

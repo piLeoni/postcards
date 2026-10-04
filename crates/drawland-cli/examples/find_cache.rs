@@ -1,8 +1,6 @@
-//! Print the cache file for the v3 proposal output, so the web app can be tested
+//! Print the cache file for the postcard's Overpass request, so the web app can be tested
 //! against the same Overpass reply the CLI uses.
 use drawland_core::output::{overpass_query, Output};
-use drawland_core::grammar::Grammar;
-use drawland_core::profile::Format;
 
 fn quote_plus(s: &str) -> String {
     let mut out = String::with_capacity(s.len() * 3);
@@ -17,8 +15,8 @@ fn quote_plus(s: &str) -> String {
 }
 
 fn main() {
-    let text = std::fs::read_to_string("configs/proposal/postcard.yaml").unwrap();
-    let grammar = Grammar::parse(&text, Format::Yaml).unwrap();
+    let text = std::fs::read_to_string("configs/postcard.js").unwrap();
+    let grammar = drawland_script::evaluate(&text).unwrap();
     let output = Output::new(&grammar.output, (-122.256196, 37.8771145));
     let keys = grammar.osm_keys();
     let keys: Vec<&str> = keys.iter().map(String::as_str).collect();

@@ -1,43 +1,23 @@
-//! The v3 profile grammar: marked sections, namespaced operations, an explicit
-//! stack.
+//! The graph a profile script builds (`drawland-script`), and its JSON form:
+//! named nodes in four typed sections, the draws, and the composition.
 //!
-//! ```yaml
-//! output: { width: 6in, height: 4in, scale: "1:10000" }
-//!
-//! $features:
-//!   bldg: { osm_select: { building: true } }
-//! $areas:
-//!   footprints: { tools_polygons: $features.bldg }
-//!   dissolved:  { tools_union: [$areas.footprints] }
-//! $lines:
-//!   shell: { tools_rings: $areas.dissolved }
-//! $fills:
-//!   hatch: { tools_fill: { in: $areas.footprints, per: feature, pattern: zigzag, spacing: 0.5mm } }
-//!
-//! draw:
-//!   - { id: bldg_shell, from: $lines.shell, stroke: solid }
-//!   - { from: $fills.hatch }          # id omitted: the group is fills_hatch
-//!
-//! compose:
-//!   order: [bldg_shell, fills_hatch]
-//!   masks:
-//!     bldg_cover: { from: $areas.dissolved, occludes: [bldg_shell] }
-//!   clip:
-//!     default: auto
+//! ```json
+//! { "output": { "width": "6in", "height": "4in", "scale": "1:10000" },
+//!   "$features": { "bldg_1": { "tiles_select": "buildings", "at": [3, 14] } },
+//!   "$areas": { "polygons_2": { "tools_polygons": "$features.bldg_1", "at": [4, 19] } },
+//!   "$lines": { "rings_3": { "tools_rings": "$areas.polygons_2", "at": [5, 15] } },
+//!   "draw": [{ "id": "bldg_ring", "from": "$lines.rings_3", "stroke": "solid", "at": [6, 1] }],
+//!   "compose": { "order": ["bldg_ring"] } }
 //! ```
 //!
-//! Four families of names, told apart by their prefix:
+//! A node refers to another by `$section.name`; the section is its type.
+//! Operations are namespaced: `tools_*` (this module), `osm_*` / `tiles_*` /
+//! `engine_*` (sources: Overpass, vector tiles, the output, the ocean) and
+//! `module_*` (compiled recipes such as roads, whose outputs are drawn as
+//! `roads.outlines`). `at` is where the script made the node; errors about it
+//! carry that line and column.
 //!
-//! - `$section.name` — yours, defined in this file. The section gives the type.
-//! - `tools_*` — kit operations (this module).
-//! - `osm_*` / `tiles_*` / `engine_*` — sources: OSM selections (Overpass),
-//!   vector tile selections, the output, the ocean.
-//! - `module_*` / `primitives_*` — canned recipes. `module_*` is compiled code
-//!   (roads); `primitives_*` expands into `tools_*` and is defined here.
-//!
-//! Expressions (`~name`) are recognised and rejected: they land in v4.
-//!
-//! Parsing is strict: unknown sections, operations and names are errors at
+//! Loading is strict: unknown sections, operations and names are errors at
 //! load, never halfway through a render.
 
 use crate::profile::{FillSpec, StrokeSpec};
@@ -89,7 +69,7 @@ pub struct Name {
 }
 
 impl Name {
-    /// Parse `$<section>.<name>`. Anything else (a bare word, a `~expression`)
+    /// Parse `$<section>.<name>`. Anything else (a bare word)
     /// is not a reference the grammar resolver understands.
     pub fn parse(text: &str) -> Result<Name, String> {
         let rest = text.strip_prefix('$').ok_or_else(|| format!("{text:?} is not a $section.name reference"))?;
@@ -505,10 +485,6 @@ impl Grammar {
 
 #[derive(Debug, thiserror::Error)]
 pub enum GrammarError {
-    #[error("YAML: {0}")]
-    Yaml(String),
-    #[error("JSON5: {0}")]
-    Json5(String),
     #[error("graph JSON: {0}")]
     Json(String),
     #[error("profile: {0}")]
@@ -531,8 +507,6 @@ struct Raw {
     #[serde(default, rename = "$fills", deserialize_with = "ordered_defs")]
     fills: Vec<(String, RawOp)>,
     /// Recognised so the error is clear, not "unknown field".
-    #[serde(default, rename = "$expressions")]
-    expressions: Option<Value>,
     #[serde(default)]
     draw: Vec<RawDraw>,
     #[serde(default)]
@@ -679,19 +653,12 @@ fn json<T: serde::de::DeserializeOwned>(value: &Value, what: &str) -> Result<T, 
     serde_json::from_value(value.clone()).map_err(|e| GrammarError::Invalid(format!("{what}: {e}")))
 }
 
-impl Grammar {
-    pub fn parse(text: &str, format: crate::profile::Format) -> Result<Grammar, GrammarError> {
-        let raw: Raw = match format {
-            crate::profile::Format::Yaml => serde_saphyr::from_str(text).map_err(|e| GrammarError::Yaml(e.to_string()))?,
-            crate::profile::Format::Json5 => json5::from_str(text).map_err(|e| GrammarError::Json5(e.to_string()))?,
-        };
-        if raw.expressions.is_some() {
-            return Err(GrammarError::Invalid(
-                "$expressions is recognised but not implemented yet; expressions land in v4".into(),
-            ));
-        }
-        build(raw)
-    }
+/// Tests write graphs as YAML, the op form's shortest spelling; the engine
+/// itself reads only JSON.
+#[cfg(test)]
+pub(crate) fn from_yaml(text: &str) -> Result<Grammar, GrammarError> {
+    let value: Value = serde_saphyr::from_str(text).map_err(|e| GrammarError::Json(e.to_string()))?;
+    Grammar::from_json(&value.to_string())
 }
 
 fn build(raw: Raw) -> Result<Grammar, GrammarError> {
@@ -777,22 +744,14 @@ fn build(raw: Raw) -> Result<Grammar, GrammarError> {
     Ok(grammar)
 }
 
-/// Recognise `~name` early so the error mentions expressions, not a bad name.
-fn expr_or_name(text: String) -> GrammarError {
-    if text.starts_with('~') {
-        GrammarError::Invalid(format!("{text:?} is an expression; expressions land in v4"))
-    } else {
-        GrammarError::Invalid(format!("{text:?} is not a $section.name reference"))
-    }
+fn not_a_reference(text: String) -> GrammarError {
+    GrammarError::Invalid(format!("{text:?} is not a $section.name reference"))
 }
 
 /// `$lines.x`, `$fills.x`, or `roads.outlines` (a module output).
 fn parse_output(text: &str) -> Result<Target, GrammarError> {
     if let Some(rest) = text.strip_prefix('$') {
         return Ok(Target { module: None, name: refname(&format!("${rest}"))? });
-    }
-    if text.starts_with('~') {
-        return Err(GrammarError::Invalid(format!("{text:?} is an expression; expressions land in v4")));
     }
     match text.split_once('.') {
         Some((module, name)) if !name.is_empty() => {
@@ -805,7 +764,7 @@ fn parse_output(text: &str) -> Result<Target, GrammarError> {
 }
 
 fn refname(text: &str) -> Result<Name, GrammarError> {
-    Name::parse(text).map_err(|_| expr_or_name(text.to_string()))
+    Name::parse(text).map_err(|_| not_a_reference(text.to_string()))
 }
 
 /// A draw/`from` target: `$lines.x` / `$fills.x`, or `roads.outlines` (a module
@@ -1259,7 +1218,10 @@ impl Grammar {
             .draw
             .iter()
             .map(|d| {
-                let mut v = json!({ "id": d.group(), "from": d.from.to_json() });
+                let mut v = json!({ "from": d.from.to_json() });
+                if let Some(id) = &d.id {
+                    v["id"] = json!(id);
+                }
                 if let Some(s) = &d.stroke {
                     v["stroke"] = json!(s);
                 }
@@ -1449,7 +1411,6 @@ fn find_cycle(g: &Grammar) -> Option<Vec<String>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::profile::Format;
 
     /// The example profile, trimmed to the parts the grammar must accept.
     const YAML: &str = r#"
@@ -1497,7 +1458,7 @@ compose:
         } else {
             format!("output: {{ width: 100mm, height: 50mm }}\n{text}")
         };
-        Grammar::parse(&body, Format::Yaml)
+        from_yaml(&body)
     }
 
     #[test]
@@ -1565,26 +1526,18 @@ compose:
     #[test]
     fn one_operation_per_def() {
         let two = "$areas:\n  a: { tools_polygons: $areas.b, engine_frame: {} }\n  b: { engine_frame: {} }\n";
-        assert!(matches!(parse(two), Err(GrammarError::Yaml(m)) if m.contains("exactly one operation")));
+        assert!(matches!(parse(two), Err(GrammarError::Json(m)) if m.contains("exactly one operation")));
     }
 
     #[test]
-    fn expressions_and_modules_are_named_in_the_error() {
-        // As a reference, the error names expressions explicitly.
-        let expr_ref = "$areas:\n  a: { tools_grow: { of: ~dense, by: 1mm } }\n";
-        assert!(matches!(parse(expr_ref), Err(GrammarError::Invalid(m)) if m.contains("v4")));
-        // As a scalar value it is not a length, and must not silently parse.
-        let expr = "$fills:\n  f: { tools_fill: { in: $areas.a, spacing: ~dense } }\n$areas:\n  a: { engine_frame: {} }\n";
-        assert!(parse(expr).is_err());
-        // A module name is recognised: v3 records it even though its outputs
-        // have no syntax yet.
+    fn modules_are_recorded_and_bad_references_named() {
         let module = "$lines:\n  roads: { module_roads: {} }\n";
         let g = parse(module).unwrap();
         assert_eq!(g.defs(Section::Lines)[0].op, Op::Module(Module { name: "roads".into(), from: None }));
-        let block = "$expressions:\n  dense: { when: { area_m2: { \"<\": 50 } }, then: 0.3mm, else: 0.5mm }\n";
-        assert!(matches!(parse(block), Err(GrammarError::Invalid(m)) if m.contains("v4")));
-        let bad_ref = "$areas:\n  a: { tools_union: [~dense] }\n";
-        assert!(matches!(parse(bad_ref), Err(GrammarError::Invalid(m)) if m.contains("v4")));
+        let bad_ref = "$areas:\n  a: { tools_union: [dense] }\n";
+        assert!(matches!(parse(bad_ref), Err(GrammarError::Invalid(m)) if m.contains("\"dense\" is not a $section.name reference")));
+        let bad_len = "$fills:\n  f: { tools_fill: { in: $areas.a, spacing: dense } }\n$areas:\n  a: { engine_frame: {} }\n";
+        assert!(parse(bad_len).is_err());
     }
 
     #[test]
@@ -1605,16 +1558,15 @@ compose:
 
     #[test]
     fn duplicate_names_and_extra_keys_are_refused() {
-        let dup = "$areas:\n  a: { engine_frame: {} }\n  a: { engine_frame: {} }\n";
-        assert!(matches!(parse(dup), Err(GrammarError::Yaml(m)) if m.contains("duplicate mapping key")));
+        let dup = r#"{ "output": {}, "$areas": { "a": { "engine_frame": {} }, "a": { "engine_frame": {} } } }"#;
+        assert!(matches!(Grammar::from_json(dup), Err(GrammarError::Invalid(m)) if m.contains("defined twice")));
         let extra = "$areas:\n  a: { engine_frame: {}, note: hi }\n";
         assert!(parse(extra).is_err());
     }
 
     #[test]
     fn the_graph_round_trips_through_json() {
-        let text = include_str!("../../../configs/proposal/postcard.yaml");
-        let g = Grammar::parse(text, Format::Yaml).unwrap();
+        let g = parse(YAML).unwrap();
         let json = g.to_json().to_string();
         let back = Grammar::from_json(&json).unwrap();
         assert_eq!(back, g);
@@ -1632,15 +1584,5 @@ compose:
         bad["$areas"]["garden"]["tools_polygons"] = Value::String("$features.nope".into());
         let err = Grammar::from_json(&bad.to_string()).unwrap_err().to_string();
         assert!(err.contains("line 12 column 5"), "{err}");
-    }
-
-    #[test]
-    fn the_proposal_file_parses() {
-        // configs/proposal/postcard.yaml is the grammar's living example; it must
-        // stay loadable, or the proposal and the parser have drifted apart.
-        let text = include_str!("../../../configs/proposal/postcard.yaml");
-        let g = Grammar::parse(text, Format::Yaml).unwrap();
-        assert!(g.defs(Section::Areas).len() >= 10, "the example should define the real output");
-        assert_eq!(g.compose.order.len(), g.draw.len());
     }
 }

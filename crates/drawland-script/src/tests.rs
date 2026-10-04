@@ -1,6 +1,8 @@
 use super::*;
 use drawland_core::grammar::{Op, UnionRules};
-use drawland_core::profile::Format;
+use drawland_core::grammar_run::{run, Inputs};
+use drawland_core::output::Output;
+use std::collections::BTreeMap;
 
 fn err(source: &str) -> ScriptError {
     evaluate(source).expect_err("the script must fail")
@@ -45,28 +47,27 @@ fn loops_and_functions_make_ordinary_graphs() {
 }
 
 #[test]
-fn the_postcard_script_matches_the_postcard_profile() {
-    let js = evaluate(include_str!("../../../configs/proposal/postcard.js")).unwrap();
-    let yaml = Grammar::parse(include_str!("../../../configs/proposal/postcard.yaml"), Format::Yaml).unwrap();
-    assert_eq!(js.output, yaml.output);
-    assert_eq!(js.groups(), yaml.groups());
-    for section in Section::ALL {
-        assert_eq!(js.defs(section).len(), yaml.defs(section).len(), "{section}");
-    }
-    let masks = |g: &Grammar| -> Vec<(String, Vec<String>)> {
-        g.compose
-            .masks
-            .iter()
-            .map(|(name, m)| {
-                let mut ids: Vec<String> = m.occludes.iter().map(|i| i.0.clone()).collect();
-                ids.sort();
-                (name.clone(), ids)
-            })
-            .collect()
-    };
-    assert_eq!(masks(&js), masks(&yaml));
-    let back = Grammar::from_json(&js.to_json().to_string()).unwrap();
-    assert_eq!(back, js, "the graph survives JSON");
+fn the_postcard_script_renders_without_osm_data() {
+    // configs/postcard.js is the CLI's default and the library's living
+    // example: it must load, survive JSON, and come out of the whole pipeline
+    // (no features, so parks and water are empty, but every group is there).
+    let g = evaluate(include_str!("../../../configs/postcard.js")).unwrap();
+    assert_eq!(
+        g.groups(),
+        [
+            "parks_ring", "parks_fill_g", "parks_fill_p", "parks_fill_w", "parks_fill_r", "parks_fill_x",
+            "water_ring", "water_fill", "roads_out", "roads_trail", "roads_center", "roads_seam",
+            "bldg_wall", "bldg_fill", "bldg_ring",
+        ]
+    );
+    assert_eq!(g.compose.masks.len(), 4);
+    assert_eq!(g.compose.masks[0].1.occludes.len(), 9, "parks_cover hides water, roads and buildings");
+    let back = Grammar::from_json(&g.to_json().to_string()).unwrap();
+    assert_eq!(back, g, "the graph survives JSON");
+    let output = Output::new(&g.output, (-122.256196, 37.8771145));
+    let out = run(&g, &output, Inputs { features: vec![], tiles: vec![], ocean: None, sources: &BTreeMap::new() }).unwrap();
+    assert!(!out.svg.is_empty());
+    assert_eq!(out.groups.len(), 15);
 }
 
 #[test]

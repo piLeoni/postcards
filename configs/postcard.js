@@ -1,5 +1,5 @@
-// The postcard: parks, water, roads and buildings, in pen.
-// The same drawing as postcard.yaml, written as a script.
+// The postcard: parks, water, roads and buildings, in pen. The CLI draws it
+// when given no profile: `drawland map --lat … --lng …`.
 
 output({ width: "6in", height: "4in", scale: "1:10000", bearing: 0, projection: "webmercator" })
 

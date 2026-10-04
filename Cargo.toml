@@ -20,7 +20,6 @@ proj4rs = { version = "0.2", default-features = false }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 serde-saphyr = "1.3"
-json5 = "1.3"
 thiserror = "2"
 rayon = "1.12"
 clap = { version = "4.6", features = ["derive"] }

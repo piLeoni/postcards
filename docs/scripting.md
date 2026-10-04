@@ -11,7 +11,7 @@ The steps are in [`scripting-roadmap.md`](scripting-roadmap.md).
 
 Draw.land builds a map from a **profile**: where the output sits, which map data
 to read, how each layer is drawn. Today the profile is written in our own YAML
-grammar ([`profile.md`](profile.md)). This document replaces that grammar with
+grammar (`profile.md`, since removed). This document replaces that grammar with
 ordinary JavaScript, outright — no transition period, no compatibility layer:
 
 ```js
@@ -343,7 +343,7 @@ terramask through `crates/drawland-core/src/tiles.rs`; scripting sits above that
 ## Related docs
 
 - [`scripting-roadmap.md`](scripting-roadmap.md) — the steps, in order.
-- [`profile.md`](profile.md) — the v3 grammar being replaced.
+- [`library.md`](library.md) — the library as built (it replaced `profile.md`, the v3 grammar).
 - [`burin-map/SYNTAX.md`](../../burin-map/SYNTAX.md) — burin's document today, and its `color_expr` / `width_expr`.
 - [`plan.md`](plan.md) — phases; the WASM host and the core's no-I/O rule.
 - `crates/drawland-core/src/grammar.rs` — the operation set (`Op::*`).

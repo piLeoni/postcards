@@ -7,7 +7,6 @@ use clap::{Parser, Subcommand};
 use drawland_core::output::Output;
 use drawland_core::grammar::Grammar;
 use drawland_core::osm::{features_from_overpass, Feature};
-use drawland_core::profile::Format;
 use drawland_core::progress::{thousands, Event, Level, Progress, Task};
 use drawland_core::tiles::{self, Tiles};
 use std::collections::BTreeMap;
@@ -28,7 +27,7 @@ enum Command {
     /// Build the map SVG for a place.
     Map {
         /// Profile: a script (.js), or a saved graph (.json).
-        #[arg(default_value = "configs/proposal/postcard.js")]
+        #[arg(default_value = "configs/postcard.js")]
         profile: PathBuf,
         /// Print the graph the profile builds, as JSON, and stop.
         #[arg(long)]
@@ -95,12 +94,10 @@ fn load(path: &Path) -> Result<Grammar, String> {
     let text = read(path)?;
     let name = path.to_string_lossy().to_ascii_lowercase();
     let located = |e: String| format!("{}: {e}", path.display());
-    if name.ends_with(".js") {
-        drawland_script::evaluate(&text).map_err(|e| located(e.to_string()))
-    } else if name.ends_with(".json") {
+    if name.ends_with(".json") {
         Grammar::from_json(&text).map_err(|e| located(e.to_string()))
     } else {
-        Grammar::parse(&text, Format::from_path(&name)).map_err(|e| located(e.to_string()))
+        drawland_script::evaluate(&text).map_err(|e| located(e.to_string()))
     }
 }
 
