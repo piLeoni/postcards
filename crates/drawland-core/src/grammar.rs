@@ -164,6 +164,20 @@ pub enum TerrainDraw {
     Dots,
 }
 
+/// `tools_burin`: a whole burin document, built by burin's own language inside
+/// a draw.land profile, drawn by the engine from the elevation under the
+/// output. The atlas is burin's own JSON — the same thing `burin.draw()`
+/// yields at burin's front ends — so no vocabulary is repeated here.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct Burin {
+    /// The burin atlas, as `burin.json()` writes it: batches and water passes.
+    pub atlas: serde_json::Value,
+    /// The area the drawing is kept to, or `None` for the whole output.
+    pub in_area: Option<Name>,
+    /// What to call the layer; `burin` without one.
+    pub layer: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Difference {
     pub base: Name,
@@ -204,11 +218,13 @@ pub struct ClipLines {
 }
 
 /// A penfill run. `per: feature` runs one pattern per polygon instead of one
-/// on the union.
+/// on the union. `content` fills the area with lines made elsewhere (burin's,
+/// or any `$lines`), cut to it, instead of a pattern.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Fill {
     pub in_area: Name,
     pub per_feature: bool,
+    pub content: Option<Name>,
     pub spec: FillSpec,
 }
 
@@ -241,6 +257,8 @@ pub enum Op {
     ClipLines(ClipLines),
     /// Pen-and-ink terrain, drawn by burin from the elevation.
     Terrain(Terrain),
+    /// A whole burin document, drawn from the elevation.
+    Burin(Burin),
 
     // ---- fills (lines, produced by penfill) -------------------------------
     Fill(Fill),
@@ -270,7 +288,7 @@ impl Op {
             | Op::Frame
             | Op::Ocean => Section::Areas,
             Op::Rings(_) | Op::Lines(_) | Op::Segments(_) | Op::Dedupe(_) | Op::Merge(_) | Op::Join(_)
-            | Op::ClipLines(_) | Op::Terrain(_) => Section::Lines,
+            | Op::ClipLines(_) | Op::Terrain(_) | Op::Burin(_) => Section::Lines,
             Op::Fill(_) => Section::Fills,
             // A module is called from $areas: its headline output is an area,
             // and the rest are reached by output name (`roads.outlines`).
@@ -300,7 +318,8 @@ impl Op {
             Op::Rings(r) => vec![r.of.clone()],
             Op::ClipLines(c) => vec![c.lines.clone(), c.within.clone()],
             Op::Terrain(t) => t.in_area.iter().cloned().collect(),
-            Op::Fill(f) => vec![f.in_area.clone()],
+            Op::Burin(b) => b.in_area.iter().cloned().collect(),
+            Op::Fill(f) => std::iter::once(f.in_area.clone()).chain(f.content.iter().cloned()).collect(),
         }
     }
 
@@ -443,6 +462,22 @@ impl Grammar {
                 _ => None,
             })
             .collect()
+    }
+
+    /// The `tools_burin` defs: whole burin documents the engine draws.
+    pub fn burins(&self) -> Vec<&Burin> {
+        self.all_defs()
+            .filter_map(|d| match &d.op {
+                Op::Burin(b) => Some(b),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// Whether any def draws the elevation — terrain, or a burin document.
+    /// What turns the terrain fetch on.
+    pub fn draws_terrain(&self) -> bool {
+        !self.terrains().is_empty() || !self.burins().is_empty()
     }
 
     pub fn defs(&self, section: Section) -> &[Def] {
@@ -834,7 +869,7 @@ fn parse_op(raw: RawOp, section: Section) -> Result<Op, GrammarError> {
         "tools_polygons" | "tools_union" | "tools_difference" | "tools_intersect" | "tools_fill_holes"
         | "tools_grow" | "engine_frame" | "engine_ocean" => Section::Areas,
         "tools_rings" | "tools_lines" | "tools_segments" | "tools_dedupe" | "tools_merge" | "tools_join"
-        | "tools_clip" | "tools_terrain" => Section::Lines,
+        | "tools_clip" | "tools_terrain" | "tools_burin" => Section::Lines,
         "tools_fill" => Section::Fills,
         other => {
             if let Some(rest) = other.strip_prefix("module_") {
@@ -965,6 +1000,34 @@ fn parse_op(raw: RawOp, section: Section) -> Result<Op, GrammarError> {
                 },
             })
         }
+        "tools_burin" => {
+            #[derive(Deserialize)]
+            #[serde(deny_unknown_fields)]
+            struct Raw {
+                /// The atlas, as `burin.json()` writes it: a list, or the JSON
+                /// string of one (the library hands a string).
+                atlas: Value,
+                #[serde(default)]
+                in_area: Option<String>,
+                #[serde(default)]
+                layer: Option<String>,
+            }
+            let raw: Raw = json(&value, "tools_burin")?;
+            let atlas = match raw.atlas {
+                Value::String(text) => {
+                    serde_json::from_str(&text).map_err(|e| GrammarError::Invalid(format!("tools_burin atlas: {e}")))?
+                }
+                other => other,
+            };
+            if !atlas.is_array() {
+                return Err(GrammarError::Invalid("tools_burin atlas is a list of batches and water passes".into()));
+            }
+            Op::Burin(Burin {
+                atlas,
+                in_area: raw.in_area.as_deref().map(refname).transpose()?,
+                layer: raw.layer,
+            })
+        }
         "tools_rings" => match &value {
             Value::String(s) => Op::Rings(Rings { of: refname(s)?, exterior_only: false }),
             _ => {
@@ -1007,6 +1070,8 @@ fn parse_op(raw: RawOp, section: Section) -> Result<Op, GrammarError> {
                 per: Option<String>,
                 #[serde(default)]
                 pattern: Option<String>,
+                #[serde(default)]
+                content: Option<String>,
                 #[serde(flatten)]
                 spec: FillSpec,
             }
@@ -1025,7 +1090,11 @@ fn parse_op(raw: RawOp, section: Section) -> Result<Op, GrammarError> {
                     )))
                 }
             };
-            Op::Fill(Fill { in_area: refname(&raw.in_area)?, per_feature, spec: raw.spec })
+            let content = raw.content.as_deref().map(refname).transpose()?;
+            if content.as_ref().is_some_and(|c| c.section != Section::Lines) {
+                return Err(GrammarError::Invalid("tools_fill: content must be $lines".into()));
+            }
+            Op::Fill(Fill { in_area: refname(&raw.in_area)?, per_feature, content, spec: raw.spec })
         }
         _ => unreachable!("keys are matched above"),
     };
@@ -1282,6 +1351,17 @@ pub fn op_to_json(op: &Op) -> Value {
             }
             ("tools_terrain", Value::Object(body))
         }
+        Op::Burin(b) => {
+            let mut body = serde_json::Map::new();
+            body.insert("atlas".into(), b.atlas.clone());
+            if let Some(a) = &b.in_area {
+                body.insert("in_area".into(), Value::String(a.to_string()));
+            }
+            if let Some(l) = &b.layer {
+                body.insert("layer".into(), Value::String(l.clone()));
+            }
+            ("tools_burin", Value::Object(body))
+        }
         Op::Grow(g) => ("tools_grow", json!({ "of": g.of.to_string(), "by": g.by })),
         Op::Frame => ("engine_frame", json!({})),
         Op::Ocean => ("engine_ocean", json!({})),
@@ -1300,6 +1380,9 @@ pub fn op_to_json(op: &Op) -> Value {
             body["in"] = Value::String(f.in_area.to_string());
             if f.per_feature {
                 body["per"] = Value::String("feature".into());
+            }
+            if let Some(c) = &f.content {
+                body["content"] = Value::String(c.to_string());
             }
             ("tools_fill", body)
         }

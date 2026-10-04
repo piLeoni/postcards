@@ -55,9 +55,9 @@ const building = [
   draw({ id: "bldg_ring", from: lines.join(lines.rings(dissolved), lines.of(bldg)), stroke: "solid" }),
 ]
 
-// What covers what: each mask hides the groups it lists, where they sit below it.
+// What covers what: each mask hides exactly the groups it lists. Water over the
+// parks, roads over both, buildings over everything.
 const park = ["parks_ring", ...parkFills]
-compose.mask({ name: "parks_cover", from: parksEdge, occludes: [...water, ...road, ...building] })
-compose.mask({ name: "wet_cover", from: wet, occludes: [...park, ...road, ...building] })
+compose.mask({ name: "wet_cover", from: wet, occludes: [...park] })
 compose.mask({ name: "roads_cover", from: roads.area, occludes: [...park, ...water] })
 compose.mask({ name: "bldg_cover", from: dissolved, occludes: [...park, ...water, ...road] })

@@ -13,6 +13,7 @@ import mixed from '../presets/mixed.js?raw'
 import overpass from '../presets/overpass.js?raw'
 import parks from '../presets/parks.js?raw'
 import buildings from '../presets/buildings.js?raw'
+import goldenGate from '../presets/golden-gate.js?raw'
 import { titleOf } from './doc'
 
 export const PRESETS = [
@@ -21,6 +22,7 @@ export const PRESETS = [
   { id: 'overpass', hint: 'the same output, all from Overpass', doc: overpass },
   { id: 'parks', hint: 'green, water, buildings', doc: parks },
   { id: 'buildings', hint: 'the fastest draw', doc: buildings },
+  { id: 'golden-gate', hint: 'burin land and sea, at the Golden Gate', doc: goldenGate },
 ].map((p) => ({ ...p, name: titleOf(p.doc) ?? p.id, graph: graphs[p.id] }))
 
 /** The output the app opens on. */

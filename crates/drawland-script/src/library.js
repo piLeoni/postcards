@@ -187,12 +187,43 @@
     },
   };
 
+  // A burin document, written here: burin's own language, as a first-class
+  // citizen. The callback is a real function and runs in this same engine, so
+  // it is linted, completed and its errors carry this script's positions.
+  //
+  //   const natural = burin.terrain((b) => {
+  //     b.batch({ angle: 90, style: { space: 3, space_dark: 0.8 } })
+  //     b.water("dots", { follow: "shore", style: { space: 10, space_dark: 0.3 } })
+  //     b.shore({ lines: 2 })
+  //   })
+  //
+  // The atlas is built now and drawn later by the engine, over the elevation
+  // the host fetched: no geometry crosses the script, and nothing is a string.
+  const burin = {
+    terrain(build, options = {}) {
+      if (typeof build !== "function") {
+        fail(`burin.terrain expects a function: burin.terrain((b) => { … }), got ${describe(build)}`);
+      }
+      object(options, "burin.terrain options");
+      const { in: area } = options;
+      const op = { tools_burin: { atlas: dl.burin(build) } };
+      // `in` clips the drawing to an area, like `lines.terrain`.
+      if (area !== undefined) op.tools_burin.in_area = need(area, Area, "burin.terrain in");
+      return make(Lines, "lines", op);
+    },
+  };
+  // `burin.script` reads the same: a burin document, whatever it draws.
+  burin.script = burin.terrain;
+
   const fills = {
+    // A pattern from penfill, or `content`: lines made elsewhere (a burin
+    // document, any `lines.*`) cut to the area, as its pattern.
     fill(spec) {
       object(spec, "fills.fill");
-      const { in: area, per, ...rest } = spec;
+      const { in: area, per, content, ...rest } = spec;
       const op = { in: need(area, Area, "fills.fill in"), ...rest };
       if (per !== undefined) op.per = per;
+      if (content !== undefined) op.content = need(content, Lines, "fills.fill content");
       return make(Lines, "fills", { tools_fill: op });
     },
   };
@@ -255,7 +286,7 @@
     dl.title(text);
   }
 
-  const lib = { features, areas, engine, lines, fills, modules, draw, compose, output, title };
+  const lib = { features, areas, engine, lines, fills, burin, modules, draw, compose, output, title };
   for (const [name, value] of Object.entries(lib)) {
     if (typeof value === "object") Object.freeze(value);
     Object.defineProperty(globalThis, name, { value, enumerable: false, writable: false, configurable: false });

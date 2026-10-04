@@ -161,6 +161,9 @@ of penfill's patterns and returns the lines.
   (terrazzo), `cell` (chess), `name` and `scale` (pat).
 - `source: { file, size, position, repeat }` draws an SVG into the area
   instead of a pattern.
+- `content: lines` fills the area with lines made elsewhere, cut to it: a
+  burin document (`burin.terrain(…)`, which covers the whole output) or any
+  `lines.*`. `fills.fill({ in: gardens, content: natural })`.
 
 ## `modules.roads()`: roads
 
@@ -184,19 +187,23 @@ transformed (`lines.clip(roads.outlines, …)` is an error); call it once.
 ## `draw({...})`: ink
 
 `draw({ id, from, stroke })` puts lines on paper as one SVG group and returns
-its id. Later draws go on top. `id` defaults to the node's name; a plotter can
+its id. Groups are written in draw order; that order cuts nothing (masks
+do). `id` defaults to the node's name; a plotter can
 give each group its own pen. `stroke` is `"solid"`, `"dash"`, `"dotted"`,
 `"none"`, or `{ style, dash, gap, mark }`; without one, lines are inked as
 they are (fills are lines already).
 
 ## `compose`: order and masks
 
-- `compose.order(...ids)`: group ids, bottom first. Default: draw order.
-- `compose.mask({ name, from: area, occludes: [ids] })`: the area hides the
-  listed groups where they sit below it. A group no mask lists is never cut,
-  so a hatch drawn over everything stays whole.
-- `compose.clip(value)`: which masks cut: `"auto"` (default: the masks above
-  each group that list it), `"none"`, or exactly these areas.
+- `compose.order(...ids)`: the sequence groups are written (and plotted) in.
+  Default: draw order. It cuts nothing.
+- `compose.mask({ name, from: area, occludes: [ids] })`: the area hides
+  exactly the listed groups, wherever they are in the order. A group no mask
+  lists is never cut, so a second ink drawn over everything stays whole. A
+  mask that should spare part of another is area work before it:
+  `from: areas.difference(parks, water)`.
+- `compose.clip(value)`: which masks cut: `"auto"` (default: the masks that
+  list the group), `"none"`, or exactly these areas.
 
 Since `draw` returns the id, groups collect naturally:
 
@@ -205,7 +212,7 @@ const road = [
   draw({ id: "roads_out", from: roads.outlines, stroke: "solid" }),
   draw({ id: "roads_trail", from: roads.trails, stroke: "solid" }),
 ]
-compose.mask({ name: "parks_cover", from: parks, occludes: [...road] })
+compose.mask({ name: "bldg_cover", from: buildings, occludes: [...road] })
 ```
 
 ## The graph

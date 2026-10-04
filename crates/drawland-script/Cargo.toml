@@ -7,6 +7,9 @@ license.workspace = true
 
 [dependencies]
 drawland-core = { workspace = true }
+# The burin document builder, mounted into this same interpreter: burin's
+# scripting language is a first-class citizen in a draw.land profile.
+burin-map-script = { workspace = true }
 boa_engine = { version = "0.22", default-features = false }
 serde_json = { workspace = true }
 

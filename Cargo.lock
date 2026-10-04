@@ -319,6 +319,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "burin-map-script"
+version = "0.1.0"
+dependencies = [
+ "boa_engine",
+ "burin-map-core",
+ "serde_json",
+]
+
+[[package]]
 name = "bytemuck"
 version = "1.25.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -617,6 +626,7 @@ name = "drawland-script"
 version = "0.1.0"
 dependencies = [
  "boa_engine",
+ "burin-map-script",
  "drawland-core",
  "penfill",
  "serde_json",

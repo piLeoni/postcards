@@ -507,10 +507,10 @@ impl Doc {
         Ok(Doc { output, keys, selectors, ocean, body: Body::Grammar(Box::new(grammar)) })
     }
 
-    /// Whether any def draws terrain.
+    /// Whether any def draws terrain: `lines.terrain`, or a burin document.
     fn terrain_defs(&self) -> bool {
         match &self.body {
-            Body::Grammar(g) => !g.terrains().is_empty(),
+            Body::Grammar(g) => g.draws_terrain(),
         }
     }
 

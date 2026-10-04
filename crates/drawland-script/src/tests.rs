@@ -125,8 +125,8 @@ fn the_postcard_script_renders_without_osm_data() {
             "bldg_wall", "bldg_fill", "bldg_ring",
         ]
     );
-    assert_eq!(g.compose.masks.len(), 4);
-    assert_eq!(g.compose.masks[0].1.occludes.len(), 9, "parks_cover hides water, roads and buildings");
+    assert_eq!(g.compose.masks.len(), 3);
+    assert_eq!(g.compose.masks[0].1.occludes.len(), 6, "wet_cover hides the parks ring and its five fills");
     let back = Grammar::from_json(&g.to_json().to_string()).unwrap();
     assert_eq!(back, g, "the graph survives JSON");
     let output = Output::new(&g.output, (-122.256196, 37.8771145));
@@ -176,6 +176,64 @@ fn a_script_draws_terrain_from_the_elevation() {
     assert!(out.groups[0].1 > 0, "the streamlines drew something");
     assert!(out.groups[1].1 > 0, "the shore drew something");
     assert!(out.svg.contains("<g id=\"terrain_g\">"));
+}
+
+#[test]
+fn a_burin_document_runs_inside_a_profile() {
+    // burin's own language, as a first-class builder here: the callback is a
+    // real function in this interpreter, so it is linted and its errors carry
+    // this script's lines. The atlas is burin's, and the engine draws it.
+    let g = evaluate(
+        "const natural = burin.terrain((b) => {\n\
+           b.batch({ angle: 90, style: { space: 3, space_dark: 0.8 } })\n\
+           b.water('dots', { follow: 'shore', style: { space: 10, space_dark: 0.3 } })\n\
+           b.shore({ lines: 2 })\n\
+         })\n\
+         draw({ id: 'natural', from: natural, stroke: 'solid' })\n",
+    )
+    .unwrap();
+    assert_eq!(g.burins().len(), 1, "one burin document");
+    assert!(g.draws_terrain(), "a burin document needs the elevation");
+    let atlas = &g.burins()[0].atlas;
+    assert_eq!(atlas.as_array().unwrap().len(), 3, "a batch, a water pass and the shore");
+    let back = Grammar::from_json(&g.to_json().to_string()).unwrap();
+    assert_eq!(back, g, "the graph survives JSON");
+
+    // A 64×64 cone from the sea to 600 m: a slope to hatch and a shore to draw.
+    let width = 64usize;
+    let elev: Vec<f32> = (0..width * width)
+        .map(|i| {
+            let (x, y) = ((i % width) as f32, (i / width) as f32);
+            let cx = x - width as f32 / 2.0;
+            let cy = y - width as f32 / 2.0;
+            600.0 - (cx * cx + cy * cy) / 40.0
+        })
+        .collect();
+    let output = Output::new(&g.output, (-122.256196, 37.8771145));
+    let bounds = drawland_core::terrain::bounds_of(&output);
+    let merc = [0.0, 0.0, 1000.0 * width as f64, 1000.0 * width as f64];
+    let terrain = drawland_core::terrain::Grid::new(bounds, merc, elev, width);
+    let out = run(
+        &g,
+        &output,
+        Inputs { features: vec![], tiles: vec![], ocean: None, sources: &BTreeMap::new(), terrain: Some(terrain) },
+    )
+    .unwrap();
+    assert_eq!(out.groups.len(), 1);
+    assert_eq!(out.groups[0].0, "natural");
+    assert!(out.groups[0].1 > 0, "the burin document drew something");
+}
+
+#[test]
+fn a_mistake_in_a_burin_document_points_at_the_profile_line() {
+    // The callback runs in the profile's own engine, so the error is the
+    // profile's, not a position inside a string: it names the burin call whose
+    // document is wrong.
+    let e = err("const a = engine.frame()\nconst n = burin.terrain((b) => {\n  b.water('swirl')\n})\n");
+    assert_eq!(e.at.map(|a| a.0), Some(2), "{e}");
+    assert!(e.message.contains("swirl"), "{e}");
+    let e = err("burin.terrain(42)\n");
+    assert!(e.message.contains("burin.terrain expects a function"), "{e}");
 }
 
 #[test]

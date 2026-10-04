@@ -56,8 +56,10 @@ interface FillOptions {
   in: Area
   /** `"feature"`: one pattern per polygon (each building hatched on its own) instead of one over the union. */
   per?: "feature"
-  /** The pattern; or leave it out and give a `source`. */
+  /** The pattern; or leave it out and give a `source` or a `content`. */
   pattern?: Pattern
+  /** Lines to fill the area with, cut to it: a burin document, or any `lines.*`. */
+  content?: Lines
   /** Distance between lines, rows or dots. Default 0.5mm. */
   spacing?: Length
   /** Degrees; most patterns default to 0 (zigzag and lines to 45). */
@@ -268,6 +270,72 @@ declare const fills: {  /** The area filled with a pattern: lines, ready to draw
   fill(options: FillOptions): Lines
 }
 
+/**
+ * A burin document, built by burin's own language inside this profile. The
+ * callback is a real function and runs in the same interpreter, so it is
+ * linted and its errors carry this script's positions. The document is burin's
+ * own (`burin.batch`, `burin.water`, `burin.shore`, `burin.fill`, the trees);
+ * the engine draws it later, from the elevation the host fetched.
+ */
+declare const burin: {
+  /**
+   * Draw a burin document in the terrain: streamlines down the slope, the
+   * stippled sea, contour belts, the shore — whatever the callback builds.
+   *
+   *   const natural = burin.terrain((b) => {
+   *     b.batch({ angle: 90, style: { space: 3, space_dark: 0.8 } })
+   *     b.water("dots", { follow: "shore", style: { space: 10 } })
+   *     b.shore({ lines: 2 })
+   *   })
+   *   draw({ id: "land", from: natural, stroke: "solid" })
+   *
+   * It covers the whole output. `in` clips it to an area; to put it under
+   * other layers, draw it first and mask it like any other group; to fill a
+   * shape with it, `fills.fill({ in: shape, content: natural })`.
+   */
+  terrain(build: (burin: BurinBuilder) => void, options?: { in?: Area }): Lines
+  /** The same: a burin document, whatever it draws. */
+  script(build: (burin: BurinBuilder) => void, options?: { in?: Area }): Lines
+}
+
+/** The `burin` object a burin document sees, the same one as at burin's own front ends. */
+interface BurinBuilder {
+  /** A batch of hatching, stippling or a fill. */
+  batch(options?: Record<string, unknown>): unknown
+  /** A fill of a height or depth band: what a contour belt is. */
+  fill(options?: Record<string, unknown>): unknown
+  /** Lines on water: `"lines"`, `"ripples"` or `"dots"`. */
+  water(kind?: "lines" | "ripples" | "dots", options?: Record<string, unknown>): unknown
+  /** The shore, the zero contour. */
+  shore(options?: Record<string, unknown>): unknown
+  /** A colour between two others, by `t`. */
+  lerp(a: unknown, b: unknown, t: unknown): unknown
+  /** An rgb colour from three trees. */
+  rgb(r: unknown, g: unknown, b: unknown): unknown
+  /** `x` kept between `lo` and `hi`. */
+  clamp(x: unknown, lo: unknown, hi: unknown): unknown
+  /** A smooth step between two edges. */
+  smoothstep(edge0: unknown, edge1: unknown, x: unknown): unknown
+  /** 0 below `edge`, 1 above. */
+  step(edge: unknown, x: unknown): unknown
+  abs(x: unknown): unknown
+  floor(x: unknown): unknown
+  ceil(x: unknown): unknown
+  round(x: unknown): unknown
+  min(a: unknown, b: unknown): unknown
+  max(a: unknown, b: unknown): unknown
+  /** `t` as a plain fraction, for a colour. */
+  mix(a: unknown, b: unknown, t: unknown): unknown
+  /** The elevation at the dash. */
+  elev: unknown
+  /** The tone at the dash: 0 where light, 1 where dark. */
+  tone: unknown
+  /** The distance to the shore. */
+  dist: unknown
+  /** The depth below the surface. */
+  depth: unknown
+}
+
 /** Compiled recipes. */
 declare const modules: {
   /** Roads with their widths, crossings and bridges; from OSM `highway` unless given features. Call once. */
@@ -281,7 +349,7 @@ declare function draw(options: DrawOptions): string
 declare const compose: {
   /** Group ids, bottom first; groups left out go on top in draw order. Default: draw order. */
   order(...ids: (string | string[])[]): void
-  /** `from` hides the listed groups where they sit below it. */
+  /** `from` hides exactly the listed groups, wherever they are in the order. */
   mask(options: { name?: string; from: Area; occludes: string[] }): void
   /** Which masks cut: `"auto"` (default), `"none"`, or exactly these areas. */
   clip(value: "auto" | "none" | Area[]): void

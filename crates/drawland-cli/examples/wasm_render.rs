@@ -57,7 +57,7 @@ fn main() {
 /// The elevation under the output, when a preset draws terrain, as the page
 /// reads it: the same Terrarium tiles, folded into the same grid.
 fn read_terrain(grammar: &drawland_core::grammar::Grammar, output: &Output) -> Result<Option<drawland_core::terrain::Grid>, String> {
-    if grammar.terrains().is_empty() {
+    if !grammar.draws_terrain() {
         return Ok(None);
     }
     let width = drawland_core::terrain::WIDTH_PX;

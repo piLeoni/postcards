@@ -266,6 +266,13 @@ pub fn fill(region: &MultiPolygon<f64>, spec: &FillSpec, sources: &Sources) -> R
     Ok(out)
 }
 
+/// `content` cut to `region`: lines made elsewhere used as the fill's pattern.
+pub fn fill_with(region: &MultiPolygon<f64>, content: &[LineString<f64>]) -> Lines {
+    let strokes: penfill::Strokes =
+        content.iter().map(|l| l.0.iter().map(|c| (c.x, c.y)).collect()).collect();
+    regions(region).iter().flat_map(|r| to_lines(r.clip_strokes(&strokes))).collect()
+}
+
 /// Outline lines drawn as the stroke says (solid, dashed, dotted, or not at all).
 pub fn stroke(lines: Lines, spec: &StrokeSpec) -> Lines {
     match spec.style.unwrap_or_default() {

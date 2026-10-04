@@ -27,7 +27,7 @@ use crate::progress::{thousands, Level, Task};
 use crate::select::Selector;
 use geo::MultiPolygon;
 use rayon::prelude::*;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 #[derive(Debug, thiserror::Error)]
 pub enum RunError {
@@ -324,13 +324,21 @@ fn eval_op(
         // Handled in the fill pass, so `values` never holds one.
         Op::Terrain(t) => {
             let grid = engine.terrain.ok_or("tools_terrain needs the elevation, which was not read")?;
-            let at = grid.placed(engine.projector);
-            let area = match &t.in_area {
-                Some(n) => Some(area(n)?),
-                None => None,
-            };
-            let drawing = crate::terrain::draw(grid, t, engine.of, area.as_ref())?;
-            Value::Lines(crate::terrain::lines(&drawing, &at))
+            let drawing = crate::terrain::draw(grid, t)?;
+            let drawn = crate::terrain::lines(&drawing, &grid.placed(engine.projector));
+            Value::Lines(match &t.in_area {
+                Some(n) => geom::clip_lines(&drawn, &area(n)?, false),
+                None => drawn,
+            })
+        }
+        Op::Burin(b) => {
+            let grid = engine.terrain.ok_or("tools_burin needs the elevation, which was not read")?;
+            let drawing = crate::terrain::draw_burin(grid, b)?;
+            let drawn = crate::terrain::lines(&drawing, &grid.placed(engine.projector));
+            Value::Lines(match &b.in_area {
+                Some(n) => geom::clip_lines(&drawn, &area(n)?, false),
+                None => drawn,
+            })
         }
         Op::Fill(_) => return Err("tools_fill is evaluated in the fill pass".into()),
         Op::Module(m) => match &m.from {
@@ -436,6 +444,16 @@ fn run_fill(
     def: &Name,
     task: &Task,
 ) -> Result<Lines, RunError> {
+    if let Some(content) = &spec.content {
+        let lines = values
+            .get(content)
+            .ok_or_else(|| RunError::Plan(format!("{def}: missing content {content}")))?
+            .lines(content)?;
+        task.set_total(1);
+        let out = fill::fill_with(area, lines);
+        task.tick();
+        return Ok(out);
+    }
     let base = spec.spec.clone();
     if spec.per_feature {
         // One penfill run per polygon of the input area, so neighbouring
@@ -452,7 +470,6 @@ fn run_fill(
             .collect();
         return Ok(filled?.into_iter().flatten().collect());
     }
-    let _ = values;
     // One penfill pass over the whole area, so the pattern runs on across
     // its polygons: a single step to count.
     task.set_total(1);
@@ -523,13 +540,11 @@ fn compose(
         ids
     };
 
-    // 4. Occlusion. A mask is an area, not a group: it sits in the stack where
-    // the first group that draws from the same def sits. `parks_cover` comes
-    // from `$areas.parks_ext`, drawn by the parks groups, so it hides what is
-    // below the parks — not the roads above them.
+    // 4. Occlusion. A mask cuts exactly the groups it lists, wherever they sit
+    // in the order: the order is only the sequence the groups are drawn in.
     let mut out: Vec<(String, Lines)> = Vec::new();
     let occlude_task = task.child("compose:occlude", "occlusion", order.len() as u64, "groups");
-    for (i, id) in order.iter().enumerate() {
+    for id in &order {
         occlude_task.tick();
         let Some(lines) = parts.get(id) else { continue };
         let mut above = geom::empty();
@@ -538,11 +553,7 @@ fn compose(
                 continue;
             }
             let Some(area) = masks_by_id.get(name) else { continue };
-            // Where this mask sits: the lowest draw group that draws its def.
-            let at = mask_position(mask, grammar, &order, values);
-            if at.is_none_or(|p| p > i) {
-                above = geom::union_multi([&above, area]);
-            }
+            above = geom::union_multi([&above, area]);
         }
         above = match clip_for(grammar, id) {
             Clip::None => geom::empty(),
@@ -566,45 +577,6 @@ fn compose(
     Ok(out)
 }
 
-
-/// Where a mask sits in the draw order: the lowest group that draws from the
-/// def the mask is made of. A mask whose def nothing draws sits on top, so it
-/// still hides everything (the old "a mask covers what is below it" rule).
-fn mask_position(
-    mask: &Mask,
-    grammar: &Grammar,
-    order: &[String],
-    values: &BTreeMap<Name, Value>,
-) -> Option<usize> {
-    if let Some(module) = &mask.from.module {
-        // A module area (`roads.area`) sits where the module's own draws sit.
-        return order.iter().position(|id| {
-            grammar
-                .draw
-                .iter()
-                .any(|d| &d.group() == id && d.from.module.as_deref() == Some(module.as_str()))
-        });
-    }
-    let _ = values;
-    // The def the mask is made of: `$areas.parks_ext`. It does not become a
-    // group itself (it is not ink), but the defs derived from it do, so a few
-    // levels of use are followed to find the lowest one drawn.
-    let mut target = mask.from.name.clone();
-    let mut seen = BTreeSet::new();
-    loop {
-        if !seen.insert(target.clone()) {
-            return None;
-        }
-        let drawn = order.iter().position(|id| {
-            grammar.draw.iter().any(|d| &d.group() == id && d.from.module.is_none() && d.from.name == target)
-        });
-        if drawn.is_some() {
-            return drawn;
-        }
-        // Nothing draws it: follow the defs that read it, one step.
-        target = grammar.all_defs().find(|d| d.op.refs().iter().any(|r| r == &target)).map(Def::reference)?;
-    }
-}
 
 /// The area a mask subtracts: `$areas.*` or a module output.
 fn mask_area(mask: &Mask, values: &BTreeMap<Name, Value>, grammar: &Grammar) -> Result<MultiPolygon<f64>, String> {
@@ -698,6 +670,25 @@ mod tests {
     }
 
     #[test]
+    fn a_mask_cuts_what_it_lists_wherever_it_sits_in_the_order() {
+        // `inner`'s own ring is drawn first, the hatch over it; the mask made of
+        // `inner` lists the hatch, so the hatch is cut although it is on top.
+        let yaml = |masks: &str| {
+            format!(
+                "$areas:\n  frame: {{ engine_frame: {{}} }}\n  inner: {{ tools_grow: {{ of: $areas.frame, by: -20mm }} }}\n\
+                 $lines:\n  edge: {{ tools_rings: $areas.inner }}\n\
+                 $fills:\n  hatch: {{ tools_fill: {{ in: $areas.frame, pattern: lines, spacing: 5mm, angle: 0 }} }}\n\
+                 draw:\n  - {{ id: edge, from: $lines.edge, stroke: solid }}\n  - {{ id: hatch, from: $fills.hatch }}\n{masks}"
+            )
+        };
+        let strokes = |out: &Rendered, id: &str| out.groups.iter().find(|(g, _)| g == id).map_or(0, |(_, n)| *n);
+        let whole = run_yaml(&yaml("")).unwrap();
+        let cut = run_yaml(&yaml("compose:\n  masks:\n    cover: { from: $areas.inner, occludes: [hatch] }\n")).unwrap();
+        assert!(strokes(&cut, "hatch") > strokes(&whole, "hatch"), "the lines across `inner` are split in two");
+        assert_eq!(strokes(&cut, "edge"), strokes(&whole, "edge"), "a group the mask does not list is left alone");
+    }
+
+    #[test]
     fn clip_none_disables_the_masks() {
         let yaml = |clip: &str| {
             format!(
@@ -742,6 +733,22 @@ mod tests {
         let strokes = |id: &str| out.groups.iter().find(|(g, _)| g == id).map_or(0, |(_, n)| *n);
         assert!(strokes("sea") >= 40, "one line per mm across the output, got {}", strokes("sea"));
         assert_eq!(strokes("ring"), 1);
+    }
+
+    #[test]
+    fn a_fill_takes_other_lines_as_its_content_cut_to_the_area() {
+        // The ring of a 60x10 box inset in the frame, as the content of two
+        // fills: kept whole in the frame, gone from a smaller box inside it.
+        let out = run_yaml(
+            "$areas:\n  frame: { engine_frame: {} }\n  inner: { tools_grow: { of: $areas.frame, by: -20mm } }\n  core: { tools_grow: { of: $areas.frame, by: -22mm } }\n\
+             $lines:\n  ring: { tools_rings: $areas.inner }\n\
+             $fills:\n  core: { tools_fill: { in: $areas.core, content: $lines.ring } }\n  all: { tools_fill: { in: $areas.frame, content: $lines.ring } }\n\
+             draw:\n  - { id: core, from: $fills.core }\n  - { id: all, from: $fills.all }\n",
+        )
+        .unwrap();
+        let strokes = |id: &str| out.groups.iter().find(|(g, _)| g == id).map_or(0, |(_, n)| *n);
+        assert_eq!(strokes("core"), 0, "the ring is outside the smaller box");
+        assert!(strokes("all") >= 1, "and inside the frame");
     }
 
     #[test]

@@ -79,7 +79,7 @@ fn install(ctx: &mut Context) -> JsResult<()> {
     ctx.eval(Source::from_bytes(
         "delete globalThis.Date; delete Math.random; delete globalThis.WeakRef; delete globalThis.FinalizationRegistry;",
     ))?;
-    let natives: [(&str, usize, fn(&JsValue, &[JsValue], &mut Context) -> JsResult<JsValue>); 8] = [
+    let natives: [(&str, usize, fn(&JsValue, &[JsValue], &mut Context) -> JsResult<JsValue>); 9] = [
         ("node", 2, native_node),
         ("draw", 1, native_draw),
         ("order", 1, native_order),
@@ -88,6 +88,7 @@ fn install(ctx: &mut Context) -> JsResult<()> {
         ("output", 1, native_output),
         ("title", 1, native_title),
         ("fail", 1, native_fail),
+        ("burin", 1, native_burin),
     ];
     let dl = boa_engine::object::ObjectInitializer::new(ctx).build();
     for (name, arity, f) in natives {
@@ -229,6 +230,24 @@ fn native_node(_: &JsValue, args: &[JsValue], ctx: &mut Context) -> JsResult<JsV
     let reference = def.reference().to_string();
     with(|b| b.defs.push(def));
     Ok(JsValue::from(js_string!(reference)))
+}
+
+/// `dl.burin(callback)` → the atlas JSON the burin document built.
+///
+/// The callback is a real function in this engine, so a burin document written
+/// here has the same errors, positions and editor hints as anywhere else; the
+/// atlas it builds is burin's own, and the engine draws it later.
+fn native_burin(_: &JsValue, args: &[JsValue], ctx: &mut Context) -> JsResult<JsValue> {
+    let callback = args.first().cloned().unwrap_or_default();
+    match burin_map_script::run_builder(ctx, &callback, SCRIPT_PATH) {
+        Ok(atlas) => Ok(JsValue::from(js_string!(atlas.to_string()))),
+        Err(e) => {
+            let message = e.message;
+            let at = e.at.map(|a| At(a.0, a.1));
+            with(|b| b.failure = Some((message.clone(), at)));
+            Err(JsNativeError::typ().with_message(message).into())
+        }
+    }
 }
 
 /// `$lines.x`, `$fills.x` or `roads.outlines`.
@@ -421,7 +440,7 @@ pub fn library_names() -> Result<Vec<String>, ScriptError> {
     install(&mut ctx).map_err(|e| ScriptError { message: format!("library: {e}"), at: None })?;
     let listing = ctx
         .eval(Source::from_bytes(
-            "JSON.stringify(['features','areas','engine','lines','fills','modules','draw','compose','output','title'].flatMap((n) =>              typeof globalThis[n] === 'function' ? [n] : [n, ...Object.keys(globalThis[n]).map((k) => n + '.' + k)]))",
+            "JSON.stringify(['features','areas','engine','lines','fills','burin','modules','draw','compose','output','title'].flatMap((n) =>              typeof globalThis[n] === 'function' ? [n] : [n, ...Object.keys(globalThis[n]).map((k) => n + '.' + k)]))",
         ))
         .and_then(|v| v.to_string(&mut ctx))
         .map_err(|e| ScriptError { message: e.to_string(), at: None })?

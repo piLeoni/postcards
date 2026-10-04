@@ -158,12 +158,11 @@ fn fetch(
     Ok((osm.unwrap_or_default(), tile_features, ocean, terrain))
 }
 
-/// The elevation under the output, when a `tools_terrain` def draws it.
-/// `None` when none does, so nothing is downloaded for a document that never
-/// asks: the same rule as the vector tiles.
+/// The elevation under the output, when a `tools_terrain` or `tools_burin` def
+/// draws it. `None` when none does, so nothing is downloaded for a document
+/// that never asks: the same rule as the vector tiles.
 fn read_terrain(download: &Task, grammar: &Grammar, output: &Output) -> Result<Option<drawland_core::terrain::Grid>, String> {
-    let terrains = grammar.terrains();
-    if terrains.is_empty() {
+    if !grammar.draws_terrain() {
         return Ok(None);
     }
     let width = drawland_core::terrain::WIDTH_PX;

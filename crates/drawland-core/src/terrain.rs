@@ -132,24 +132,22 @@ pub fn atlas_of(spec: &Spec) -> Result<Atlas, String> {
     Ok(atlas)
 }
 
-/// Draw `spec` over `grid`, masked to `area` when the def names one.
-pub fn draw(grid: &Grid, spec: &Spec, output: &Output, area: Option<&MultiPolygon<f64>>) -> Result<Drawing, String> {
-    let atlas = atlas_of(spec)?;
-    let mut d = atlas.draw(&grid.elev, grid.width, grid.height, grid.px_m as f32);
-    if let Some(a) = area {
-        // burin works in pixels; the mask is in millimetres, so pixels are
-        // tested by whether their own corner lands in it.
-        let projector = crate::projection::Projector::new(output);
-        let at = grid.placed(&projector);
-        d.paths.retain(|line| {
-            line.iter().any(|p| {
-                let x = at.x0 + p[0] as f64 * at.kx;
-                let y = at.y0 + p[1] as f64 * at.ky;
-                point_in(a, x, y)
-            })
-        });
-    }
-    Ok(d)
+/// Draw `spec` over the whole of `grid`.
+pub fn draw(grid: &Grid, spec: &Spec) -> Result<Drawing, String> {
+    Ok(run(&atlas_of(spec)?, grid))
+}
+
+/// Draw a whole burin document (`spec.atlas`: the JSON `burin.json()` writes)
+/// over the whole of `grid`. It is burin's own atlas, built by burin's own
+/// language inside the profile, so whatever burin grows is available here
+/// unchanged. Where it goes is the profile's: clip it, fill an area with it,
+/// mask it, like any other lines.
+pub fn draw_burin(grid: &Grid, spec: &crate::grammar::Burin) -> Result<Drawing, String> {
+    Ok(run(&script::atlas_from(&spec.atlas)?, grid))
+}
+
+fn run(atlas: &Atlas, grid: &Grid) -> Drawing {
+    atlas.draw(&grid.elev, grid.width, grid.height, grid.px_m as f32)
 }
 
 /// A drawing's dashes as draw.land lines, in output millimetres. Fills come
