@@ -32,6 +32,11 @@ approx = "0.5"
 [profile.release]
 lto = "thin"
 
+[profile.dev]
+# Incremental builds are what filled target/ with tens of GB of session
+# folders. Off: rebuilds are a little slower, but the cache stays sane.
+incremental = false
+
 # The script interpreter's WASM module: loaded only when a script runs, so
 # built for size.
 [profile.wasm-script]
