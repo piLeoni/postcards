@@ -2,7 +2,7 @@
 //! fills and strokes.
 
 use crate::units::{Mm, MmXY, Scale};
-use serde::{Deserialize, Deserializer};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Value;
 use std::collections::BTreeMap;
 
@@ -43,6 +43,16 @@ impl ProjectionMode {
     }
 }
 
+impl Serialize for ProjectionMode {
+    fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_str(match self {
+            ProjectionMode::Utm => "utm",
+            ProjectionMode::Webmercator => "webmercator",
+            ProjectionMode::Proj(p) => p,
+        })
+    }
+}
+
 impl<'de> Deserialize<'de> for ProjectionMode {
     fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
         let text = String::deserialize(d)?;
@@ -61,14 +71,14 @@ impl<'de> Deserialize<'de> for ProjectionMode {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct OutputSpec {
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub address: Option<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub lat: Option<f64>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub lng: Option<f64>,
     #[serde(default = "default_width")]
     pub width: Mm,
@@ -81,7 +91,7 @@ pub struct OutputSpec {
     #[serde(default)]
     pub projection: ProjectionMode,
     /// Distortions of the ground before drawing, in order; the output's edge stays.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "crate::warp::Warps::is_empty")]
     pub warp: crate::warp::Warps,
     /// Blank margin inside the paper's edge, across and down; the paper keeps
     /// its size.
@@ -103,21 +113,21 @@ fn default_height() -> Mm {
 /// How a region is filled: a penfill generator by name, or an SVG source
 /// clipped into the region. Unset fields inherit (module default, then the
 /// layer's `fill`, then a kind's entry).
-#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Deserialize, Serialize)]
 pub struct FillSpec {
-    #[serde(default, alias = "algorithm")]
+    #[serde(default, alias = "algorithm", skip_serializing_if = "Option::is_none")]
     pub generator: Option<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source: Option<SourceSpec>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub spacing: Option<Mm>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub angle: Option<f64>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub seed: Option<u64>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub inset: Option<Mm>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mark: Option<Mm>,
     /// Generator-specific options (`lattice`, `line_width`, `name`, …).
     #[serde(flatten)]
@@ -149,21 +159,21 @@ impl FillSpec {
 
 /// An SVG drawn into the region instead of a generator. The host resolves
 /// `file` to text before rendering (core does no I/O).
-#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct SourceSpec {
     pub file: String,
     /// CSS-like placement (`contain`, `40 30`, …). Without it the SVG's user
     /// units are output millimetres.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub size: Option<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub position: Option<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub repeat: Option<String>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum StrokeStyle {
     #[default]
@@ -209,6 +219,25 @@ impl<'de> Deserialize<'de> for StrokeSpec {
             Raw::Keyword(style) => StrokeSpec { style: Some(style), ..StrokeSpec::default() },
             Raw::Fields(f) => StrokeSpec { style: f.style, dash: f.dash, gap: f.gap, mark: f.mark },
         })
+    }
+}
+
+impl Serialize for StrokeSpec {
+    fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        if let (Some(style), None, None, None) = (self.style, self.dash, self.gap, self.mark) {
+            return style.serialize(s);
+        }
+        let mut map = s.serialize_map(None)?;
+        if let Some(v) = &self.style {
+            map.serialize_entry("style", v)?;
+        }
+        for (key, v) in [("dash", self.dash), ("gap", self.gap), ("mark", self.mark)] {
+            if let Some(v) = v {
+                map.serialize_entry(key, &v)?;
+            }
+        }
+        map.end()
     }
 }
 

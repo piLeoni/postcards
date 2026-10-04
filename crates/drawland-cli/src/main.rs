@@ -27,9 +27,12 @@ struct Cli {
 enum Command {
     /// Build the map SVG for a place.
     Map {
-        /// Profile (YAML, or JSON5 for .json5/.json).
-        #[arg(long, default_value = "configs/proposal/postcard.yaml")]
+        /// Profile: a script (.js), or a saved graph (.json).
+        #[arg(default_value = "configs/proposal/postcard.js")]
         profile: PathBuf,
+        /// Print the graph the profile builds, as JSON, and stop.
+        #[arg(long)]
+        dump_graph: bool,
         /// Street address, looked up with Nominatim. Overrides the profile.
         #[arg(long, conflicts_with_all = ["lat", "lng"])]
         address: Option<String>,
@@ -87,12 +90,34 @@ struct Place {
     lng: Option<f64>,
 }
 
+/// The graph a profile builds: a script run, or a saved graph read back.
+fn load(path: &Path) -> Result<Grammar, String> {
+    let text = read(path)?;
+    let name = path.to_string_lossy().to_ascii_lowercase();
+    let located = |e: String| format!("{}: {e}", path.display());
+    if name.ends_with(".js") {
+        drawland_script::evaluate(&text).map_err(|e| located(e.to_string()))
+    } else if name.ends_with(".json") {
+        Grammar::from_json(&text).map_err(|e| located(e.to_string()))
+    } else {
+        Grammar::parse(&text, Format::from_path(&name)).map_err(|e| located(e.to_string()))
+    }
+}
+
 /// The map for `profile_path`; the stroke count of every group drawn.
 fn map(term: &Term, http: &osm_http::Http, profile_path: &Path, place: Place, out: &Path) -> Result<Vec<(String, usize)>, String> {
-    let text = read(profile_path)?;
-    let format = Format::from_path(&profile_path.to_string_lossy());
-
-    map_v3(term, http, &text, format, profile_path, place, out)
+    let task = Task::begin(term, "script", None, "script", 0, "");
+    task.note(&profile_path.display().to_string());
+    let grammar = match load(profile_path) {
+        Ok(g) => g,
+        Err(e) => {
+            task.fail(&e);
+            return Err(e);
+        }
+    };
+    let nodes: usize = grammar.sections.iter().map(|(_, d)| d.len()).sum();
+    task.ok(&format!("{nodes} nodes · {} draws", grammar.draw.len()));
+    map_v3(term, http, grammar, profile_path, place, out)
 }
 
 /// What a document reads: the OSM keys to ask Overpass for (none: no Overpass
@@ -187,7 +212,19 @@ fn save(draw: Task, out: &Path, svg: &str, slices: &[(String, String)]) -> Resul
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
-    let Command::Map { profile, address, lat, lng, out, cache, offline, refresh } = cli.command;
+    let Command::Map { profile, dump_graph, address, lat, lng, out, cache, offline, refresh } = cli.command;
+    if dump_graph {
+        return match load(&profile) {
+            Ok(g) => {
+                println!("{}", serde_json::to_string_pretty(&g.to_json()).unwrap_or_default());
+                ExitCode::SUCCESS
+            }
+            Err(e) => {
+                eprintln!("{e}");
+                ExitCode::FAILURE
+            }
+        };
+    }
     let term = Term::new();
     let http = osm_http::Http::new(cache, offline, refresh);
     let result = map(&term, &http, &profile, Place { address, lat, lng }, &out);
@@ -212,14 +249,11 @@ fn main() -> ExitCode {
 fn map_v3(
     term: &Term,
     http: &osm_http::Http,
-    text: &str,
-    format: Format,
+    grammar: Grammar,
     profile_path: &Path,
     place: Place,
     out: &Path,
 ) -> Result<Vec<(String, usize)>, String> {
-    let grammar = Grammar::parse(text, format).map_err(|e| format!("{}: {e}", profile_path.display()))?;
-
     let base = profile_path.parent().unwrap_or(Path::new("."));
     let mut sources = BTreeMap::new();
     for file in grammar.source_files() {

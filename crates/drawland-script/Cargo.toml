@@ -1,0 +1,11 @@
+[package]
+name = "drawland-script"
+description = "draw.land profiles in JavaScript: the script builds the graph the engine runs"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+drawland-core = { workspace = true }
+boa_engine = { version = "0.22", default-features = false }
+serde_json = { workspace = true }

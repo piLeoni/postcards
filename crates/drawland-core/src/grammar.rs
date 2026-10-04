@@ -44,7 +44,7 @@ use crate::profile::{FillSpec, StrokeSpec};
 use crate::select::{Selector, TagMatch};
 use crate::units::Mm;
 use serde::de::{self, Deserializer, MapAccess, Visitor};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
@@ -307,17 +307,42 @@ impl Op {
     }
 }
 
+/// Where a script wrote something: line and column, from 1. Written as
+/// `line 12 column 5`, the form the web editor's markers read.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct At(pub u32, pub u32);
+
+impl fmt::Display for At {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "line {} column {}", self.0, self.1)
+    }
+}
+
+/// `what`, followed by ` (line 12 column 5)` when the script position is known.
+pub fn located(what: &str, at: Option<At>) -> String {
+    match at {
+        Some(at) => format!("{what} ({at})"),
+        None => what.to_string(),
+    }
+}
+
 /// A def: the name you chose, and the one operation it runs.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Def {
     pub name: String,
     pub op: Op,
+    pub at: Option<At>,
 }
 
 impl Def {
     /// The reference other defs use to reach this one.
     pub fn reference(&self) -> Name {
         Name { section: self.op.section(), name: self.name.clone() }
+    }
+
+    /// The reference, with the script line that made it.
+    pub fn label(&self) -> String {
+        located(&self.reference().to_string(), self.at)
     }
 }
 
@@ -331,6 +356,7 @@ pub struct Draw {
     pub id: Option<String>,
     pub from: Target,
     pub stroke: Option<StrokeSpec>,
+    pub at: Option<At>,
 }
 
 impl Draw {
@@ -351,6 +377,7 @@ impl Draw {
 pub struct Mask {
     pub from: Target,
     pub occludes: Vec<Id>,
+    pub at: Option<At>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -482,6 +509,8 @@ pub enum GrammarError {
     Yaml(String),
     #[error("JSON5: {0}")]
     Json5(String),
+    #[error("graph JSON: {0}")]
+    Json(String),
     #[error("profile: {0}")]
     Invalid(String),
 }
@@ -555,6 +584,8 @@ struct RawDraw {
     from: String,
     #[serde(default)]
     stroke: Option<StrokeSpec>,
+    #[serde(default)]
+    at: Option<At>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -588,12 +619,16 @@ struct RawMask {
     from: String,
     #[serde(default)]
     occludes: Vec<String>,
+    #[serde(default)]
+    at: Option<At>,
 }
 
 /// One operation, as a single-key mapping. The key picks the variant; a def
 /// with several keys is an error (one operation per def).
+/// `at: [line, column]` may sit next to the operation key: where the script
+/// made the def.
 #[derive(Debug)]
-struct RawOp(BTreeMap<String, Value>);
+struct RawOp(BTreeMap<String, Value>, Option<At>);
 
 impl<'de> Deserialize<'de> for RawOp {
     fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
@@ -605,8 +640,13 @@ impl<'de> Deserialize<'de> for RawOp {
             }
             fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<RawOp, A::Error> {
                 let mut entries = BTreeMap::new();
+                let mut at = None;
                 while let Some((k, v)) = map.next_entry::<String, Value>()? {
-                    entries.insert(k, v);
+                    if k == "at" {
+                        at = Some(serde_json::from_value(v).map_err(de::Error::custom)?);
+                    } else {
+                        entries.insert(k, v);
+                    }
                 }
                 if entries.len() != 1 {
                     let keys: Vec<&str> = entries.keys().map(String::as_str).collect();
@@ -616,7 +656,7 @@ impl<'de> Deserialize<'de> for RawOp {
                         keys.join(", ")
                     )));
                 }
-                Ok(RawOp(entries))
+                Ok(RawOp(entries, at))
             }
             /// `def: name` with no body (an alias style) is not supported here.
             fn visit_str<E: de::Error>(self, v: &str) -> Result<RawOp, E> {
@@ -671,8 +711,12 @@ fn build(raw: Raw) -> Result<Grammar, GrammarError> {
             if !seen.insert(name.clone()) {
                 return Err(GrammarError::Invalid(format!("${}.{} is defined twice", section, name)));
             }
-            let op = parse_op(raw_op, section)?;
-            defs.push(Def { name, op });
+            let at = raw_op.1;
+            let op = parse_op(raw_op, section).map_err(|e| match e {
+                GrammarError::Invalid(m) => GrammarError::Invalid(located(&format!("${section}.{name}: {m}"), at)),
+                other => other,
+            })?;
+            defs.push(Def { name, op, at });
         }
         sections.push((section, defs));
     }
@@ -685,6 +729,7 @@ fn build(raw: Raw) -> Result<Grammar, GrammarError> {
                 from: parse_output(&d.from)?,
                 id: d.id,
                 stroke: d.stroke,
+                at: d.at,
             })
         })
         .collect::<Result<Vec<_>, GrammarError>>()?;
@@ -696,6 +741,7 @@ fn build(raw: Raw) -> Result<Grammar, GrammarError> {
             Mask {
                 from: parse_output(&m.from)?,
                 occludes: m.occludes.into_iter().map(Id).collect(),
+                at: m.at,
             },
         ));
     }
@@ -1088,17 +1134,193 @@ fn parse_selector(value: &Value) -> Result<Selector, GrammarError> {
 }
 
 // ---------------------------------------------------------------------------
+// JSON: the graph saved and loaded
+// ---------------------------------------------------------------------------
+
+/// One operation from its JSON form, `{ "tools_union": ["$areas.a"] }`, as
+/// the def it will be in `section`.
+pub fn op_from_json(section: Section, op: Value) -> Result<Op, GrammarError> {
+    let Value::Object(map) = op else {
+        return Err(GrammarError::Invalid(format!("an operation is an object, not {op}")));
+    };
+    let raw = RawOp(map.into_iter().collect(), None);
+    if raw.0.len() != 1 {
+        return Err(GrammarError::Invalid("an operation has exactly one key".into()));
+    }
+    parse_op(raw, section)
+}
+
+fn tag_json(m: &TagMatch) -> Value {
+    match m {
+        TagMatch::Present(p) => Value::Bool(*p),
+        TagMatch::Values(vs) if vs.len() == 1 => Value::String(vs[0].clone()),
+        TagMatch::Values(vs) => vs.iter().cloned().map(Value::String).collect(),
+    }
+}
+
+fn refs_json(names: &[Name]) -> Value {
+    names.iter().map(|n| Value::String(n.to_string())).collect()
+}
+
+/// The JSON form [`op_from_json`] reads back.
+pub fn op_to_json(op: &Op) -> Value {
+    use serde_json::json;
+    let union = |u: &UnionRules| match u {
+        UnionRules::Refs(ns) => refs_json(ns),
+        UnionRules::Ref(n) => Value::String(n.to_string()),
+    };
+    let (key, value) = match op {
+        Op::Select(sel) => {
+            let mut body: serde_json::Map<String, Value> =
+                sel.any.iter().map(|(k, m)| (k.clone(), tag_json(m))).collect();
+            if !sel.except.is_empty() {
+                body.insert("except".into(), sel.except.iter().map(|(k, m)| (k.clone(), tag_json(m))).collect());
+            }
+            if sel.underground {
+                body.insert("underground".into(), Value::Bool(true));
+            }
+            ("osm_select", Value::Object(body))
+        }
+        Op::TileSelect(t) => ("tiles_select", t.items.iter().cloned().map(Value::String).collect()),
+        Op::Polygons(n) => ("tools_polygons", Value::String(n.to_string())),
+        Op::Union(u) => ("tools_union", union(u)),
+        Op::Difference(d) => ("tools_difference", json!({ "base": d.base.to_string(), "cut": refs_json(&d.cut) })),
+        Op::Intersect(i) => (
+            "tools_intersect",
+            json!({ "base": i.base.to_string(), "keep": i.keep.as_ref().map(Name::to_string) }),
+        ),
+        Op::FillHoles(n) => ("tools_fill_holes", Value::String(n.to_string())),
+        Op::Grow(g) => ("tools_grow", json!({ "of": g.of.to_string(), "by": g.by })),
+        Op::Frame => ("engine_frame", json!({})),
+        Op::Ocean => ("engine_ocean", json!({})),
+        Op::Rings(r) => ("tools_rings", json!({ "of": r.of.to_string(), "exterior_only": r.exterior_only })),
+        Op::Lines(n) => ("tools_lines", Value::String(n.to_string())),
+        Op::Segments(n) => ("tools_segments", Value::String(n.to_string())),
+        Op::Dedupe(n) => ("tools_dedupe", Value::String(n.to_string())),
+        Op::Merge(n) => ("tools_merge", Value::String(n.to_string())),
+        Op::Join(u) => ("tools_join", union(u)),
+        Op::ClipLines(c) => (
+            "tools_clip",
+            json!({ "lines": c.lines.to_string(), "within": c.within.to_string(), "invert": c.invert }),
+        ),
+        Op::Fill(f) => {
+            let mut body = serde_json::to_value(&f.spec).unwrap_or_else(|_| json!({}));
+            body["in"] = Value::String(f.in_area.to_string());
+            if f.per_feature {
+                body["per"] = Value::String("feature".into());
+            }
+            ("tools_fill", body)
+        }
+        Op::Module(m) => {
+            let key = format!("module_{}", m.name);
+            let body = match &m.from {
+                Some(from) => json!({ "from": from.to_string() }),
+                None => json!({}),
+            };
+            return json!({ key: body });
+        }
+    };
+    json!({ key: value })
+}
+
+impl Target {
+    fn to_json(&self) -> Value {
+        match &self.module {
+            Some(m) => Value::String(format!("{m}.{}", self.name.name)),
+            None => Value::String(self.name.to_string()),
+        }
+    }
+}
+
+impl Grammar {
+    /// The graph as JSON: what a script built, for presets, `--dump-graph`
+    /// and the page's worker. [`Grammar::from_json`] reads it back.
+    pub fn to_json(&self) -> Value {
+        use serde_json::json;
+        let mut out = serde_json::Map::new();
+        if let Some(t) = &self.title {
+            out.insert("title".into(), Value::String(t.clone()));
+        }
+        out.insert("output".into(), serde_json::to_value(&self.output).unwrap_or(Value::Null));
+        for (section, defs) in &self.sections {
+            let body: serde_json::Map<String, Value> = defs
+                .iter()
+                .map(|d| {
+                    let mut op = op_to_json(&d.op);
+                    if let Some(at) = d.at {
+                        op["at"] = json!(at);
+                    }
+                    (d.name.clone(), op)
+                })
+                .collect();
+            out.insert(format!("${}", section.key()), Value::Object(body));
+        }
+        let draw: Vec<Value> = self
+            .draw
+            .iter()
+            .map(|d| {
+                let mut v = json!({ "id": d.group(), "from": d.from.to_json() });
+                if let Some(s) = &d.stroke {
+                    v["stroke"] = json!(s);
+                }
+                if let Some(at) = d.at {
+                    v["at"] = json!(at);
+                }
+                v
+            })
+            .collect();
+        out.insert("draw".into(), Value::Array(draw));
+        let masks: serde_json::Map<String, Value> = self
+            .compose
+            .masks
+            .iter()
+            .map(|(name, m)| {
+                let mut v = json!({
+                    "from": m.from.to_json(),
+                    "occludes": m.occludes.iter().map(|i| i.0.clone()).collect::<Vec<_>>(),
+                });
+                if let Some(at) = m.at {
+                    v["at"] = json!(at);
+                }
+                (name.clone(), v)
+            })
+            .collect();
+        let clip = match &self.compose.clip_default {
+            Clip::Auto => json!("auto"),
+            Clip::None => json!("none"),
+            Clip::Areas(ns) => refs_json(ns),
+        };
+        out.insert(
+            "compose".into(),
+            json!({
+                "order": self.compose.order.iter().map(|i| i.0.clone()).collect::<Vec<_>>(),
+                "masks": masks,
+                "clip": { "default": clip },
+            }),
+        );
+        Value::Object(out)
+    }
+
+    pub fn from_json(text: &str) -> Result<Grammar, GrammarError> {
+        let raw: Raw = serde_json::from_str(text).map_err(|e| GrammarError::Json(e.to_string()))?;
+        build(raw)
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Validation
 // ---------------------------------------------------------------------------
 
-fn validate(g: &Grammar) -> Result<(), GrammarError> {
+/// Every reference defined in the right section, draw ids unique, order and
+/// masks naming draw ids, no loops.
+pub fn validate(g: &Grammar) -> Result<(), GrammarError> {
     // Every reference must exist, in the right section.
     for def in g.all_defs() {
         for r in def.op.refs() {
             if g.find(&r).is_none() {
                 return Err(GrammarError::Invalid(format!(
                     "{} refers to {r}, which is not defined under ${}",
-                    def.reference(),
+                    def.label(),
                     r.section
                 )));
             }
@@ -1110,18 +1332,23 @@ fn validate(g: &Grammar) -> Result<(), GrammarError> {
             continue; // e.g. roads.outlines: the module owns the name
         }
         if !matches!(d.from.name.section, Section::Lines | Section::Fills) {
-            return Err(GrammarError::Invalid(format!(
-                "draw from {} needs $lines or $fills, not ${}",
-                d.from.name, d.from.name.section
+            return Err(GrammarError::Invalid(located(
+                &format!("draw from {} needs $lines or $fills, not ${}", d.from.name, d.from.name.section),
+                d.at,
             )));
         }
         if g.find(&d.from.name).is_none() {
             return Err(GrammarError::Invalid(format!("draw from {}: no such def", d.from.name)));
         }
     }
-    let groups: BTreeSet<String> = g.groups().into_iter().collect();
-    if groups.len() != g.draw.len() {
-        return Err(GrammarError::Invalid("two draw entries write the same SVG group id".into()));
+    let mut groups: BTreeSet<String> = BTreeSet::new();
+    for d in &g.draw {
+        if !groups.insert(d.group()) {
+            return Err(GrammarError::Invalid(located(
+                &format!("two draw entries write the same SVG group id {:?}", d.group()),
+                d.at,
+            )));
+        }
     }
     // Order and occludes must name draw groups.
     for id in &g.compose.order {
@@ -1133,16 +1360,22 @@ fn validate(g: &Grammar) -> Result<(), GrammarError> {
         if mask.from.module.is_some() {
             // e.g. roads.area: an area published by a module.
         } else if mask.from.name.section != Section::Areas {
-            return Err(GrammarError::Invalid(format!(
-                "masks.{name}.from is {}, but a mask must be an area",
-                mask.from.name
+            return Err(GrammarError::Invalid(located(
+                &format!("masks.{name}.from is {}, but a mask must be an area", mask.from.name),
+                mask.at,
             )));
         } else if g.find(&mask.from.name).is_none() {
-            return Err(GrammarError::Invalid(format!("masks.{name}.from: no such def {}", mask.from.name)));
+            return Err(GrammarError::Invalid(located(
+                &format!("masks.{name}.from: no such def {}", mask.from.name),
+                mask.at,
+            )));
         }
         for id in &mask.occludes {
             if !groups.contains(&id.0) {
-                return Err(GrammarError::Invalid(format!("masks.{name}.occludes names {:?}, which is not a draw id", id.0)));
+                return Err(GrammarError::Invalid(located(
+                    &format!("masks.{name}.occludes names {:?}, which is not a draw id", id.0),
+                    mask.at,
+                )));
             }
         }
     }
@@ -1376,6 +1609,29 @@ compose:
         assert!(matches!(parse(dup), Err(GrammarError::Yaml(m)) if m.contains("duplicate mapping key")));
         let extra = "$areas:\n  a: { engine_frame: {}, note: hi }\n";
         assert!(parse(extra).is_err());
+    }
+
+    #[test]
+    fn the_graph_round_trips_through_json() {
+        let text = include_str!("../../../configs/proposal/postcard.yaml");
+        let g = Grammar::parse(text, Format::Yaml).unwrap();
+        let json = g.to_json().to_string();
+        let back = Grammar::from_json(&json).unwrap();
+        assert_eq!(back, g);
+        assert_eq!(back.to_json().to_string(), json);
+    }
+
+    #[test]
+    fn script_positions_ride_along_and_label_errors() {
+        let mut g = parse(YAML).unwrap();
+        g.sections[1].1[0].at = Some(At(12, 5));
+        let back = Grammar::from_json(&g.to_json().to_string()).unwrap();
+        assert_eq!(back.sections[1].1[0].at, Some(At(12, 5)));
+        assert_eq!(back.sections[1].1[0].label(), "$areas.garden (line 12 column 5)");
+        let mut bad = g.to_json();
+        bad["$areas"]["garden"]["tools_polygons"] = Value::String("$features.nope".into());
+        let err = Grammar::from_json(&bad.to_string()).unwrap_err().to_string();
+        assert!(err.contains("line 12 column 5"), "{err}");
     }
 
     #[test]

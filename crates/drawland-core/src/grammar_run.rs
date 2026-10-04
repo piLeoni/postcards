@@ -149,7 +149,10 @@ pub fn run_with(grammar: &Grammar, output: &Output, inputs: Inputs, draw: &Task)
             .get(&spec.in_area)
             .ok_or_else(|| RunError::Plan(format!("{name}: missing input {}", spec.in_area)))?
             .area(&spec.in_area)?;
-        let lines = run_fill(spec, area, &values, &sources, &name, &task)?;
+        let lines = run_fill(spec, area, &values, &sources, &name, &task).map_err(|e| match e {
+            RunError::Def { source, .. } => RunError::Def { def: def.label(), source },
+            other => other,
+        })?;
         task.ok(&format!("{} lines", thousands(lines.len() as u64)));
         fills_task.tick();
         fills.insert(name, lines);
@@ -219,7 +222,7 @@ fn evaluate(
             task.step(done.len() as u64, &name.to_string());
             let value = eval_op(&def.op, &done, features, engine).map_err(|e| {
                 task.log(Level::Error, &format!("{name}: {e}"));
-                RunError::Plan(format!("{}: {e}", def.reference()))
+                RunError::Plan(format!("{}: {e}", def.label()))
             })?;
             done.insert(name.clone(), value);
             pending.retain(|n| n != &name);

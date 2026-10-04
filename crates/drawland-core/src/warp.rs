@@ -7,14 +7,14 @@
 
 use crate::units::Mm;
 use geo::{Coord, Densify, Euclidean, Geometry, GeometryCollection, MapCoords, MultiPolygon};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 /// Longest step left in an edge before it is bent: a straight segment
 /// stays straight under a warp unless it is cut finer.
 const STEP_MM: f64 = 0.2;
 
 /// One warp, written as a single-key map: `{ fisheye: 0.5 }`.
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase", deny_unknown_fields)]
 pub enum Warp {
     /// Magnifies the centre (from 0 to about 1); negative pinches it instead.
@@ -25,7 +25,7 @@ pub enum Warp {
     Wave(Wave),
 }
 
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Wave {
     pub amplitude: Mm,
@@ -33,7 +33,7 @@ pub struct Wave {
 }
 
 /// One warp or a list of them, applied in order.
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize)]
 pub struct Warps(pub Vec<Warp>);
 
 impl<'de> Deserialize<'de> for Warps {

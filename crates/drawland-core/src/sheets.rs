@@ -8,9 +8,9 @@ use crate::geom::Lines;
 use crate::svg::write_svg;
 use crate::units::MmXY;
 use geo::{Coord, LineString};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Slices {
     #[serde(default = "one")]

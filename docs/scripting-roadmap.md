@@ -10,15 +10,15 @@ compatibility layers: what JavaScript replaces is deleted. Branch:
 The map is not always a card. Rename before the library exists, so its API
 starts with the right word.
 
-- [ ] Free the name: `grammar::Output` (a draw target) and
+- [x] Free the name: `grammar::Output` (a draw target) and
       `grammar_run::Outputs` (a run's result) get other names.
-- [ ] Engine: `card.rs` / `Card` → `output.rs` / `Output`, and every `card`
+- [x] Engine: `card.rs` / `Card` → `output.rs` / `Output`, and every `card`
       in `drawland-core`, `drawland-cli`, `drawland-wasm`; the YAML key becomes
       `output:` (no alias, YAML is going anyway).
-- [ ] CLI flags and messages.
-- [ ] Web: `CardControls.jsx`, `setCardKeys` / `setCardComment` / `cardUnit`,
+- [x] CLI flags and messages.
+- [x] Web: `CardControls.jsx`, `setCardKeys` / `setCardComment` / `cardUnit`,
       `MapView.jsx`, `App.jsx`, presets.
-- [ ] Docs, configs and their comments.
+- [x] Docs, configs and their comments.
 
 Done when: `cargo test` passes, the presets and `configs/` render the same SVG
 as before, the web UI drags and rescales the output.
@@ -27,44 +27,71 @@ as before, the web UI drags and rescales the output.
 
 Go / no-go for JavaScript, cheaply.
 
-- [ ] `boa_engine` in a new `drawland-script` crate.
-- [ ] Evaluate a script that calls one bound function and returns a value;
+- [x] `boa_engine` in a new `drawland-script` crate.
+- [x] Evaluate a script that calls one bound function and returns a value;
       runtime limits on; `Math.random` and `Date` removed.
-- [ ] Parse an arrow function with Boa's parser and walk its AST (the basis of
-      per-point functions, step 12).
-- [ ] Build `drawland-wasm` with it (`web/build-wasm.sh`); measure the
-      compressed size delta and the time to first eval, in the browser.
+- [x] Parse an arrow function with Boa's parser and walk its AST (the basis of
+      per-point functions; done as part of step 12).
+- [x] Build it for the page (`web/build-wasm.sh`); measure the compressed size
+      and the time to first eval, in the browser.
 
 Done when: the numbers are written down here. If they are unacceptable, the
 same spike with Starlark (`starlark` crate) decides whether to switch.
 
+**Numbers** (Boa 0.22 without default features; built straight away as its own
+module, `drawland-script-wasm`, with the size profile `wasm-script`:
+`opt-level = "z"`, fat LTO, one codegen unit):
+
+| | raw | gzip | brotli |
+|---|---|---|---|
+| engine (`drawland_wasm_bg.wasm`, unchanged) | 3.82 MB | 1.22 MB | 0.84 MB |
+| interpreter (`drawland_script_wasm_bg.wasm`) | 3.31 MB | 1.13 MB | 0.79 MB |
+| interpreter with the plain release profile | 6.32 MB | 1.90 MB | — |
+
+In the browser (Chrome, local server): module init 9 ms, first evaluation of
+a postcard-sized script 116 ms, later ones 29 ms (a fresh context each run,
+so nothing leaks between runs). Go: the cost is one more engine-sized
+download, paid only by people who edit, and well under a frame per run after
+the first.
+
+Positions: a native reads the calling line from an `Error`'s `stack` (call
+sites); `CallFrame::position()` lags inside functions. `ReferenceError`
+carries no reliable position, so the first use of the name stands in.
+
 ## 3. The graph and library v0
 
-- [ ] Graph types: nodes refer to each other by handle; `serde` for JSON
+- [x] Graph types: nodes refer to each other by handle; `serde` for JSON
       save / load; each node records its script line.
-- [ ] `grammar_run` runs the new graph.
-- [ ] Bindings: `features.osm`, `features.tiles`, `areas.*`, `lines.*`,
+- [x] `grammar_run` runs the new graph.
+- [x] Bindings: `features.osm`, `features.tiles`, `areas.*`, `lines.*`,
       `fills.fill`, `modules.roads`, `engine.ocean`, `draw`, `compose.order`,
       `compose.mask`, `compose.clip`, `output`, `title`.
-- [ ] `configs/proposal/postcard.js`, written by hand.
+- [x] `configs/proposal/postcard.js`, written by hand.
 
 Done when: `postcard.js` renders the same SVG as `postcard.yaml` (the last use
-of the YAML path).
+of the YAML path). **Done**: byte-identical, 11.2 MB, Berkeley, offline cache.
+
+How it came out: a handle is a def reference (`$areas.difference_7`), so the
+executor runs the graph unchanged. The library (`library.js`) is plain JS
+over eight natives; each op goes through the same op parser as before, so
+units, patterns and their errors are shared. The graph's JSON is the op
+form plus `at: [line, column]` on every def, draw and mask
+(`Grammar::to_json` / `from_json`, round-trip tested).
 
 ## 4. Errors and sandbox
 
-- [ ] Engine errors on a node are reported at its script line, in the
+- [x] Engine errors on a node are reported at its script line, in the
       `line:column` form the web markers already read.
-- [ ] JS syntax and runtime errors carry their own line.
-- [ ] Tests: an infinite loop stops with an error; `fetch`, `Date`,
+- [x] JS syntax and runtime errors carry their own line.
+- [x] Tests: an infinite loop stops with an error; `fetch`, `Date`,
       `Math.random`, `require` are absent.
 
 Done when: each error case has a test with the expected line.
 
 ## 5. CLI
 
-- [ ] `drawland profile.js`.
-- [ ] `--dump-graph` prints the graph as JSON.
+- [x] `drawland profile.js`.
+- [x] `--dump-graph` prints the graph as JSON.
 
 ## 6. Autocomplete
 

@@ -2,7 +2,7 @@
 //! scales (`"1:10000"`).
 
 use serde::de::{self, Deserializer, Visitor};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize, Serializer};
 use std::fmt;
 
 /// A length in millimetres. Deserializes from a bare number (mm) or a string
@@ -56,6 +56,12 @@ impl<'de> Deserialize<'de> for Mm {
     }
 }
 
+impl Serialize for Mm {
+    fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_f64(self.0)
+    }
+}
+
 /// A length across and one down, in mm: one length for both (`5mm`) or a
 /// pair, across first (`[5mm, 3mm]`).
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
@@ -79,6 +85,16 @@ impl<'de> Deserialize<'de> for MmXY {
     }
 }
 
+impl Serialize for MmXY {
+    fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        if self.x == self.y {
+            s.serialize_f64(self.x)
+        } else {
+            [self.x, self.y].serialize(s)
+        }
+    }
+}
+
 /// Map scale as its denominator: `1:10000` is `10000.0`.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Scale(pub f64);
@@ -86,6 +102,12 @@ pub struct Scale(pub f64);
 impl Default for Scale {
     fn default() -> Self {
         Scale(10000.0)
+    }
+}
+
+impl Serialize for Scale {
+    fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_str(&format!("1:{}", self.0))
     }
 }
 
