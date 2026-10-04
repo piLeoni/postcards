@@ -216,13 +216,37 @@ pub fn frame(output: &Output) -> MultiPolygon<f64> {
     MultiPolygon::new(vec![output.query_polygon()])
 }
 
-/// The bounds (`[west, south, east, north]`) to read terrain for.
+/// How far past the output the elevation is read, as a fraction of the ground
+/// size. Burin traces and dashes ink only where its grid has heights, so a grid
+/// cut exactly to the frame leaves the last contours and dashes just short of
+/// the border. Reading a margin past it lets the ink run off the page; the clip
+/// to the frame trims it back, so the lines reach the edge instead of a blank
+/// strip inside it.
+const TERRAIN_MARGIN: f64 = 0.05;
+
+/// The bounds (`[west, south, east, north]`) to read terrain for: the output's
+/// area, grown by `TERRAIN_MARGIN` on every side so the ink reaches the border.
 pub fn bounds_of(output: &Output) -> [f64; 4] {
+    // A box already carries a rotation's corners; grow each side of it by the
+    // margin, in metres, so the overhang is the same at any bearing.
     let r = output.query_polygon().bounding_rect();
-    match r {
-        Some(r) => [r.min().x, r.min().y, r.max().x, r.max().y],
-        None => [0.0, 0.0, 0.0, 0.0],
-    }
+    let Some(r) = r else {
+        return [0.0, 0.0, 0.0, 0.0];
+    };
+    let (gw, gh) = output.ground_size_m();
+    let (pad_x, pad_y) = (gw * TERRAIN_MARGIN, gh * TERRAIN_MARGIN);
+    let g = geographiclib_rs::Geodesic::wgs84();
+    use geographiclib_rs::DirectGeodesic;
+    // Padding in degrees at the box's own latitude: a metre of longitude is
+    // shorter near the poles, so derive it from a geodesic walk, not a fixed
+    // degrees-per-metre.
+    let mid_lat = (r.min().y + r.max().y) / 2.0;
+    let mid_lon = (r.min().x + r.max().x) / 2.0;
+    let (_, east_lon): (f64, f64) = g.direct(mid_lat, mid_lon, 90.0, pad_x);
+    let (north_lat, _): (f64, f64) = g.direct(mid_lat, mid_lon, 0.0, pad_y);
+    let d_lon = (east_lon - mid_lon).abs();
+    let d_lat = (north_lat - mid_lat).abs();
+    [r.min().x - d_lon, r.min().y - d_lat, r.max().x + d_lon, r.max().y + d_lat]
 }
 
 /// Whether `(x, y)` is inside `a`, rings counted, holes kept out.
@@ -237,3 +261,42 @@ pub fn clip_to(lines: &Lines, area: &MultiPolygon<f64>) -> Lines {
     geom::clip_lines(lines, area, false)
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::profile::ProjectionMode;
+
+    fn an_output() -> Output {
+        Output {
+            center: (-122.3934746, 37.7955487),
+            width_mm: 152.4,
+            height_mm: 101.6,
+            scale: 10000.0,
+            bearing: 0.0,
+            projection: ProjectionMode::Utm,
+        }
+    }
+
+    #[test]
+    fn terrain_is_read_past_the_frame() {
+        let output = an_output();
+        let [w, s, e, n] = bounds_of(&output);
+        let frame = output.bounds();
+        let [fw, fs, fe, fn_] = frame;
+        // Every side reaches past the output, so burin's ink runs off the page
+        // and the clip to the frame trims it to the border.
+        assert!(w < fw && s < fs && e > fe && n > fn_, "padded: {w} {s} {e} {n} vs frame {frame:?}");
+        // The margin is a few percent, not a whole extra frame: each side is
+        // grown by about TERRAIN_MARGIN of the ground size.
+        let (gw, _gh) = output.ground_size_m();
+        let g = geographiclib_rs::Geodesic::wgs84();
+        use geographiclib_rs::DirectGeodesic;
+        let mid_lat = fs + (fn_ - fs) / 2.0;
+        let mid_lon = fw + (fe - fw) / 2.0;
+        let (_, east_lon): (f64, f64) = g.direct(mid_lat, mid_lon, 90.0, gw * TERRAIN_MARGIN);
+        let want_d_lon = (east_lon - mid_lon).abs();
+        let got_d_lon = e - fe;
+        assert!((got_d_lon - want_d_lon).abs() < want_d_lon * 0.1, "margin {got_d_lon} vs {want_d_lon}");
+        assert!(got_d_lon < gw / 90.0 * 0.2, "a margin, not a second frame");
+    }
+}
