@@ -7,14 +7,14 @@ import 'maplibre-gl/dist/maplibre-gl.css'
 // us a URL to a copy Vite builds for this, in dev and in `dist`. (MapLibre
 // puts the pool together once, on the first style that loads.)
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url'
-import { cardBox, FIT_PAD, groundKm, hasLayout, lengthText, sheetsOf, sig3, zoomToFit } from '../lib/frame'
-import CardControls from './CardControls'
+import { outputBox, FIT_PAD, groundKm, hasLayout, lengthText, sheetsOf, sig3, zoomToFit } from '../lib/frame'
+import OutputControls from './OutputControls'
 import { norm, terrainPair } from './controls'
 import LoadCard from './LoadCard'
 
 setWorkerUrl(workerUrl)
 
-/** The basemap: OpenFreeMap's Positron, the same OpenStreetMap data the card is drawn from. */
+/** The basemap: OpenFreeMap's Positron, the same OpenStreetMap data the output is drawn from. */
 const STYLE = 'https://tiles.openfreemap.org/styles/positron'
 /** The style carries no attribution of its own; the ODbL needs this one shown. */
 const CREDIT =
@@ -23,7 +23,7 @@ const CREDIT =
 
 /**
  * Positron is a warm, green-grey style and paints its labels and roads darker
- * than the paper the card is drawn on. Mapbox Light, which this map used to
+ * than the paper the output is drawn on. Mapbox Light, which this map used to
  * use, left the drawing's own ink to carry the sheet; so this map is redrawn
  * from it, in the page's own greys.
  *
@@ -44,7 +44,7 @@ const ROLES = {
   // The basemap sits *under* the drawing, so it has to stay lighter and
   // quieter than the UI chrome: the app's own greys are the ink, not the
   // ground. These shades are the map's alone, tuned a step or two off paper
-  // so the card's lines remain the darkest thing on screen.
+  // so the output's lines remain the darkest thing on screen.
   land: '#f7f7f7', // the ground, barely off the sheet
   wash: '#e6e6e6', // where Positron paints water: sea, lakes, streams
   botanical: '#f0f0f0', // where Positron paints parks and woodland
@@ -83,7 +83,7 @@ function placePaint(id, c) {
 /**
  * Positron's roads are white over a grey casing; that is what reads as the
  * black outline at a glance. In the page's greys the casing is a hair off the
- * paper, the road itself is barely there, and the black lines stay the card's.
+ * paper, the road itself is barely there, and the black lines stay the output's.
  */
 function roadPaint(id, c) {
   if (/casing/.test(id)) return { 'line-color': c('edge') }
@@ -99,7 +99,7 @@ function roadPaint(id, c) {
  * its lightness and only its hue changes.
  *
  * The `raster` source is Natural Earth's shaded relief: a hillshade, held at
- * low opacity so it stays a hint under the hillshade the card draws itself.
+ * low opacity so it stays a hint under the hillshade the output draws itself.
  */
 const FILLS = {
   background: { 'background-color': 'paper' }, // the sheet
@@ -192,7 +192,7 @@ function calm(map) {
         // ours to style, and the map is all the better for skipping it.
       }
     }
-    // The shields are the black-outlined numbers on the roads; the card needs
+    // The shields are the black-outlined numbers on the roads; the output needs
     // no route markers, and they are the darkest ink on the map. They are
     // matched by id: unlike every other Positron layer they carry no
     // `source-layer` of their own.
@@ -231,11 +231,11 @@ function calm(map) {
   }
 }
 
-/** Space between the card and the label above it or the tags below it, px. */
+/** Space between the output and the label above it or the tags below it, px. */
 const GAP = 4
 /** Pixels the tags keep from the map's edges. */
 const EDGE = 8
-/** What floats over the map: the card, its menu, the buttons in the corner. */
+/** What floats over the map: the output, its menu, the buttons in the corner. */
 const RAISED = 'shadow-[0_2px_8px_rgba(0,0,0,0.18)]'
 
 /** A small tag on the map that acts as a button; not a WebTUI key. */
@@ -261,29 +261,29 @@ function Tag({ title, onClick, className = 'cursor-pointer', children, ...rest }
 }
 
 /** "6 × 4 in", or "6in × 40mm" when the two sides are written in different units. */
-function paperText(card, units) {
-  const [w, h] = [lengthText(card.width_mm, units.width), lengthText(card.height_mm, units.height)]
+function paperText(output, units) {
+  const [w, h] = [lengthText(output.width_mm, units.width), lengthText(output.height_mm, units.height)]
   return units.width === units.height ? `${w.replace(units.width, '')} × ${h.replace(units.height, '')} ${units.width}` : `${w} × ${h}`
 }
 
 /** "6 × 4 in · 1:8000 · 0.758 × 0.505 mi · 30° · 3 × 2 slices", each in the unit the document uses. */
-function sizeText(card, units) {
-  if (!groundKm(card)) return ''
-  const turned = Math.abs(norm(card.bearing ?? 0)) > 0.05 ? ` · ${Math.round(norm(card.bearing) * 1000) / 1000}°` : ''
-  const cut = (card.columns ?? 1) * (card.rows ?? 1) > 1 ? ` · ${card.columns} × ${card.rows} slices` : ''
-  return `${paperText(card, units)} · 1:${sig3(card.scale)} · ${terrainPair(card, units.terrain)}${turned}${cut}`
+function sizeText(output, units) {
+  if (!groundKm(output)) return ''
+  const turned = Math.abs(norm(output.bearing ?? 0)) > 0.05 ? ` · ${Math.round(norm(output.bearing) * 1000) / 1000}°` : ''
+  const cut = (output.columns ?? 1) * (output.rows ?? 1) > 1 ? ` · ${output.columns} × ${output.rows} slices` : ''
+  return `${paperText(output, units)} · 1:${sig3(output.scale)} · ${terrainPair(output, units.terrain)}${turned}${cut}`
 }
 
-/** The lines where the card is cut, like its outline, and the dotted margins drawn on. */
-function Guides({ card }) {
-  if (!hasLayout(card)) return null
-  const [w, h] = [card.width_mm, card.height_mm]
-  const cols = Math.max(1, card.columns ?? 1)
-  const rows = Math.max(1, card.rows ?? 1)
+/** The lines where the output is cut, like its outline, and the dotted margins drawn on. */
+function Guides({ output }) {
+  if (!hasLayout(output)) return null
+  const [w, h] = [output.width_mm, output.height_mm]
+  const cols = Math.max(1, output.columns ?? 1)
+  const rows = Math.max(1, output.rows ?? 1)
   const line = { vectorEffect: 'non-scaling-stroke', fill: 'none' }
   return (
     <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none">
-      {sheetsOf(card).map((s, i) => {
+      {sheetsOf(output).map((s, i) => {
         const [x0, y0, x1, y1] = s.inner
         const margin = s.inner.some((v, k) => Math.abs(v - s.at[k]) > 1e-6)
         return margin && x1 > x0 && y1 > y0 ? (
@@ -301,17 +301,17 @@ function Guides({ card }) {
 }
 
 /**
- * The map, with the card drawn on top of it.
+ * The map, with the output drawn on top of it.
  *
- * The card is pinned to the ground: it has a lon/lat of its own and stays
+ * The output is pinned to the ground: it has a lon/lat of its own and stays
  * there while you drag the map around underneath. Only the tools in its
  * `transform` menu change it: `move` moves it, `scale` changes its scale about
  * its centre (the paper stays the size the document says), `rotate` turns the
- * map under it, and the result is written into the document's `card:` block,
- * so scrolling the map never drags your card out of place.
+ * map under it, and the result is written into the document's `output:` block,
+ * so scrolling the map never drags your output out of place.
  *
- * The card always faces you: a bearing turns the map, not the card. The map's
- * bearing is the card's, so the rectangle stays level on screen and the
+ * The output always faces you: a bearing turns the map, not the output. The map's
+ * bearing is the output's, so the rectangle stays level on screen and the
  * drawing, turned the same way by the engine, lies on the map.
  *
  * The rectangle is a DOM overlay, so it has to be redrawn on the map's own
@@ -320,18 +320,18 @@ function Guides({ card }) {
  * stuttering. So we hook `render` and move the node directly.
  */
 export default function MapView({
-  card,
+  output,
   units,
   drawing,
   apiRef,
   load,
   loadTitle,
-  onEditCard,
+  onEditOutput,
   onDownload,
-  onMoveCard,
-  onCardKeys,
-  onCardToCentre,
-  onCentreOnCard,
+  onMoveOutput,
+  onOutputKeys,
+  onOutputToCentre,
+  onCentreOnOutput,
 }) {
   const [menu, setMenu] = useState(false)
   const containerRef = useRef(null)
@@ -342,28 +342,28 @@ export default function MapView({
   const awayRef = useRef(null)
   const readyRef = useRef(false)
   const lastFitRef = useRef('')
-  // While a drag is on, the card follows the pointer from here; the document
+  // While a drag is on, the output follows the pointer from here; the document
   // trails it by a frame.
   const editRef = useRef(null)
   const edit = editRef.current
-  // Hold the edited card until the document comes back with it, or it would
+  // Hold the edited output until the document comes back with it, or it would
   // snap to its old place for a frame.
   if (
     edit?.done &&
-    card &&
-    Math.abs(card.lat - edit.lat) < 1e-6 &&
-    Math.abs(card.lng - edit.lng) < 1e-6 &&
-    Math.abs(card.scale - edit.scale) < 0.5 &&
-    Math.abs(norm(card.bearing ?? 0) - norm(edit.bearing ?? 0)) < 1e-6 &&
-    Math.abs(card.width_mm - edit.width_mm) < 0.01 &&
-    Math.abs(card.height_mm - edit.height_mm) < 0.01
+    output &&
+    Math.abs(output.lat - edit.lat) < 1e-6 &&
+    Math.abs(output.lng - edit.lng) < 1e-6 &&
+    Math.abs(output.scale - edit.scale) < 0.5 &&
+    Math.abs(norm(output.bearing ?? 0) - norm(edit.bearing ?? 0)) < 1e-6 &&
+    Math.abs(output.width_mm - edit.width_mm) < 0.01 &&
+    Math.abs(output.height_mm - edit.height_mm) < 0.01
   ) {
     editRef.current = null
   }
   const unitsRef = useRef(units)
   unitsRef.current = units ?? { width: 'mm', height: 'mm', terrain: 'km' }
-  const cardRef = useRef(card)
-  cardRef.current = editRef.current ? { ...card, ...editRef.current } : card
+  const outputRef = useRef(output)
+  outputRef.current = editRef.current ? { ...output, ...editRef.current } : output
 
   // The overlay's screen box, computed and applied outside React so it can be
   // set from inside the map's render callback without a re-render per frame.
@@ -371,10 +371,10 @@ export default function MapView({
     const map = mapRef.current
     const el = overlayRef.current
     if (!map || !el) return
-    const b = cardRef.current ? cardBox(map, cardRef.current) : null
+    const b = outputRef.current ? outputBox(map, outputRef.current) : null
     const { clientWidth: W, clientHeight: H } = map.getContainer()
     const away = !b || b.x > W || b.y > H || b.x + b.w < 0 || b.y + b.h < 0
-    if (awayRef.current) awayRef.current.style.display = cardRef.current && away ? '' : 'none'
+    if (awayRef.current) awayRef.current.style.display = outputRef.current && away ? '' : 'none'
     const parts = [labelRef, tagsRef]
     if (away || b.w < 4 || b.h < 4) {
       el.style.display = 'none'
@@ -390,11 +390,11 @@ export default function MapView({
     // The label over the top edge and the tags under the bottom one, flush
     // right; both outside, so the drawing is never covered, and `GAP` away.
     if (labelRef.current) {
-      labelRef.current.textContent = sizeText(cardRef.current, unitsRef.current)
+      labelRef.current.textContent = sizeText(outputRef.current, unitsRef.current)
       labelRef.current.style.transform = `translate(${b.x}px, ${b.y - GAP}px) translateY(-100%)`
     }
     // The tags, and the menu open under them, stay on the map: past its right
-    // or bottom edge they wait in that corner, so the card can be worked on
+    // or bottom edge they wait in that corner, so the output can be worked on
     // zoomed in on any part of it.
     if (tagsRef.current) {
       const t = tagsRef.current
@@ -408,8 +408,8 @@ export default function MapView({
     const map = new MapLibreMap({
       container: containerRef.current,
       style: STYLE,
-      center: card ? [card.lng, card.lat] : [-122.256196, 37.8771145],
-      bearing: card?.bearing ?? 0,
+      center: output ? [output.lng, output.lat] : [-122.256196, 37.8771145],
+      bearing: output?.bearing ?? 0,
       zoom: 14,
       minZoom: 2,
       pitch: 0,
@@ -420,9 +420,9 @@ export default function MapView({
       attributionControl: false,
     })
     mapRef.current = map
-    // Bottom left: the card's tags wait in the bottom right corner and would cover it.
+    // Bottom left: the output's tags wait in the bottom right corner and would cover it.
     map.addControl(new AttributionControl({ compact: true, customAttribution: CREDIT }), 'bottom-left')
-    // The bearing belongs to the card: only `rotate` turns the map.
+    // The bearing belongs to the output: only `rotate` turns the map.
     map.touchZoomRotate.disableRotation()
     map.keyboard.disableRotation()
 
@@ -443,7 +443,7 @@ export default function MapView({
     })
 
     // The only surface App gets on the map: where its centre is, and how to
-    // move it there. Everything else flows through `card`.
+    // move it there. Everything else flows through `output`.
     if (apiRef) {
       apiRef.current = {
         center: () => {
@@ -485,37 +485,37 @@ export default function MapView({
     place()
   })
 
-  // A bearing written in the document turns the map about the card, so the
-  // card stays where it is on screen. During a rotate the map already turns.
-  const bearing = norm(card?.bearing ?? 0)
+  // A bearing written in the document turns the map about the output, so the
+  // output stays where it is on screen. During a rotate the map already turns.
+  const bearing = norm(output?.bearing ?? 0)
   useEffect(() => {
     const map = mapRef.current
-    const c = cardRef.current
+    const c = outputRef.current
     if (!map || (editRef.current && !editRef.current.done)) return
     if (Math.abs(norm(map.getBearing() - bearing)) < 1e-6) return
     map.easeTo({ bearing, around: c ? [c.lng, c.lat] : undefined, duration: 0 })
   }, [bearing])
 
-  // When the card's ground size changes in the document, zoom out only if it
-  // no longer fits the map: a card that still fits keeps the zoom, so a new
-  // width reads as a wider card, not as the map moving. A resize on the map
+  // When the output's ground size changes in the document, zoom out only if it
+  // no longer fits the map: an output that still fits keeps the zoom, so a new
+  // width reads as a wider output, not as the map moving. A resize on the map
   // is already where you want it.
-  const ground = card ? groundKm(card) : null
+  const ground = output ? groundKm(output) : null
   const groundKey = ground ? ground.map(sig3).join('x') : ''
   useEffect(() => {
     const map = mapRef.current
-    if (!map || !readyRef.current || !card || !groundKey) return
+    if (!map || !readyRef.current || !output || !groundKey) return
     if (lastFitRef.current === groundKey) return
     lastFitRef.current = groundKey
-    const b = cardBox(map, card)
+    const b = outputBox(map, output)
     const el = map.getContainer()
     if (b && b.w <= el.clientWidth - 2 * FIT_PAD && b.h <= el.clientHeight - 2 * FIT_PAD) return
-    map.jumpTo({ zoom: map.getZoom() + zoomToFit(map, card) })
+    map.jumpTo({ zoom: map.getZoom() + zoomToFit(map, output) })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [groundKey])
 
   /**
-   * Follow the pointer with `step(map, from, dx, dy, event)`. The card moves
+   * Follow the pointer with `step(map, from, dx, dy, event)`. The output moves
    * on every pointer event; `write` puts it in the document at most once a
    * frame while the drag lasts, and once more on release.
    */
@@ -523,7 +523,7 @@ export default function MapView({
     e.preventDefault()
     e.stopPropagation()
     const map = mapRef.current
-    const from = cardRef.current
+    const from = outputRef.current
     if (!map || !from) return
     // A field being typed in would keep its text over the live value.
     if (document.activeElement instanceof HTMLInputElement) document.activeElement.blur()
@@ -531,12 +531,12 @@ export default function MapView({
     let moved = false
     let queued = false
     const move = (ev) => {
-      // The drawing is of where the card was: it goes as soon as the card moves.
-      if (!moved) onEditCard?.()
+      // The drawing is of where the output was: it goes as soon as the output moves.
+      if (!moved) onEditOutput?.()
       moved = true
       const { lat, lng, scale, bearing, width_mm, height_mm } = from
       editRef.current = { lat, lng, scale, bearing, width_mm, height_mm, ...step(map, from, ev.clientX - start.x, ev.clientY - start.y, ev) }
-      cardRef.current = { ...from, ...editRef.current }
+      outputRef.current = { ...from, ...editRef.current }
       place()
       if (queued) return
       queued = true
@@ -568,7 +568,7 @@ export default function MapView({
         const next = map.unproject([pt.x + dx, pt.y + dy])
         return { lat: next.lat, lng: next.lng }
       },
-      (to) => onMoveCard?.({ lat: to.lat, lng: to.lng }),
+      (to) => onMoveOutput?.({ lat: to.lat, lng: to.lng }),
     )
 
   const slices = drawing?.slices?.length ?? 0
@@ -592,14 +592,14 @@ export default function MapView({
       >
         {drawing?.svg ? (
           <div
-            className="card-svg h-full w-full"
+            className="output-svg h-full w-full"
             dangerouslySetInnerHTML={{ __html: drawing.svg }}
           />
         ) : null}
-        {card && <Guides card={card} />}
+        {output && <Guides output={output} />}
       </div>
 
-      {card && (
+      {output && (
         <span
           ref={labelRef}
           className="pointer-events-none absolute left-0 top-0 z-10 bg-white/90 px-1.5 py-0.5 font-mono text-[10px] whitespace-nowrap"
@@ -607,11 +607,11 @@ export default function MapView({
         />
       )}
 
-      {card && (
+      {output && (
         <div ref={tagsRef} className="absolute left-0 top-0 z-[25] flex flex-col items-end" style={{ display: 'none', willChange: 'transform' }}>
           <Tag
-            title="Move, rotate and scale the card; its paper, slices and margins"
-            aria-label="Transform the card"
+            title="Move, rotate and scale the output; its paper, slices and margins"
+            aria-label="Transform the output"
             aria-expanded={menu}
             className={`cursor-pointer ${menu ? 'bg-black! text-white!' : ''}`}
             onClick={() => setMenu((m) => !m)}
@@ -620,13 +620,13 @@ export default function MapView({
           </Tag>
           {menu && (
             <div className={`mt-1 max-h-[70vh] overflow-y-auto bg-white/95 p-1.5 ${RAISED}`}>
-              <CardControls card={card} units={units} onEdit={onCardKeys} onMove={startDrag} />
+              <OutputControls output={output} units={units} onEdit={onOutputKeys} onMove={startDrag} />
             </div>
           )}
         </div>
       )}
 
-      {card && (
+      {output && (
         <div className="absolute top-2 right-2 z-20 flex gap-1.5">
           <span ref={awayRef} className="bg-white/90 px-1.5 py-0.5 font-mono text-[10px] whitespace-nowrap opacity-60" style={{ display: 'none' }}>
             The selection is out of view
@@ -634,24 +634,24 @@ export default function MapView({
           {drawing?.svg && (
             <Tag
               title={slices ? `Save each of the ${slices} slices as its own SVG` : 'Save the drawing as an SVG'}
-              aria-label="Download the card"
+              aria-label="Download the output"
               className={`cursor-pointer bg-black! text-white! hover:underline ${RAISED}`}
               onClick={onDownload}
             >
               {slices ? `↓ download ${slices} slices` : '↓ download'}
             </Tag>
           )}
-          <Tag title="Move the selection to the middle of the map" className={`cursor-pointer ${RAISED}`} onClick={onCardToCentre}>
+          <Tag title="Move the selection to the middle of the map" className={`cursor-pointer ${RAISED}`} onClick={onOutputToCentre}>
             selection to map
           </Tag>
-          <Tag title="Move the map so the selection is in the middle" className={`cursor-pointer ${RAISED}`} onClick={onCentreOnCard}>
+          <Tag title="Move the map so the selection is in the middle" className={`cursor-pointer ${RAISED}`} onClick={onCentreOnOutput}>
             map to selection
           </Tag>
         </div>
       )}
 
-      {/* The draw, reported over the map: a separate card, not a frame drawn
-          inside the card that is about to be replaced. */}
+      {/* The draw, reported over the map: a separate output, not a frame drawn
+          inside the output that is about to be replaced. */}
       {load && (
         <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center p-6">
           <LoadCard title={loadTitle} load={load} />

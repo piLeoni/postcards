@@ -1,12 +1,12 @@
-//! The card: where it is, how big, at what scale — and the ground area and
+//! The output: where it is, how big, at what scale — and the ground area and
 //! Overpass query that follow from it.
 
-use crate::profile::{MapSpec, ProjectionMode};
+use crate::profile::{OutputSpec, ProjectionMode};
 use geo::{Coord, LineString, Polygon};
 use geographiclib_rs::{DirectGeodesic, Geodesic};
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Card {
+pub struct Output {
     /// Centre `(lon, lat)` in degrees.
     pub center: (f64, f64),
     pub width_mm: f64,
@@ -17,9 +17,9 @@ pub struct Card {
     pub projection: ProjectionMode,
 }
 
-impl Card {
-    pub fn new(map: &MapSpec, center: (f64, f64)) -> Card {
-        Card {
+impl Output {
+    pub fn new(map: &OutputSpec, center: (f64, f64)) -> Output {
+        Output {
             center,
             width_mm: map.width.0,
             height_mm: map.height.0,
@@ -29,17 +29,17 @@ impl Card {
         }
     }
 
-    /// Card size on the ground, metres.
+    /// Output size on the ground, metres.
     pub fn ground_size_m(&self) -> (f64, f64) {
         (self.width_mm / 1000.0 * self.scale, self.height_mm / 1000.0 * self.scale)
     }
 
-    /// Millimetres on the card per metre on the ground.
+    /// Millimetres on the output per metre on the ground.
     pub fn mm_per_m(&self) -> f64 {
         1000.0 / self.scale
     }
 
-    /// The card's ground rectangle in lon/lat, rotated by the bearing. Corners
+    /// The output's ground rectangle in lon/lat, rotated by the bearing. Corners
     /// are found by walking geodesics from the centre, so the sides are the
     /// requested ground distance apart at any latitude.
     pub fn query_polygon(&self) -> Polygon<f64> {
@@ -66,8 +66,8 @@ impl Card {
         Polygon::new(LineString::new(ring), vec![])
     }
 
-    /// For a PROJ projection, the card's edge taken back to the ground: the
-    /// projection may turn or shear the ground under the card, which a
+    /// For a PROJ projection, the output's edge taken back to the ground: the
+    /// projection may turn or shear the ground under the output, which a
     /// rectangle walked from the centre would miss.
     fn projected_frame(&self) -> Option<Polygon<f64>> {
         if !matches!(self.projection, ProjectionMode::Proj(_)) {
@@ -91,7 +91,7 @@ impl Card {
         Some(Polygon::new(LineString::new(ring), vec![]))
     }
 
-    /// `[west, south, east, north]` of the unrotated card area.
+    /// `[west, south, east, north]` of the unrotated output area.
     pub fn bounds(&self) -> [f64; 4] {
         let g = Geodesic::wgs84();
         let (lon, lat) = self.center;
@@ -104,7 +104,7 @@ impl Card {
     }
 }
 
-/// OSM keys fetched for a card (each theme filters in memory afterwards).
+/// OSM keys fetched for an output (each theme filters in memory afterwards).
 pub const OSM_TAGS: &[&str] =
     &["building", "highway", "railway", "natural", "water", "landuse", "amenity", "leisure", "waterway"];
 
@@ -203,8 +203,8 @@ pub fn overpass_query(polygon: &Polygon<f64>, tags: &[&str], timeout_s: u32) -> 
 mod tests {
     use super::*;
 
-    fn ferry() -> Card {
-        Card {
+    fn ferry() -> Output {
+        Output {
             center: (-122.3934746, 37.7955487),
             width_mm: 152.4,
             height_mm: 101.6,
@@ -216,7 +216,7 @@ mod tests {
 
     #[test]
     fn query_matches_osmnx() {
-        // Captured from osmnx 2.0.2 for the same card; the osmnx cache key
+        // Captured from osmnx 2.0.2 for the same output; the osmnx cache key
         // depends on this exact text.
         let q = overpass_query(&ferry().query_polygon(), OSM_TAGS, 180);
         assert!(q.starts_with(

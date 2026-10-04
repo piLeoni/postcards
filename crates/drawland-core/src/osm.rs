@@ -24,7 +24,7 @@ pub struct Feature {
     pub element: Element,
     pub id: i64,
     pub tags: Tags,
-    /// lon/lat until projected, card mm after.
+    /// lon/lat until projected, output mm after.
     pub geometry: Geometry<f64>,
 }
 
@@ -278,7 +278,7 @@ pub fn features_from_overpass(json: &str, area: &Polygon<f64>, tags: &[&str]) ->
     Ok(out)
 }
 
-/// Whether the card shows a coastline, i.e. needs the ocean polygons.
+/// Whether the output shows a coastline, i.e. needs the ocean polygons.
 pub fn needs_ocean(features: &[Feature]) -> bool {
     features.iter().any(|f| f.tag("natural") == Some("coastline"))
 }

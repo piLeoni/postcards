@@ -3,28 +3,28 @@ import MapView from './components/MapView'
 import Sidebar from './components/Sidebar'
 import { loadDrawland } from './lib/drawland'
 import { START_DOC } from './lib/presets'
-import { cardUnit, setCardComment, setCardKeys } from './lib/doc'
+import { outputUnit, setOutputComment, setOutputKeys } from './lib/doc'
 import { terrainPair } from './components/controls'
 
-/** Where the card is, how big, how it is cut and drawn: a drawing is only good for one of these. */
+/** Where the output is, how big, how it is cut and drawn: a drawing is only good for one of these. */
 const placeOf = (c) =>
   c
     ? [c.lat, c.lng, c.width_mm, c.height_mm, c.scale, c.bearing, c.padding_x_mm, c.padding_y_mm, c.columns, c.rows, c.gutter_x_mm, c.gutter_y_mm, c.projection].join()
     : ''
 
 /**
- * The unit each length of `card:` is written in. One not written takes the
+ * The unit each length of `output:` is written in. One not written takes the
  * paper's; the terrain keeps the unit noted beside the scale, or takes km
  * beside metric paper and mi beside inches.
  */
 function unitsOf(doc) {
-  const width = cardUnit(doc, 'width') ?? 'mm'
+  const width = outputUnit(doc, 'width') ?? 'mm'
   const paper = ['mm', 'cm', 'in'].includes(width) ? width : 'mm'
   return {
     width: paper,
-    height: cardUnit(doc, 'height') ?? paper,
-    padding: cardUnit(doc, 'padding') ?? paper,
-    gutter: cardUnit(doc, 'slices.gutter') ?? paper,
+    height: outputUnit(doc, 'height') ?? paper,
+    padding: outputUnit(doc, 'padding') ?? paper,
+    gutter: outputUnit(doc, 'slices.gutter') ?? paper,
     terrain: doc.match(/^\s+scale\s*:.*#\s*terrain [\d.]+ × [\d.]+ (m|km|mi|ft)\b/m)?.[1] ?? (paper === 'in' ? 'mi' : 'km'),
   }
 }
@@ -42,7 +42,7 @@ export default function App() {
   const [engine, setEngine] = useState(null)
   const [engineError, setEngineError] = useState(null)
   const [doc, setDoc] = useState(START_DOC)
-  const [card, setCard] = useState(null)
+  const [output, setOutput] = useState(null)
   const [status, setStatus] = useState({ phase: 'loading' })
   const [drawing, setDrawing] = useState(null)
   const [load, setLoad] = useState(null)
@@ -59,7 +59,7 @@ export default function App() {
   }, [])
   const drawTokenRef = useRef(0)
   // Handles into the map, for the two explicit centre actions. Nothing else
-  // reads them: the map is otherwise free to scroll without touching the card.
+  // reads them: the map is otherwise free to scroll without touching the output.
   const mapApiRef = useRef(null)
 
   useEffect(() => {
@@ -71,19 +71,19 @@ export default function App() {
       })
   }, [])
 
-  // The document is the card: size, scale and where it sits all come from its
-  // `card:` block, and moving the card rewrites that block. A document with
+  // The document is the output: size, scale and where it sits all come from its
+  // `output:` block, and moving the output rewrites that block. A document with
   // no position is placed on the map's centre rather than at (0,0).
   useEffect(() => {
     if (!engine || !doc) return
     try {
-      const info = JSON.parse(JSON.stringify(engine.cardInfo(doc)))
+      const info = JSON.parse(JSON.stringify(engine.outputInfo(doc)))
       if (info.lat === 0 && info.lng === 0) {
         const c = mapApiRef.current?.center?.() ?? { lat: 37.8771145, lng: -122.256196 }
-        setDoc((d) => setCardKeys(d, { lat: c.lat, lng: c.lng }))
+        setDoc((d) => setOutputKeys(d, { lat: c.lat, lng: c.lng }))
         return
       }
-      setCard(info)
+      setOutput(info)
       setStatus((s) => (s.phase === 'loading' || s.phase === 'error' ? { phase: 'ready' } : s))
     } catch (e) {
       setStatus({ phase: 'error', detail: e instanceof Error ? e.message : String(e) })
@@ -99,17 +99,17 @@ export default function App() {
   useEffect(() => () => workerRef.current?.terminate(), [])
 
   const draw = useCallback(() => {
-    if (!engine || !doc || !card) return
+    if (!engine || !doc || !output) return
     const token = ++drawTokenRef.current
-    const { lat, lng } = card
-    const at = placeOf(card)
+    const { lat, lng } = output
+    const at = placeOf(output)
     if (!workerRef.current) {
       workerRef.current = new Worker(new URL('./lib/draw.worker.js', import.meta.url), { type: 'module' })
       workerRef.current.onmessage = ({ data }) => onWorkerRef.current?.(data)
     }
 
-    setLoadTitle(`1:${Math.round(card.scale)} · ${lat.toFixed(4)}, ${lng.toFixed(4)}`)
-    // Mount the card at once, so the first paint is the card itself and not
+    setLoadTitle(`1:${Math.round(output.scale)} · ${lat.toFixed(4)}, ${lng.toFixed(4)}`)
+    // Mount the output at once, so the first paint is the output itself and not
     // a flash of the old drawing; it repaints at most once a frame.
     const board = new engine.Board()
     let version = 0
@@ -151,67 +151,67 @@ export default function App() {
       }
     }
     workerRef.current.postMessage({ type: 'draw', token, doc, lat, lng })
-  }, [engine, doc, card])
+  }, [engine, doc, output])
 
-  // A drawing belongs to where the card was when it was drawn: once the card
+  // A drawing belongs to where the output was when it was drawn: once the output
   // moves or changes scale or size, it is stale and goes.
-  const here = placeOf(card)
+  const here = placeOf(output)
   const current = drawing && drawing.at === here ? drawing : null
   useEffect(() => {
     if (drawing && drawing.at !== here) setDrawing(null)
   }, [drawing, here])
 
-  // A cut card downloads one file per sheet, a moment apart: browsers drop
+  // A cut output downloads one file per sheet, a moment apart: browsers drop
   // downloads fired in the same instant.
   const downloadSvg = useCallback(async () => {
-    if (!current || !card) return
-    const base = `postcard_${card.lat.toFixed(4)}_${card.lng.toFixed(4)}_1-${Math.round(card.scale)}`
+    if (!current || !output) return
+    const base = `drawland_${output.lat.toFixed(4)}_${output.lng.toFixed(4)}_1-${Math.round(output.scale)}`
     const files = current.slices?.length ? current.slices.map(([name, svg]) => [`${base}_${name}.svg`, svg]) : [[`${base}.svg`, current.svg]]
     for (const [i, [name, svg]] of files.entries()) {
       if (i > 0) await new Promise((r) => setTimeout(r, 300))
       saveFile(name, svg)
     }
-  }, [current, card])
+  }, [current, output])
 
   /**
-   * Write keys of `card:`, then note beside the scale the terrain that paper
+   * Write keys of `output:`, then note beside the scale the terrain that paper
    * × scale comes to: `scale: "1:8000"   # terrain 1.22 × 0.813 km`.
    */
-  const editCard = useCallback(
+  const editOutput = useCallback(
     (patch) =>
       setDoc((d) => {
-        const text = setCardKeys(d, patch)
+        const text = setOutputKeys(d, patch)
         if (!engine) return text
         try {
-          const c = JSON.parse(JSON.stringify(engine.cardInfo(text)))
-          return setCardComment(text, 'scale', `terrain ${terrainPair(c, unitsOf(text).terrain)}`)
+          const c = JSON.parse(JSON.stringify(engine.outputInfo(text)))
+          return setOutputComment(text, 'scale', `terrain ${terrainPair(c, unitsOf(text).terrain)}`)
         } catch {
           return text
         }
       }),
     [engine],
   )
-  const moveCard = useCallback(({ lat, lng }) => editCard({ lat, lng }), [editCard])
+  const moveOutput = useCallback(({ lat, lng }) => editOutput({ lat, lng }), [editOutput])
 
   const units = useMemo(() => unitsOf(doc), [doc])
 
-  /** Move the card onto the map's centre. */
-  const centreCardOnMap = useCallback(() => {
+  /** Move the output onto the map's centre. */
+  const centreOutputOnMap = useCallback(() => {
     const c = mapApiRef.current?.center?.()
-    if (c) moveCard(c)
-  }, [moveCard])
+    if (c) moveOutput(c)
+  }, [moveOutput])
 
-  /** Move the map onto the card. */
-  const centreMapOnCard = useCallback(() => {
-    mapApiRef.current?.jumpTo?.(card?.lng, card?.lat)
-  }, [card?.lat, card?.lng])
+  /** Move the map onto the output. */
+  const centreMapOnOutput = useCallback(() => {
+    mapApiRef.current?.jumpTo?.(output?.lng, output?.lat)
+  }, [output?.lat, output?.lng])
 
-  /** What is wrong with `text` as a card, the engine's words; `null` when nothing. */
+  /** What is wrong with `text` as an output, the engine's words; `null` when nothing. */
   const check = useCallback(
     (text) => {
       if (!engine) return null
       try {
-        engine.cardInfo(text)
+        engine.outputInfo(text)
         return null
       } catch (e) {
         return e instanceof Error ? e.message : String(e)
@@ -225,13 +225,13 @@ export default function App() {
       doc,
       setDoc,
       check,
-      card,
+      output,
       status,
       drawing: current,
       busy: status.phase === 'working',
       onDraw: draw,
     }),
-    [doc, check, card, status, current, draw],
+    [doc, check, output, status, current, draw],
   )
 
   if (engineError) {
@@ -249,18 +249,18 @@ export default function App() {
     <div className="relative flex h-full min-h-0 w-full flex-col lg:flex-row">
       <main className="relative min-h-0 min-w-0 flex-1">
         <MapView
-          card={card}
+          output={output}
           units={units}
           drawing={current}
           apiRef={mapApiRef}
           load={load}
           loadTitle={loadTitle}
-          onEditCard={() => setDrawing(null)}
+          onEditOutput={() => setDrawing(null)}
           onDownload={downloadSvg}
-          onMoveCard={moveCard}
-          onCardKeys={editCard}
-          onCardToCentre={centreCardOnMap}
-          onCentreOnCard={centreMapOnCard}
+          onMoveOutput={moveOutput}
+          onOutputKeys={editOutput}
+          onOutputToCentre={centreOutputOnMap}
+          onCentreOnOutput={centreMapOnOutput}
         />
         <button
           type="button"

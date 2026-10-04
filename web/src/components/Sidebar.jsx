@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Editor from '@monaco-editor/react'
 import { PRESETS } from '../lib/presets'
-import { setCardKeys, styleOf, titleOf } from '../lib/doc'
+import { setOutputKeys, styleOf, titleOf } from '../lib/doc'
 import { EDITOR_THEME, defineEditorTheme, editorFont } from '../lib/editorTheme'
 import Panel from './Panel'
 
@@ -9,7 +9,7 @@ import Panel from './Panel'
 const KEY = { 'size-': 'small', 'variant-': 'background1' }
 
 /* ---------------------------------------------------------------- */
-/*  Sidebar — the document, which is the card                       */
+/*  Sidebar — the document, which is the output                       */
 /* ---------------------------------------------------------------- */
 
 /** The column's width on a wide screen, in px: dragged by its left edge, kept. */
@@ -33,7 +33,7 @@ const PRESET_STYLES = PRESETS.map((p) => [p, styleOf(p.doc)])
 /** A file name from a title: `Parks and buildings` → `parks-and-buildings`. */
 const slug = (s) => s.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
 
-export default function Sidebar({ open, onClose, doc, setDoc, check, card, status, drawing, busy, onDraw }) {
+export default function Sidebar({ open, onClose, doc, setDoc, check, output, status, drawing, busy, onDraw }) {
   const [width, setWidth] = useState(() => clampWidth(Number(localStorage.getItem(WIDTH_KEY)) || 448))
   const [draft, setDraft] = useState(null)   // text typed but not applied yet
   const [notice, setNotice] = useState(null)   // { text, error? }
@@ -133,10 +133,10 @@ export default function Sidebar({ open, onClose, doc, setDoc, check, card, statu
   }, [dirty, problem])
   applyDraftRef.current = applyDraft
 
-  /** A preset brings its style; the card stays where you put it. */
+  /** A preset brings its style; the output stays where you put it. */
   const loadPreset = (p) => {
     presetMenuRef.current?.removeAttribute('open')
-    setDoc(card ? setCardKeys(p.doc, { lat: card.lat, lng: card.lng }) : p.doc)
+    setDoc(output ? setOutputKeys(p.doc, { lat: output.lat, lng: output.lng }) : p.doc)
     setDraft(null)
     flash(`Loaded ${p.name}`)
   }
@@ -233,7 +233,7 @@ export default function Sidebar({ open, onClose, doc, setDoc, check, card, statu
       >
         <p className="opacity-60">
           Any place on Earth as a line drawing: a clean, layered SVG for a
-          pen plotter, a laser cutter or any vector editor. Frame your card on
+          pen plotter, a laser cutter or any vector editor. Frame your map on
           the map and generate it; every layer is yours to tune below.
         </p>
       </Panel>
@@ -259,7 +259,7 @@ export default function Sidebar({ open, onClose, doc, setDoc, check, card, statu
           </button>
           {/* Static, so the menu opens under the whole row rather than this button. */}
           <details ref={presetMenuRef} is-="popover" className="static">
-            <summary is-="button" {...KEY} title="Replace the style with a ready-made one; the card stays where it is">
+            <summary is-="button" {...KEY} title="Replace the style with a ready-made one; the output stays where it is">
               presets ▾
             </summary>
             <div className="z-30 w-full border border-black bg-white">
@@ -289,10 +289,10 @@ export default function Sidebar({ open, onClose, doc, setDoc, check, card, statu
             size-="small"
             variant-={busy ? 'background1' : 'foreground0'}
             className="ml-auto"
-            disabled={busy || !card}
+            disabled={busy || !output}
             onClick={onDraw}
           >
-            {drawing ? 'REGENERATE CARD' : 'GENERATE CARD'}
+            {drawing ? 'REGENERATE' : 'GENERATE'}
           </button>
           <input
             ref={fileRef}

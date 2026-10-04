@@ -1,5 +1,5 @@
 /**
- * A draw, off the page's thread: the download (Overpass when the card asks
+ * A draw, off the page's thread: the download (Overpass when the output asks
  * it anything, then the vector tiles), then the engine, the same steps as
  * `drawland map`. The page sends `{ type: 'draw', token, doc,
  * lat, lng }` and gets back every progress event as `{ type: 'event', token,
@@ -30,7 +30,7 @@ async function run({ token, doc, lat, lng }) {
     download.log('info', `centre ${lat.toFixed(7)}, ${lng.toFixed(7)}`)
     const job = new engine.Job(doc, lat, lng)
     try {
-      // Overpass only for a card that selects from it (`osm_select`).
+      // Overpass only for an output that selects from it (`osm_select`).
       let bytes = 0
       if (job.needsOsm) {
         const req = JSON.parse(engine.osmRequest(doc, lat, lng))

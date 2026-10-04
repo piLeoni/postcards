@@ -2,7 +2,7 @@
 //! stack.
 //!
 //! ```yaml
-//! card: { width: 6in, height: 4in, scale: "1:10000" }
+//! output: { width: 6in, height: 4in, scale: "1:10000" }
 //!
 //! $features:
 //!   bldg: { osm_select: { building: true } }
@@ -31,7 +31,7 @@
 //! - `$section.name` — yours, defined in this file. The section gives the type.
 //! - `tools_*` — kit operations (this module).
 //! - `osm_*` / `tiles_*` / `engine_*` — sources: OSM selections (Overpass),
-//!   vector tile selections, the card, the ocean.
+//!   vector tile selections, the output, the ocean.
 //! - `module_*` / `primitives_*` — canned recipes. `module_*` is compiled code
 //!   (roads); `primitives_*` expands into `tools_*` and is defined here.
 //!
@@ -41,7 +41,7 @@
 //! load, never halfway through a render.
 
 use crate::profile::{FillSpec, StrokeSpec};
-use crate::steps::{Selector, TagMatch};
+use crate::select::{Selector, TagMatch};
 use crate::units::Mm;
 use serde::de::{self, Deserializer, MapAccess, Visitor};
 use serde::Deserialize;
@@ -209,8 +209,8 @@ pub enum Op {
     Intersect(Intersect),
     FillHoles(Name),
     Grow(Grow),
-    /// The card rectangle.
-    Card,
+    /// The output rectangle.
+    Frame,
     /// The sea, fetched by the host. Not an OSM tag.
     Ocean,
 
@@ -248,7 +248,7 @@ impl Op {
             | Op::Intersect(_)
             | Op::FillHoles(_)
             | Op::Grow(_)
-            | Op::Card
+            | Op::Frame
             | Op::Ocean => Section::Areas,
             Op::Rings(_) | Op::Lines(_) | Op::Segments(_) | Op::Dedupe(_) | Op::Merge(_) | Op::Join(_)
             | Op::ClipLines(_) => Section::Lines,
@@ -262,7 +262,7 @@ impl Op {
     /// The names this operation reads.
     pub fn refs(&self) -> Vec<Name> {
         match self {
-            Op::Select(_) | Op::TileSelect(_) | Op::Card | Op::Ocean => vec![],
+            Op::Select(_) | Op::TileSelect(_) | Op::Frame | Op::Ocean => vec![],
             Op::Module(m) => m.from.iter().cloned().collect(),
             Op::Polygons(n) | Op::FillHoles(n) | Op::Dedupe(n) | Op::Merge(n) | Op::Lines(n) | Op::Segments(n) => {
                 vec![n.clone()]
@@ -329,7 +329,7 @@ impl Def {
 pub struct Draw {
     /// SVG group id. `None` falls back to the def name (`fills_hatch`).
     pub id: Option<String>,
-    pub from: Output,
+    pub from: Target,
     pub stroke: Option<StrokeSpec>,
 }
 
@@ -349,7 +349,7 @@ impl Draw {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Mask {
-    pub from: Output,
+    pub from: Target,
     pub occludes: Vec<Id>,
 }
 
@@ -379,7 +379,7 @@ pub struct Compose {
 pub struct Grammar {
     /// A name for the profile, carried with it when shared; nothing draws it.
     pub title: Option<String>,
-    pub card: crate::profile::MapSpec,
+    pub output: crate::profile::OutputSpec,
     /// Sections in the order they were written, each with its defs.
     pub sections: Vec<(Section, Vec<Def>)>,
     pub draw: Vec<Draw>,
@@ -432,7 +432,7 @@ impl Grammar {
             match &def.op {
                 Op::Select(sel) => sel.keys().for_each(|k| add(&mut keys, k)),
                 Op::Module(Module { name, from: None }) => {
-                    crate::modules::osm_keys(&format!("{name}/v1")).iter().for_each(|k| add(&mut keys, k))
+                    crate::themes::osm_keys(name).iter().for_each(|k| add(&mut keys, k))
                 }
                 _ => {}
             }
@@ -492,7 +492,7 @@ pub enum GrammarError {
 struct Raw {
     #[serde(default)]
     title: Option<String>,
-    card: crate::profile::MapSpec,
+    output: crate::profile::OutputSpec,
     #[serde(default, rename = "$features", deserialize_with = "ordered_defs")]
     features: Vec<(String, RawOp)>,
     #[serde(default, rename = "$areas", deserialize_with = "ordered_defs")]
@@ -726,7 +726,7 @@ fn build(raw: Raw) -> Result<Grammar, GrammarError> {
         clip_default,
     };
 
-    let grammar = Grammar { title: raw.title, card: raw.card, sections, draw, compose };
+    let grammar = Grammar { title: raw.title, output: raw.output, sections, draw, compose };
     validate(&grammar)?;
     Ok(grammar)
 }
@@ -741,16 +741,16 @@ fn expr_or_name(text: String) -> GrammarError {
 }
 
 /// `$lines.x`, `$fills.x`, or `roads.outlines` (a module output).
-fn parse_output(text: &str) -> Result<Output, GrammarError> {
+fn parse_output(text: &str) -> Result<Target, GrammarError> {
     if let Some(rest) = text.strip_prefix('$') {
-        return Ok(Output { module: None, name: refname(&format!("${rest}"))? });
+        return Ok(Target { module: None, name: refname(&format!("${rest}"))? });
     }
     if text.starts_with('~') {
         return Err(GrammarError::Invalid(format!("{text:?} is an expression; expressions land in v4")));
     }
     match text.split_once('.') {
         Some((module, name)) if !name.is_empty() => {
-            Ok(Output { module: Some(module.to_string()), name: Name { section: Section::Lines, name: name.to_string() } })
+            Ok(Target { module: Some(module.to_string()), name: Name { section: Section::Lines, name: name.to_string() } })
         }
         _ => Err(GrammarError::Invalid(format!(
             "{text:?} is not a reference: write $lines.x, $fills.x or <module>.<output>"
@@ -765,7 +765,7 @@ fn refname(text: &str) -> Result<Name, GrammarError> {
 /// A draw/`from` target: `$lines.x` / `$fills.x`, or `roads.outlines` (a module
 /// output, which has no `$` because the engine produced it).
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Output {
+pub struct Target {
     /// `None` = a `$section.name` def; `Some(module)` = a module output.
     pub module: Option<String>,
     pub name: Name,
@@ -776,7 +776,7 @@ fn parse_op(raw: RawOp, section: Section) -> Result<Op, GrammarError> {
     let target = match key.as_str() {
         "osm_select" | "tiles_select" => Section::Features,
         "tools_polygons" | "tools_union" | "tools_difference" | "tools_intersect" | "tools_fill_holes"
-        | "tools_grow" | "engine_card" | "engine_ocean" => Section::Areas,
+        | "tools_grow" | "engine_frame" | "engine_ocean" => Section::Areas,
         "tools_rings" | "tools_lines" | "tools_segments" | "tools_dedupe" | "tools_merge" | "tools_join"
         | "tools_clip" => Section::Lines,
         "tools_fill" => Section::Fills,
@@ -814,7 +814,7 @@ fn parse_op(raw: RawOp, section: Section) -> Result<Op, GrammarError> {
     let op = match key.as_str() {
         "osm_select" => Op::Select(parse_selector(&value)?),
         "tiles_select" => Op::TileSelect(parse_tile_select(&value)?),
-        "engine_card" => Op::Card,
+        "engine_frame" => Op::Frame,
         "engine_ocean" => Op::Ocean,
         "tools_polygons" => Op::Polygons(name_ref(&value, "tools_polygons")?),
         "tools_union" => Op::Union(union_rules(&value, "tools_union")?),
@@ -1220,7 +1220,7 @@ mod tests {
 
     /// The example profile, trimmed to the parts the grammar must accept.
     const YAML: &str = r#"
-card: { width: 6in, height: 4in, scale: "1:10000" }
+output: { width: 6in, height: 4in, scale: "1:10000" }
 
 $features:
   garden: { osm_select: { leisure: garden } }
@@ -1257,12 +1257,12 @@ compose:
     default: auto
 "#;
 
-    /// The tests below write only the part under test; the card is boilerplate.
+    /// The tests below write only the part under test; the output is boilerplate.
     fn parse(text: &str) -> Result<Grammar, GrammarError> {
-        let body = if text.contains("card:") {
+        let body = if text.contains("output:") {
             text.to_string()
         } else {
-            format!("card: {{ width: 100mm, height: 50mm }}\n{text}")
+            format!("output: {{ width: 100mm, height: 50mm }}\n{text}")
         };
         Grammar::parse(&body, Format::Yaml)
     }
@@ -1331,7 +1331,7 @@ compose:
 
     #[test]
     fn one_operation_per_def() {
-        let two = "$areas:\n  a: { tools_polygons: $areas.b, engine_card: {} }\n  b: { engine_card: {} }\n";
+        let two = "$areas:\n  a: { tools_polygons: $areas.b, engine_frame: {} }\n  b: { engine_frame: {} }\n";
         assert!(matches!(parse(two), Err(GrammarError::Yaml(m)) if m.contains("exactly one operation")));
     }
 
@@ -1341,7 +1341,7 @@ compose:
         let expr_ref = "$areas:\n  a: { tools_grow: { of: ~dense, by: 1mm } }\n";
         assert!(matches!(parse(expr_ref), Err(GrammarError::Invalid(m)) if m.contains("v4")));
         // As a scalar value it is not a length, and must not silently parse.
-        let expr = "$fills:\n  f: { tools_fill: { in: $areas.a, spacing: ~dense } }\n$areas:\n  a: { engine_card: {} }\n";
+        let expr = "$fills:\n  f: { tools_fill: { in: $areas.a, spacing: ~dense } }\n$areas:\n  a: { engine_frame: {} }\n";
         assert!(parse(expr).is_err());
         // A module name is recognised: v3 records it even though its outputs
         // have no syntax yet.
@@ -1372,9 +1372,9 @@ compose:
 
     #[test]
     fn duplicate_names_and_extra_keys_are_refused() {
-        let dup = "$areas:\n  a: { engine_card: {} }\n  a: { engine_card: {} }\n";
+        let dup = "$areas:\n  a: { engine_frame: {} }\n  a: { engine_frame: {} }\n";
         assert!(matches!(parse(dup), Err(GrammarError::Yaml(m)) if m.contains("duplicate mapping key")));
-        let extra = "$areas:\n  a: { engine_card: {}, note: hi }\n";
+        let extra = "$areas:\n  a: { engine_frame: {}, note: hi }\n";
         assert!(parse(extra).is_err());
     }
 
@@ -1384,7 +1384,7 @@ compose:
         // stay loadable, or the proposal and the parser have drifted apart.
         let text = include_str!("../../../configs/proposal/postcard.yaml");
         let g = Grammar::parse(text, Format::Yaml).unwrap();
-        assert!(g.defs(Section::Areas).len() >= 10, "the example should define the real card");
+        assert!(g.defs(Section::Areas).len() >= 10, "the example should define the real output");
         assert_eq!(g.compose.order.len(), g.draw.len());
     }
 }

@@ -2,12 +2,12 @@
 //! whatever a document picks with `tiles_select` (buildings, roads, parks…).
 //!
 //! Overpass answers with every tag but is slow and often busy; the tiles are
-//! static files on a CDN, a handful per card, with the OpenMapTiles schema's
+//! static files on a CDN, a handful per output, with the OpenMapTiles schema's
 //! layers and classes instead of raw tags. The host downloads them (the
 //! command line through terramask's fetcher, the page with `fetch`); this
 //! says which, and reads them.
 
-use crate::card::Card;
+use crate::output::Output;
 use crate::osm::{needs_ocean, Element, Feature, Tags};
 use geo::{BoundingRect, Coord, Geometry, LineString, MultiPolygon, Polygon};
 use terramask::{merc_to_lonlat, tiles_for, zoom_for, Features, Filter, TileId, ZoomLimits};
@@ -20,31 +20,31 @@ pub const TILES: &str = "https://tiles.openfreemap.org/planet";
 /// The other tags are the tile's own: `class`, `subclass`, `brunnel`…
 pub const LAYER_TAG: &str = "tiles:layer";
 
-/// Features are cut this much (a fraction of the card's size, on each side)
-/// beyond the card: the outline of a park cut at the box would otherwise be
-/// drawn along the card's edge.
+/// Features are cut this much (a fraction of the output's size, on each side)
+/// beyond the output: the outline of a park cut at the box would otherwise be
+/// drawn along the output's edge.
 const PAD: f64 = 0.05;
 
 /// For the sea alone, detail is picked as if drawing this many pixels across.
 const WIDTH_PX: usize = 2048;
 
 /// Features come from the deepest zoom, where every building is; past this
-/// many tiles the card is big enough to step out a zoom at a time.
+/// many tiles the output is big enough to step out a zoom at a time.
 const MAX_FEATURE_TILES: usize = 64;
 
 /// What a document reads from the tiles, decided once Overpass (if the
 /// document asks it anything) has answered: the `tiles_select` selections,
 /// and the sea when the document draws it — with OSM features, only where
 /// they show a coastline. `None` when nothing is needed.
-pub fn plan(card: &Card, selectors: &[String], ocean: bool, osm: Option<&[Feature]>) -> Result<Option<Tiles>, String> {
+pub fn plan(output: &Output, selectors: &[String], ocean: bool, osm: Option<&[Feature]>) -> Result<Option<Tiles>, String> {
     let sea = ocean && osm.is_none_or(needs_ocean);
     if selectors.is_empty() && !sea {
         return Ok(None);
     }
-    Tiles::new(&card.query_polygon(), selectors, sea).map(Some)
+    Tiles::new(&output.query_polygon(), selectors, sea).map(Some)
 }
 
-/// The tiles under one card, gathered one by one.
+/// The tiles under one output, gathered one by one.
 pub struct Tiles {
     bounds: [f64; 4],
     /// What `tiles_select` picks; `None` when the sea is all.
@@ -56,7 +56,7 @@ pub struct Tiles {
 }
 
 impl Tiles {
-    /// The tiles inside `area` (lon/lat), usually the card's query polygon.
+    /// The tiles inside `area` (lon/lat), usually the output's query polygon.
     /// `selectors` are terramask's: presets (`buildings`, `roads`) and
     /// `layer:class` rules.
     pub fn new(area: &Polygon<f64>, selectors: &[String], ocean: bool) -> Result<Tiles, String> {

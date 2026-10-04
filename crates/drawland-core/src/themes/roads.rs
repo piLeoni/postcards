@@ -2,12 +2,12 @@
 //! ground width; bridges stack above what they cross, and the seams where a
 //! deck crosses a road below become detail strokes.
 
-use super::{below_ground, layer_stroke, Context, LayerParts};
-use crate::fill::{self, FillError};
+use super::{below_ground, Context, LayerParts};
+use crate::fill;
 use crate::geom::{self, Lines};
 use crate::osm::{Element, Feature};
 use crate::tiles::LAYER_TAG;
-use crate::profile::{LayerSpec, StrokeSpec};
+use crate::profile::StrokeSpec;
 use geo::algorithm::buffer::Buffer;
 use geo::{Coord, Geometry, LineString, MultiLineString, MultiPolygon};
 use std::collections::{BTreeMap, HashMap};
@@ -56,7 +56,7 @@ const BUFFER_FUDGE: f64 = 1.25;
 /// Gaps narrower than this on the ground are closed after buffering (flat-cap
 /// wedges at joints) without gluing dual carriageways together.
 const JOINT_CLOSE_M: f64 = 2.5;
-/// Grid (card mm) endpoints snap to when looking for shared nodes.
+/// Grid (output mm) endpoints snap to when looking for shared nodes.
 const NODE_SNAP_MM: f64 = 0.05;
 const CENTERLINE_MIN_WIDTH_M: f64 = 6.0;
 /// Ground width a trail cuts out of what is below it. A trail is one pen
@@ -192,7 +192,7 @@ fn road_width_m(f: &Feature) -> f64 {
     width_by_type(highway).unwrap_or(DEFAULT_WIDTH_M)
 }
 
-/// Ways drawn as a single line instead of a carriageway outline: at card
+/// Ways drawn as a single line instead of a carriageway outline: at output
 /// scale their two edges would be a tenth of a millimetre apart.
 fn is_trail(f: &Feature) -> bool {
     matches!(highway(f), Some("footway" | "path" | "steps" | "track" | "bridleway" | "cycleway"))
@@ -270,11 +270,7 @@ pub struct Roads {
     pub seams: Lines,
 }
 
-pub(crate) fn render(layer: &LayerSpec, ctx: &Context) -> Result<LayerParts, FillError> {
-    build(layer, ctx).map(|r| r.parts)
-}
-
-pub(crate) fn build(layer: &LayerSpec, ctx: &Context) -> Result<Roads, FillError> {
+pub(crate) fn build(ctx: &Context) -> Roads {
     let feats: Vec<(&Feature, i64)> = ctx
         .features
         .iter()
@@ -283,10 +279,10 @@ pub(crate) fn build(layer: &LayerSpec, ctx: &Context) -> Result<Roads, FillError
         .filter(|(f, l)| *l >= 0 && !below_ground(f, &["layer"]))
         .collect();
     if feats.is_empty() {
-        return Ok(Roads { parts: LayerParts::default(), centerlines: vec![], seams: vec![] });
+        return Roads { parts: LayerParts::default(), centerlines: vec![], seams: vec![] };
     }
 
-    let scale_ratio = 1.0 / (ctx.card.scale / 1000.0) * BUFFER_FUDGE;
+    let scale_ratio = 1.0 / (ctx.output.scale / 1000.0) * BUFFER_FUDGE;
 
     let mut buffered: Vec<MultiPolygon<f64>> = Vec::new();
     // Trails at ground level stop at the carriageway edge; on a bridge they
@@ -437,13 +433,13 @@ pub(crate) fn build(layer: &LayerSpec, ctx: &Context) -> Result<Roads, FillError
     trails.extend(raised_trails);
 
     let parts = LayerParts {
-        outlines: fill::stroke(geom::rings(&carriageway), &layer_stroke(StrokeSpec::default(), layer)),
+        outlines: fill::stroke(geom::rings(&carriageway), &StrokeSpec::default()),
         details,
         trails,
         filling: vec![],
         mask: merge(&covered),
     };
-    Ok(Roads { parts, centerlines, seams: all_seams })
+    Roads { parts, centerlines, seams: all_seams }
 }
 
 #[cfg(test)]
@@ -492,9 +488,8 @@ mod tests {
 
     #[test]
     fn trails_are_one_line_that_still_cuts() {
-        use crate::card::Card;
-        use crate::fill::Sources;
-        use crate::profile::{MapSpec, ProjectionMode};
+        use crate::output::Output;
+        use crate::profile::{OutputSpec, ProjectionMode};
         use crate::units::{Mm, Scale};
         use geo::{line_string, Contains};
 
@@ -502,7 +497,7 @@ mod tests {
             geometry: Geometry::LineString(line_string![(x: 10.0, y: y), (x: 40.0, y: y)]),
             ..feature(&[("highway", highway)])
         };
-        let map = MapSpec {
+        let map = OutputSpec {
             address: None,
             lat: None,
             lng: None,
@@ -515,20 +510,10 @@ mod tests {
             padding: Default::default(),
             slices: Default::default(),
         };
-        let card = Card::new(&map, (0.0, 0.0));
+        let output = Output::new(&map, (0.0, 0.0));
         let features = vec![way("residential", 30.0), way("track", 10.0), way("service", 20.0)];
-        let ctx = Context { card: &card, features: &features, ocean: None, sources: &Sources::new(), masks: &BTreeMap::new() };
-        let layer = LayerSpec {
-            id: "roads".into(),
-            module: Some("roads/v1".into()),
-            steps: None,
-            enabled: None,
-            fill: None,
-            kinds: Vec::new(),
-            options: BTreeMap::new(),
-            stroke: None,
-        };
-        let parts = render(&layer, &ctx).unwrap();
+        let ctx = Context { output: &output, features: &features };
+        let parts = build(&ctx).parts;
 
         assert_eq!(parts.trails.len(), 1, "only the track is a trail");
         assert!(parts.trails[0].0.iter().all(|c| c.y == 10.0));
@@ -539,9 +524,8 @@ mod tests {
 
     #[test]
     fn centre_lines_come_whole_and_dashed() {
-        use crate::card::Card;
-        use crate::fill::Sources;
-        use crate::profile::{MapSpec, ProjectionMode};
+        use crate::output::Output;
+        use crate::profile::{OutputSpec, ProjectionMode};
         use crate::units::{Mm, Scale};
         use geo::line_string;
 
@@ -549,7 +533,7 @@ mod tests {
             geometry: Geometry::LineString(line_string![(x: 10.0, y: y), (x: 40.0, y: y)]),
             ..feature(tags)
         };
-        let map = MapSpec {
+        let map = OutputSpec {
             address: None,
             lat: None,
             lng: None,
@@ -562,20 +546,10 @@ mod tests {
             padding: Default::default(),
             slices: Default::default(),
         };
-        let card = Card::new(&map, (0.0, 0.0));
+        let output = Output::new(&map, (0.0, 0.0));
         let features = vec![way(&[("highway", "residential"), ("lanes", "2")], 30.0), way(&[("highway", "residential")], 10.0)];
-        let ctx = Context { card: &card, features: &features, ocean: None, sources: &Sources::new(), masks: &BTreeMap::new() };
-        let layer = LayerSpec {
-            id: "roads".into(),
-            module: Some("roads/v1".into()),
-            steps: None,
-            enabled: None,
-            fill: None,
-            kinds: Vec::new(),
-            options: BTreeMap::new(),
-            stroke: None,
-        };
-        let roads = build(&layer, &ctx).unwrap();
+        let ctx = Context { output: &output, features: &features };
+        let roads = build(&ctx);
 
         assert_eq!(roads.centerlines.len(), 1, "two lanes make 6 m; one lane of 4 m has none");
         assert!(roads.centerlines[0].0.iter().all(|c| c.y == 30.0));

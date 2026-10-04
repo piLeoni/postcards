@@ -152,7 +152,7 @@ export function Field({ label, title, model, value, onChange, px, sign, muted = 
 /**
  * A label that edits its value when dragged sideways (see `useDrag`).
  * `onPointerDown` replaces the sideways drag with one of the caller's
- * (moving the card on the map).
+ * (moving the output on the map).
  */
 export function Scrub({ icon, label, title, model, value, onChange, sign, px, onPointerDown, children }) {
   const drag = useDrag({ model, value, onChange, sign, px, custom: onPointerDown })
@@ -256,9 +256,9 @@ const TERRAIN_UNITS = { m: 'm', km: 'km', mi: 'mi', mile: 'mi', miles: 'mi', ft:
 /** "1.22km": a distance on the terrain in metres, written in `unit`, three figures. */
 export const terrainText = (m, unit = 'km') => `${sig3(m / M_PER[unit])}${unit}`
 
-/** "1.22 × 0.813 km": the card's terrain, paper × scale, in one unit. */
-export function terrainPair(card, unit = 'km') {
-  const [w, h] = [card.width_mm, card.height_mm].map((v) => sig3(((v / 1000) * card.scale) / M_PER[unit]))
+/** "1.22 × 0.813 km": the output's terrain, paper × scale, in one unit. */
+export function terrainPair(output, unit = 'km') {
+  const [w, h] = [output.width_mm, output.height_mm].map((v) => sig3(((v / 1000) * output.scale) / M_PER[unit]))
   return `${w} × ${h} ${unit}`
 }
 

@@ -1,8 +1,8 @@
-//! Distortions of the ground (`card.warp`): every feature, the sea and the
-//! card's frame are bent in card millimetres right after projecting, before
+//! Distortions of the ground (`output.warp`): every feature, the sea and the
+//! output's frame are bent in output millimetres right after projecting, before
 //! anything is drawn from them. Areas, roads and rings come out bent; the
-//! fills laid inside them stay flat patterns, as on any other card. Each
-//! warp keeps the card's edge where it is, so nothing slides off the paper
+//! fills laid inside them stay flat patterns, as on any other output. Each
+//! warp keeps the output's edge where it is, so nothing slides off the paper
 //! and no blank strip opens along a side.
 
 use crate::units::Mm;
@@ -56,7 +56,7 @@ impl Warps {
         self.0.is_empty()
     }
 
-    /// A geometry in card mm on a `width × height` mm card, bent.
+    /// A geometry in output mm on a `width × height` mm output, bent.
     pub fn bend(&self, width: f64, height: f64, g: &Geometry<f64>) -> Geometry<f64> {
         if self.is_empty() {
             return g.clone();
@@ -87,7 +87,7 @@ impl Warps {
 }
 
 impl Warp {
-    /// Where `c` (card mm) goes. Positions are taken relative to the centre
+    /// Where `c` (output mm) goes. Positions are taken relative to the centre
     /// in units of the half sides, so the edge is where the larger of the two
     /// reaches 1; every warp leaves that edge in place.
     fn point(&self, width: f64, height: f64, c: Coord<f64>) -> Coord<f64> {
@@ -155,7 +155,7 @@ mod tests {
             let inside = Coord { x: 90.0, y: 61.0 };
             let p = warp.point(w, h, inside);
             assert!((p.x - inside.x).abs() + (p.y - inside.y).abs() > 0.1, "{warp:?} left {inside:?} alone");
-            assert!((0.0..=w).contains(&p.x) && (0.0..=h).contains(&p.y), "{warp:?} sent it off the card");
+            assert!((0.0..=w).contains(&p.x) && (0.0..=h).contains(&p.y), "{warp:?} sent it off the output");
         }
         // The centre holds for the radial ones; a fisheye pushes the rest outwards.
         let c = Coord { x: 75.0, y: 50.0 };

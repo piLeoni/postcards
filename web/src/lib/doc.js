@@ -3,12 +3,12 @@
  * alignment and flow maps survive, which a YAML round trip would not promise.
  */
 
-/** Seven decimals of a degree is about a centimetre: plenty for a card. */
+/** Seven decimals of a degree is about a centimetre: plenty for an output. */
 const round7 = (v) => Math.round(v * 1e7) / 1e7
 
-/** The `card:` block's lines: `[start, end)` after the header, and the indent of its keys. */
-function cardBlock(lines) {
-  const start = lines.findIndex((l) => /^card\s*:\s*$/.test(l))
+/** The `output:` block's lines: `[start, end)` after the header, and the indent of its keys. */
+function outputBlock(lines) {
+  const start = lines.findIndex((l) => /^output\s*:\s*$/.test(l))
   if (start < 0) return null
   let end = start + 1
   while (end < lines.length && (/^\s+\S/.test(lines[end]) || lines[end].trim() === '')) end++
@@ -24,13 +24,13 @@ const UNITS = {
 }
 
 /**
- * The unit a length of the `card:` block is written in: `'padding'` for
+ * The unit a length of the `output:` block is written in: `'padding'` for
  * `padding: 0.25in`, `'slices.gutter'` for the gutter inside `slices:`
  * (flow or block). `null` when the key is not there or carries no unit.
  */
-export function cardUnit(text, key) {
+export function outputUnit(text, key) {
   const lines = text.split('\n')
-  const b = cardBlock(lines)
+  const b = outputBlock(lines)
   if (!b) return null
   const [outer, inner] = key.split('.')
   const at = lines.slice(b.start + 1, b.end).findIndex((l) => new RegExp(`^${b.indent}${outer}\\s*:`).test(l))
@@ -46,12 +46,12 @@ export function cardUnit(text, key) {
 }
 
 /**
- * Put `# comment` at the end of a `card:` key's line, in place of any comment
+ * Put `# comment` at the end of a `output:` key's line, in place of any comment
  * already there; nothing happens when the key is not written.
  */
-export function setCardComment(text, key, comment) {
+export function setOutputComment(text, key, comment) {
   const lines = text.split('\n')
-  const b = cardBlock(lines)
+  const b = outputBlock(lines)
   if (!b) return text
   const re = new RegExp(`^(${b.indent}${key}\\s*:\\s*[^#]*?)\\s*(#.*)?$`)
   const at = lines.slice(b.start + 1, b.end).findIndex((l) => re.test(l))
@@ -104,30 +104,30 @@ export function setTitle(text, title) {
 }
 
 /**
- * The document without its title and its `card:` block: what a preset
+ * The document without its title and its `output:` block: what a preset
  * brings. Two documents with the same style differ only in name, place and
  * paper.
  */
 export function styleOf(text) {
   const lines = text.split('\n').filter((l) => !TITLE.test(l))
-  const b = cardBlock(lines)
+  const b = outputBlock(lines)
   if (b) lines.splice(b.start, b.end - b.start)
   else {
-    const at = lines.findIndex((l) => /^card\s*:/.test(l))
+    const at = lines.findIndex((l) => /^output\s*:/.test(l))
     if (at >= 0) lines.splice(at, 1)
   }
   return lines.map((l) => l.trimEnd()).join('\n').replace(/\n{3,}/g, '\n\n').trim()
 }
 
 /**
- * Set keys of the top-level `card:` block, e.g. `{ lat, lng }` after the card
+ * Set keys of the top-level `output:` block, e.g. `{ lat, lng }` after the output
  * is dragged. A key already there is rewritten in place (a block value under
  * it goes, the new value is written inline); a missing one is added at the
  * end of the block, indented like its siblings. `null` removes the key.
  */
-export function setCardKeys(text, patch) {
+export function setOutputKeys(text, patch) {
   const lines = text.split('\n')
-  const b = cardBlock(lines)
+  const b = outputBlock(lines)
   if (!b) return text
   const { start, indent } = b
   let { end } = b

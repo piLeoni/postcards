@@ -4,11 +4,10 @@ mod osm_http;
 mod term;
 
 use clap::{Parser, Subcommand};
-use drawland_core::card::{fetch_keys, Card};
+use drawland_core::output::Output;
 use drawland_core::grammar::Grammar;
 use drawland_core::osm::{features_from_overpass, Feature};
-use drawland_core::pipeline::{render, Inputs};
-use drawland_core::profile::{Format, Profile};
+use drawland_core::profile::Format;
 use drawland_core::progress::{thousands, Event, Level, Progress, Task};
 use drawland_core::tiles::{self, Tiles};
 use std::collections::BTreeMap;
@@ -29,7 +28,7 @@ enum Command {
     /// Build the map SVG for a place.
     Map {
         /// Profile (YAML, or JSON5 for .json5/.json).
-        #[arg(long, default_value = "configs/postcard.yaml")]
+        #[arg(long, default_value = "configs/proposal/postcard.yaml")]
         profile: PathBuf,
         /// Street address, looked up with Nominatim. Overrides the profile.
         #[arg(long, conflicts_with_all = ["lat", "lng"])]
@@ -38,8 +37,8 @@ enum Command {
         lat: Option<f64>,
         #[arg(long, requires = "lat", allow_hyphen_values = true)]
         lng: Option<f64>,
-        #[arg(long, short, default_value = "map.svg")]
-        output: PathBuf,
+        #[arg(long = "output", short, default_value = "map.svg")]
+        out: PathBuf,
         /// Response cache: Overpass replies and Nominatim lookups.
         #[arg(long, default_value = "cache")]
         cache: PathBuf,
@@ -56,7 +55,7 @@ fn read(path: &Path) -> Result<String, String> {
     std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))
 }
 
-/// Where the card goes: the command line, then the profile's own place.
+/// Where the output goes: the command line, then the profile's own place.
 fn locate(
     download: &Task,
     http: &osm_http::Http,
@@ -89,40 +88,11 @@ struct Place {
 }
 
 /// The map for `profile_path`; the stroke count of every group drawn.
-fn map(term: &Term, http: &osm_http::Http, profile_path: &Path, place: Place, output: &Path) -> Result<Vec<(String, usize)>, String> {
+fn map(term: &Term, http: &osm_http::Http, profile_path: &Path, place: Place, out: &Path) -> Result<Vec<(String, usize)>, String> {
     let text = read(profile_path)?;
     let format = Format::from_path(&profile_path.to_string_lossy());
 
-    // Two profile schemas share this command: v3 (`card:`, `$areas:`, …) and
-    // the older `map:`/`layers:`. The v3 one is tried first, by its own first
-    // key, then the file is loaded as whichever it is.
-    let is_v3 = text.lines().any(|l| l.trim_start().starts_with("card:") || l.trim_start().starts_with("$features:"));
-    if is_v3 {
-        return map_v3(term, http, &text, format, profile_path, place, output);
-    }
-
-    let profile = Profile::parse(&text, format)
-        .map_err(|e| format!("{}: {e}", profile_path.display()))?;
-
-    let base = profile_path.parent().unwrap_or(Path::new("."));
-    let mut sources = BTreeMap::new();
-    for file in profile.source_files() {
-        let path = if Path::new(&file).is_absolute() { PathBuf::from(&file) } else { base.join(&file) };
-        sources.insert(file, read(&path)?);
-    }
-
-    let download = Task::begin(term, "download", None, "download", 0, "");
-    let center = locate(&download, http, place, profile.map.address.clone(), (profile.map.lat, profile.map.lng))?;
-    let card = Card::new(&profile.map, center);
-    let needs = Needs { keys: fetch_keys(&profile.osm_keys()), tiles: Vec::new(), ocean: true };
-    let Fetched { osm: features, ocean, .. } = fetch(http, download, &card, &needs)?;
-
-    let draw = Task::begin(term, "draw", None, "draw", 0, "");
-    let task = draw.child("render", "render", 0, "");
-    let rendered = render(&profile, &card, Inputs { features, ocean, sources: &sources }).map_err(|e| e.to_string())?;
-    task.ok(&format!("{} groups", rendered.groups.len()));
-    save(draw, output, &rendered.svg, &rendered.slices)?;
-    Ok(rendered.groups)
+    map_v3(term, http, &text, format, profile_path, place, out)
 }
 
 /// What a document reads: the OSM keys to ask Overpass for (none: no Overpass
@@ -137,19 +107,19 @@ struct Needs {
 struct Fetched {
     osm: Vec<Feature>,
     tiles: Vec<Feature>,
-    /// The sea, when the card draws it and shows some.
+    /// The sea, when the output draws it and shows some.
     ocean: Option<geo::MultiPolygon<f64>>,
 }
 
-/// The OSM features on `card`, the vector tile features, and the sea when the
-/// card shows one: each a row under `download`, which ends with them.
-fn fetch(http: &osm_http::Http, download: Task, card: &Card, needs: &Needs) -> Result<Fetched, String> {
-    let area = card.query_polygon();
+/// The OSM features on `output`, the vector tile features, and the sea when the
+/// output shows one: each a row under `download`, which ends with them.
+fn fetch(http: &osm_http::Http, download: Task, output: &Output, needs: &Needs) -> Result<Fetched, String> {
+    let area = output.query_polygon();
     let mut notes: Vec<String> = Vec::new();
     let osm = if needs.keys.is_empty() {
         None
     } else {
-        let json = http.overpass(card, &needs.keys, &download)?;
+        let json = http.overpass(output, &needs.keys, &download)?;
         let task = download.child("read", "read OSM", 0, "");
         let keys: Vec<&str> = needs.keys.iter().map(String::as_str).collect();
         let features = features_from_overpass(&json, &area, &keys).map_err(|e| e.to_string())?;
@@ -158,7 +128,7 @@ fn fetch(http: &osm_http::Http, download: Task, card: &Card, needs: &Needs) -> R
         notes.push(format!("{:.1} MB · {found}", json.len() as f64 / 1e6));
         Some(features)
     };
-    let (tile_features, ocean) = match tiles::plan(card, &needs.tiles, needs.ocean, osm.as_deref())? {
+    let (tile_features, ocean) = match tiles::plan(output, &needs.tiles, needs.ocean, osm.as_deref())? {
         Some(t) => read_tiles(&download, t, &mut notes)?,
         None => (Vec::new(), None),
     };
@@ -166,7 +136,7 @@ fn fetch(http: &osm_http::Http, download: Task, card: &Card, needs: &Needs) -> R
     Ok(Fetched { osm: osm.unwrap_or_default(), tiles: tile_features, ocean })
 }
 
-/// OpenFreeMap's vector tiles under the card (cached by terramask, a file
+/// OpenFreeMap's vector tiles under the output (cached by terramask, a file
 /// per layer), as the `vector tiles` row; then the features mended across
 /// tile edges, as `read tiles`.
 fn read_tiles(
@@ -199,28 +169,28 @@ fn read_tiles(
     Ok((features, ocean))
 }
 
-/// Writes the SVG as the last row under `draw`, which ends with it; a card
+/// Writes the SVG as the last row under `draw`, which ends with it; an output
 /// cut into slices also writes each sheet next to it, `map_r1c2.svg`.
-fn save(draw: Task, output: &Path, svg: &str, slices: &[(String, String)]) -> Result<(), String> {
+fn save(draw: Task, out: &Path, svg: &str, slices: &[(String, String)]) -> Result<(), String> {
     let task = draw.child("save", "save", 0, "");
     let write = |path: &Path, text: &str| std::fs::write(path, text).map_err(|e| format!("{}: {e}", path.display()));
-    write(output, svg)?;
-    let stem = output.file_stem().and_then(|s| s.to_str()).unwrap_or("map");
+    write(out, svg)?;
+    let stem = out.file_stem().and_then(|s| s.to_str()).unwrap_or("map");
     for (name, text) in slices {
-        write(&output.with_file_name(format!("{stem}_{name}.svg")), text)?;
+        write(&out.with_file_name(format!("{stem}_{name}.svg")), text)?;
     }
     let cut = if slices.is_empty() { String::new() } else { format!(" + {} slices", slices.len()) };
-    task.ok(&format!("{}{cut}", output.display()));
+    task.ok(&format!("{}{cut}", out.display()));
     draw.ok("");
     Ok(())
 }
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
-    let Command::Map { profile, address, lat, lng, output, cache, offline, refresh } = cli.command;
+    let Command::Map { profile, address, lat, lng, out, cache, offline, refresh } = cli.command;
     let term = Term::new();
     let http = osm_http::Http::new(cache, offline, refresh);
-    let result = map(&term, &http, &profile, Place { address, lat, lng }, &output);
+    let result = map(&term, &http, &profile, Place { address, lat, lng }, &out);
     if let Err(e) = &result {
         term.event(Event::Log { level: Level::Error, text: e });
     }
@@ -229,7 +199,7 @@ fn main() -> ExitCode {
         Ok(_) => {
             // The file's path for scripts; on a terminal the save row says it.
             if !std::io::stdout().is_terminal() {
-                println!("{}", output.display());
+                println!("{}", out.display());
             }
             ExitCode::SUCCESS
         }
@@ -246,7 +216,7 @@ fn map_v3(
     format: Format,
     profile_path: &Path,
     place: Place,
-    output: &Path,
+    out: &Path,
 ) -> Result<Vec<(String, usize)>, String> {
     let grammar = Grammar::parse(text, format).map_err(|e| format!("{}: {e}", profile_path.display()))?;
 
@@ -258,19 +228,19 @@ fn map_v3(
     }
 
     let download = Task::begin(term, "download", None, "download", 0, "");
-    let center = locate(&download, http, place, grammar.card.address.clone(), (grammar.card.lat, grammar.card.lng))?;
-    let card = Card::new(&grammar.card, center);
+    let center = locate(&download, http, place, grammar.output.address.clone(), (grammar.output.lat, grammar.output.lng))?;
+    let output = Output::new(&grammar.output, center);
     let needs = Needs { keys: grammar.osm_keys(), tiles: grammar.tile_selectors(), ocean: grammar.draws_ocean() };
-    let Fetched { osm: features, tiles, ocean } = fetch(http, download, &card, &needs)?;
+    let Fetched { osm: features, tiles, ocean } = fetch(http, download, &output, &needs)?;
 
     let draw = Task::begin(term, "draw", None, "draw", 0, "");
     let rendered = drawland_core::grammar_run::run_with(
         &grammar,
-        &card,
+        &output,
         drawland_core::grammar_run::Inputs { features, tiles, ocean, sources: &sources },
         &draw,
     )
     .map_err(|e| e.to_string())?;
-    save(draw, output, &rendered.svg, &rendered.slices)?;
+    save(draw, out, &rendered.svg, &rendered.slices)?;
     Ok(rendered.groups)
 }

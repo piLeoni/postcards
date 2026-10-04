@@ -1,7 +1,7 @@
 # The web app's "Everything" card, its data from Overpass (osm_select).
 # configs/compare/tiles.yaml is the same card from vector tiles.
 
-card:
+output:
   width: 6in
   height: 4in
   scale: "1:8000"

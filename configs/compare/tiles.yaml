@@ -8,7 +8,7 @@
 #   water=*, natural=water             → water:lake,river,pond,dock
 #   highway=* (module_roads)           → roads, paths (transportation)
 
-card:
+output:
   width: 6in
   height: 4in
   scale: "1:8000"

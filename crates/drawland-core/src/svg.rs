@@ -1,4 +1,4 @@
-//! The layered SVG: one `<g id>` per group, polylines in card mm. The group
+//! The layered SVG: one `<g id>` per group, polylines in output mm. The group
 //! ids are the contract with vpype (`[layers.<id>]`) and the G-code export.
 
 use crate::geom::Lines;

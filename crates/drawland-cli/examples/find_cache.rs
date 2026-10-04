@@ -1,6 +1,6 @@
-//! Print the cache file for the v3 proposal card, so the web app can be tested
+//! Print the cache file for the v3 proposal output, so the web app can be tested
 //! against the same Overpass reply the CLI uses.
-use drawland_core::card::{overpass_query, Card};
+use drawland_core::output::{overpass_query, Output};
 use drawland_core::grammar::Grammar;
 use drawland_core::profile::Format;
 
@@ -19,10 +19,10 @@ fn quote_plus(s: &str) -> String {
 fn main() {
     let text = std::fs::read_to_string("configs/proposal/postcard.yaml").unwrap();
     let grammar = Grammar::parse(&text, Format::Yaml).unwrap();
-    let card = Card::new(&grammar.card, (-122.256196, 37.8771145));
+    let output = Output::new(&grammar.output, (-122.256196, 37.8771145));
     let keys = grammar.osm_keys();
     let keys: Vec<&str> = keys.iter().map(String::as_str).collect();
-    let query = overpass_query(&card.query_polygon(), &keys, 180);
+    let query = overpass_query(&output.query_polygon(), &keys, 180);
     let url = format!("https://overpass-api.de/api/interpreter?{}", quote_plus(&format!("data={query}")));
     let digest = sha1_smol::Sha1::from(url.as_str()).digest().to_string();
     println!("{digest}");

@@ -1,5 +1,5 @@
-//! The paper the drawing goes on: a blank `padding` inside the card's edge,
-//! and the card cut into `slices`, `columns × rows` sheets of equal size with
+//! The paper the drawing goes on: a blank `padding` inside the output's edge,
+//! and the output cut into `slices`, `columns × rows` sheets of equal size with
 //! a blank `slices.gutter` between their drawings, half on each side of a
 //! cut, like the panels of a triptych. Both crop the composed drawing;
 //! nothing is moved or scaled.
@@ -18,7 +18,7 @@ pub struct Slices {
     #[serde(default = "one")]
     pub rows: u32,
     /// Blank space between neighbouring sheets' drawings, across and down;
-    /// the outer edges keep the card's padding.
+    /// the outer edges keep the output's padding.
     #[serde(default)]
     pub gutter: MmXY,
 }
@@ -33,10 +33,10 @@ impl Default for Slices {
     }
 }
 
-/// `[x0, y0, x1, y1]` in card mm.
+/// `[x0, y0, x1, y1]` in output mm.
 pub type Rect = [f64; 4];
 
-/// One sheet: where it sits on the card, and the part of it drawn on.
+/// One sheet: where it sits on the output, and the part of it drawn on.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Sheet {
     /// `r1c2`: row and column, from 1, top left first.
@@ -45,7 +45,7 @@ pub struct Sheet {
     pub inner: Rect,
 }
 
-/// The sheets of a `width × height` mm card, row by row.
+/// The sheets of a `width × height` mm output, row by row.
 pub fn sheets(width: f64, height: f64, padding: MmXY, slices: &Slices) -> Vec<Sheet> {
     let (cols, rows) = (slices.columns.max(1), slices.rows.max(1));
     let (sw, sh) = (width / cols as f64, height / rows as f64);
@@ -67,10 +67,10 @@ pub fn sheets(width: f64, height: f64, padding: MmXY, slices: &Slices) -> Vec<Sh
     out
 }
 
-/// The card's SVG and, when it is cut, one SVG per sheet.
+/// The output's SVG and, when it is cut, one SVG per sheet.
 pub struct Paper {
     pub svg: String,
-    /// Strokes per group on the whole card, after cropping.
+    /// Strokes per group on the whole output, after cropping.
     pub groups: Vec<(String, usize)>,
     /// `(name, svg)` per sheet, each in its own millimetres; empty for one sheet.
     pub slices: Vec<(String, String)>,
@@ -198,7 +198,7 @@ mod tests {
         assert_eq!(s[0].name, "r1c1");
         assert_eq!(s[5].name, "r2c3");
         assert_eq!(s[0].at, [0.0, 0.0, 50.0, 50.0]);
-        // The card's padding on the outside edges, half the gutter on each side of a cut.
+        // The output's padding on the outside edges, half the gutter on each side of a cut.
         assert_eq!(s[0].inner, [5.0, 5.0, 48.0, 48.0]);
         assert_eq!(s[4].inner, [52.0, 52.0, 98.0, 95.0]);
         let thin = sheets(150.0, 100.0, even(0.0), &Slices { columns: 2, rows: 1, gutter: even(6.0) });

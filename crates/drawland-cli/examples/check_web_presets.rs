@@ -1,4 +1,4 @@
-//! Check the card documents the web app ships still parse.
+//! Check the output documents the web app ships still parse.
 //!
 //! The page reads `web/src/lib/presets.js`, so the templates live in JS; this
 //! pulls them out and runs the parser over each. `cargo test --example` keeps
@@ -36,7 +36,7 @@ fn templates(js: &str) -> Vec<String> {
         let after = &rest[start + 1..];
         let Some(end) = after.find('`') else { break };
         let body = &after[..end];
-        if body.contains("card:") {
+        if body.contains("output:") {
             out.push(body.to_string());
         }
         rest = &after[end + 1..];

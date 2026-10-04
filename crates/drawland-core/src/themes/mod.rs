@@ -1,21 +1,14 @@
-//! Theme modules: features (card mm) in, `LayerParts` out. Themes decide what
-//! geometry exists; the profile decides how it is drawn.
+//! Compiled modules: features (output mm) in, named lines and areas out.
 
-mod buildings;
-mod parks;
 mod roads;
 pub use roads::Roads;
-mod water;
 
-use crate::card::Card;
-use crate::fill::{FillError, Sources};
 use crate::geom::Lines;
 use crate::osm::Feature;
-use crate::profile::{FillSpec, LayerSpec, StrokeSpec};
+use crate::output::Output;
 use geo::MultiPolygon;
-use std::collections::BTreeMap;
 
-/// The drawable pieces of one layer.
+/// The drawable pieces of one module.
 #[derive(Debug, Clone)]
 pub struct LayerParts {
     /// Boundary strokes.
@@ -27,7 +20,7 @@ pub struct LayerParts {
     pub trails: Lines,
     /// The area texture.
     pub filling: Lines,
-    /// The area the layer covers; layers below are clipped by it.
+    /// The area the module covers; what is below is clipped by it.
     pub mask: MultiPolygon<f64>,
 }
 
@@ -44,67 +37,21 @@ impl LayerParts {
 }
 
 pub struct Context<'a> {
-    pub card: &'a Card,
-    /// Features projected to card mm.
+    pub output: &'a Output,
+    /// Features projected to output mm.
     pub features: &'a [Feature],
-    /// Ocean polygons in card mm, when the card shows a coastline.
-    pub ocean: Option<&'a MultiPolygon<f64>>,
-    pub sources: &'a Sources,
-    /// Masks of the layers rendered so far, by id.
-    pub masks: &'a BTreeMap<String, MultiPolygon<f64>>,
 }
 
-/// `above`: ids of the layers drawn over this one.
-pub fn render(layer: &LayerSpec, ctx: &Context, above: &[String]) -> Result<LayerParts, FillError> {
-    if let Some(steps) = &layer.steps {
-        let env = crate::steps::Env {
-            features: ctx.features,
-            card_mm: (ctx.card.width_mm, ctx.card.height_mm),
-            masks: ctx.masks,
-            above,
-            sources: ctx.sources,
-            layer_fill: layer.fill.as_ref(),
-            layer_stroke: layer.stroke.as_ref(),
-        };
-        return crate::steps::run(steps, &env);
-    }
-    match layer.module.as_deref().unwrap_or_default() {
-        "buildings/v1" => buildings::render(layer, ctx),
-        "parks/v1" => parks::render(layer, ctx),
-        "water/v1" => water::render(layer, ctx),
-        "roads/v1" => roads::render(layer, ctx),
-        other => unreachable!("profile validation admits only known modules, got {other:?}"),
-    }
+/// The compiled roads module.
+pub fn roads_render(ctx: &Context) -> Roads {
+    roads::build(ctx)
 }
 
-/// The compiled roads module, reachable from the grammar executor.
-pub fn roads_render(layer: &LayerSpec, ctx: &Context) -> Result<Roads, FillError> {
-    roads::build(layer, ctx)
-}
-
-/// Every fill spec the layer would use, fully merged, for up-front checks.
-pub fn fill_specs(layer: &LayerSpec) -> Vec<FillSpec> {    if let Some(steps) = &layer.steps {
-        return crate::steps::fill_specs(steps, layer.fill.as_ref());
-    }
-    match layer.module.as_deref().unwrap_or_default() {
-        "buildings/v1" => vec![buildings::fill_spec(layer)],
-        "parks/v1" => parks::kind_specs(layer).into_iter().map(|(_, s)| s).collect(),
-        "water/v1" => vec![water::fill_spec(layer)],
-        _ => vec![],
-    }
-}
-
-fn layer_fill(defaults: FillSpec, layer: &LayerSpec) -> FillSpec {
-    match &layer.fill {
-        Some(f) => defaults.merged(f),
-        None => defaults,
-    }
-}
-
-fn layer_stroke(defaults: StrokeSpec, layer: &LayerSpec) -> StrokeSpec {
-    match &layer.stroke {
-        Some(s) => defaults.merged(s),
-        None => defaults,
+/// OSM keys a module selects on, when it reads every OSM feature.
+pub fn osm_keys(module: &str) -> &'static [&'static str] {
+    match module {
+        "roads" => &["highway"],
+        _ => &[],
     }
 }
 

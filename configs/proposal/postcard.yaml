@@ -39,7 +39,7 @@
 #   tools_intersect: { base:, keep: }          base limitata a keep
 #   tools_fill_holes: <area>                   chiude i buchi (laghi dentro i parchi)
 #   tools_grow: { of:, by: +-len }             dilata / restringe (negativo = restringe)
-#   engine_card: {}                            area: il rettangolo della cartolina
+#   engine_frame: {}                            area: il rettangolo della cartolina
 #   engine_ocean: {}                           area: il mare, dalle tile di costa.
 #                                              NON e' un tag OSM: e' una funzione del
 #                                              host, vuota se la carta non tocca la costa.
@@ -74,7 +74,7 @@
 # ============================================================================
 
 
-card:
+output:
   width: 6in
   height: 4in
   scale: "1:10000"

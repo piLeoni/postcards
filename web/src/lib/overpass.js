@@ -6,7 +6,7 @@
  * what happens next.
  *
  * Replies are kept in the browser's Cache Storage, across reloads. Which one
- * serves a card, and which are deleted to stay in budget, the engine decides
+ * serves an output, and which are deleted to stay in budget, the engine decides
  * (`osmPick`, `osmEvict`): the same rules the command line follows on disk.
  *
  * Runs in the draw worker. `VITE_OVERPASS_URL` (comma separated) replaces the
@@ -17,7 +17,7 @@ const FROM_ENV = import.meta.env.VITE_OVERPASS_URL || ''
 
 /**
  * The Overpass JSON for `req` (`osmRequest()` from the engine): a stored
- * reply that covers the card, or a download of `req.query`. `policy` is
+ * reply that covers the output, or a download of `req.query`. `policy` is
  * `overpassPolicy()`; `download` the task the tries are rows of.
  */
 export async function fetchOverpass(engine, req, signal, download, policy) {

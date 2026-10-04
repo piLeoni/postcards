@@ -1,5 +1,5 @@
 /**
- * The card documents this app ships, matching the CLI's configs. The app
+ * The output documents this app ships, matching the CLI's configs. The app
  * starts from one of these and edits it in the sidebar; the text is what
  * `render` takes, so anything the CLI reads, the page reads too.
  *
@@ -11,10 +11,10 @@ import { setTitle } from './doc'
 
 /**
  * Everything: parks, water, roads and buildings, in the CLI's own order and
- * with its masks. This is the card the plotter gets. Its data comes from
+ * with its masks. This is the output the plotter gets. Its data comes from
  * OpenFreeMap's vector tiles (`tiles_select`): no Overpass.
  */
-export const FULL_DOC = `card:
+export const FULL_DOC = `output:
   width: 6in
   height: 4in
   scale: "1:8000"
@@ -87,7 +87,7 @@ compose:
 `
 
 /** Buildings and green only: the quickest to fetch and draw. */
-export const DEFAULT_DOC = `card:
+export const DEFAULT_DOC = `output:
   width: 6in
   height: 4in
   scale: "1:8000"
@@ -129,7 +129,7 @@ compose:
 `
 
 /** Just buildings: the fastest draw there is. */
-export const SMALL_DOC = `card:
+export const SMALL_DOC = `output:
   width: 80mm
   height: 60mm
   scale: "1:4000"
@@ -157,7 +157,7 @@ compose:
 `
 
 /**
- * The everything card with its data from Overpass instead (`osm_select`):
+ * The everything output with its data from Overpass instead (`osm_select`):
  * every OSM tag, road widths from \`width\` and \`lanes\`, but a busy server.
  */
 export const OVERPASS_DOC = FULL_DOC.replace(
@@ -172,7 +172,7 @@ $areas:
 )
 
 /**
- * The everything card with each layer from the source that suits it: roads
+ * The everything output with each layer from the source that suits it: roads
  * from Overpass (widths and lanes), in a request for \`highway\` alone, so
  * small and more likely to get through; the rest and the sea from tiles.
  */
@@ -192,13 +192,13 @@ export const PRESETS = [
   {
     id: 'mixed',
     name: 'Everything · tiles, roads from Overpass',
-    hint: 'the same card; only the roads asked of Overpass',
+    hint: 'the same output; only the roads asked of Overpass',
     doc: MIXED_DOC,
   },
   {
     id: 'overpass',
     name: 'Everything · Overpass',
-    hint: 'the same card, all from Overpass',
+    hint: 'the same output, all from Overpass',
     doc: OVERPASS_DOC,
   },
   {
@@ -215,5 +215,5 @@ export const PRESETS = [
   },
 ].map((p) => ({ ...p, doc: setTitle(p.doc, p.name) }))
 
-/** The card the app opens on. */
+/** The output the app opens on. */
 export const START_DOC = PRESETS.find((p) => p.id === 'parks').doc

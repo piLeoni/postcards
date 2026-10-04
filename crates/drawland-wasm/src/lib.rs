@@ -1,19 +1,15 @@
 //! WebAssembly bindings for draw.land.
 //!
-//! The browser gets the pipeline after the download: the card document plus
+//! The browser gets the pipeline after the download: the output document plus
 //! the Overpass JSON its query returned and the vector tiles it asked for, out
 //! comes the SVG, with the same
 //! progress events the command line draws in the terminal. Nothing here
 //! touches the filesystem or the network, so the same `drawland-core` the CLI
 //! uses runs unchanged in a page.
 //!
-//! A document is either the v3 grammar (`card:`, `$features`, `$areas`, `draw`,
-//! `compose`) or the older profile (`map`, `layers`). `Grammar::parse` and
-//! `Profile::parse` tell which by what the text contains, so the caller just
-//! pastes what it has.
 
-use drawland_core::card::{
-    overpass_error, overpass_slot_wait_s, overpass_status_url, Card, OVERPASS_ENDPOINTS, OVERPASS_ENDPOINT_TIMEOUT_S,
+use drawland_core::output::{
+    overpass_error, overpass_slot_wait_s, overpass_status_url, Output, OVERPASS_ENDPOINTS, OVERPASS_ENDPOINT_TIMEOUT_S,
     OVERPASS_MAX_SLOT_WAIT_S, OVERPASS_ROUND_PAUSE_S,
 };
 use drawland_core::osm_cache;
@@ -21,14 +17,14 @@ use geo::MultiPolygon;
 use drawland_core::grammar::Grammar;
 use drawland_core::osm::{features_from_overpass, Feature};
 use drawland_core::tiles::{self, Tiles, TILES};
-use drawland_core::profile::{Format, Profile};
+use drawland_core::profile::Format;
 use drawland_core::board::{Board, Line};
 use drawland_core::progress::{thousands, Event, Level, Progress, Task};
 use std::collections::BTreeMap;
 use terramask::TileId;
 use wasm_bindgen::prelude::*;
 
-/// A rendered card: the SVG, plus how many strokes each group drew.
+/// A rendered output: the SVG, plus how many strokes each group drew.
 #[wasm_bindgen]
 pub struct Rendered {
     svg: String,
@@ -38,7 +34,7 @@ pub struct Rendered {
 
 #[wasm_bindgen]
 impl Rendered {
-    /// The card as an SVG string, in millimetres.
+    /// The output as an SVG string, in millimetres.
     #[wasm_bindgen(getter)]
     pub fn svg(&self) -> String {
         self.svg.clone()
@@ -50,7 +46,7 @@ impl Rendered {
         self.groups.clone()
     }
 
-    /// `[["r1c1", svg], …]` when the card is cut into slices; empty otherwise.
+    /// `[["r1c1", svg], …]` when the output is cut into slices; empty otherwise.
     #[wasm_bindgen(getter)]
     pub fn slices(&self) -> js_sys::Array {
         self.slices.clone()
@@ -59,7 +55,7 @@ impl Rendered {
 
 /// What this document and centre need from Overpass, as JSON: `{ need,
 /// fetch, query }` (see `drawland_core::osm_cache::Request`). `need` is the
-/// card's ground and keys, which a stored reply must cover; `fetch` the
+/// output's ground and keys, which a stored reply must cover; `fetch` the
 /// padded ground `query` asks for, to store the reply under.
 ///
 /// The centre comes from the document unless `lat`/`lng` override it, the same
@@ -68,12 +64,12 @@ impl Rendered {
 pub fn osm_request(doc: &str, lat: Option<f64>, lng: Option<f64>) -> Result<String, JsValue> {
     let mut d = Doc::load(doc)?;
     if let Some(v) = lat {
-        d.card.center.1 = v;
+        d.output.center.1 = v;
     }
     if let Some(v) = lng {
-        d.card.center.0 = v;
+        d.output.center.0 = v;
     }
-    serde_json::to_string(&osm_cache::request(&d.card, &d.keys)).map_err(err)
+    serde_json::to_string(&osm_cache::request(&d.output, &d.keys)).map_err(err)
 }
 
 /// Which of the stored replies (`[{ bbox, keys, fetched, bytes }]`, JSON)
@@ -93,14 +89,14 @@ pub fn osm_evict(entries: &str, now: f64) -> Result<Vec<u32>, JsValue> {
     Ok(osm_cache::evict(&entries, osm_cache::BROWSER_BUDGET, now as u64).into_iter().map(|i| i as u32).collect())
 }
 
-/// The card's centre and size, so the page can place the rectangle on the map.
+/// The output's centre and size, so the page can place the rectangle on the map.
 ///
 /// Returns `{ lat, lng, width_mm, height_mm, scale, bearing, padding_x_mm,
 /// padding_y_mm, columns, rows, gutter_x_mm, gutter_y_mm, projection }`, the
 /// projection as
 /// `webmercator`, `utm` or the PROJ string.
-#[wasm_bindgen(js_name = cardInfo)]
-pub fn card_info(doc: &str) -> Result<JsValue, JsValue> {
+#[wasm_bindgen(js_name = outputInfo)]
+pub fn output_info(doc: &str) -> Result<JsValue, JsValue> {
     use drawland_core::profile::ProjectionMode;
     let d = Doc::load(doc)?;
     let spec = d.spec();
@@ -112,12 +108,12 @@ pub fn card_info(doc: &str) -> Result<JsValue, JsValue> {
     };
     js_sys::Reflect::set(&o, &"projection".into(), &JsValue::from_str(&projection)).ok();
     for (k, v) in [
-        ("lat", d.card.center.1),
-        ("lng", d.card.center.0),
-        ("width_mm", d.card.width_mm),
-        ("height_mm", d.card.height_mm),
-        ("scale", d.card.scale),
-        ("bearing", d.card.bearing),
+        ("lat", d.output.center.1),
+        ("lng", d.output.center.0),
+        ("width_mm", d.output.width_mm),
+        ("height_mm", d.output.height_mm),
+        ("scale", d.output.scale),
+        ("bearing", d.output.bearing),
         ("padding_x_mm", spec.padding.x),
         ("padding_y_mm", spec.padding.y),
         ("columns", spec.slices.columns.max(1) as f64),
@@ -171,7 +167,7 @@ pub fn tile_source() -> String {
     TILES.into()
 }
 
-/// One draw, in the steps the command line takes after locating the card:
+/// One draw, in the steps the command line takes after locating the output:
 /// `read` the Overpass reply when `needsOsm`, hand over the `tiles` it asks
 /// for with `addTile` and `readTiles` them, then `draw`. Each tells
 /// `on_event` what it is doing, as the same events the terminal shows: the
@@ -193,10 +189,10 @@ impl Job {
     pub fn new(doc: &str, lat: Option<f64>, lng: Option<f64>) -> Result<Job, JsValue> {
         let mut doc = Doc::load(doc)?;
         if let Some(v) = lat {
-            doc.card.center.1 = v;
+            doc.output.center.1 = v;
         }
         if let Some(v) = lng {
-            doc.card.center.0 = v;
+            doc.output.center.0 = v;
         }
         Ok(Job { doc, features: None, tiles: None, tile_features: Vec::new(), ocean: None })
     }
@@ -213,15 +209,15 @@ impl Job {
         let progress = JsProgress(on_event);
         let task = Task::begin(&progress, "read", Some("download"), "read OSM", 0, "");
         let keys: Vec<&str> = self.doc.keys.iter().map(String::as_str).collect();
-        let features = features_from_overpass(overpass, &self.doc.card.query_polygon(), &keys).map_err(err)?;
+        let features = features_from_overpass(overpass, &self.doc.output.query_polygon(), &keys).map_err(err)?;
         task.ok(&format!("{} features", thousands(features.len() as u64)));
         self.features = Some(features);
         Ok(())
     }
 
-    /// The vector tiles the card needs, as `[z, x, y, z, x, y, …]`, for a
+    /// The vector tiles the output needs, as `[z, x, y, z, x, y, …]`, for a
     /// source whose deepest zoom is `max_zoom` (the TileJSON's `maxzoom`):
-    /// what `tiles_select` picks, and the sea when the card draws it (with
+    /// what `tiles_select` picks, and the sea when the output draws it (with
     /// Overpass, only where it shows a coastline). Empty when none. Their
     /// source is `tileSource()`.
     pub fn tiles(&mut self, max_zoom: u8) -> Result<Vec<u32>, JsValue> {
@@ -232,7 +228,7 @@ impl Job {
     /// One of the `tiles`, as downloaded (raw or gzipped protobuf).
     #[wasm_bindgen(js_name = addTile)]
     pub fn add_tile(&mut self, z: u8, x: u32, y: u32, bytes: &[u8]) -> Result<(), JsValue> {
-        let t = self.plan()?.ok_or_else(|| err("this card needs no tiles"))?;
+        let t = self.plan()?.ok_or_else(|| err("this output needs no tiles"))?;
         t.add_tile(TileId::new(z, x, y), bytes).map_err(err)
     }
 
@@ -258,12 +254,12 @@ impl Job {
     fn plan(&mut self) -> Result<Option<&mut Tiles>, JsValue> {
         if self.tiles.is_none() {
             let d = &self.doc;
-            self.tiles = Some(tiles::plan(&d.card, &d.selectors, d.ocean, self.features.as_deref()).map_err(err)?);
+            self.tiles = Some(tiles::plan(&d.output, &d.selectors, d.ocean, self.features.as_deref()).map_err(err)?);
         }
         Ok(self.tiles.as_mut().and_then(Option::as_mut))
     }
 
-    /// Draw the card, as the `draw` tree. `sources` maps the file names the
+    /// Draw the output, as the `draw` tree. `sources` maps the file names the
     /// document references to their SVG text; `{}` when it has none.
     pub fn draw(&mut self, sources: js_sys::Object, on_event: js_sys::Function) -> Result<Rendered, JsValue> {
         let features = match self.features.take() {
@@ -419,7 +415,7 @@ impl Progress for JsProgress {
 
 /// A document in either schema, ready to run.
 struct Doc {
-    card: Card,
+    output: Output,
     /// OSM keys to ask Overpass for; empty when it needs none.
     keys: Vec<String>,
     /// `tiles_select` items.
@@ -431,7 +427,6 @@ struct Doc {
 
 enum Body {
     Grammar(Box<Grammar>),
-    Profile(Box<Profile>),
 }
 
 struct Out {
@@ -442,27 +437,17 @@ struct Out {
 
 impl Doc {
     fn load(text: &str) -> Result<Doc, JsValue> {
-        // The v3 grammar has `card:` at the top; the older profile has `map:`.
-        let is_grammar = text.lines().any(|l| l.trim_start().starts_with("card:"));
-        let format = Format::Yaml;
-        if is_grammar {
-            let grammar = Grammar::parse(text, format).map_err(err)?;
-            let keys = grammar.osm_keys();
-            let (selectors, ocean) = (grammar.tile_selectors(), grammar.draws_ocean());
-            let card = Card::new(&grammar.card, default_center(&grammar.card));
-            return Ok(Doc { card, keys, selectors, ocean, body: Body::Grammar(Box::new(grammar)) });
-        }
-        let profile = Profile::parse(text, format).map_err(err)?;
-        let keys = profile.osm_keys();
-        let card = Card::new(&profile.map, default_center(&profile.map));
-        Ok(Doc { card, keys, selectors: Vec::new(), ocean: true, body: Body::Profile(Box::new(profile)) })
+        let grammar = Grammar::parse(text, Format::Yaml).map_err(err)?;
+        let keys = grammar.osm_keys();
+        let (selectors, ocean) = (grammar.tile_selectors(), grammar.draws_ocean());
+        let output = Output::new(&grammar.output, default_center(&grammar.output));
+        Ok(Doc { output, keys, selectors, ocean, body: Body::Grammar(Box::new(grammar)) })
     }
 
-    /// The `card:` (or older `map:`) block as written.
-    fn spec(&self) -> &drawland_core::profile::MapSpec {
+    /// The `output:` block as written.
+    fn spec(&self) -> &drawland_core::profile::OutputSpec {
         match &self.body {
-            Body::Grammar(g) => &g.card,
-            Body::Profile(p) => &p.map,
+            Body::Grammar(g) => &g.output,
         }
     }
 
@@ -479,29 +464,18 @@ impl Doc {
             Body::Grammar(g) => {
                 let out = drawland_core::grammar_run::run_with(
                     g,
-                    &self.card,
+                    &self.output,
                     drawland_core::grammar_run::Inputs { features, tiles, ocean, sources },
                     draw,
                 )
                 .map_err(|e| e.to_string())?;
                 Ok(Out { svg: out.svg, groups: out.groups, slices: out.slices })
             }
-            Body::Profile(p) => {
-                let task = draw.child("render", "render", 0, "");
-                let out = drawland_core::pipeline::render(
-                    p,
-                    &self.card,
-                    drawland_core::pipeline::Inputs { features, ocean, sources },
-                )
-                .map_err(|e| e.to_string())?;
-                task.ok(&format!("{} groups", out.groups.len()));
-                Ok(Out { svg: out.svg, groups: out.groups, slices: out.slices })
-            }
         }
     }
 }
 
-fn default_center(map: &drawland_core::profile::MapSpec) -> (f64, f64) {
+fn default_center(map: &drawland_core::profile::OutputSpec) -> (f64, f64) {
     (map.lng.unwrap_or(0.0), map.lat.unwrap_or(0.0))
 }
 

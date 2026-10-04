@@ -3,7 +3,7 @@
 # the rest and the sea from OpenFreeMap's vector tiles. tiles.yaml takes it all
 # from tiles, overpass.yaml all from Overpass.
 
-card:
+output:
   width: 6in
   height: 4in
   scale: "1:8000"

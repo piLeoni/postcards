@@ -1,13 +1,13 @@
 //! Overpass and Nominatim over HTTP, cached on disk.
 //!
 //! Overpass replies go in `<cache>/overpass/`, one `<name>.json` each with a
-//! `<name>.meta.json` saying what ground and keys it covers; which one a card
+//! `<name>.meta.json` saying what ground and keys it covers; which one an output
 //! uses, and which are deleted, follows `drawland_core::osm_cache`, as in
 //! the browser, with a bigger budget. Nominatim lookups are
 //! `<cache>/<sha1 of the GET url>.json`.
 
-use drawland_core::card::{
-    overpass_error, overpass_slot_wait_s, overpass_status_url, Card, OVERPASS_ENDPOINTS, OVERPASS_ENDPOINT_TIMEOUT_S,
+use drawland_core::output::{
+    overpass_error, overpass_slot_wait_s, overpass_status_url, Output, OVERPASS_ENDPOINTS, OVERPASS_ENDPOINT_TIMEOUT_S,
     OVERPASS_MAX_SLOT_WAIT_S, OVERPASS_ROUND_PAUSE_S,
 };
 use drawland_core::osm_cache::{self, Entry};
@@ -83,12 +83,12 @@ impl Http {
         Ok(text)
     }
 
-    /// The Overpass JSON for `card` and `keys`: a stored reply that covers
-    /// the card, or a download of the padded ground from the first server
+    /// The Overpass JSON for `output` and `keys`: a stored reply that covers
+    /// the output, or a download of the padded ground from the first server
     /// that answers. Every server is tried in rounds, as the page does it
     /// (`OVERPASS_ROUND_PAUSE_S`); each try is a row under `task`.
-    pub fn overpass(&self, card: &Card, keys: &[String], task: &Task) -> Result<String, String> {
-        let req = osm_cache::request(card, keys);
+    pub fn overpass(&self, output: &Output, keys: &[String], task: &Task) -> Result<String, String> {
+        let req = osm_cache::request(output, keys);
         let dir = self.cache.join("overpass");
         let stored = stored_replies(&dir);
         let now = unix_now();

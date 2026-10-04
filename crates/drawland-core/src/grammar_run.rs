@@ -5,8 +5,8 @@
 //!
 //! - `$features` → a set of features, from Overpass (`osm_select`) or the
 //!   vector tiles (`tiles_select`)
-//! - `$areas`    → a [`MultiPolygon`] in card millimetres
-//! - `$lines`    → a [`Lines`] in card millimetres
+//! - `$areas`    → a [`MultiPolygon`] in output millimetres
+//! - `$lines`    → a [`Lines`] in output millimetres
 //! - `$fills`    → a `Lines` too, but produced by penfill
 //!
 //! Evaluation is in waves over the def DAG, so a def that references another
@@ -15,16 +15,16 @@
 //! is evaluated once.
 //!
 //! Draw order and occlusion come from `compose`: each mask subtracts only from
-//! the group ids it lists in `occludes`, so a card can draw a dotted schools
+//! the group ids it lists in `occludes`, so an output can draw a dotted schools
 //! layer on top of everything and not cut it.
 
 use crate::fill::{self, FillError, Sources};
 use crate::geom::{self, Lines};
-use crate::card::Card;
+use crate::output::Output;
 use crate::grammar::{Clip, Def, Grammar, Mask, Name, Op, Section, UnionRules};
 use crate::osm::Feature;
 use crate::progress::{thousands, Level, Task};
-use crate::steps::Selector;
+use crate::select::Selector;
 use geo::MultiPolygon;
 use rayon::prelude::*;
 use std::collections::{BTreeMap, BTreeSet};
@@ -72,11 +72,11 @@ impl Value {
     }
 }
 
-pub struct Outputs {
+pub struct Rendered {
     pub svg: String,
     /// `(group id, stroke count)` in draw order.
     pub groups: Vec<(String, usize)>,
-    /// `(name, svg)` per sheet when the card is cut (`card.slices`).
+    /// `(name, svg)` per sheet when the output is cut (`output.slices`).
     pub slices: Vec<(String, String)>,
 }
 
@@ -86,23 +86,23 @@ pub struct Inputs<'a> {
     /// Vector tile features in lon/lat, as `tiles::Tiles::features` returns
     /// them: what `tiles_select` picks from.
     pub tiles: Vec<Feature>,
-    /// Ocean polygons in lon/lat, when the card shows a coastline.
+    /// Ocean polygons in lon/lat, when the output shows a coastline.
     pub ocean: Option<MultiPolygon<f64>>,
     /// SVG text of every file named by a fill `source`.
     pub sources: &'a BTreeMap<String, String>,
 }
 
-/// Evaluate `grammar` against `inputs`, project to `card`, compose and write.
-pub fn run(grammar: &Grammar, card: &Card, inputs: Inputs) -> Result<Outputs, RunError> {
+/// Evaluate `grammar` against `inputs`, project to `output`, compose and write.
+pub fn run(grammar: &Grammar, output: &Output, inputs: Inputs) -> Result<Rendered, RunError> {
     let draw = Task::begin(&(), "draw", None, "draw", 0, "");
-    let out = run_with(grammar, card, inputs, &draw)?;
+    let out = run_with(grammar, output, inputs, &draw)?;
     draw.ok("");
     Ok(out)
 }
 
 /// [`run`], with every step a task under `draw`: projecting, the defs, each
 /// fill, composing, writing.
-pub fn run_with(grammar: &Grammar, card: &Card, inputs: Inputs, draw: &Task) -> Result<Outputs, RunError> {
+pub fn run_with(grammar: &Grammar, output: &Output, inputs: Inputs, draw: &Task) -> Result<Rendered, RunError> {
     let mut sources = Sources::new();
     for (file, text) in inputs.sources {
         let drawing =
@@ -111,9 +111,9 @@ pub fn run_with(grammar: &Grammar, card: &Card, inputs: Inputs, draw: &Task) -> 
     }
 
     let project = draw.child("project", "project", (inputs.features.len() + inputs.tiles.len()) as u64, "features");
-    let projector = crate::projection::Projector::new(card);
-    let warp = &grammar.card.warp;
-    let (w, h) = (card.width_mm, card.height_mm);
+    let projector = crate::projection::Projector::new(output);
+    let warp = &grammar.output.warp;
+    let (w, h) = (output.width_mm, output.height_mm);
     let projected = |features: Vec<Feature>| -> Vec<Feature> {
         features
             .into_par_iter()
@@ -126,11 +126,11 @@ pub fn run_with(grammar: &Grammar, card: &Card, inputs: Inputs, draw: &Task) -> 
     };
     let features = projected(inputs.features);
     let tiles = projected(inputs.tiles);
-    let frame = MultiPolygon::new(vec![card.query_polygon()]);
+    let frame = MultiPolygon::new(vec![output.query_polygon()]);
     let ocean = inputs.ocean.map(|o| warp.bend_area(w, h, &projector.project_geometry(&geom::intersection(&o, &frame))));
     let engine = Engine {
-        of: card,
-        card: warp.bend_area(w, h, &projector.project_geometry(&frame)),
+        of: output,
+        output: warp.bend_area(w, h, &projector.project_geometry(&frame)),
         ocean: ocean.unwrap_or_else(geom::empty),
     };
     project.ok("");
@@ -161,25 +161,25 @@ pub fn run_with(grammar: &Grammar, card: &Card, inputs: Inputs, draw: &Task) -> 
     compose_task.ok(&format!("{} groups", groups.len()));
 
     let svg_task = draw.child("svg", "svg", 0, "");
-    let spec = &grammar.card;
-    let paper = crate::sheets::lay_out(card.width_mm, card.height_mm, spec.padding, &spec.slices, groups);
+    let spec = &grammar.output;
+    let paper = crate::sheets::lay_out(output.width_mm, output.height_mm, spec.padding, &spec.slices, groups);
     let strokes: usize = paper.groups.iter().map(|(_, n)| n).sum();
     let cut = if paper.slices.is_empty() { String::new() } else { format!(" · {} slices", paper.slices.len()) };
     svg_task.ok(&format!("{} strokes · {:.1} MB{cut}", thousands(strokes as u64), paper.svg.len() as f64 / 1e6));
-    Ok(Outputs { svg: paper.svg, groups: paper.groups, slices: paper.slices })
+    Ok(Rendered { svg: paper.svg, groups: paper.groups, slices: paper.slices })
 }
 
-/// The features a selection picks from, in card millimetres.
+/// The features a selection picks from, in output millimetres.
 struct Found<'a> {
     osm: &'a [Feature],
     tiles: &'a [Feature],
 }
 
-/// The card, and the `engine_*` areas in card millimetres like everything
+/// The output, and the `engine_*` areas in output millimetres like everything
 /// evaluated.
 struct Engine<'a> {
-    of: &'a Card,
-    card: MultiPolygon<f64>,
+    of: &'a Output,
+    output: MultiPolygon<f64>,
     ocean: MultiPolygon<f64>,
 }
 
@@ -279,7 +279,7 @@ fn eval_op(
         }
         Op::FillHoles(n) => Value::Area(geom::fill_holes(&area(n)?)),
         Op::Grow(g) => Value::Area(geom::buffer(&area(&g.of)?, g.by.0)),
-        Op::Card => Value::Area(engine.card.clone()),
+        Op::Frame => Value::Area(engine.output.clone()),
         Op::Ocean => Value::Area(engine.ocean.clone()),
 
         // ---- lines ---------------------------------------------------------
@@ -317,30 +317,12 @@ fn eval_op(
 }
 
 /// The four sections of the toolkit, as values.
-fn eval_module(module: &str, features: &[Feature], card: &Card) -> Result<Value, String> {
+fn eval_module(module: &str, features: &[Feature], output: &Output) -> Result<Value, String> {
     match module {
         "roads" => {
             // The module needs no profile knobs: it reads OSM tags (or a tile
-            // feature's attributes) and the card scale. Its outputs are the same three names every module publishes.
-            let layer = crate::profile::LayerSpec {
-                id: "roads".into(),
-                module: Some("roads/v1".into()),
-                steps: None,
-                enabled: None,
-                fill: None,
-                kinds: Vec::new(),
-                options: BTreeMap::new(),
-                stroke: None,
-            };
-            let sources = Sources::new();
-            let ctx = crate::themes::Context {
-                card,
-                features,
-                ocean: None,
-                sources: &sources,
-                masks: &BTreeMap::new(),
-            };
-            let roads = crate::themes::roads_render(&layer, &ctx).map_err(|e| e.to_string())?;
+            // feature's attributes) and the output scale. Its outputs are the same three names every module publishes.
+            let roads = crate::themes::roads_render(&crate::themes::Context { output, features });
             let parts = roads.parts;
             Ok(Value::Module {
                 area: parts.mask,
@@ -361,7 +343,7 @@ fn eval_module(module: &str, features: &[Feature], card: &Card) -> Result<Value,
 /// stroke.
 fn module_lines(
     module: &str,
-    output: &str,
+    name: &str,
     value: &Value,
     group: &str,
     masks_by_id: &mut BTreeMap<String, MultiPolygon<f64>>,
@@ -369,7 +351,7 @@ fn module_lines(
     let Value::Module { area, outlines, details, trails, centerlines, seams } = value else {
         return Err(RunError::Plan(format!("module_{module} did not produce module outputs")));
     };
-    Ok(match output {
+    Ok(match name {
         "area" => {
             masks_by_id.insert(group.to_string(), area.clone());
             None
@@ -391,14 +373,14 @@ fn module_lines(
 /// looked up through the def that calls the module.
 fn module_output<'a>(
     module: &str,
-    output: &str,
+    name: &str,
     values: &'a BTreeMap<Name, Value>,
     grammar: &Grammar,
 ) -> Result<&'a Value, RunError> {
     let def = grammar
         .module(module)
         .ok_or_else(|| RunError::Plan(format!("nothing calls module_{module}")))?;
-    let _ = output;
+    let _ = name;
     values
         .get(&def.reference())
         .ok_or_else(|| RunError::Plan(format!("module_{module} was not evaluated")))
@@ -628,13 +610,13 @@ fn clip_for(grammar: &Grammar, id: &str) -> Clip {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::profile::MapSpec;
+    use crate::profile::OutputSpec;
     use crate::grammar::Grammar;
     use crate::profile::Format;
     use crate::units::{Mm, Scale};
 
-    fn card() -> Card {
-        let map = MapSpec {
+    fn output() -> Output {
+        let map = OutputSpec {
             address: None,
             lat: None,
             lng: None,
@@ -647,16 +629,16 @@ mod tests {
             padding: Default::default(),
             slices: Default::default(),
         };
-        Card::new(&map, (0.0, 0.0))
+        Output::new(&map, (0.0, 0.0))
     }
 
     /// A grammar with no OSM data: only the parts that need no fetch.
-    fn run_yaml(yaml: &str) -> Result<Outputs, RunError> {
-        let text = format!("card: {{ width: 100mm, height: 50mm }}\n{yaml}");
+    fn run_yaml(yaml: &str) -> Result<Rendered, RunError> {
+        let text = format!("output: {{ width: 100mm, height: 50mm }}\n{yaml}");
         let grammar = Grammar::parse(&text, Format::Yaml).expect("profile loads");
         run(
             &grammar,
-            &card(),
+            &output(),
             Inputs { features: vec![], tiles: vec![], ocean: None, sources: &BTreeMap::new() },
         )
     }
@@ -664,7 +646,7 @@ mod tests {
     #[test]
     fn an_area_and_its_ring_reach_draw() {
         let out = run_yaml(
-            "$areas:\n  block: { engine_card: {} }\n\
+            "$areas:\n  block: { engine_frame: {} }\n\
              $lines:\n  ring: { tools_rings: { of: $areas.block, exterior_only: true } }\n\
              draw:\n  - { from: $lines.ring, stroke: solid }\n",
         )
@@ -675,12 +657,12 @@ mod tests {
 
     #[test]
     fn a_mask_cuts_what_it_occludes_and_leaves_the_rest() {
-        // The card is 100x50; `inner` is it inset by 20mm (60x10). The frame
-        // ring (the card border) is entirely outside `inner`, so listing it in
+        // The output is 100x50; `inner` is it inset by 20mm (60x10). The frame
+        // ring (the output border) is entirely outside `inner`, so listing it in
         // `occludes` cannot delete it — but the two groups must differ, because
         // the half drawn over the mask is cut.
         let out = run_yaml(
-            "$areas:\n  frame: { engine_card: {} }\n  inner: { tools_grow: { of: $areas.frame, by: -20mm } }\n\
+            "$areas:\n  frame: { engine_frame: {} }\n  inner: { tools_grow: { of: $areas.frame, by: -20mm } }\n\
              $lines:\n  ring: { tools_rings: $areas.frame }\n\
              draw:\n  - { id: clipped, from: $lines.ring, stroke: solid }\n  - { id: whole, from: $lines.ring, stroke: solid }\n\
              compose:\n  masks:\n    cover: { from: $areas.inner, occludes: [clipped] }\n",
@@ -696,7 +678,7 @@ mod tests {
     fn clip_none_disables_the_masks() {
         let yaml = |clip: &str| {
             format!(
-                "$areas:\n  frame: {{ engine_card: {{}} }}\n  inner: {{ tools_grow: {{ of: $areas.frame, by: -20mm }} }}\n\
+                "$areas:\n  frame: {{ engine_frame: {{}} }}\n  inner: {{ tools_grow: {{ of: $areas.frame, by: -20mm }} }}\n\
                  $lines:\n  ring: {{ tools_rings: $areas.frame }}\n\
                  draw:\n  - {{ id: ring, from: $lines.ring, stroke: solid }}\n\
                  compose:\n  masks:\n    cover: {{ from: $areas.inner, occludes: [ring] }}\n  clip:\n    default: {clip}\n"
@@ -712,7 +694,7 @@ mod tests {
     #[test]
     fn an_id_falls_back_and_order_is_honoured() {
         let out = run_yaml(
-            "$areas:\n  a: { engine_card: {} }\n\
+            "$areas:\n  a: { engine_frame: {} }\n\
              $lines:\n  one: { tools_rings: $areas.a }\n\
              draw:\n  - { id: top, from: $lines.one, stroke: solid }\n  - { from: $lines.one }\n\
              compose:\n  order: [lines_one, top]\n",
@@ -723,39 +705,39 @@ mod tests {
 
     #[test]
     fn the_ocean_and_the_card_are_areas_in_card_mm() {
-        // The whole card is sea: its fill covers the card, and the card's
-        // ring sits on the card's edge, 100 by 50 mm.
-        let text = "card: { width: 100mm, height: 50mm }\n\
-             $areas:\n  sea: { engine_ocean: {} }\n  frame: { engine_card: {} }\n  wet: { tools_union: [$areas.sea] }\n\
+        // The whole output is sea: its fill covers the output, and the output's
+        // ring sits on the output's edge, 100 by 50 mm.
+        let text = "output: { width: 100mm, height: 50mm }\n\
+             $areas:\n  sea: { engine_ocean: {} }\n  frame: { engine_frame: {} }\n  wet: { tools_union: [$areas.sea] }\n\
              $lines:\n  ring: { tools_rings: $areas.frame }\n\
              $fills:\n  waves: { tools_fill: { in: $areas.wet, pattern: lines, spacing: 1mm } }\n\
              draw:\n  - { id: sea, from: $fills.waves }\n  - { id: ring, from: $lines.ring, stroke: solid }\n";
         let grammar = Grammar::parse(text, Format::Yaml).unwrap();
-        let ocean = MultiPolygon::new(vec![card().query_polygon()]);
-        let out = run(&grammar, &card(), Inputs { features: vec![], tiles: vec![], ocean: Some(ocean), sources: &BTreeMap::new() })
+        let ocean = MultiPolygon::new(vec![output().query_polygon()]);
+        let out = run(&grammar, &output(), Inputs { features: vec![], tiles: vec![], ocean: Some(ocean), sources: &BTreeMap::new() })
             .unwrap();
         let strokes = |id: &str| out.groups.iter().find(|(g, _)| g == id).map_or(0, |(_, n)| *n);
-        assert!(strokes("sea") >= 40, "one line per mm across the card, got {}", strokes("sea"));
+        assert!(strokes("sea") >= 40, "one line per mm across the output, got {}", strokes("sea"));
         assert_eq!(strokes("ring"), 1);
     }
 
     #[test]
     fn a_loop_is_reported_rather_than_hung() {
         // Grammar validation rejects loops already; keep the executor honest.
-        let text = "card: { width: 100mm, height: 50mm }\n$areas:\n  a: { tools_union: [$areas.b] }\n  b: { tools_grow: { of: $areas.a, by: 1mm } }\n";
+        let text = "output: { width: 100mm, height: 50mm }\n$areas:\n  a: { tools_union: [$areas.b] }\n  b: { tools_grow: { of: $areas.a, by: 1mm } }\n";
         let grammar = Grammar::parse(text, Format::Yaml);
         assert!(grammar.is_err(), "a loop must not load");
     }
 
     #[test]
     fn the_proposal_renders_without_osm_data() {
-        // No features: parks and water come out empty, but the card, the module
+        // No features: parks and water come out empty, but the output, the module
         // and the masks all have to survive the whole pipeline.
         let text = include_str!("../../../configs/proposal/postcard.yaml");
         let grammar = Grammar::parse(text, Format::Yaml).unwrap();
         let out = run(
             &grammar,
-            &card(),
+            &output(),
             Inputs { features: vec![], tiles: vec![], ocean: None, sources: &BTreeMap::new() },
         )
         .unwrap();

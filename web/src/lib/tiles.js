@@ -1,5 +1,5 @@
 /**
- * The vector tiles a card needs (`job.tiles`: what `tiles_select` picks, and
+ * The vector tiles an output needs (`job.tiles`: what `tiles_select` picks, and
  * the sea), downloaded here and handed back one by one (`job.addTile`), as
  * the `vector tiles` row under `download`. The command line reads the same
  * tiles through terramask's fetcher.

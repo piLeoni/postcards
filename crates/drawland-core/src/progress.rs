@@ -9,7 +9,7 @@
 //!
 //! The command line draws these events in the terminal; the page receives
 //! the very same events from the WASM build and draws them in its loading
-//! card. Whatever one shows, the other shows.
+//! output. Whatever one shows, the other shows.
 
 use std::sync::atomic::{AtomicU64, Ordering};
 

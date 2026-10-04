@@ -6,7 +6,7 @@
 //! `cargo run --release --example wasm_render -- <preset-id> [cache.json] [out.svg]`
 //! `preset-id` is one of `full`, `parks`, `buildings` (see web/src/lib/presets.js).
 
-use drawland_core::card::Card;
+use drawland_core::output::Output;
 use drawland_core::grammar::Grammar;
 use drawland_core::grammar_run::{run, Inputs};
 use drawland_core::osm::features_from_overpass;
@@ -24,16 +24,16 @@ fn main() {
     let doc = preset(&js, &want).unwrap_or_else(|| panic!("no preset {want:?}: try full, parks or buildings"));
 
     let grammar = Grammar::parse(&doc, Format::Yaml).expect("preset parses");
-    let card = Card::new(&grammar.card, (-122.256196, 37.8771145));
+    let output = Output::new(&grammar.output, (-122.256196, 37.8771145));
     let keys = grammar.osm_keys();
     let keys: Vec<&str> = keys.iter().map(String::as_str).collect();
     let features = if keys.is_empty() {
         Vec::new()
     } else {
         let json = std::fs::read_to_string(&cache).expect("cache file");
-        features_from_overpass(&json, &card.query_polygon(), &keys).expect("features")
+        features_from_overpass(&json, &output.query_polygon(), &keys).expect("features")
     };
-    let (tile_features, ocean) = match tiles::plan(&card, &grammar.tile_selectors(), grammar.draws_ocean(), (!keys.is_empty()).then_some(&features[..])).expect("tile plan") {
+    let (tile_features, ocean) = match tiles::plan(&output, &grammar.tile_selectors(), grammar.draws_ocean(), (!keys.is_empty()).then_some(&features[..])).expect("tile plan") {
         Some(mut t) => {
             let found = terramask::Fetcher::with_source(tiles::TILES)
                 .water(t.bounds(), t.zoom(terramask::MAX_ZOOM), t.filter(), |_, _| {})
@@ -47,7 +47,7 @@ fn main() {
 
     let sources = BTreeMap::new();
     let t0 = std::time::Instant::now();
-    let result = run(&grammar, &card, Inputs { features, tiles: tile_features, ocean, sources: &sources }).expect("render");
+    let result = run(&grammar, &output, Inputs { features, tiles: tile_features, ocean, sources: &sources }).expect("render");
     let ms = t0.elapsed().as_millis();
     for (id, n) in &result.groups {
         println!("  {id}: {n} strokes");

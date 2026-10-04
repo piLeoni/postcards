@@ -1,6 +1,6 @@
 //! A `FillSpec` run over a region with penfill, and outline strokes.
 //!
-//! A region is a `geo` MultiPolygon in card mm; it becomes a penfill
+//! A region is a `geo` MultiPolygon in output mm; it becomes a penfill
 //! `Region` here. A fill is either a named penfill generator or an SVG
 //! `source` (host-provided text) cut to the region.
 
@@ -137,7 +137,7 @@ fn default_angle(generator: &str) -> f64 {
 }
 
 /// Where the pattern's lattice sits. Global by default: one lattice for the
-/// whole card, so neighbouring areas filled alike (wood next to grass) don't
+/// whole output, so neighbouring areas filled alike (wood next to grass) don't
 /// show where one ends. A sunburst is the one pattern centred on its shape.
 fn anchor(o: &Opts) -> Result<penfill::Anchor, FillError> {
     use penfill::{Anchor, Origin};
@@ -252,7 +252,7 @@ pub fn validate(spec: &FillSpec, sources: &Sources) -> Result<(), FillError> {
     run_generator(&empty, generator, spec).map(|_| ())
 }
 
-/// Fill `region` (card mm) as `spec` says.
+/// Fill `region` (output mm) as `spec` says.
 pub fn fill(region: &MultiPolygon<f64>, spec: &FillSpec, sources: &Sources) -> Result<Lines, FillError> {
     let mut out = Vec::new();
     for r in regions(region) {
