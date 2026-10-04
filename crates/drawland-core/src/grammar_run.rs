@@ -326,9 +326,12 @@ fn eval_op(
             let grid = engine.terrain.ok_or("tools_terrain needs the elevation, which was not read")?;
             let drawing = crate::terrain::draw(grid, t)?;
             let drawn = crate::terrain::lines(&drawing, &grid.placed(engine.projector));
+            // The elevation is read a margin past the frame so the ink reaches
+            // the border (see `terrain::bounds_of`); clip it back to the page,
+            // or to `in_area` when the profile asks for one.
             Value::Lines(match &t.in_area {
                 Some(n) => geom::clip_lines(&drawn, &area(n)?, false),
-                None => drawn,
+                None => geom::clip_lines(&drawn, &engine.output, false),
             })
         }
         Op::Burin(b) => {
@@ -337,7 +340,7 @@ fn eval_op(
             let drawn = crate::terrain::lines(&drawing, &grid.placed(engine.projector));
             Value::Lines(match &b.in_area {
                 Some(n) => geom::clip_lines(&drawn, &area(n)?, false),
-                None => drawn,
+                None => geom::clip_lines(&drawn, &engine.output, false),
             })
         }
         Op::Fill(_) => return Err("tools_fill is evaluated in the fill pass".into()),
