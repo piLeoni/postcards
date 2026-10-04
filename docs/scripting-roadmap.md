@@ -95,23 +95,33 @@ Done when: each error case has a test with the expected line.
 
 ## 6. Autocomplete
 
-- [ ] One library description in `drawland-script` (functions, arguments,
+- [x] One library description in `drawland-script` (functions, arguments,
       allowed values, docs), used by the bindings.
-- [ ] Generate `drawland.d.ts` from it at build time.
-- [ ] Monaco: JavaScript mode, `allowJs` + `checkJs`, the `.d.ts` as an extra
+- [x] Generate `drawland.d.ts` from it at build time.
+- [x] Monaco: JavaScript mode, `allowJs` + `checkJs`, the `.d.ts` as an extra
       lib.
 
 Done when: in the web editor, typing `fills.` lists the fills, `pattern:`
 offers the patterns, and passing lines to `in:` is underlined.
 
+How it came out: the description *is* `crates/drawland-script/drawland.d.ts`,
+written by hand, not generated; a generator would have been a second, worse
+TypeScript. Tests keep it honest instead: the names it declares are exactly
+the globals `library.js` defines, and its `Pattern`, `TilePreset` and
+`PatName` unions are penfill's generators, terramask's presets and penfill's
+built-in hatches. `Features`, `Area` and `Lines` are branded classes, so in
+the editor `areas.union(lines.rings(x))` reads "Argument of type 'Lines' is
+not assignable to parameter of type 'Area'" while typing; the same mistake
+run is "line N column M: areas.union expects an area …, got lines".
+
 ## 7. Web: the output block, title, presets
 
-- [ ] Locate a top-level literal `output({...})` with acorn; rewrite its
+- [x] Locate a top-level literal `output({...})` with acorn; rewrite its
       literals in place (the `setCardKeys` cases: change, add, remove a key).
-- [ ] `// terrain …` comment on the scale; `title("…")` read and written.
-- [ ] Computed or missing output → read-only controls with a message.
-- [ ] `styleOf` for scripts: the text minus `title(...)` and `output(...)`.
-- [ ] Download and import `.js`.
+- [x] `// terrain …` comment on the scale; `title("…")` read and written.
+- [x] Computed or missing output → read-only controls with a message.
+- [x] `styleOf` for scripts: the text minus `title(...)` and `output(...)`.
+- [x] Download and import `.js`.
 
 Done when: drag, rotate, rescale, padding, slices, presets and title all work
 on a JS document, with tests next to `doc.js`'s.
@@ -126,12 +136,24 @@ on a JS document, with tests next to `doc.js`'s.
 
 ## 9. Presets and lazy loading
 
-- [ ] Build step: pre-run each preset, ship its graph as JSON.
-- [ ] Boa split into a second WASM module, loaded on first edit or import.
-- [ ] Reading output values from the script marks the graph output-dependent.
+- [x] Build step: pre-run each preset, ship its graph as JSON.
+- [x] Boa split into a second WASM module, loaded on first edit or import.
+- [x] Reading output values from the script marks the graph output-dependent.
 
 Done when: loading the page and using a preset does not fetch the interpreter;
 editing the script does.
+
+How it came out: `cargo run -p drawland-cli --example check_web_presets --
+--write` writes `web/src/presets/graphs.json`, and without `--write` fails
+when it is stale. The page keys graphs by the script with its literal
+`title(...)` and `output({...})` blanked, so dragging, rescaling or renaming
+reuses the graph and never needs the interpreter; the literal output simply
+replaces the graph's. Scripts cannot read the output (there is no getter), so
+no graph is output-dependent; a *computed* `output(...)` is the one case that
+needs the interpreter for a preset-shaped script, and it makes the output
+controls read-only ("output computed by the script"). The interpreter
+(`web/public/pkg-script/`, 1.13 MB gzip) is fetched on the first apply or
+import of an edited script.
 
 ## 10. burin-map-core: expression tree and batch API
 

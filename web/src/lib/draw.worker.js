@@ -1,8 +1,8 @@
 /**
  * A draw, off the page's thread: the download (Overpass when the output asks
  * it anything, then the vector tiles), then the engine, the same steps as
- * `drawland map`. The page sends `{ type: 'draw', token, doc,
- * lat, lng }` and gets back every progress event as `{ type: 'event', token,
+ * `drawland map`. The page sends `{ type: 'draw', token, graph,
+ * lat, lng }` (the graph its script built, as JSON) and gets back every progress event as `{ type: 'event', token,
  * e }`, then `{ type: 'done', … }` or `{ type: 'error', … }`. Running here,
  * the engine's events reach the page while it works, so the bars move.
  */
@@ -19,7 +19,7 @@ self.onmessage = ({ data }) => {
   if (data.type === 'draw') run(data)
 }
 
-async function run({ token, doc, lat, lng }) {
+async function run({ token, graph, lat, lng }) {
   current?.abort()
   const ac = new AbortController()
   current = ac
@@ -28,12 +28,12 @@ async function run({ token, doc, lat, lng }) {
     const engine = await loadDrawland()
     const download = Task.begin(emit, 'download', null, 'download')
     download.log('info', `centre ${lat.toFixed(7)}, ${lng.toFixed(7)}`)
-    const job = new engine.Job(doc, lat, lng)
+    const job = new engine.Job(graph, lat, lng)
     try {
       // Overpass only for an output that selects from it (`osm_select`).
       let bytes = 0
       if (job.needsOsm) {
-        const req = JSON.parse(engine.osmRequest(doc, lat, lng))
+        const req = JSON.parse(engine.osmRequest(graph, lat, lng))
         const json = await fetchOverpass(engine, req, ac.signal, download, engine.overpassPolicy())
         if (ac.signal.aborted) return
         job.read(json, emit)

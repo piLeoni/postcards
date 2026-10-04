@@ -1,45 +1,49 @@
-//! Check the output documents the web app ships still parse.
+//! The web app's presets, pre-run: each script in `web/src/presets` evaluated
+//! here, its graph written to `web/src/presets/graphs.json`, so the page draws
+//! a preset without loading the script interpreter.
 //!
-//! The page reads `web/src/lib/presets.js`, so the templates live in JS; this
-//! pulls them out and runs the parser over each. `cargo test --example` keeps
-//! a preset that stops parsing from reaching a browser.
-//!
-//! `cargo run --example check_web_presets`
+//! `cargo run --example check_web_presets` fails when a preset does not run
+//! or `graphs.json` is stale; `-- --write` writes it.
+
+use serde_json::{Map, Value};
+
+const DIR: &str = "web/src/presets";
+const GRAPHS: &str = "web/src/presets/graphs.json";
 
 fn main() {
-    let text = std::fs::read_to_string("web/src/lib/presets.js").expect("web/src/lib/presets.js");
-    let mut checked = 0;
+    let write = std::env::args().any(|a| a == "--write");
+    let mut names: Vec<String> = std::fs::read_dir(DIR)
+        .expect(DIR)
+        .filter_map(|e| e.ok()?.file_name().into_string().ok())
+        .filter_map(|n| n.strip_suffix(".js").map(str::to_string))
+        .collect();
+    names.sort();
+    let mut graphs = Map::new();
     let mut failed = 0;
-    for doc in templates(&text) {
-        match drawland_core::grammar::Grammar::parse(&doc, drawland_core::profile::Format::Yaml) {
+    for name in &names {
+        let text = std::fs::read_to_string(format!("{DIR}/{name}.js")).expect("preset");
+        match drawland_script::evaluate(&text) {
             Ok(g) => {
-                println!("ok    {} bytes · {} areas · {} fills · {} drawn", doc.len(), g.defs(drawland_core::grammar::Section::Areas).len(), g.defs(drawland_core::grammar::Section::Fills).len(), g.draw.len());
-                checked += 1;
+                let nodes: usize = g.sections.iter().map(|(_, d)| d.len()).sum();
+                println!("ok    {name}: {nodes} nodes · {} drawn", g.draw.len());
+                graphs.insert(name.clone(), g.to_json());
             }
             Err(e) => {
-                println!("FAIL  {e}");
+                println!("FAIL  {name}: {e}");
                 failed += 1;
             }
         }
     }
-    println!("\n{checked} ok, {failed} failed");
+    let text = serde_json::to_string(&Value::Object(graphs)).expect("json") + "\n";
+    if write {
+        std::fs::write(GRAPHS, &text).expect(GRAPHS);
+        println!("wrote {GRAPHS}");
+    } else if std::fs::read_to_string(GRAPHS).ok().as_deref() != Some(text.as_str()) {
+        println!("STALE {GRAPHS}: run with -- --write");
+        failed += 1;
+    }
+    println!("\n{} ok, {failed} failed", names.len().saturating_sub(failed));
     if failed > 0 {
         std::process::exit(1);
     }
-}
-
-/// Every `` `...` `` template literal in the file, which is where the docs live.
-fn templates(js: &str) -> Vec<String> {
-    let mut out = Vec::new();
-    let mut rest = js;
-    while let Some(start) = rest.find('`') {
-        let after = &rest[start + 1..];
-        let Some(end) = after.find('`') else { break };
-        let body = &after[..end];
-        if body.contains("output:") {
-            out.push(body.to_string());
-        }
-        rest = &after[end + 1..];
-    }
-    out
 }

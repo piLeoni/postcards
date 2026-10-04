@@ -3,6 +3,7 @@ import Editor from '@monaco-editor/react'
 import { PRESETS } from '../lib/presets'
 import { setOutputKeys, styleOf, titleOf } from '../lib/doc'
 import { EDITOR_THEME, defineEditorTheme, editorFont } from '../lib/editorTheme'
+import LIBRARY from '../../../crates/drawland-script/drawland.d.ts?raw'
 import Panel from './Panel'
 
 /** WebTUI button looks: a grey key, and one that only shows on hover. */
@@ -26,7 +27,32 @@ const spotOf = (text) => {
 }
 
 /** The engine's words, without the parser's own prefix. */
-const plain = (text) => sentence(text.replace(/^YAML: error: /, ''))
+const plain = (text) => sentence(text.replace(/^(Error: |graph JSON: )/, ''))
+
+/**
+ * The editor checks the script as JavaScript against the library's
+ * description: autocomplete, argument docs, and a wrong kind of value (lines
+ * where an area goes) underlined while typing. No DOM: a profile has no page.
+ */
+let libraryAdded = false
+function setUpEditor(monaco) {
+  defineEditorTheme(monaco)
+  const ts = monaco.typescript ?? monaco.languages.typescript
+  const js = ts.javascriptDefaults
+  js.setCompilerOptions({
+    allowJs: true,
+    checkJs: true,
+    allowNonTsExtensions: true,
+    noEmit: true,
+    target: ts.ScriptTarget.ES2020,
+    lib: ['es2020'],
+  })
+  js.setDiagnosticsOptions({ noSemanticValidation: false, noSyntaxValidation: false })
+  if (!libraryAdded) {
+    js.addExtraLib(LIBRARY, 'file:///drawland.d.ts')
+    libraryAdded = true
+  }
+}
 
 const PRESET_STYLES = PRESETS.map((p) => [p, styleOf(p.doc)])
 
@@ -106,17 +132,19 @@ export default function Sidebar({ open, onClose, doc, setDoc, check, output, sta
     mark(null)
   }
 
-  /** A config is only applied once the engine takes it; else it stays a draft and says why. */
-  const applyDraft = () => {
+  /** A script is only applied once it runs and the engine takes it; else it stays a draft and says why. */
+  const applyDraft = async () => {
     if (!dirty) return
-    const wrong = check(draft)
+    const text = draft
+    const wrong = await check(text)
+    if (shownRef.current !== text) return
     if (wrong) {
       setProblem({ kind: 'apply', title: 'Not applied', text: wrong })
       mark(wrong)
       return
     }
     clearProblem()
-    setDoc(draft)
+    setDoc(text)
     setDraft(null)
   }
 
@@ -145,7 +173,7 @@ export default function Sidebar({ open, onClose, doc, setDoc, check, output, sta
   const importFile = async (file) => {
     if (!file) return
     const text = await file.text()
-    const wrong = check(text)
+    const wrong = await check(text)
     if (wrong) {
       setDraft(text)
       setProblem({ kind: 'apply', title: `${file.name} not applied`, text: wrong })
@@ -159,10 +187,10 @@ export default function Sidebar({ open, onClose, doc, setDoc, check, output, sta
   }
 
   const download = () => {
-    const url = URL.createObjectURL(new Blob([shown], { type: 'application/yaml' }))
+    const url = URL.createObjectURL(new Blob([shown], { type: 'text/javascript' }))
     const a = document.createElement('a')
     a.href = url
-    a.download = `${slug(title) || 'postcard'}.yaml`
+    a.download = `${slug(title) || 'drawland'}.js`
     a.click()
     URL.revokeObjectURL(url)
   }
@@ -170,7 +198,7 @@ export default function Sidebar({ open, onClose, doc, setDoc, check, output, sta
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(shown)
-      flash('YAML copied')
+      flash('Script copied')
     } catch {
       flash('The browser blocked the clipboard', true)
     }
@@ -239,7 +267,7 @@ export default function Sidebar({ open, onClose, doc, setDoc, check, output, sta
       </Panel>
 
       <Panel
-        title={dirty ? 'Config ●' : 'Config'}
+        title={dirty ? 'Script ●' : 'Script'}
         className="relative flex min-h-0 flex-1 flex-col"
         aside={(
           <span
@@ -251,10 +279,10 @@ export default function Sidebar({ open, onClose, doc, setDoc, check, output, sta
         )}
       >
         <div className="relative flex shrink-0 flex-wrap gap-[1ch]">
-          <button type="button" {...KEY} title="Load a YAML config" onClick={() => fileRef.current?.click()}>
+          <button type="button" {...KEY} title="Load a profile script (.js)" onClick={() => fileRef.current?.click()}>
             load
           </button>
-          <button type="button" {...KEY} title="Save the config as a YAML file named after its title" onClick={download}>
+          <button type="button" {...KEY} title="Save the script as a .js file named after its title" onClick={download}>
             save
           </button>
           {/* Static, so the menu opens under the whole row rather than this button. */}
@@ -297,7 +325,7 @@ export default function Sidebar({ open, onClose, doc, setDoc, check, output, sta
           <input
             ref={fileRef}
             type="file"
-            accept=".yaml,.yml,.txt"
+            accept=".js,.txt"
             className="hidden"
             onChange={(e) => { importFile(e.target.files?.[0]); e.target.value = '' }}
           />
@@ -314,7 +342,7 @@ export default function Sidebar({ open, onClose, doc, setDoc, check, output, sta
           <div className="absolute top-[0.25lh] right-[2ch] z-10 flex gap-[1ch]">
             {dirty && (
               <>
-                <button type="button" {...KEY} title="Back to the config as it was" onClick={() => { setDraft(null); clearProblem() }}>
+                <button type="button" {...KEY} title="Back to the script as it was" onClick={() => { setDraft(null); clearProblem() }}>
                   revert
                 </button>
                 <button type="button" size-="small" variant-="foreground0" title="⌘/Ctrl + Enter" onClick={applyDraft}>
@@ -322,21 +350,22 @@ export default function Sidebar({ open, onClose, doc, setDoc, check, output, sta
                 </button>
               </>
             )}
-            <button type="button" {...KEY} title="Copy the config" onClick={copy}>
+            <button type="button" {...KEY} title="Copy the script" onClick={copy}>
               copy
             </button>
           </div>
-          {/* Under the buttons, so the config can still be reverted or applied. */}
+          {/* Under the buttons, so the script can still be reverted or applied. */}
           {problem && <div aria-hidden className="absolute inset-0 z-[5] cursor-pointer bg-white/65" title="Close" onClick={clearProblem} />}
           <Editor
             height="100%"
-            language="yaml"
+            language="javascript"
+            path="file:///profile.js"
             theme={EDITOR_THEME}
             defaultValue={shown}
             onChange={(v) => {
               if (!syncingRef.current) setDraft(v ?? '')
             }}
-            beforeMount={defineEditorTheme}
+            beforeMount={setUpEditor}
             onMount={(editor, monaco) => {
               monacoRef.current = { editor, monaco }
               if (editor.getValue() !== shownRef.current) editor.setValue(shownRef.current)
@@ -361,7 +390,7 @@ export default function Sidebar({ open, onClose, doc, setDoc, check, output, sta
             }}
           />
         </div>
-        {/* Centred over the config it is about, with room even when the editor is short. */}
+        {/* Centred over the script it is about, with room even when the editor is short. */}
         {problem && (
           <div
             role="alert"
@@ -387,7 +416,7 @@ export default function Sidebar({ open, onClose, doc, setDoc, check, output, sta
         </summary>
         <ul className="mt-[0.5lh] opacity-60">
           <li>Features and sea: © OpenMapTiles © OpenStreetMap contributors, tiles from OpenFreeMap.</li>
-          <li>With osm_select: © OpenStreetMap contributors, through Overpass.</li>
+          <li>With features.osm: © OpenStreetMap contributors, through Overpass.</li>
           <li>Basemap: © OpenMapTiles © OpenStreetMap contributors, Positron style from OpenFreeMap, drawn with MapLibre.</li>
         </ul>
       </details>

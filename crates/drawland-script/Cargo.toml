@@ -9,3 +9,7 @@ license.workspace = true
 drawland-core = { workspace = true }
 boa_engine = { version = "0.22", default-features = false }
 serde_json = { workspace = true }
+
+[dev-dependencies]
+penfill = { workspace = true }
+terramask = { workspace = true }

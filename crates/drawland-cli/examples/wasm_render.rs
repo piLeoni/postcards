@@ -4,13 +4,11 @@
 //! without a browser.
 //!
 //! `cargo run --release --example wasm_render -- <preset-id> [cache.json] [out.svg]`
-//! `preset-id` is one of `full`, `parks`, `buildings` (see web/src/lib/presets.js).
+//! `preset-id` names a script in web/src/presets (`full`, `parks`, `buildings`, …).
 
 use drawland_core::output::Output;
-use drawland_core::grammar::Grammar;
 use drawland_core::grammar_run::{run, Inputs};
 use drawland_core::osm::features_from_overpass;
-use drawland_core::profile::Format;
 use drawland_core::tiles;
 use std::collections::BTreeMap;
 
@@ -20,10 +18,9 @@ fn main() {
     let cache = args.get(2).cloned().unwrap_or_else(|| "cache/8af64f6811f329eb90d15376e0a1e439bb3887aa.json".into());
     let out = args.get(3).cloned().unwrap_or_else(|| format!("/tmp/web_{want}.svg"));
 
-    let js = std::fs::read_to_string("web/src/lib/presets.js").expect("web/src/lib/presets.js");
-    let doc = preset(&js, &want).unwrap_or_else(|| panic!("no preset {want:?}: try full, parks or buildings"));
-
-    let grammar = Grammar::parse(&doc, Format::Yaml).expect("preset parses");
+    let path = format!("web/src/presets/{want}.js");
+    let script = std::fs::read_to_string(&path).unwrap_or_else(|_| panic!("no preset {path}"));
+    let grammar = drawland_script::evaluate(&script).unwrap_or_else(|e| panic!("{path}: {e}"));
     let output = Output::new(&grammar.output, (-122.256196, 37.8771145));
     let keys = grammar.osm_keys();
     let keys: Vec<&str> = keys.iter().map(String::as_str).collect();
@@ -54,18 +51,4 @@ fn main() {
     }
     std::fs::write(&out, &result.svg).expect("write");
     println!("{ms} ms · {} kB → {out}", result.svg.len() / 1024);
-}
-
-/// The `` `doc` `` template that follows `export const <NAME>_DOC`.
-fn preset(js: &str, want: &str) -> Option<String> {
-    let marker = match want {
-        "full" => "FULL_DOC",
-        "parks" => "DEFAULT_DOC",
-        "buildings" => "SMALL_DOC",
-        _ => return None,
-    };
-    let at = js.find(&format!("export const {marker} = `"))?;
-    let after = &js[at + format!("export const {marker} = `").len()..];
-    let end = after.find('`')?;
-    Some(after[..end].to_string())
 }

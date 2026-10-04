@@ -413,5 +413,24 @@ fn first_use(source: &str, name: &str) -> Option<At> {
     None
 }
 
+/// Every function the library defines, as `areas.union` or `draw`, sorted:
+/// what `drawland.d.ts` must declare.
+pub fn library_names() -> Result<Vec<String>, ScriptError> {
+    BUILDER.with(|b| *b.borrow_mut() = Some(Builder::default()));
+    let mut ctx = Context::default();
+    install(&mut ctx).map_err(|e| ScriptError { message: format!("library: {e}"), at: None })?;
+    let listing = ctx
+        .eval(Source::from_bytes(
+            "JSON.stringify(['features','areas','engine','lines','fills','modules','draw','compose','output','title'].flatMap((n) =>              typeof globalThis[n] === 'function' ? [n] : [n, ...Object.keys(globalThis[n]).map((k) => n + '.' + k)]))",
+        ))
+        .and_then(|v| v.to_string(&mut ctx))
+        .map_err(|e| ScriptError { message: e.to_string(), at: None })?
+        .to_std_string_escaped();
+    BUILDER.with(|b| b.borrow_mut().take());
+    let mut names: Vec<String> = serde_json::from_str(&listing).unwrap_or_default();
+    names.sort();
+    Ok(names)
+}
+
 #[cfg(test)]
 mod tests;

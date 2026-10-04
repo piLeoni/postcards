@@ -609,16 +609,22 @@ export default function MapView({
 
       {output && (
         <div ref={tagsRef} className="absolute left-0 top-0 z-[25] flex flex-col items-end" style={{ display: 'none', willChange: 'transform' }}>
-          <Tag
-            title="Move, rotate and scale the output; its paper, slices and margins"
-            aria-label="Transform the output"
-            aria-expanded={menu}
-            className={`cursor-pointer ${menu ? 'bg-black! text-white!' : ''}`}
-            onClick={() => setMenu((m) => !m)}
-          >
-            transform {menu ? '▴' : '▾'}
-          </Tag>
-          {menu && (
+          {output.computed ? (
+            <Tag title="The script computes its output, so it is moved and resized in the script">
+              output computed by the script
+            </Tag>
+          ) : (
+            <Tag
+              title="Move, rotate and scale the output; its paper, slices and margins"
+              aria-label="Transform the output"
+              aria-expanded={menu}
+              className={`cursor-pointer ${menu ? 'bg-black! text-white!' : ''}`}
+              onClick={() => setMenu((m) => !m)}
+            >
+              transform {menu ? '▴' : '▾'}
+            </Tag>
+          )}
+          {menu && !output.computed && (
             <div className={`mt-1 max-h-[70vh] overflow-y-auto bg-white/95 p-1.5 ${RAISED}`}>
               <OutputControls output={output} units={units} onEdit={onOutputKeys} onMove={startDrag} />
             </div>
@@ -641,9 +647,11 @@ export default function MapView({
               {slices ? `↓ download ${slices} slices` : '↓ download'}
             </Tag>
           )}
-          <Tag title="Move the selection to the middle of the map" className={`cursor-pointer ${RAISED}`} onClick={onOutputToCentre}>
-            selection to map
-          </Tag>
+          {!output.computed && (
+            <Tag title="Move the selection to the middle of the map" className={`cursor-pointer ${RAISED}`} onClick={onOutputToCentre}>
+              selection to map
+            </Tag>
+          )}
           <Tag title="Move the map so the selection is in the middle" className={`cursor-pointer ${RAISED}`} onClick={onCentreOnOutput}>
             map to selection
           </Tag>

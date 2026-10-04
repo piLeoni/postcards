@@ -3,7 +3,8 @@ import MapView from './components/MapView'
 import Sidebar from './components/Sidebar'
 import { loadDrawland } from './lib/drawland'
 import { START_DOC } from './lib/presets'
-import { outputUnit, setOutputComment, setOutputKeys } from './lib/doc'
+import { outputComment, outputUnit, setOutputComment, setOutputKeys } from './lib/doc'
+import { compile, literalOutputInfo } from './lib/graph'
 import { terrainPair } from './components/controls'
 
 /** Where the output is, how big, how it is cut and drawn: a drawing is only good for one of these. */
@@ -13,7 +14,7 @@ const placeOf = (c) =>
     : ''
 
 /**
- * The unit each length of `output:` is written in. One not written takes the
+ * The unit each length of the output is written in. One not written takes the
  * paper's; the terrain keeps the unit noted beside the scale, or takes km
  * beside metric paper and mi beside inches.
  */
@@ -25,7 +26,7 @@ function unitsOf(doc) {
     height: outputUnit(doc, 'height') ?? paper,
     padding: outputUnit(doc, 'padding') ?? paper,
     gutter: outputUnit(doc, 'slices.gutter') ?? paper,
-    terrain: doc.match(/^\s+scale\s*:.*#\s*terrain [\d.]+ × [\d.]+ (m|km|mi|ft)\b/m)?.[1] ?? (paper === 'in' ? 'mi' : 'km'),
+    terrain: outputComment(doc, 'scale')?.match(/^terrain [\d.]+ × [\d.]+ (m|km|mi|ft)\b/)?.[1] ?? (paper === 'in' ? 'mi' : 'km'),
   }
 }
 
@@ -42,6 +43,9 @@ export default function App() {
   const [engine, setEngine] = useState(null)
   const [engineError, setEngineError] = useState(null)
   const [doc, setDoc] = useState(START_DOC)
+  // The graph the document builds, as the engine's JSON, and whether its
+  // output is the script's own (then the page shows it but cannot move it).
+  const [graph, setGraph] = useState(null)
   const [output, setOutput] = useState(null)
   const [status, setStatus] = useState({ phase: 'loading' })
   const [drawing, setDrawing] = useState(null)
@@ -72,21 +76,29 @@ export default function App() {
   }, [])
 
   // The document is the output: size, scale and where it sits all come from its
-  // `output:` block, and moving the output rewrites that block. A document with
+  // `output({…})`, and moving the output rewrites that call. A document with
   // no position is placed on the map's centre rather than at (0,0).
   useEffect(() => {
     if (!engine || !doc) return
-    try {
-      const info = JSON.parse(JSON.stringify(engine.outputInfo(doc)))
-      if (info.lat === 0 && info.lng === 0) {
-        const c = mapApiRef.current?.center?.() ?? { lat: 37.8771145, lng: -122.256196 }
-        setDoc((d) => setOutputKeys(d, { lat: c.lat, lng: c.lng }))
-        return
-      }
-      setOutput(info)
-      setStatus((s) => (s.phase === 'loading' || s.phase === 'error' ? { phase: 'ready' } : s))
-    } catch (e) {
-      setStatus({ phase: 'error', detail: e instanceof Error ? e.message : String(e) })
+    let live = true
+    compile(doc)
+      .then((c) => {
+        if (!live) return
+        const info = JSON.parse(JSON.stringify(engine.outputInfo(c.json)))
+        if (info.lat === 0 && info.lng === 0 && !c.computed) {
+          const at = mapApiRef.current?.center?.() ?? { lat: 37.8771145, lng: -122.256196 }
+          setDoc((d) => setOutputKeys(d, { lat: at.lat, lng: at.lng }))
+          return
+        }
+        setGraph(c.json)
+        setOutput({ ...info, computed: c.computed })
+        setStatus((s) => (s.phase === 'loading' || s.phase === 'error' ? { phase: 'ready' } : s))
+      })
+      .catch((e) => {
+        if (live) setStatus({ phase: 'error', detail: e instanceof Error ? e.message : String(e) })
+      })
+    return () => {
+      live = false
     }
   }, [engine, doc])
 
@@ -99,7 +111,7 @@ export default function App() {
   useEffect(() => () => workerRef.current?.terminate(), [])
 
   const draw = useCallback(() => {
-    if (!engine || !doc || !output) return
+    if (!engine || !graph || !output) return
     const token = ++drawTokenRef.current
     const { lat, lng } = output
     const at = placeOf(output)
@@ -150,8 +162,8 @@ export default function App() {
         }, 2500)
       }
     }
-    workerRef.current.postMessage({ type: 'draw', token, doc, lat, lng })
-  }, [engine, doc, output])
+    workerRef.current.postMessage({ type: 'draw', token, graph, lat, lng })
+  }, [engine, graph, output])
 
   // A drawing belongs to where the output was when it was drawn: once the output
   // moves or changes scale or size, it is stale and goes.
@@ -174,17 +186,18 @@ export default function App() {
   }, [current, output])
 
   /**
-   * Write keys of `output:`, then note beside the scale the terrain that paper
-   * × scale comes to: `scale: "1:8000"   # terrain 1.22 × 0.813 km`.
+   * Write keys of the output, then note beside the scale the terrain that
+   * paper × scale comes to: `scale: "1:8000",   // terrain 1.22 × 0.813 km`.
+   * An output the script computes stays as the script says.
    */
   const editOutput = useCallback(
     (patch) =>
       setDoc((d) => {
         const text = setOutputKeys(d, patch)
-        if (!engine) return text
+        if (!engine || text === d) return text
         try {
-          const c = JSON.parse(JSON.stringify(engine.outputInfo(text)))
-          return setOutputComment(text, 'scale', `terrain ${terrainPair(c, unitsOf(text).terrain)}`)
+          const c = literalOutputInfo(engine, text)
+          return c ? setOutputComment(text, 'scale', `terrain ${terrainPair(c, unitsOf(text).terrain)}`) : text
         } catch {
           return text
         }
@@ -206,12 +219,12 @@ export default function App() {
     mapApiRef.current?.jumpTo?.(output?.lng, output?.lat)
   }, [output?.lat, output?.lng])
 
-  /** What is wrong with `text` as an output, the engine's words; `null` when nothing. */
+  /** What is wrong with `text` as a profile, in the engine's words; `null` when nothing. */
   const check = useCallback(
-    (text) => {
+    async (text) => {
       if (!engine) return null
       try {
-        engine.outputInfo(text)
+        engine.outputInfo((await compile(text)).json)
         return null
       } catch (e) {
         return e instanceof Error ? e.message : String(e)

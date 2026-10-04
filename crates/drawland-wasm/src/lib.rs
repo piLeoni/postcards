@@ -1,7 +1,8 @@
 //! WebAssembly bindings for draw.land.
 //!
-//! The browser gets the pipeline after the download: the output document plus
-//! the Overpass JSON its query returned and the vector tiles it asked for, out
+//! The browser gets the pipeline after the download: the graph a profile
+//! script built (as JSON, from the script module or a pre-run preset) plus the
+//! Overpass JSON its query returned and the vector tiles it asked for, out
 //! comes the SVG, with the same
 //! progress events the command line draws in the terminal. Nothing here
 //! touches the filesystem or the network, so the same `drawland-core` the CLI
@@ -17,7 +18,6 @@ use geo::MultiPolygon;
 use drawland_core::grammar::Grammar;
 use drawland_core::osm::{features_from_overpass, Feature};
 use drawland_core::tiles::{self, Tiles, TILES};
-use drawland_core::profile::Format;
 use drawland_core::board::{Board, Line};
 use drawland_core::progress::{thousands, Event, Level, Progress, Task};
 use std::collections::BTreeMap;
@@ -53,16 +53,16 @@ impl Rendered {
     }
 }
 
-/// What this document and centre need from Overpass, as JSON: `{ need,
+/// What this graph and centre need from Overpass, as JSON: `{ need,
 /// fetch, query }` (see `drawland_core::osm_cache::Request`). `need` is the
 /// output's ground and keys, which a stored reply must cover; `fetch` the
 /// padded ground `query` asks for, to store the reply under.
 ///
-/// The centre comes from the document unless `lat`/`lng` override it, the same
-/// way `drawland map --lat --lng` does.
+/// The centre comes from the graph's output unless `lat`/`lng` override it,
+/// the same way `drawland map --lat --lng` does.
 #[wasm_bindgen(js_name = osmRequest)]
-pub fn osm_request(doc: &str, lat: Option<f64>, lng: Option<f64>) -> Result<String, JsValue> {
-    let mut d = Doc::load(doc)?;
+pub fn osm_request(graph: &str, lat: Option<f64>, lng: Option<f64>) -> Result<String, JsValue> {
+    let mut d = Doc::load(graph)?;
     if let Some(v) = lat {
         d.output.center.1 = v;
     }
@@ -90,15 +90,16 @@ pub fn osm_evict(entries: &str, now: f64) -> Result<Vec<u32>, JsValue> {
 }
 
 /// The output's centre and size, so the page can place the rectangle on the map.
+/// `graph` may be just `{ "output": { … } }`.
 ///
 /// Returns `{ lat, lng, width_mm, height_mm, scale, bearing, padding_x_mm,
 /// padding_y_mm, columns, rows, gutter_x_mm, gutter_y_mm, projection }`, the
 /// projection as
 /// `webmercator`, `utm` or the PROJ string.
 #[wasm_bindgen(js_name = outputInfo)]
-pub fn output_info(doc: &str) -> Result<JsValue, JsValue> {
+pub fn output_info(graph: &str) -> Result<JsValue, JsValue> {
     use drawland_core::profile::ProjectionMode;
-    let d = Doc::load(doc)?;
+    let d = Doc::load(graph)?;
     let spec = d.spec();
     let o = js_sys::Object::new();
     let projection = match &spec.projection {
@@ -184,10 +185,10 @@ pub struct Job {
 
 #[wasm_bindgen]
 impl Job {
-    /// A draw of `doc`, its centre moved to `lat`/`lng` when given.
+    /// A draw of `graph`, its centre moved to `lat`/`lng` when given.
     #[wasm_bindgen(constructor)]
-    pub fn new(doc: &str, lat: Option<f64>, lng: Option<f64>) -> Result<Job, JsValue> {
-        let mut doc = Doc::load(doc)?;
+    pub fn new(graph: &str, lat: Option<f64>, lng: Option<f64>) -> Result<Job, JsValue> {
+        let mut doc = Doc::load(graph)?;
         if let Some(v) = lat {
             doc.output.center.1 = v;
         }
@@ -413,7 +414,7 @@ impl Progress for JsProgress {
     }
 }
 
-/// A document in either schema, ready to run.
+/// A graph, ready to run.
 struct Doc {
     output: Output,
     /// OSM keys to ask Overpass for; empty when it needs none.
@@ -437,14 +438,14 @@ struct Out {
 
 impl Doc {
     fn load(text: &str) -> Result<Doc, JsValue> {
-        let grammar = Grammar::parse(text, Format::Yaml).map_err(err)?;
+        let grammar = Grammar::from_json(text).map_err(err)?;
         let keys = grammar.osm_keys();
         let (selectors, ocean) = (grammar.tile_selectors(), grammar.draws_ocean());
         let output = Output::new(&grammar.output, default_center(&grammar.output));
         Ok(Doc { output, keys, selectors, ocean, body: Body::Grammar(Box::new(grammar)) })
     }
 
-    /// The `output:` block as written.
+    /// The output as the graph carries it.
     fn spec(&self) -> &drawland_core::profile::OutputSpec {
         match &self.body {
             Body::Grammar(g) => &g.output,

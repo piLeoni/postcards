@@ -1,0 +1,226 @@
+// The draw.land library: everything a profile script can call.
+//
+// This file is the library's description. The web editor checks scripts
+// against it (autocomplete, argument docs, and lines passed where an area
+// goes are underlined); `docs/library.md` is written from it; the crate's
+// tests keep it in step with `library.js`, with penfill's patterns and with
+// terramask's presets.
+
+/** Features picked from the map data: they are not drawn, areas and lines are made from them. */
+declare class Features {
+  private readonly __features: never
+}
+/** Polygons in output millimetres: what fills go in, masks hide with, and rings outline. */
+declare class Area {
+  private readonly __area: never
+}
+/** Lines in output millimetres: what `draw` puts on paper. */
+declare class Lines {
+  private readonly __lines: never
+}
+
+/** A length: a number of millimetres, or a string with a unit (`"0.5mm"`, `"6in"`, `"2cm"`). */
+type Length = number | `${number}mm` | `${number}cm` | `${number}in` | `${number}m`
+
+/** One value or several, or `true` for any value and `false` for none. */
+type TagValue = string | string[] | boolean
+
+/** OSM tags, any of which selects a feature: `{ building: true }`, `{ leisure: ["park", "garden"] }`. */
+interface Tags {
+  [tag: string]: TagValue | Record<string, TagValue> | undefined
+  /** Tags that drop a feature even when another tag selected it. */
+  except?: Record<string, TagValue>
+  /** Keep features below ground (tunnels, `layer < 0`); dropped by default. */
+  underground?: boolean
+}
+
+/** A terramask preset, or a rule `layer:class,class` on the OpenMapTiles layers (`landcover:park,garden`). */
+type TilePreset =
+  | "water" | "ocean" | "lakes" | "rivers" | "land" | "forest" | "glacier" | "wetland" | "sand" | "rock"
+  | "grass" | "farmland" | "parks" | "urban" | "buildings" | "roads" | "paths" | "rail"
+  | `${string}:${string}`
+
+/** A penfill pattern. */
+type Pattern =
+  | "rectilinear" | "zigzag" | "lines" | "grid" | "triangles" | "honeycomb" | "dots" | "waves" | "wave_grid"
+  | "scales" | "sunburst" | "spiral" | "concentric" | "hilbert" | "stipple" | "grass" | "gravel" | "scribble"
+  | "truchet" | "marble" | "wood" | "cracks" | "terrazzo" | "chess" | "pat" | "none"
+
+/** A built-in hatch for `pattern: "pat"`. */
+type PatName =
+  | "BRICK" | "HERRINGBONE" | "BASKET" | "PARQUET" | "ANSI31" | "ANSI32" | "ANSI33" | "ANSI37" | "EARTH" | "CROSS"
+  | "DASH" | "STAIRS" | "GRATE" | "ANGLE"
+
+interface FillOptions {
+  /** The area to fill. */
+  in: Area
+  /** `"feature"`: one pattern per polygon (each building hatched on its own) instead of one over the union. */
+  per?: "feature"
+  /** The pattern; or leave it out and give a `source`. */
+  pattern?: Pattern
+  /** Distance between lines, rows or dots. Default 0.5mm. */
+  spacing?: Length
+  /** Degrees; most patterns default to 0 (zigzag and lines to 45). */
+  angle?: number
+  /** Dot or mark size, for `dots` and `stipple`. Default 0.2mm. */
+  mark?: Length
+  /** Shrink the area first. `waves` default to 0.1mm. */
+  inset?: Length
+  /** For the random patterns: the same seed draws the same lines. */
+  seed?: number
+  /** `"global"` (default): neighbouring areas share one grid. `"local"`: each shape on its own. */
+  anchor?: "global" | "local"
+  /** Move the grid, across and down. */
+  shift?: [Length, Length]
+  /** Centre the pattern here, in output millimetres (sunburst, spiral). */
+  centre?: [Length, Length]
+  /** `dots`: a square or a hexagonal lattice. */
+  lattice?: "square" | "hexagonal"
+  /** `honeycomb`: double the walls this far apart. */
+  line_width?: Length
+  /** `terrazzo`: the hatch inside the stones. */
+  hatch?: Length
+  /** `chess`: the size of a square. */
+  cell?: Length
+  /** `pat`: which hatch. */
+  name?: PatName
+  /** `pat`: the hatch's size. */
+  scale?: Length
+  /** An SVG drawn into the area instead of a pattern. */
+  source?: { file: string; size?: string; position?: string; repeat?: string }
+}
+
+/** `solid`, `dash`, `dotted`, `none`, or the dashes' sizes. */
+type Stroke =
+  | "solid" | "dash" | "dotted" | "none"
+  | { style?: "solid" | "dash" | "dotted" | "none"; dash?: Length; gap?: Length; mark?: Length }
+
+interface DrawOptions {
+  /** The SVG group's id; a plotter can give each group its own pen. */
+  id?: string
+  /** The lines to draw. */
+  from: Lines
+  /** How the lines are inked. Without one, as they are (fills are already lines). */
+  stroke?: Stroke
+}
+
+interface OutputOptions {
+  /** Where: looked up with Nominatim when there is no `lat`/`lng`. */
+  address?: string
+  lat?: number
+  lng?: number
+  /** The paper. Default 6in × 4in. */
+  width?: Length
+  height?: Length
+  /** `"1:10000"`, or the denominator. */
+  scale?: `1:${number}` | number
+  /** Degrees clockwise. */
+  bearing?: number
+  /** `"webmercator"` (the web map, north up), `"utm"` (true distances), or a PROJ string with `{lat}` and `{lng}`. */
+  projection?: "webmercator" | "utm" | `+proj=${string}`
+  /** Blank margin inside the paper's edge: one length, or across and down. */
+  padding?: Length | [Length, Length]
+  /** The output cut into sheets. */
+  slices?: { columns?: number; rows?: number; gutter?: Length | [Length, Length] }
+  /** Bend the ground before drawing; the paper's edge stays. */
+  warp?: Warp | Warp[]
+}
+
+type Warp = { fisheye: number } | { twirl: number } | { wave: { amplitude: Length; wavelength: Length } }
+
+/** What the roads module publishes. */
+interface Roads {
+  /** Every road's surface: a mask for what roads cover. */
+  readonly area: Area
+  /** The roads' edges. */
+  readonly outlines: Lines
+  /** The centre lines and the seams together. */
+  readonly details: Lines
+  /** Paths and tracks, as single lines. */
+  readonly trails: Lines
+  /** The centre lines of the roads, to dash. */
+  readonly centerlines: Lines
+  /** Where a bridge's edges meet the roads under it. */
+  readonly seams: Lines
+}
+
+/** Map data to build from. */
+declare const features: {
+  /** OSM features with any of these tags, from Overpass. */
+  osm(tags: Tags): Features
+  /** Features from OpenFreeMap's vector tiles: presets (`"buildings"`) or rules (`"landcover:park,garden"`). No Overpass. */
+  tiles(...items: (TilePreset | TilePreset[])[]): Features
+}
+
+/** Polygons, and what can be done with them. */
+declare const areas: {
+  /** The features' polygons, merged into one area. */
+  polygons(of: Features): Area
+  /** Everything in any of the areas. */
+  union(...areas: (Area | Area[])[]): Area
+  /** `base` without the parts in any of `cut`; with nothing to cut, `base` itself. */
+  difference(base: Area, ...cut: (Area | Area[])[]): Area
+  /** The part of `base` inside `keep`. */
+  intersect(base: Area, keep: Area): Area
+  /** The area with its holes closed (lakes inside parks, yards inside blocks). */
+  fillHoles(of: Area): Area
+  /** Grown by a length; a negative one shrinks it. */
+  grow(of: Area, by: Length): Area
+}
+
+/** Areas the engine makes, not OSM. */
+declare const engine: {
+  /** The paper's rectangle. */
+  frame(): Area
+  /** The sea, from the coastline in the vector tiles; empty inland. */
+  ocean(): Area
+}
+
+/** Line sets. */
+declare const lines: {
+  /** The outlines of an area's polygons. */
+  rings(of: Area, options?: { /** Only the outer edge, not the holes. */ exteriorOnly?: boolean }): Lines
+  /** The features' own lines (roads, walls drawn as lines). */
+  of(features: Features): Lines
+  /** Every edge of every polygon, and the lines: shared walls appear twice. */
+  segments(features: Features): Lines
+  /** The same segment drawn twice, once. */
+  dedupe(of: Lines): Lines
+  /** Lines that touch end to end, joined. */
+  merge(of: Lines): Lines
+  /** Several line sets as one. */
+  join(...sets: (Lines | Lines[])[]): Lines
+  /** The parts inside `within`, or outside with `invert`. */
+  clip(of: Lines, within: Area, options?: { invert?: boolean }): Lines
+}
+
+/** Patterns inside areas, by penfill. */
+declare const fills: {
+  /** The area filled with a pattern: lines, ready to draw. */
+  fill(options: FillOptions): Lines
+}
+
+/** Compiled recipes. */
+declare const modules: {
+  /** Roads with their widths, crossings and bridges; from OSM `highway` unless given features. Call once. */
+  roads(options?: { from?: Features }): Roads
+}
+
+/** Put lines on paper; returns the group id. Later draws go on top. */
+declare function draw(options: DrawOptions): string
+
+/** How the drawn groups stack and cover each other. */
+declare const compose: {
+  /** Group ids, bottom first; groups left out go on top in draw order. Default: draw order. */
+  order(...ids: (string | string[])[]): void
+  /** `from` hides the listed groups where they sit below it. */
+  mask(options: { name?: string; from: Area; occludes: string[] }): void
+  /** Which masks cut: `"auto"` (default), `"none"`, or exactly these areas. */
+  clip(value: "auto" | "none" | Area[]): void
+}
+
+/** Where the map is and on what paper. The page edits this call when its values are written literally. */
+declare function output(options: OutputOptions): void
+
+/** The profile's name. */
+declare function title(text: string): void

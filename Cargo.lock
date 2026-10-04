@@ -602,7 +602,9 @@ version = "0.1.0"
 dependencies = [
  "boa_engine",
  "drawland-core",
+ "penfill",
  "serde_json",
+ "terramask",
 ]
 
 [[package]]

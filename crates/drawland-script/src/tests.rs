@@ -152,3 +152,53 @@ fn module_outputs_draw_and_mask_but_do_not_transform() {
     assert!(e.message.contains("module roads"), "{e}");
     assert_eq!(e.at.map(|a| a.0), Some(2));
 }
+
+/// The names `drawland.d.ts` declares inside `declare const <object>: { … }`
+/// or as `declare function`.
+fn declared() -> Vec<String> {
+    let dts = include_str!("../drawland.d.ts");
+    let mut out = Vec::new();
+    let mut object: Option<String> = None;
+    for line in dts.lines() {
+        if let Some(rest) = line.strip_prefix("declare const ") {
+            let name = rest.split(':').next().unwrap_or_default().trim().to_string();
+            out.push(name.clone());
+            object = Some(name);
+        } else if let Some(rest) = line.strip_prefix("declare function ") {
+            out.push(rest.split('(').next().unwrap_or_default().to_string());
+        } else if line.starts_with('}') {
+            object = None;
+        } else if let (Some(o), Some(method)) = (&object, line.strip_prefix("  ")) {
+            if let Some(name) = method.split('(').next().filter(|n| method.contains('(') && n.chars().all(|c| c.is_alphanumeric())) {
+                out.push(format!("{o}.{name}"));
+            }
+        }
+    }
+    out.sort();
+    out
+}
+
+#[test]
+fn the_description_declares_exactly_what_the_library_defines() {
+    let defined = library_names().unwrap();
+    assert_eq!(declared(), defined);
+}
+
+/// The quoted members of `type <name> = | "a" | "b" …` in `drawland.d.ts`.
+fn union(name: &str) -> Vec<String> {
+    let dts = include_str!("../drawland.d.ts");
+    let start = dts.find(&format!("type {name} =")).unwrap_or_else(|| panic!("type {name}"));
+    let body = &dts[start..];
+    let body = &body[..body.find("\n\n").unwrap_or(body.len())];
+    body.split('"').skip(1).step_by(2).map(str::to_string).collect()
+}
+
+#[test]
+fn the_description_lists_every_pattern_preset_and_hatch() {
+    let patterns: Vec<String> = drawland_core::fill::GENERATORS.iter().map(|s| s.to_string()).collect();
+    assert_eq!(union("Pattern"), patterns);
+    let presets: Vec<String> = terramask::PRESETS.iter().map(|(n, _)| n.to_string()).collect();
+    assert_eq!(union("TilePreset"), presets);
+    let hatches: Vec<String> = penfill::pat::BUILTIN.iter().map(|s| s.to_string()).collect();
+    assert_eq!(union("PatName"), hatches);
+}

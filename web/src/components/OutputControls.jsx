@@ -17,15 +17,15 @@ const COLS = 'grid-cols-[10ch_15ch_15ch]'
 /** `5mm` for one length both ways, `[5mm, 3mm]` (across, down) for two. */
 function xyText({ x, y }) {
   const [a, b] = [lengthText(x.mm, x.unit), lengthText(y.mm, y.unit)]
-  return a === b ? a : `[${a}, ${b}]`
+  return a === b ? a : [a, b]
 }
 
 const some = ({ x, y }) => x.mm > 0 || y.mm > 0
 
-/** The `slices:` key for a cut; the default (one sheet, no gutter) leaves it out. */
+/** The `slices` key for a cut; the default (one sheet, no gutter) leaves it out. */
 function slicesKey({ columns, rows, gutter }) {
   if (columns === 1 && rows === 1 && !some(gutter)) return null
-  return some(gutter) ? `{ columns: ${columns}, rows: ${rows}, gutter: ${xyText(gutter)} }` : `{ columns: ${columns}, rows: ${rows} }`
+  return some(gutter) ? { columns, rows, gutter: xyText(gutter) } : { columns, rows }
 }
 
 /**
@@ -34,7 +34,7 @@ function slicesKey({ columns, rows, gutter }) {
  * paper's size, slices, margins and gutter). Every label drags its row's
  * values sideways, together; every field's ↔ drags it alone, and every field
  * takes it typed. A change goes out as
- * `onEdit(patch)`, keys of the output as text (`null` removes one), so the
+ * `onEdit(patch)`, keys of the output as plain values (`null` removes one), so the
  * panel works wherever the document does: the map's transform menu now, a
  * sidebar later.
  *
@@ -77,7 +77,7 @@ export default function OutputControls({ output, units, onEdit, onMove }) {
     setScaleChanges(v)
     localStorage.setItem(SCALE_CHANGES_KEY, v)
   }
-  const scaleText = (v) => `"1:${Math.round(Math.min(MAX_SCALE, Math.max(MIN_SCALE, v)))}"`
+  const scaleText = (v) => `1:${Math.round(Math.min(MAX_SCALE, Math.max(MIN_SCALE, v)))}`
   const setScale = (v) => onEdit({ scale: scaleText(v) })
   // The scale row: the same paper over new terrain, or new paper around the same terrain.
   const newScale = (v) => {
