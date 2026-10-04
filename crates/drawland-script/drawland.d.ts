@@ -192,11 +192,44 @@ declare const lines: {
   join(...sets: (Lines | Lines[])[]): Lines
   /** The parts inside `within`, or outside with `invert`. */
   clip(of: Lines, within: Area, options?: { invert?: boolean }): Lines
+  /**
+   * Pen-and-ink terrain in `in`, drawn by burin from the elevation under the
+   * output: streamlines along the slope, coloured and weighted per dash.
+   * Needs the terrain tiles, which the host reads on its own when a script
+   * draws terrain.
+   */
+  terrain(options?: TerrainOptions): Lines
 }
 
+/** Burin's terrain line styles: how the streamlines are drawn, and stippled. */
+type TerrainDraw = "lines" | "curls" | "waves" | "dots"
+
+/** What `lines.terrain` draws, and how, as burin names the parameters. */
+type TerrainOptions = {
+  /** The area to draw in; the whole output without one. */
+  in?: Area
+  /** The field the streamlines run along, in degrees. Default 0. */
+  angle?: number
+  /** The layer name; `terrain` without one. */
+  layer?: string
+  /** Draw the shore, the zero contour. Default false. */
+  shore?: boolean
+  /**
+   * The colour at each dash, as burin reads one: a hex string, a grey, an rgb
+   * triple, or a tree over the fields (`["lerp", …]`). A constant is `"#000"`.
+   */
+  color?: unknown
+  /**
+   * The line width at each dash, as a multiple of the batch's stroke: a
+   * number, or a tree over the fields.
+   */
+  width?: unknown
+  /** Style parameters, by burin's names (`line_space`, `stroke`, …). */
+  style?: Record<string, number>
+} & Record<string, unknown>
+
 /** Patterns inside areas, by penfill. */
-declare const fills: {
-  /** The area filled with a pattern: lines, ready to draw. */
+declare const fills: {  /** The area filled with a pattern: lines, ready to draw. */
   fill(options: FillOptions): Lines
 }
 

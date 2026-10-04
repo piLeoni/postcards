@@ -134,6 +134,25 @@
         },
       });
     },
+    // Pen-and-ink terrain, drawn by burin from the elevation under the output:
+    // streamlines along the slope, coloured and weighted per dash. The colour
+    // and the width are burin's own trees (`shade`/`width`), so the same
+    // expressions that style a batch at burin's front ends work here.
+    terrain(options = {}) {
+      object(options, "lines.terrain options");
+      const { in: area, color, width, angle, layer, shore, style, ...rest } = options;
+      const op = { tools_terrain: {} };
+      if (area !== undefined) op.tools_terrain.in_area = need(area, Area, "lines.terrain in");
+      if (color !== undefined) op.tools_terrain.color = color;
+      if (width !== undefined) op.tools_terrain.width = width;
+      if (angle !== undefined) op.tools_terrain.angle = angle;
+      if (layer !== undefined) op.tools_terrain.layer = layer;
+      if (shore !== undefined) op.tools_terrain.shore = !!shore;
+      // `style` and any other key are burin style parameters, by name.
+      const params = { ...(style && typeof style === "object" ? style : {}), ...rest };
+      if (Object.keys(params).length) op.tools_terrain.style = params;
+      return make(Lines, "lines", op);
+    },
   };
 
   const fills = {

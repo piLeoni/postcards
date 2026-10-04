@@ -14,6 +14,7 @@ pub mod projection;
 pub mod select;
 pub mod sheets;
 pub mod svg;
+pub mod terrain;
 pub mod themes;
 pub mod tiles;
 pub mod units;

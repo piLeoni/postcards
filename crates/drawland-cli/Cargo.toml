@@ -17,6 +17,6 @@ geo = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 ureq = { workspace = true }
-terramask = { workspace = true, features = ["fetch"] }
+terramask = { workspace = true, features = ["fetch", "dem"] }
 sha1_smol = { workspace = true }
 libc = "0.2"

@@ -65,9 +65,52 @@ fn the_postcard_script_renders_without_osm_data() {
     let back = Grammar::from_json(&g.to_json().to_string()).unwrap();
     assert_eq!(back, g, "the graph survives JSON");
     let output = Output::new(&g.output, (-122.256196, 37.8771145));
-    let out = run(&g, &output, Inputs { features: vec![], tiles: vec![], ocean: None, sources: &BTreeMap::new() }).unwrap();
+    let out = run(&g, &output, Inputs { features: vec![], tiles: vec![], ocean: None, sources: &BTreeMap::new(), terrain: None }).unwrap();
     assert!(!out.svg.is_empty());
     assert_eq!(out.groups.len(), 15);
+}
+
+#[test]
+fn a_script_draws_terrain_from_the_elevation() {
+    // `lines.terrain` is burin's: the graph loads, survives JSON, and the
+    // whole pipeline runs over a synthetic ridge without any tiles.
+    let g = evaluate(
+        "draw({ id: 'terrain_g', from: lines.terrain({ color: '#000000', width: 1, angle: 0 }) })\n\
+         draw({ id: 'terrain2', from: lines.terrain({ in: engine.frame(), shore: true, style: { line_space: 4 } }) })\n",
+    )
+    .unwrap();
+    assert_eq!(g.terrains().len(), 2);
+    let back = Grammar::from_json(&g.to_json().to_string()).unwrap();
+    assert_eq!(back, g, "the graph survives JSON");
+
+    // A 64×64 grid of a ridge: height rises then falls across x, so there is a
+    // slope to hatch and a zero contour to draw.
+    let width = 64usize;
+    let elev: Vec<f32> = (0..width * width)
+        .map(|i| {
+            let (x, y) = ((i % width) as f32, (i / width) as f32);
+            let cx = x - width as f32 / 2.0;
+            let cy = y - width as f32 / 2.0;
+            600.0 - (cx * cx + cy * cy) / 40.0
+        })
+        .collect();
+    let output = Output::new(&g.output, (-122.256196, 37.8771145));
+    let bounds = drawland_core::terrain::bounds_of(&output);
+    let merc = [0.0, 0.0, 1000.0 * width as f64, 1000.0 * width as f64];
+    let terrain = drawland_core::terrain::Grid::new(bounds, merc, elev, width);
+
+    let out = run(
+        &g,
+        &output,
+        Inputs { features: vec![], tiles: vec![], ocean: None, sources: &BTreeMap::new(), terrain: Some(terrain) },
+    )
+    .unwrap();
+    assert_eq!(out.groups.len(), 2, "two terrain groups");
+    assert_eq!(out.groups[0].0, "terrain_g");
+    assert_eq!(out.groups[1].0, "terrain2");
+    assert!(out.groups[0].1 > 0, "the streamlines drew something");
+    assert!(out.groups[1].1 > 0, "the shore drew something");
+    assert!(out.svg.contains("<g id=\"terrain_g\">"));
 }
 
 #[test]

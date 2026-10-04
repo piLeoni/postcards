@@ -10,6 +10,7 @@
 import { loadDrawland } from './drawland'
 import { fetchOverpass } from './overpass'
 import { fetchTiles } from './tiles'
+import { fetchTerrain } from './terrain'
 import { Task } from './progress'
 
 let current = null
@@ -42,6 +43,9 @@ async function run({ token, graph, lat, lng }) {
       await fetchTiles(engine, job, ac.signal, download)
       if (ac.signal.aborted) return
       job.readTiles(emit)
+      await fetchTerrain(job, ac.signal, download)
+      if (ac.signal.aborted) return
+      job.readTerrain(emit)
       download.ok()
       const t0 = performance.now()
       const out = job.draw({}, emit)

@@ -126,16 +126,15 @@ struct Needs {
 }
 
 /// What the download brings, in lon/lat.
-struct Fetched {
-    osm: Vec<Feature>,
-    tiles: Vec<Feature>,
-    /// The sea, when the output draws it and shows some.
-    ocean: Option<geo::MultiPolygon<f64>>,
-}
-
 /// The OSM features on `output`, the vector tile features, and the sea when the
 /// output shows one: each a row under `download`, which ends with them.
-fn fetch(http: &osm_http::Http, download: Task, output: &Output, needs: &Needs) -> Result<Fetched, String> {
+fn fetch(
+    http: &osm_http::Http,
+    download: Task,
+    output: &Output,
+    needs: &Needs,
+    grammar: &Grammar,
+) -> Result<(Vec<Feature>, Vec<Feature>, Option<geo::MultiPolygon<f64>>, Option<drawland_core::terrain::Grid>), String> {
     let area = output.query_polygon();
     let mut notes: Vec<String> = Vec::new();
     let osm = if needs.keys.is_empty() {
@@ -154,8 +153,34 @@ fn fetch(http: &osm_http::Http, download: Task, output: &Output, needs: &Needs) 
         Some(t) => read_tiles(&download, t, &mut notes)?,
         None => (Vec::new(), None),
     };
+    let terrain = read_terrain(&download, grammar, output)?;
     download.ok(&notes.join(" · "));
-    Ok(Fetched { osm: osm.unwrap_or_default(), tiles: tile_features, ocean })
+    Ok((osm.unwrap_or_default(), tile_features, ocean, terrain))
+}
+
+/// The elevation under the output, when a `tools_terrain` def draws it.
+/// `None` when none does, so nothing is downloaded for a document that never
+/// asks: the same rule as the vector tiles.
+fn read_terrain(download: &Task, grammar: &Grammar, output: &Output) -> Result<Option<drawland_core::terrain::Grid>, String> {
+    let terrains = grammar.terrains();
+    if terrains.is_empty() {
+        return Ok(None);
+    }
+    let width = drawland_core::terrain::WIDTH_PX;
+    let bounds = drawland_core::terrain::bounds_of(output);
+    let grid = terramask::Grid::with_width(bounds, width);
+    let task = download.child("terrain", "terrain", 0, "tiles");
+    let e = terramask::Fetcher::with_source(terramask::TERRARIUM)
+        .elevation_for(&grid, &terramask::ZoomLimits::default(), |done, total| {
+            if done == 1 {
+                task.set_total(total as u64);
+            }
+            task.step(done as u64, "");
+        })
+        .map_err(|e| format!("terrain: {e}"))?;
+    let elev = e.on(&grid);
+    task.ok(&format!("zoom {} · {}×{} px", e.zoom(), grid.width, grid.height));
+    Ok(Some(drawland_core::terrain::Grid::new(bounds, grid.merc, elev, width)))
 }
 
 /// OpenFreeMap's vector tiles under the output (cached by terramask, a file
@@ -262,13 +287,15 @@ fn map_v3(
     let center = locate(&download, http, place, grammar.output.address.clone(), (grammar.output.lat, grammar.output.lng))?;
     let output = Output::new(&grammar.output, center);
     let needs = Needs { keys: grammar.osm_keys(), tiles: grammar.tile_selectors(), ocean: grammar.draws_ocean() };
-    let Fetched { osm: features, tiles, ocean } = fetch(http, download, &output, &needs)?;
+    // Terrain is read only when a def draws it: the same grid burin's own
+    // front ends use, cached a tile at a time like everything else.
+    let (features, tiles, ocean, terrain) = fetch(http, download, &output, &needs, &grammar)?;
 
     let draw = Task::begin(term, "draw", None, "draw", 0, "");
     let rendered = drawland_core::grammar_run::run_with(
         &grammar,
         &output,
-        drawland_core::grammar_run::Inputs { features, tiles, ocean, sources: &sources },
+        drawland_core::grammar_run::Inputs { features, tiles, ocean, sources: &sources, terrain },
         &draw,
     )
     .map_err(|e| e.to_string())?;

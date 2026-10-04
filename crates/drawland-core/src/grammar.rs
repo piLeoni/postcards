@@ -127,6 +127,26 @@ pub struct Grow {
     pub by: Mm,
 }
 
+/// `tools_terrain`: pen-and-ink terrain in an area, drawn by burin from the
+/// elevation under the output.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Terrain {
+    /// The area to draw in, or `None` for the whole output.
+    pub in_area: Option<Name>,
+    /// The colour at each dash, as burin writes one: a hex colour, or a tree.
+    pub color: Option<serde_json::Value>,
+    /// The line width at each dash, as a multiple of the pen.
+    pub width: Option<serde_json::Value>,
+    /// The field the streamlines run along, degrees.
+    pub angle: f64,
+    /// What to call the layer; `terrain` without one.
+    pub layer: Option<String>,
+    /// Style parameters, as burin names them.
+    pub style: serde_json::Map<String, serde_json::Value>,
+    /// Draw the shore (the zero contour) as well.
+    pub shore: bool,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Difference {
     pub base: Name,
@@ -202,6 +222,8 @@ pub enum Op {
     Merge(Name),
     Join(UnionRules),
     ClipLines(ClipLines),
+    /// Pen-and-ink terrain, drawn by burin from the elevation.
+    Terrain(Terrain),
 
     // ---- fills (lines, produced by penfill) -------------------------------
     Fill(Fill),
@@ -231,7 +253,7 @@ impl Op {
             | Op::Frame
             | Op::Ocean => Section::Areas,
             Op::Rings(_) | Op::Lines(_) | Op::Segments(_) | Op::Dedupe(_) | Op::Merge(_) | Op::Join(_)
-            | Op::ClipLines(_) => Section::Lines,
+            | Op::ClipLines(_) | Op::Terrain(_) => Section::Lines,
             Op::Fill(_) => Section::Fills,
             // A module is called from $areas: its headline output is an area,
             // and the rest are reached by output name (`roads.outlines`).
@@ -260,6 +282,7 @@ impl Op {
             Op::Grow(g) => vec![g.of.clone()],
             Op::Rings(r) => vec![r.of.clone()],
             Op::ClipLines(c) => vec![c.lines.clone(), c.within.clone()],
+            Op::Terrain(t) => t.in_area.iter().cloned().collect(),
             Op::Fill(f) => vec![f.in_area.clone()],
         }
     }
@@ -394,6 +417,17 @@ pub struct Grammar {
 }
 
 impl Grammar {
+    /// The `tools_terrain` defs, in file order: what the host reads the
+    /// elevation for.
+    pub fn terrains(&self) -> Vec<&Terrain> {
+        self.all_defs()
+            .filter_map(|d| match &d.op {
+                Op::Terrain(t) => Some(t),
+                _ => None,
+            })
+            .collect()
+    }
+
     pub fn defs(&self, section: Section) -> &[Def] {
         self.sections
             .iter()
@@ -783,7 +817,7 @@ fn parse_op(raw: RawOp, section: Section) -> Result<Op, GrammarError> {
         "tools_polygons" | "tools_union" | "tools_difference" | "tools_intersect" | "tools_fill_holes"
         | "tools_grow" | "engine_frame" | "engine_ocean" => Section::Areas,
         "tools_rings" | "tools_lines" | "tools_segments" | "tools_dedupe" | "tools_merge" | "tools_join"
-        | "tools_clip" => Section::Lines,
+        | "tools_clip" | "tools_terrain" => Section::Lines,
         "tools_fill" => Section::Fills,
         other => {
             if let Some(rest) = other.strip_prefix("module_") {
@@ -868,6 +902,36 @@ fn parse_op(raw: RawOp, section: Section) -> Result<Op, GrammarError> {
             }
             let raw: Raw = json(&value, "tools_grow")?;
             Op::Grow(Grow { of: refname(&raw.of)?, by: raw.by })
+        }
+        "tools_terrain" => {
+            #[derive(Deserialize)]
+            #[serde(deny_unknown_fields)]
+            struct Raw {
+                #[serde(default)]
+                in_area: Option<String>,
+                #[serde(default)]
+                color: Option<serde_json::Value>,
+                #[serde(default)]
+                width: Option<serde_json::Value>,
+                #[serde(default)]
+                angle: Option<f64>,
+                #[serde(default)]
+                layer: Option<String>,
+                #[serde(default)]
+                shore: Option<bool>,
+                #[serde(default)]
+                style: Option<serde_json::Map<String, serde_json::Value>>,
+            }
+            let raw: Raw = json(&value, "tools_terrain")?;
+            Op::Terrain(Terrain {
+                in_area: raw.in_area.as_deref().map(refname).transpose()?,
+                color: raw.color,
+                width: raw.width,
+                angle: raw.angle.unwrap_or(0.0),
+                layer: raw.layer,
+                style: raw.style.unwrap_or_default(),
+                shore: raw.shore.unwrap_or(false),
+            })
         }
         "tools_rings" => match &value {
             Value::String(s) => Op::Rings(Rings { of: refname(s)?, exterior_only: false }),
@@ -1149,6 +1213,31 @@ pub fn op_to_json(op: &Op) -> Value {
             json!({ "base": i.base.to_string(), "keep": i.keep.as_ref().map(Name::to_string) }),
         ),
         Op::FillHoles(n) => ("tools_fill_holes", Value::String(n.to_string())),
+        Op::Terrain(t) => {
+            let mut body = serde_json::Map::new();
+            if let Some(a) = &t.in_area {
+                body.insert("in_area".into(), Value::String(a.to_string()));
+            }
+            if let Some(c) = &t.color {
+                body.insert("color".into(), c.clone());
+            }
+            if let Some(w) = &t.width {
+                body.insert("width".into(), w.clone());
+            }
+            if t.angle != 0.0 {
+                body.insert("angle".into(), json!(t.angle));
+            }
+            if let Some(l) = &t.layer {
+                body.insert("layer".into(), Value::String(l.clone()));
+            }
+            if t.shore {
+                body.insert("shore".into(), Value::Bool(true));
+            }
+            if !t.style.is_empty() {
+                body.insert("style".into(), Value::Object(t.style.clone()));
+            }
+            ("tools_terrain", Value::Object(body))
+        }
         Op::Grow(g) => ("tools_grow", json!({ "of": g.of.to_string(), "by": g.by })),
         Op::Frame => ("engine_frame", json!({})),
         Op::Ocean => ("engine_ocean", json!({})),

@@ -12,7 +12,7 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 drawland-core.workspace = true
 penfill.workspace = true
-terramask.workspace = true
+terramask = { workspace = true, features = ["dem"] }
 geo.workspace = true
 serde_json.workspace = true
 wasm-bindgen = "0.2"

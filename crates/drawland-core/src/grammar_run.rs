@@ -90,6 +90,10 @@ pub struct Inputs<'a> {
     pub ocean: Option<MultiPolygon<f64>>,
     /// SVG text of every file named by a fill `source`.
     pub sources: &'a BTreeMap<String, String>,
+    /// The elevation under the output, read by the host when a def draws
+    /// terrain; `None` when none does, so a document that never asks costs
+    /// nothing.
+    pub terrain: Option<crate::terrain::Grid>,
 }
 
 /// Evaluate `grammar` against `inputs`, project to `output`, compose and write.
@@ -132,6 +136,8 @@ pub fn run_with(grammar: &Grammar, output: &Output, inputs: Inputs, draw: &Task)
         of: output,
         output: warp.bend_area(w, h, &projector.project_geometry(&frame)),
         ocean: ocean.unwrap_or_else(geom::empty),
+        terrain: inputs.terrain.as_ref(),
+        projector: &projector,
     };
     project.ok("");
 
@@ -184,6 +190,11 @@ struct Engine<'a> {
     of: &'a Output,
     output: MultiPolygon<f64>,
     ocean: MultiPolygon<f64>,
+    /// The elevation under the output, when a def draws terrain; `None` when
+    /// none does, so nothing is fetched for a document that never asks.
+    terrain: Option<&'a crate::terrain::Grid>,
+    /// The projection, so terrain pixels land in the same millimetres.
+    projector: &'a crate::projection::Projector,
 }
 
 /// Evaluate every non-fill def, in dependency order (waves).
@@ -311,6 +322,16 @@ fn eval_op(
         }
 
         // Handled in the fill pass, so `values` never holds one.
+        Op::Terrain(t) => {
+            let grid = engine.terrain.ok_or("tools_terrain needs the elevation, which was not read")?;
+            let at = grid.placed(engine.projector);
+            let area = match &t.in_area {
+                Some(n) => Some(area(n)?),
+                None => None,
+            };
+            let drawing = crate::terrain::draw(grid, t, engine.of, area.as_ref())?;
+            Value::Lines(crate::terrain::lines(&drawing, &at))
+        }
         Op::Fill(_) => return Err("tools_fill is evaluated in the fill pass".into()),
         Op::Module(m) => match &m.from {
             Some(from) => eval_module(&m.name, &feats(from)?, engine.of)?,
@@ -641,7 +662,7 @@ mod tests {
         run(
             &grammar,
             &output(),
-            Inputs { features: vec![], tiles: vec![], ocean: None, sources: &BTreeMap::new() },
+            Inputs { features: vec![], tiles: vec![], ocean: None, sources: &BTreeMap::new(), terrain: None },
         )
     }
 
@@ -716,7 +737,7 @@ mod tests {
              draw:\n  - { id: sea, from: $fills.waves }\n  - { id: ring, from: $lines.ring, stroke: solid }\n";
         let grammar = from_yaml(text).unwrap();
         let ocean = MultiPolygon::new(vec![output().query_polygon()]);
-        let out = run(&grammar, &output(), Inputs { features: vec![], tiles: vec![], ocean: Some(ocean), sources: &BTreeMap::new() })
+        let out = run(&grammar, &output(), Inputs { features: vec![], tiles: vec![], ocean: Some(ocean), sources: &BTreeMap::new(), terrain: None })
             .unwrap();
         let strokes = |id: &str| out.groups.iter().find(|(g, _)| g == id).map_or(0, |(_, n)| *n);
         assert!(strokes("sea") >= 40, "one line per mm across the output, got {}", strokes("sea"));

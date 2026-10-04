@@ -11,6 +11,8 @@ license = "AGPL-3.0-only"
 drawland-core = { path = "crates/drawland-core" }
 drawland-script = { path = "crates/drawland-script" }
 penfill = { path = "../penfill" }
+# Pen-and-ink terrain drawing: its own engine, its own expression trees.
+burin-map-core = { path = "../burin-map/crates/burin-map-core", version = "0.1.0" }
 # Reads tiles only; the CLI turns `fetch` on, the page downloads them itself.
 terramask = { path = "../terramask/crates/terramask", version = "0.2.0", default-features = false }
 geo = "0.33"

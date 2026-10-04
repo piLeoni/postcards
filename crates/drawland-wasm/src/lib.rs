@@ -181,6 +181,10 @@ pub struct Job {
     tiles: Option<Option<Tiles>>,
     tile_features: Vec<Feature>,
     ocean: Option<MultiPolygon<f64>>,
+    /// The elevation tiles handed over, then the grid they fold into; read
+    /// only when a def draws terrain.
+    elevation: Option<terramask::Elevation>,
+    terrain: Option<drawland_core::terrain::Grid>,
 }
 
 #[wasm_bindgen]
@@ -195,7 +199,15 @@ impl Job {
         if let Some(v) = lng {
             doc.output.center.0 = v;
         }
-        Ok(Job { doc, features: None, tiles: None, tile_features: Vec::new(), ocean: None })
+        Ok(Job {
+            doc,
+            features: None,
+            tiles: None,
+            tile_features: Vec::new(),
+            ocean: None,
+            elevation: None,
+            terrain: None,
+        })
     }
 
     /// Whether the document selects anything from Overpass (`osm_select`, or
@@ -203,6 +215,55 @@ impl Job {
     #[wasm_bindgen(getter, js_name = needsOsm)]
     pub fn needs_osm(&self) -> bool {
         !self.doc.keys.is_empty()
+    }
+
+    /// Whether a def draws terrain: the page then asks for the elevation
+    /// tiles (`terrainTiles` and `addTerrain`) and folds them in.
+    #[wasm_bindgen(getter, js_name = needsTerrain)]
+    pub fn needs_terrain(&self) -> bool {
+        self.doc.terrain_defs()
+    }
+
+    /// The terrain tiles the output needs, as `[z, x, y, …]`, from
+    /// `https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png`.
+    /// Empty when no def draws terrain.
+    #[wasm_bindgen(js_name = terrainTiles)]
+    pub fn terrain_tiles(&mut self) -> Vec<u32> {
+        if !self.doc.terrain_defs() {
+            return Vec::new();
+        }
+        let bounds = drawland_core::terrain::bounds_of(&self.doc.output);
+        let grid = terramask::Grid::with_width(bounds, drawland_core::terrain::WIDTH_PX);
+        let z = grid.zoom(&terramask::ZoomLimits::default());
+        terramask::tiles_for(&bounds, z).iter().flat_map(|t| [t.z as u32, t.x, t.y]).collect()
+    }
+
+    /// One elevation tile, as downloaded (a Terrarium PNG).
+    #[wasm_bindgen(js_name = addTerrain)]
+    pub fn add_terrain(&mut self, z: u8, x: u32, y: u32, bytes: &[u8]) -> Result<(), JsValue> {
+        let mut e = self.elevation.take().unwrap_or_else(terramask::Elevation::new);
+        e.add_tile(TileId::new(z, x, y), bytes).map_err(err)?;
+        self.elevation = Some(e);
+        Ok(())
+    }
+
+    /// Fold the elevation tiles into the grid, as the `terrain` row.
+    #[wasm_bindgen(js_name = readTerrain)]
+    pub fn read_terrain(&mut self, on_event: js_sys::Function) -> Result<(), JsValue> {
+        if !self.doc.terrain_defs() {
+            return Ok(());
+        }
+        let progress = JsProgress(on_event);
+        let task = Task::begin(&progress, "terrain", Some("download"), "terrain", 0, "");
+        let bounds = drawland_core::terrain::bounds_of(&self.doc.output);
+        let width = drawland_core::terrain::WIDTH_PX;
+        let grid = terramask::Grid::with_width(bounds, width);
+        let e = self.elevation.take().ok_or_else(|| err("no elevation tiles were handed over"))?;
+        let elev = e.on(&grid);
+        let note = format!("zoom {} · {}×{} px", e.zoom(), grid.width, grid.height);
+        self.terrain = Some(drawland_core::terrain::Grid::new(bounds, grid.merc, elev, width));
+        task.ok(&note);
+        Ok(())
     }
 
     /// Turn the Overpass reply into features, as the `read OSM` row.
@@ -272,7 +333,8 @@ impl Job {
         let ocean = self.ocean.take();
         let progress = JsProgress(on_event);
         let draw = Task::begin(&progress, "draw", None, "draw", 0, "");
-        let out = self.doc.render(features, tile_features, ocean, &string_map(&sources), &draw).map_err(err)?;
+        let terrain = self.terrain.take();
+        let out = self.doc.render(features, tile_features, ocean, terrain, &string_map(&sources), &draw).map_err(err)?;
         draw.ok("");
         let groups = js_sys::Array::new();
         for (id, n) in out.groups {
@@ -445,6 +507,13 @@ impl Doc {
         Ok(Doc { output, keys, selectors, ocean, body: Body::Grammar(Box::new(grammar)) })
     }
 
+    /// Whether any def draws terrain.
+    fn terrain_defs(&self) -> bool {
+        match &self.body {
+            Body::Grammar(g) => !g.terrains().is_empty(),
+        }
+    }
+
     /// The output as the graph carries it.
     fn spec(&self) -> &drawland_core::profile::OutputSpec {
         match &self.body {
@@ -458,6 +527,7 @@ impl Doc {
         features: Vec<Feature>,
         tiles: Vec<Feature>,
         ocean: Option<MultiPolygon<f64>>,
+        terrain: Option<drawland_core::terrain::Grid>,
         sources: &BTreeMap<String, String>,
         draw: &Task,
     ) -> Result<Out, String> {
@@ -466,7 +536,7 @@ impl Doc {
                 let out = drawland_core::grammar_run::run_with(
                     g,
                     &self.output,
-                    drawland_core::grammar_run::Inputs { features, tiles, ocean, sources },
+                    drawland_core::grammar_run::Inputs { features, tiles, ocean, sources, terrain },
                     draw,
                 )
                 .map_err(|e| e.to_string())?;

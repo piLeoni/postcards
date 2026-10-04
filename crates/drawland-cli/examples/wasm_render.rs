@@ -44,11 +44,28 @@ fn main() {
 
     let sources = BTreeMap::new();
     let t0 = std::time::Instant::now();
-    let result = run(&grammar, &output, Inputs { features, tiles: tile_features, ocean, sources: &sources }).expect("render");
+    let terrain = read_terrain(&grammar, &output).expect("terrain");
+    let result = run(&grammar, &output, Inputs { features, tiles: tile_features, ocean, sources: &sources, terrain }).expect("render");
     let ms = t0.elapsed().as_millis();
     for (id, n) in &result.groups {
         println!("  {id}: {n} strokes");
     }
     std::fs::write(&out, &result.svg).expect("write");
     println!("{ms} ms · {} kB → {out}", result.svg.len() / 1024);
+}
+
+/// The elevation under the output, when a preset draws terrain, as the page
+/// reads it: the same Terrarium tiles, folded into the same grid.
+fn read_terrain(grammar: &drawland_core::grammar::Grammar, output: &Output) -> Result<Option<drawland_core::terrain::Grid>, String> {
+    if grammar.terrains().is_empty() {
+        return Ok(None);
+    }
+    let width = drawland_core::terrain::WIDTH_PX;
+    let bounds = drawland_core::terrain::bounds_of(output);
+    let grid = terramask::Grid::with_width(bounds, width);
+    let e = terramask::Fetcher::with_source(terramask::TERRARIUM)
+        .elevation_for(&grid, &terramask::ZoomLimits::default(), |_, _| {})
+        .map_err(|e| e.to_string())?;
+    let elev = e.on(&grid);
+    Ok(Some(drawland_core::terrain::Grid::new(bounds, grid.merc, elev, width)))
 }
