@@ -123,17 +123,19 @@ aside :is(h1, h2, h3, p, div, header, section) {
   color: inherit;
 }
 
-/* The card wins over the map: black lines on paper, in milliseconds.
-   `slice` fills the box exactly: the SVG is 152.4mm wide and its own aspect,
-   while the box is in screen px. Letterboxing would leave a dark band along
-   the right and bottom edges, which is the border the eye catches. */
-.card-svg svg {
+/* The output wins over the map: black lines on paper, in milliseconds.
+   The engine writes the SVG at its paper size (`width="152.4mm"` and a
+   matching `viewBox`), and an inline SVG given a physical width does not
+   stretch: it sits at that size in the corner of whatever box holds it, so
+   zooming left it behind. Pin it to the box instead, which is in screen px
+   and the same aspect as the paper. */
+.output-svg svg {
   display: block;
   width: 100%;
   height: 100%;
 }
 
-.card-svg svg * {
+.output-svg svg * {
   shape-rendering: geometricPrecision;
 }
 
