@@ -25,6 +25,7 @@ const PX_PER_STEP = 4
  * bigger steps); `sign: -1` turns it around. `custom`, when given, is a drag
  * of the caller's instead. `held` is true from press to release: the pointer
  * outruns what it grabbed, and what it passes over must not light up instead.
+ * What it is on carries `data-drag`, so a host can tell a drag from a click.
  */
 function useDrag({ model, value, onChange, sign = 1, px = PX_PER_STEP, custom }) {
   const [held, setHeld] = useState(false)
@@ -140,6 +141,7 @@ export function Field({ label, title, model, value, onChange, px, sign, muted = 
       <span
         aria-hidden
         title={`Drag to change the ${label} alone`}
+        data-drag
         className={`absolute inset-y-px left-px flex w-[1.8ch] cursor-ew-resize items-center justify-center text-black/35 select-none ${grabbed(drag.held)}`}
         onPointerDown={drag.onPointerDown}
       >
@@ -161,6 +163,7 @@ export function Scrub({ icon, label, title, model, value, onChange, sign, px, on
     <span
       title={title}
       aria-label={label}
+      data-drag={draggable || undefined}
       className={`flex items-center gap-1 whitespace-nowrap px-1 select-none ${
         draggable ? `${grabbed(drag.held)} ${onPointerDown ? 'cursor-grab active:cursor-grabbing' : 'cursor-ew-resize'}` : ''
       }`}

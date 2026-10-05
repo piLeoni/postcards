@@ -245,6 +245,19 @@ const EDGE = 8
  * around it, not as something crammed to the edges.
  */
 const FIT_AIR = 2 * FIT_PAD
+/** The transform menu's opacity while one of its drags has the output under it. */
+const MENU_FADE = 0.2
+/** Pixels the output keeps from the map's edges while it is moved. */
+const KEEP = 16
+/** The band along the map's edges where the pointer moving the output pans the map, px. */
+const ZONE = 40
+/**
+ * Pushed past an edge, the map pans to bring the output along: this many px a
+ * second for each px the pointer is past where the output stopped, up to
+ * `PUSH_MAX`. A little push creeps, a long one travels.
+ */
+const PUSH = 6
+const PUSH_MAX = 1500
 /** What floats over the map: the output, its menu, the buttons in the corner. */
 const RAISED = 'shadow-[0_2px_8px_rgba(0,0,0,0.18)]'
 
@@ -364,6 +377,7 @@ export default function MapView({
   const labelRef = useRef(null)
   const tagsRef = useRef(null)
   const awayRef = useRef(null)
+  const menuDragRef = useRef(false)
   const readyRef = useRef(false)
   const lastFitRef = useRef('')
   // While a drag is on, the output follows the pointer from here; the document
@@ -425,8 +439,26 @@ export default function MapView({
       const x = Math.max(Math.min(b.x + b.w, W - EDGE), t.offsetWidth + EDGE)
       const y = Math.max(Math.min(b.y + b.h + GAP, H - t.offsetHeight - EDGE), EDGE)
       t.style.transform = `translate(${x}px, ${y}px) translateX(-100%)`
+      // Waiting in the corner, the menu can cover the output it is moving.
+      const under = menuDragRef.current && b.x < x && b.x + b.w > x - t.offsetWidth && b.y < y + t.offsetHeight && b.y + b.h > y
+      t.style.opacity = under ? MENU_FADE : ''
     }
   }, [])
+
+  /** A drag that starts in the menu fades it over the output until release (see `place`). */
+  const holdMenu = (e) => {
+    if (!e.target.closest?.('[data-drag]')) return
+    menuDragRef.current = true
+    const release = () => {
+      menuDragRef.current = false
+      window.removeEventListener('pointerup', release)
+      window.removeEventListener('pointercancel', release)
+      place()
+    }
+    window.addEventListener('pointerup', release)
+    window.addEventListener('pointercancel', release)
+    place()
+  }
 
   useEffect(() => {
     const saved = savedViewRef.current
@@ -556,9 +588,10 @@ export default function MapView({
   }, [groundKey])
 
   /**
-   * Follow the pointer with `step(map, from, dx, dy, event)`. The output moves
-   * on every pointer event; `write` puts it in the document at most once a
-   * frame while the drag lasts, and once more on release.
+   * Follow the pointer with `step(map, from, dx, dy, event)`, once a frame:
+   * the output moves and `write` puts it in the document, and once more on
+   * release. A step that returns `again: true` is run the next frame too, the
+   * pointer still or not.
    */
   const follow = (e, step, write) => {
     e.preventDefault()
@@ -569,30 +602,38 @@ export default function MapView({
     // A field being typed in would keep its text over the live value.
     if (document.activeElement instanceof HTMLInputElement) document.activeElement.blur()
     const start = { x: e.clientX, y: e.clientY }
-    let moved = false
-    let queued = false
-    const move = (ev) => {
-      // The drawing is of where the output was: it goes as soon as the output moves.
-      if (!moved) onEditOutput?.()
-      moved = true
+    let at = null
+    let frame = 0
+    const apply = () => {
       const { lat, lng, scale, bearing, width_mm, height_mm } = from
-      editRef.current = { lat, lng, scale, bearing, width_mm, height_mm, ...step(map, from, ev.clientX - start.x, ev.clientY - start.y, ev) }
+      const { again, ...to } = step(map, from, at.clientX - start.x, at.clientY - start.y, at)
+      editRef.current = { lat, lng, scale, bearing, width_mm, height_mm, ...to }
       outputRef.current = { ...from, ...editRef.current }
       place()
-      if (queued) return
-      queued = true
-      requestAnimationFrame(() => {
-        queued = false
-        const to = editRef.current
-        if (to && !to.done) write(to)
-      })
+      return again
+    }
+    const tick = () => {
+      frame = 0
+      const again = apply()
+      write(editRef.current)
+      if (again) frame = requestAnimationFrame(tick)
+    }
+    const move = (ev) => {
+      // The drawing is of where the output was: it goes as soon as the output moves.
+      if (!at) onEditOutput?.()
+      at = ev
+      if (!frame) frame = requestAnimationFrame(tick)
     }
     const up = () => {
       window.removeEventListener('pointermove', move)
       window.removeEventListener('pointerup', up)
       document.body.style.cursor = ''
+      if (frame) {
+        cancelAnimationFrame(frame)
+        apply()
+      }
       const to = editRef.current
-      if (!to || to.done) return
+      if (!at || !to || to.done) return
       to.done = true
       write(to)
     }
@@ -601,16 +642,66 @@ export default function MapView({
     window.addEventListener('pointerup', up)
   }
 
-  const startDrag = (e) =>
+  /**
+   * Move the output with the pointer, kept `KEEP` px inside the map (its label
+   * too). Pushed past an edge it stops there and the map pans under it instead,
+   * faster the further the pointer goes, so it cannot be dragged off screen;
+   * the pointer near an edge pans it too. The same as a marker's auto-pan in Leaflet. An output that starts out past
+   * an edge may stay out there, and is held in once it comes in; one bigger
+   * than the map is held covering it.
+   */
+  const startDrag = (e) => {
+    const map = mapRef.current
+    const from = outputRef.current
+    const b0 = map && from ? outputBox(map, from) : null
+    if (!b0) return
+    const top = (labelRef.current?.offsetHeight ?? 0) + GAP
+    const r0 = map.getContainer().getBoundingClientRect()
+    const p0 = { x: e.clientX - r0.left, y: e.clientY - r0.top }
+    // Where the box's top left, and the pointer, may go per axis: [lowest, highest].
+    const fence = {}
+    const zone = {}
+    // Both widen to take in where they start, and narrow as they come in.
+    const range = (seen, k, lo, hi, start, at) => {
+      const f = seen[k] ?? [Math.min(lo, start), Math.max(hi, start)]
+      seen[k] = [Math.max(f[0], Math.min(lo, at)), Math.min(f[1], Math.max(hi, at))]
+      return f
+    }
+    let t = performance.now()
     follow(
       e,
-      (map, from, dx, dy) => {
-        const pt = map.project([from.lng, from.lat])
-        const next = map.unproject([pt.x + dx, pt.y + dy])
-        return { lat: next.lat, lng: next.lng }
+      (map, from, dx, dy, ev) => {
+        const now = performance.now()
+        const dt = Math.min(now - t, 50) / 1000
+        t = now
+        const el = map.getContainer()
+        const { clientWidth: W, clientHeight: H } = el
+        const r = el.getBoundingClientRect()
+        const { w, h } = outputBox(map, outputRef.current) ?? b0
+        // The box stops at the fence; the pointer it is pushed with may reach
+        // the screen's edge first (the handle can sit far from the box's), so
+        // the last `ZONE` px before the map's edge pan too.
+        const hold = (k, want, size, view, near, start, p, p0) => {
+          const lo = Math.min(near, view - KEEP - size)
+          const hi = Math.max(near, view - KEEP - size)
+          const f = range(fence, k, lo, hi, start, want)
+          const got = Math.min(Math.max(want, f[0]), f[1])
+          const push = want - got
+          const z = range(zone, k, ZONE, view - ZONE, p0, p)
+          const past = p < z[0] ? p - z[0] : p > z[1] ? p - z[1] : 0
+          const speeds = [Math.min(Math.abs(push) * PUSH, PUSH_MAX), Math.min(Math.abs(past) / ZONE, 1) * PUSH_MAX]
+          return { got, pan: Math.sign(push || past) * Math.max(...speeds) * dt }
+        }
+        const x = hold('x', b0.x + b0.w / 2 + dx - w / 2, w, W, KEEP, b0.x, ev.clientX - r.left, p0.x)
+        const y = hold('y', b0.y + b0.h / 2 + dy - h / 2, h, H, KEEP + top, b0.y, ev.clientY - r.top, p0.y)
+        const again = x.pan !== 0 || y.pan !== 0
+        if (again) map.panBy([x.pan, y.pan], { animate: false })
+        const next = map.unproject([x.got + w / 2, y.got + h / 2])
+        return { lat: next.lat, lng: next.lng, again }
       },
       (to) => onMoveOutput?.({ lat: to.lat, lng: to.lng }),
     )
+  }
 
   const slices = drawing?.slices?.length ?? 0
 
@@ -649,7 +740,11 @@ export default function MapView({
       )}
 
       {output && (
-        <div ref={tagsRef} className="absolute left-0 top-0 z-[25] flex flex-col items-end" style={{ display: 'none', willChange: 'transform' }}>
+        <div
+          ref={tagsRef}
+          className="absolute left-0 top-0 z-[25] flex flex-col items-end transition-opacity duration-150"
+          style={{ display: 'none', willChange: 'transform' }}
+        >
           {output.computed ? (
             <Tag title="The script computes its output, so it is moved and resized in the script">
               output computed by the script
@@ -666,7 +761,7 @@ export default function MapView({
             </Tag>
           )}
           {menu && !output.computed && (
-            <div className={`mt-1 max-h-[70vh] overflow-y-auto bg-white/95 p-1.5 ${RAISED}`}>
+            <div className={`mt-1 max-h-[70vh] overflow-y-auto bg-white/95 p-1.5 ${RAISED}`} onPointerDownCapture={holdMenu}>
               <OutputControls output={output} units={units} onEdit={onOutputKeys} onMove={startDrag} />
             </div>
           )}
