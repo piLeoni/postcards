@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useAtom } from 'jotai'
 import { AttributionControl, MapLibreMap, setWorkerUrl } from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 // A worker, not a script: Vite serves the pre-bundled `maplibre-gl` from
@@ -8,7 +9,9 @@ import 'maplibre-gl/dist/maplibre-gl.css'
 // puts the pool together once, on the first style that loads.)
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url'
 import { outputBox, FIT_PAD, groundKm, hasLayout, lengthText, sheetsOf, sig3, zoomToFit } from '../lib/frame'
+import { mapViewAtom } from '../lib/store'
 import OutputControls from './OutputControls'
+import SearchModal from './SearchModal'
 import { norm, terrainPair } from './controls'
 import LoadCard from './LoadCard'
 
@@ -238,14 +241,21 @@ const EDGE = 8
 /** What floats over the map: the output, its menu, the buttons in the corner. */
 const RAISED = 'shadow-[0_2px_8px_rgba(0,0,0,0.18)]'
 
+/** The marks on the map tags, the same plain glyphs the transform menu wears. */
+const ICONS = {
+  toMap: '✥',        // the move glyph: the selection goes onto the map
+  toSelection: '⌖',  // a target: the map comes to the selection
+  search: '⌕',
+}
+
 /** A small tag on the map that acts as a button; not a WebTUI key. */
-function Tag({ title, onClick, className = 'cursor-pointer', children, ...rest }) {
+function Tag({ title, onClick, icon, className = 'cursor-pointer', children, ...rest }) {
   return (
     <span
       role="button"
       tabIndex={0}
       title={title}
-      className={`bg-white/90 px-1.5 py-0.5 font-mono text-[10px] whitespace-nowrap select-none hover:bg-black hover:text-white ${className}`}
+      className={`inline-flex items-center gap-[0.75ch] bg-white/90 px-1.5 py-0.5 font-mono text-[10px] whitespace-nowrap select-none hover:bg-black hover:text-white ${className}`}
       onClick={onClick}
       onKeyDown={(e) => {
         if (onClick && (e.key === 'Enter' || e.key === ' ')) {
@@ -255,6 +265,7 @@ function Tag({ title, onClick, className = 'cursor-pointer', children, ...rest }
       }}
       {...rest}
     >
+      {icon && <span aria-hidden className="w-[1.5ch] text-center">{icon}</span>}
       {children}
     </span>
   )
@@ -332,8 +343,14 @@ export default function MapView({
   onOutputKeys,
   onOutputToCentre,
   onCentreOnOutput,
+  onSearch,
 }) {
   const [menu, setMenu] = useState(false)
+  const [search, setSearch] = useState(false)
+  const [mapView, setMapView] = useAtom(mapViewAtom)
+  // The map is built once, in an effect with no dependencies; this holds the
+  // saved view so that effect can read it without depending on it.
+  const savedViewRef = useRef(mapView)
   const containerRef = useRef(null)
   const mapRef = useRef(null)
   const overlayRef = useRef(null)
@@ -405,12 +422,13 @@ export default function MapView({
   }, [])
 
   useEffect(() => {
+    const saved = savedViewRef.current
     const map = new MapLibreMap({
       container: containerRef.current,
       style: STYLE,
-      center: output ? [output.lng, output.lat] : [-122.256196, 37.8771145],
+      center: saved ? [saved.lng, saved.lat] : output ? [output.lng, output.lat] : [-122.256196, 37.8771145],
       bearing: output?.bearing ?? 0,
-      zoom: 14,
+      zoom: saved?.zoom ?? 14,
       minZoom: 2,
       pitch: 0,
       maxPitch: 0,
@@ -454,6 +472,11 @@ export default function MapView({
       }
     }
 
+    // Where the map was last left is kept, so a reload comes back to it. Runs
+    // on every settled move: a pan, a zoom, the wheel, not the drag between.
+    const keep = () => setMapView({ lng: +map.getCenter().lng.toFixed(6), lat: +map.getCenter().lat.toFixed(6), zoom: +map.getZoom().toFixed(3) })
+    map.on('moveend', keep)
+
     // The map's render loop drives the overlay, so the two never disagree.
     map.on('render', place)
 
@@ -471,6 +494,7 @@ export default function MapView({
     return () => {
       resized.disconnect()
       map.off('render', place)
+      map.off('moveend', keep)
       if (apiRef) apiRef.current = null
       map.remove()
       mapRef.current = null
@@ -648,15 +672,20 @@ export default function MapView({
             </Tag>
           )}
           {!output.computed && (
-            <Tag title="Move the selection to the middle of the map" className={`cursor-pointer ${RAISED}`} onClick={onOutputToCentre}>
+            <Tag icon={ICONS.toMap} title="Move the selection to the middle of the map" className={`cursor-pointer ${RAISED}`} onClick={onOutputToCentre}>
               selection to map
             </Tag>
           )}
-          <Tag title="Move the map so the selection is in the middle" className={`cursor-pointer ${RAISED}`} onClick={onCentreOnOutput}>
+          <Tag icon={ICONS.toSelection} title="Move the map so the selection is in the middle" className={`cursor-pointer ${RAISED}`} onClick={onCentreOnOutput}>
             map to selection
+          </Tag>
+          <Tag icon={ICONS.search} title="Find a place by address and move the selection there" className={`cursor-pointer ${RAISED}`} onClick={() => setSearch(true)}>
+            search
           </Tag>
         </div>
       )}
+
+      <SearchModal open={search} onClose={() => setSearch(false)} onPick={onSearch} />
 
       {/* The draw, reported over the map: a separate output, not a frame drawn
           inside the output that is about to be replaced. */}

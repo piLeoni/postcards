@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useAtom } from 'jotai'
 import Editor from '@monaco-editor/react'
 import { PRESETS } from '../lib/presets'
 import { setOutputKeys, styleOf, titleOf } from '../lib/doc'
+import { sidebarWidthAtom } from '../lib/store'
 import { EDITOR_THEME, defineEditorTheme, editorFont } from '../lib/editorTheme'
 import LIBRARY from '../../../crates/drawland-script/drawland.d.ts?raw'
 import Panel from './Panel'
@@ -14,7 +16,7 @@ const KEY = { 'size-': 'small', 'variant-': 'background1' }
 /* ---------------------------------------------------------------- */
 
 /** The column's width on a wide screen, in px: dragged by its left edge, kept. */
-const WIDTH_KEY = 'drawland.sidebarWidth'
+const DEFAULT_WIDTH = 448
 const MIN_WIDTH = 320
 const clampWidth = (w) => Math.round(Math.min(Math.max(w, MIN_WIDTH), window.innerWidth * 0.7))
 const REPO = 'https://github.com/piLeoni/postcards'
@@ -59,8 +61,8 @@ const PRESET_STYLES = PRESETS.map((p) => [p, styleOf(p.doc)])
 /** A file name from a title: `Parks and buildings` → `parks-and-buildings`. */
 const slug = (s) => s.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
 
-export default function Sidebar({ open, onClose, doc, setDoc, check, output, status, drawing, busy, onDraw }) {
-  const [width, setWidth] = useState(() => clampWidth(Number(localStorage.getItem(WIDTH_KEY)) || 448))
+export default function Sidebar({ open, onClose, doc, setDoc, check, output, status, drawing, busy, onDraw, onStop }) {
+  const [width, setWidth] = useAtom(sidebarWidthAtom)
   const [draft, setDraft] = useState(null)   // text typed but not applied yet
   const [notice, setNotice] = useState(null)   // { text, error? }
   const [problem, setProblem] = useState(null)   // { kind: 'apply' | 'draw', title, text }
@@ -212,10 +214,6 @@ export default function Sidebar({ open, onClose, doc, setDoc, check, output, sta
       window.removeEventListener('pointerup', up)
       document.body.style.cursor = ''
       document.body.style.userSelect = ''
-      setWidth((w) => {
-        localStorage.setItem(WIDTH_KEY, String(w))
-        return w
-      })
     }
     document.body.style.cursor = 'col-resize'
     document.body.style.userSelect = 'none'
@@ -312,15 +310,28 @@ export default function Sidebar({ open, onClose, doc, setDoc, check, output, sta
               </ul>
             </div>
           </details>
+          {/* The run, in the shape every script tool has taught: play starts a
+              draw, stop (while one runs) gives it up. */}
           <button
             type="button"
             size-="small"
             variant-={busy ? 'background1' : 'foreground0'}
-            className="ml-auto"
-            disabled={busy || !output}
-            onClick={onDraw}
+            className="ml-auto inline-flex items-center gap-[0.75ch]"
+            title={busy ? 'Stop the draw' : drawing ? 'Draw the script again' : 'Draw the script'}
+            aria-label={busy ? 'Stop the draw' : 'Draw the script'}
+            disabled={!output || (!busy && !onDraw)}
+            onClick={busy ? onStop : onDraw}
           >
-            {drawing ? 'REGENERATE' : 'GENERATE'}
+            {busy ? (
+              <svg aria-hidden viewBox="0 0 12 12" className="h-[1em] w-[1em] shrink-0" fill="currentColor">
+                <rect x="2" y="2" width="8" height="8" />
+              </svg>
+            ) : (
+              <svg aria-hidden viewBox="0 0 12 12" className="h-[1em] w-[1em] shrink-0" fill="currentColor">
+                <path d="M2.5 1.5v9l8-4.5z" />
+              </svg>
+            )}
+            {busy ? 'stop' : drawing ? 'rerun' : 'run'}
           </button>
           <input
             ref={fileRef}
@@ -428,10 +439,7 @@ export default function Sidebar({ open, onClose, doc, setDoc, check, output, sta
         title="Drag to resize · double-click to reset"
         className="absolute inset-y-0 left-0 z-10 hidden w-[7px] -translate-x-1/2 cursor-col-resize hover:bg-black/10 lg:block"
         onPointerDown={resize}
-        onDoubleClick={() => {
-          setWidth(448)
-          localStorage.removeItem(WIDTH_KEY)
-        }}
+        onDoubleClick={() => setWidth(DEFAULT_WIDTH)}
       />
     </aside>
   )

@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useAtom } from 'jotai'
 import MapView from './components/MapView'
 import Sidebar from './components/Sidebar'
 import { loadDrawland } from './lib/drawland'
-import { START_DOC } from './lib/presets'
+import { docAtom } from './lib/store'
 import { outputComment, outputUnit, setOutputComment, setOutputKeys } from './lib/doc'
 import { compile, literalOutputInfo } from './lib/graph'
 import { terrainPair } from './components/controls'
@@ -42,7 +43,7 @@ function saveFile(name, text) {
 export default function App() {
   const [engine, setEngine] = useState(null)
   const [engineError, setEngineError] = useState(null)
-  const [doc, setDoc] = useState(START_DOC)
+  const [doc, setDoc] = useAtom(docAtom)
   // The graph the document builds, as the engine's JSON, and whether its
   // output is the script's own (then the page shows it but cannot move it).
   const [graph, setGraph] = useState(null)
@@ -165,6 +166,19 @@ export default function App() {
     workerRef.current.postMessage({ type: 'draw', token, graph, lat, lng })
   }, [engine, graph, output])
 
+  /**
+   * Stop the draw that is running: its token no longer matches, so its events
+   * fall through `onWorkerRef`, the half-drawn card goes, and the status reads
+   * ready again. The worker itself keeps its own copy of the script, so the
+   * next play starts a fresh job rather than resuming this one.
+   */
+  const stop = useCallback(() => {
+    if (status.phase !== 'working') return
+    drawTokenRef.current++
+    setLoad(null)
+    setStatus({ phase: 'ready' })
+  }, [status.phase])
+
   // A drawing belongs to where the output was when it was drawn: once the output
   // moves or changes scale or size, it is stale and goes.
   const here = placeOf(output)
@@ -219,6 +233,16 @@ export default function App() {
     mapApiRef.current?.jumpTo?.(output?.lng, output?.lat)
   }, [output?.lat, output?.lng])
 
+  /** A place the search found: put the output there and bring the map to it. */
+  const searchOutput = useCallback(
+    ({ lat, lng }) => {
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return
+      moveOutput({ lat, lng })
+      mapApiRef.current?.jumpTo?.(lng, lat)
+    },
+    [moveOutput],
+  )
+
   /** What is wrong with `text` as a profile, in the engine's words; `null` when nothing. */
   const check = useCallback(
     async (text) => {
@@ -243,8 +267,9 @@ export default function App() {
       drawing: current,
       busy: status.phase === 'working',
       onDraw: draw,
+      onStop: stop,
     }),
-    [doc, check, output, status, current, draw],
+    [doc, check, output, status, current, draw, stop],
   )
 
   if (engineError) {
@@ -274,6 +299,7 @@ export default function App() {
           onOutputKeys={editOutput}
           onOutputToCentre={centreOutputOnMap}
           onCentreOnOutput={centreMapOnOutput}
+          onSearch={searchOutput}
         />
         <button
           type="button"
