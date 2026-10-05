@@ -1,5 +1,14 @@
 title("Golden Gate · natural land and sea")
-output({ width: "6in", height: "4in", scale: "1:25000", bearing: 0, projection: "webmercator", lat: 37.8199, lng: -122.4783 })
+output({
+  width: "6in",
+  height: "4in",
+  scale: "1:25000",
+  bearing: 0,
+  projection: "webmercator",
+  lat: 37.8199,
+  lng: -122.4783,
+  tileZoom: 14,
+})
 
 // The land and the sea are burin's: a whole burin document, written here in
 // burin's own language, over the whole output. It is the bottom layer, and

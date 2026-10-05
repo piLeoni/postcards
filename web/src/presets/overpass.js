@@ -1,5 +1,14 @@
 title("Everything · Overpass")
-output({ width: "6in", height: "4in", scale: "1:8000", bearing: 0, projection: "webmercator", lat: 37.8771145, lng: -122.256196 })
+output({
+  width: "6in",
+  height: "4in",
+  scale: "1:8000",
+  bearing: 0,
+  projection: "webmercator",
+  lat: 37.8771145,
+  lng: -122.256196,
+  tileZoom: 14,
+})
 
 // The same map, all from Overpass: every OSM tag, road widths from `width`
 // and `lanes`, but a busy server.

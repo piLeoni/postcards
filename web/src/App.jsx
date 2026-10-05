@@ -53,6 +53,9 @@ export default function App() {
   // output is the script's own (then the page shows it but cannot move it).
   const [graph, setGraph] = useState(null)
   const [output, setOutput] = useState(null)
+  // Which document `graph`/`output` were compiled from, so a draw asked for
+  // right after an apply can wait for the right compile instead of racing it.
+  const [compiledDoc, setCompiledDoc] = useState(null)
   const [status, setStatus] = useState({ phase: 'loading' })
   const [drawing, setDrawing] = useState(null)
   const [load, setLoad] = useState(null)
@@ -62,6 +65,13 @@ export default function App() {
   // The vector tiles of the download running, `{ ids, state }`, drawn on the
   // map until the drawing starts.
   const [tiles, setTiles] = useState(null)
+  // The tiles the output will read, planned without a download (`tilesPlan`):
+  // the grid of what the draw will ask for, shown before the draw and after
+  // the output moves or its `tileZoom` changes. `{ ids, zoom, note, warn, at }`
+  // or `null` when the output needs none. Kept apart from `tiles`, which is
+  // the live download; `MapView` shows the plan until the download replaces
+  // it, and the trace again once the download is done.
+  const [planned, setPlanned] = useState(null)
   const [menuOpen, setMenuOpen] = useState(false)
   // The share sheet, a panel over the map rather than over the script column.
   const [sharing, setSharing] = useState(false)
@@ -141,6 +151,7 @@ export default function App() {
         }
         setGraph(c.json)
         setOutput({ ...info, computed: c.computed })
+        setCompiledDoc(doc)
         setStatus((s) => (s.phase === 'loading' || s.phase === 'error' ? { phase: 'ready' } : s))
         if (fitSharedRef.current) {
           fitSharedRef.current = false
@@ -163,6 +174,36 @@ export default function App() {
   const workerRef = useRef(null)
   const onWorkerRef = useRef(null)
   useEffect(() => () => workerRef.current?.terminate(), [])
+
+  // The tile plan runs in a worker of its own (see `plan.worker.js`), so
+  // planning the grid never touches a draw in flight. Its token drops a reply
+  // that a newer plan has already replaced; the worker is kept for the
+  // session, one plan at a time.
+  const planWorkerRef = useRef(null)
+  const planTokenRef = useRef(0)
+  // Where the output was when the plan was asked for, so a stale plan (an
+  // output moved since) can be dropped rather than drawn over the new place.
+  const planAtRef = useRef('')
+  const planTiles = useCallback((graph, at) => {
+    if (!graph) {
+      setPlanned(null)
+      return
+    }
+    planAtRef.current = at
+    if (!planWorkerRef.current) {
+      planWorkerRef.current = new Worker(new URL('./lib/plan.worker.js', import.meta.url), { type: 'module' })
+      planWorkerRef.current.onmessage = ({ data }) => {
+        if (data.token !== planTokenRef.current) return
+        if (data.error || !data.ids?.length) {
+          setPlanned(null)
+          return
+        }
+        setPlanned({ ids: data.ids, zoom: data.zoom, note: data.note, warn: data.warn, at: planAtRef.current })
+      }
+    }
+    planWorkerRef.current.postMessage({ type: 'plan', token: ++planTokenRef.current, graph, maxZoom: 14 })
+  }, [])
+  useEffect(() => () => planWorkerRef.current?.terminate(), [])
 
   const draw = useCallback(() => {
     if (!engine || !graph || !output) return
@@ -288,6 +329,16 @@ export default function App() {
     setTiles((t) => (t?.at && t.at !== here ? null : t))
   }, [here])
 
+  // Plan the grid the output will read: the same tiles `fetchTiles` will
+  // download, from the graph alone, so the grid is on the map before the draw.
+  // Re-planned when the output moves, resizes, turns, or changes `tileZoom`
+  // (all of which give a new `here`), and when the script changes the
+  // selectors (`graph`).
+  useEffect(() => {
+    if (!graph || !here) return
+    planTiles(graph, here)
+  }, [graph, here, planTiles])
+
   // A cut output downloads one file per sheet, a moment apart: browsers drop
   // downloads fired in the same instant.
   const downloadSvg = useCallback(async () => {
@@ -360,6 +411,19 @@ export default function App() {
     [engine],
   )
 
+  // Run and rerun apply first: the sidebar applies the draft, then asks for a
+  // draw. Compiling the document is asynchronous, so the draw waits until the
+  // graph and output on screen were built from the very script just applied.
+  const afterApplyRef = useRef(null)
+  const drawAfterApply = useCallback((text) => {
+    afterApplyRef.current = text
+  }, [])
+  useEffect(() => {
+    if (!afterApplyRef.current || compiledDoc !== afterApplyRef.current || !output) return
+    afterApplyRef.current = null
+    draw()
+  }, [compiledDoc, output, draw])
+
   const sidebar = useMemo(
     () => ({
       doc,
@@ -370,10 +434,11 @@ export default function App() {
       drawing: current,
       busy: status.phase === 'working',
       onDraw: draw,
+      onDrawAfterApply: drawAfterApply,
       onStop: stop,
       onShare: () => setSharing(true),
     }),
-    [doc, check, output, status, current, draw, stop],
+    [doc, check, output, status, current, draw, drawAfterApply, stop],
   )
 
   if (engineError) {
@@ -399,6 +464,7 @@ export default function App() {
           loadMin={loadMin}
           onLoadMin={setLoadMin}
           tiles={tiles}
+          planned={planned}
           onEditOutput={() => setDrawing(null)}
           onDownload={downloadSvg}
           onMoveOutput={moveOutput}

@@ -109,9 +109,10 @@ pub fn osm_evict(entries: &str, now: f64) -> Result<Vec<u32>, JsValue> {
 /// `graph` may be just `{ "output": { … } }`.
 ///
 /// Returns `{ lat, lng, width_mm, height_mm, scale, bearing, padding_x_mm,
-/// padding_y_mm, columns, rows, gutter_x_mm, gutter_y_mm, projection }`, the
-/// projection as
-/// `webmercator`, `utm` or the PROJ string.
+/// padding_y_mm, columns, rows, gutter_x_mm, gutter_y_mm, projection,
+/// tileZoom? }`, the projection as
+/// `webmercator`, `utm` or the PROJ string, and `tileZoom` only when the
+/// document sets it.
 #[wasm_bindgen(js_name = outputInfo)]
 pub fn output_info(graph: &str) -> Result<JsValue, JsValue> {
     use drawland_core::profile::ProjectionMode;
@@ -140,6 +141,37 @@ pub fn output_info(graph: &str) -> Result<JsValue, JsValue> {
     ] {
         js_sys::Reflect::set(&o, &JsValue::from_str(k), &JsValue::from_f64(v)).ok();
     }
+    if let Some(z) = d.output.tile_zoom {
+        js_sys::Reflect::set(&o, &"tileZoom".into(), &JsValue::from_f64(z as f64)).ok();
+    }
+    Ok(o.into())
+}
+
+/// The tile plan of an output, without reading anything: `{ ids, zoom, note,
+/// warn }`, `ids` as `[z, x, y, …]`, for a source whose deepest zoom is
+/// `max_zoom`. The same plan `Job::tiles` builds — what `tiles_select` picks
+/// and the sea when the output draws it — but standalone and side-effect free,
+/// so the page can draw the grid an output will read before any download, and
+/// again whenever the output moves or `tileZoom` changes. `zoom` is the zoom
+/// chosen (as `ids[0]`), `note` the line `tilesNote` would give and `warn` its
+/// warning flag; `ids` is empty when the output needs no tiles.
+///
+/// Without the Overpass features the sea is planned as if OSM had none to
+/// show: a coastline the output draws from OSM may drop a tile or two. That is
+/// the plan of the grid, not of the download, so it does not matter here.
+#[wasm_bindgen(js_name = tilesPlan)]
+pub fn tiles_plan(graph: &str, max_zoom: u8) -> Result<JsValue, JsValue> {
+    let d = Doc::load(graph)?;
+    let o = js_sys::Object::new();
+    let plan = tiles::plan(&d.output, &d.selectors, d.ocean, None).map_err(err)?;
+    let ids = plan.as_ref().map(|t| t.tiles(max_zoom)).unwrap_or_default();
+    let zoom = ids.first().map_or(max_zoom, |t| t.z);
+    let (note, warn) = plan.as_ref().map(|t| t.note(max_zoom)).unwrap_or_default();
+    let arr: js_sys::Array = ids.iter().flat_map(|t| [t.z as f64, t.x as f64, t.y as f64]).map(JsValue::from_f64).collect();
+    js_sys::Reflect::set(&o, &"ids".into(), &arr).ok();
+    js_sys::Reflect::set(&o, &"zoom".into(), &JsValue::from_f64(zoom as f64)).ok();
+    js_sys::Reflect::set(&o, &"note".into(), &JsValue::from_str(&note)).ok();
+    js_sys::Reflect::set(&o, &"warn".into(), &JsValue::from_bool(warn)).ok();
     Ok(o.into())
 }
 

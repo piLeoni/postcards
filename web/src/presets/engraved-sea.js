@@ -1,5 +1,14 @@
 title("Engraved sea · natural land and sea")
-output({ width: "6in", height: "4in", scale: "1:25000", bearing: 0, projection: "webmercator", lat: 37.7, lng: -122.62 })
+output({
+  width: "6in",
+  height: "4in",
+  scale: "1:25000",
+  bearing: 0,
+  projection: "webmercator",
+  lat: 37.7,
+  lng: -122.62,
+  tileZoom: 14,
+})
 
 // The old chart look, drawn by burin over the elevation under the output: the
 // hills in contour lines crossed with a second pass at 45°, two concentric

@@ -300,6 +300,25 @@ export const countModel = {
   nudge: (v, n, shift) => Math.max(1, v + n * (shift ? 10 : 1)),
 }
 
+/**
+ * The tile zoom: a whole number from 0 to the source's deepest (14), or
+ * automatic. The value is `{ z }`, `z` a number or `null` for automatic (so
+ * `parse` never returns `null`, which the field reads as "drop what was
+ * typed"): shown as `auto` when unset, and typing `auto` (or emptying the
+ * field) goes back to automatic. Shift steps by ten.
+ */
+export const TILE_ZOOM_MAX = 14
+const clampZoom = (z) => (z == null ? null : Math.max(0, Math.min(TILE_ZOOM_MAX, z)))
+export const tileZoomModel = {
+  text: (v) => (v?.z == null ? 'auto' : String(v.z)),
+  parse: (s) => {
+    const t = s.trim().toLowerCase()
+    if (t === 'auto' || t === '') return { z: null }
+    return /^\d+$/.test(t) && Number(t) <= TILE_ZOOM_MAX ? { z: Number(t) } : null
+  },
+  nudge: (v, n, shift) => ({ z: clampZoom((v?.z ?? TILE_ZOOM_MAX) + n * (shift ? 10 : 1)) }),
+}
+
 /** The Shift step of a bearing, in degrees. */
 export const SNAP_DEG = 15
 

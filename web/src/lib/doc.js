@@ -165,8 +165,51 @@ function setKey(text, key, value) {
     const at = comma ? last.end + comma[0].length : last.end
     return text.slice(0, at) + `${comma ? '' : ','}\n${indent}${entry}${comma ? ',' : ''}` + text.slice(at)
   }
-  return text.slice(0, last.end) + `, ${entry}` + text.slice(last.end)
+  // The one-liner has grown past a line of editor: lay the whole object out,
+  // one property per line, and put the new one in its place.
+  const grown = text.slice(0, last.end) + `, ${entry}` + text.slice(last.end)
+  return lineEnd(grown, c.object.start) - lineStart(grown, c.object.start) > 100 ? reflow(grown) : grown
 }
+
+/**
+ * The object of the literal `output({…})` in `text`, one property per line at
+ * two spaces from the line the call starts on. Line comments written beside
+ * keys move with them. The text is parsed again, so the caller may have just
+ * grown the object; anything odd (no properties, quoted keys without string
+ * names) leaves the text alone.
+ */
+function reflow(text) {
+  const c = call(text, 'output')
+  if (!c || c.kind !== 'literal' || !c.object.properties.length) return text
+  const from = lineStart(text, c.object.start)
+  const indent = text.slice(from, c.object.start).match(/^\s*/)[0]
+  const in_ = indent + '  '
+  let out = text.slice(0, c.object.start) + '{\n'
+  for (const p of c.object.properties) {
+    const key = p.key
+    const name =
+      key.type === 'Identifier'
+        ? key.name
+        : key.type === 'Literal'
+          ? typeof key.value === 'number'
+            ? String(key.value)
+            : typeof key.value === 'string' && IDENT.test(key.value)
+              ? key.value
+              : JSON.stringify(key.value)
+          : null
+    if (name === null) return text
+    const end = lineEnd(text, p.end)
+    // A line comment belongs to the property it follows only if no other
+    // property sits between them on that line; the last one keeps it.
+    const next = c.object.properties[c.object.properties.indexOf(p) + 1]
+    const comment =
+      next && next.start < end ? null : c.parsed.comments.find((m) => m.type === 'Line' && m.start >= p.end && m.end <= end)
+    out += `${in_}${name}: ${text.slice(p.value.start, p.value.end)}${comment ? `,   ${comment.value.trim()}` : ','}\n`
+  }
+  out += `${indent}}` + text.slice(c.object.end)
+  return out
+}
+
 
 /**
  * Set keys of the literal `output({…})`, e.g. `{ lat, lng }` after the output

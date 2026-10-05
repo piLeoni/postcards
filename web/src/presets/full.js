@@ -1,5 +1,14 @@
 title("Everything · vector tiles")
-output({ width: "6in", height: "4in", scale: "1:8000", bearing: 0, projection: "webmercator", lat: 37.8771145, lng: -122.256196 })
+output({
+  width: "6in",
+  height: "4in",
+  scale: "1:8000",
+  bearing: 0,
+  projection: "webmercator",
+  lat: 37.8771145,
+  lng: -122.256196,
+  tileZoom: 14,
+})
 
 // Parks, water, roads and buildings, all from OpenFreeMap's vector tiles.
 const bldg = features.tiles("buildings")

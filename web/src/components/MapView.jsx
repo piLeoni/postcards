@@ -263,7 +263,7 @@ const tileLabelLayout = {
 
 const tileLabelPaint = {
   'text-color': '#333',
-  'text-opacity': ['match', ['get', 'state'], 0, 0.25, 0.5],
+  'text-opacity': ['match', ['get', 'state'], 0, 0.25, 3, 0.6, 0.5],
   'text-halo-color': '#fff',
   'text-halo-width': 1.5,
 }
@@ -422,14 +422,20 @@ function tileNw(z, x, y) {
  * `state` per tile (0 waiting, 1 read, 2 empty), `live` while they download,
  * `at` where they were read. They stay on the map after the drawing, a trace
  * of where its data came from, unless the output has moved since.
+ *
+ * A planned grid (`planned`, from `tilesPlan`) has `ids` but no `state`: the
+ * tiles the output will read, shown before the draw. It wears state 3, a
+ * fainter, dashed outline with no fill, so it reads as "these are the tiles
+ * this output will ask for" and not as a download already read.
  */
 function showTiles(map, tiles) {
   if (!map.isStyleLoaded()) return false
   const features = []
   const marks = []
-  for (let i = 0; tiles && i < tiles.state.length; i++) {
+  const states = tiles?.state
+  for (let i = 0; tiles && i < tiles.ids.length / 3; i++) {
     const [z, x, y] = tiles.ids.slice(3 * i, 3 * i + 3)
-    const state = tiles.state[i]
+    const state = states ? states[i] : 3
     const label = `${z}/${x}/${y}`
     features.push({
       type: 'Feature',
@@ -447,46 +453,37 @@ function showTiles(map, tiles) {
   if (!map.getSource(TILE_LAYER)) {
     map.addSource(TILE_LAYER, { type: 'geojson', data })
     map.addSource(TILE_LABELS, { type: 'geojson', data: labels })
-    // One strength always: no step down when the draw starts (that read as a glitch).
-    map.addLayer({
-      id: `${TILE_LAYER}-fill`,
-      type: 'fill',
-      source: TILE_LAYER,
-      paint: { 'fill-color': '#000', 'fill-opacity': ['match', ['get', 'state'], 1, 0.06, 0] },
-    })
-    map.addLayer({
-      id: `${TILE_LAYER}-line`,
-      type: 'line',
-      source: TILE_LAYER,
-      paint: {
-        'line-color': '#000',
-        'line-width': 0.5,
-        'line-opacity': ['match', ['get', 'state'], 2, 0.22, 0.3],
-        'line-dasharray': ['match', ['get', 'state'], 2, ['literal', [2, 2]], ['literal', [1, 0]]],
-      },
-    })
-    map.addLayer({
-      id: `${TILE_LAYER}-label`,
-      type: 'symbol',
-      source: TILE_LABELS,
-      layout: tileLabelLayout,
-      paint: tileLabelPaint,
-    })
   } else {
     map.getSource(TILE_LAYER).setData(data)
     if (map.getSource(TILE_LABELS)) map.getSource(TILE_LABELS).setData(labels)
     else map.addSource(TILE_LABELS, { type: 'geojson', data: labels })
-    if (!map.getLayer(`${TILE_LAYER}-label`)) {
-      map.addLayer({
-        id: `${TILE_LAYER}-label`,
-        type: 'symbol',
-        source: TILE_LABELS,
-        layout: tileLabelLayout,
-        paint: tileLabelPaint,
-      })
-    } else {
-      syncTileLabelLayout(map)
-    }
+  }
+  // The paint is applied on every call, not only when the layer is first
+  // added: a color or width changed here then takes effect at once, without
+  // waiting for the layer to be torn down and built again.
+  const tileFillPaint = { 'fill-color': '#000', 'fill-opacity': ['match', ['get', 'state'], 1, 0.06, 0] }
+  const tileLinePaint = {
+    // A planned tile (3) is a continuous gray line, a hint on the map of what
+    // the output will read until the draw lights its tiles up.
+    'line-color': ['match', ['get', 'state'], 3, '#ccc', '#222'],
+    'line-width': ['match', ['get', 'state'], 3, 0.7, 0.5],
+    'line-opacity': ['match', ['get', 'state'], 2, 0.22, 3, 0.75, 0.3],
+    'line-dasharray': ['match', ['get', 'state'], 2, ['literal', [2, 2]], ['literal', [1, 0]]],
+  }
+  if (!map.getLayer(`${TILE_LAYER}-fill`)) {
+    map.addLayer({ id: `${TILE_LAYER}-fill`, type: 'fill', source: TILE_LAYER, paint: tileFillPaint })
+  } else {
+    for (const [k, v] of Object.entries(tileFillPaint)) map.setPaintProperty(`${TILE_LAYER}-fill`, k, v)
+  }
+  if (!map.getLayer(`${TILE_LAYER}-line`)) {
+    map.addLayer({ id: `${TILE_LAYER}-line`, type: 'line', source: TILE_LAYER, paint: tileLinePaint })
+  } else {
+    for (const [k, v] of Object.entries(tileLinePaint)) map.setPaintProperty(`${TILE_LAYER}-line`, k, v)
+  }
+  if (!map.getLayer(`${TILE_LAYER}-label`)) {
+    map.addLayer({ id: `${TILE_LAYER}-label`, type: 'symbol', source: TILE_LABELS, layout: tileLabelLayout, paint: tileLabelPaint })
+  } else {
+    syncTileLabelLayout(map)
   }
   syncTileLabelLayout(map)
   return true
@@ -516,6 +513,7 @@ export default function MapView({
   loadMin,
   onLoadMin,
   tiles,
+  planned,
   onEditOutput,
   onDownload,
   onMoveOutput,
@@ -567,6 +565,8 @@ export default function MapView({
   outputRef.current = editRef.current ? { ...output, ...editRef.current } : output
   const tilesRef = useRef(tiles)
   tilesRef.current = tiles
+  const plannedRef = useRef(planned)
+  plannedRef.current = planned
 
   // The overlay's screen box, computed and applied outside React so it can be
   // set from inside the map's render callback without a re-render per frame.
@@ -679,7 +679,7 @@ export default function MapView({
     // Restyle the basemap on every load, so a `setStyle` swap keeps it too.
     map.on('style.load', () => {
       calm(map)
-      showTiles(map, tilesRef.current)
+      showTiles(map, tilesRef.current ?? plannedRef.current)
     })
 
     // The only surface App gets on the map: where its centre is, and how to
@@ -749,17 +749,23 @@ export default function MapView({
     return () => URL.revokeObjectURL(url)
   }, [drawing?.svg])
 
+  // What the map draws for tiles: the live download (or its trace once done)
+  // when there is one, else the grid planned from the graph — so the tiles an
+  // output will read show before the draw, and the download takes over as it
+  // starts. Both belong to the output's place; App drops either when it moves.
+  const tilesToShow = () => tilesRef.current ?? plannedRef.current
+
   useEffect(() => {
     const map = mapRef.current
     if (!map) return
     const paint = () => {
-      showTiles(map, tilesRef.current)
-      tilesLayerVisible(map, tilesOn && Boolean(tilesRef.current))
+      showTiles(map, tilesToShow())
+      tilesLayerVisible(map, tilesOn && Boolean(tilesToShow()))
     }
     if (paint()) return
     map.once('load', paint)
     return () => map.off('load', paint)
-  }, [tiles, tilesOn])
+  }, [tiles, planned, tilesOn])
 
   // A new drawing closes the transform menu, so it is seen whole. The same one
   // shown again (the output back where it was drawn) leaves the menu be.
@@ -1054,9 +1060,11 @@ export default function MapView({
             ▸ {statusWord(load)}
           </Tag>
         )}
-        {tiles && (
+        {(tiles || planned) && (
           <Tag
-            title="OpenFreeMap vector tiles (Web Mercator z/x/y, OpenMapTiles · © OpenStreetMap)"
+            title={`OpenFreeMap vector tiles (Web Mercator z/x/y, OpenMapTiles · © OpenStreetMap)${
+              tiles ? '' : ` — planned z${planned.zoom}, ${planned.ids.length / 3} tiles`
+            }`}
             aria-pressed={tilesOn}
             className={`cursor-pointer ${RAISED}`}
             onClick={() => setTilesOn((v) => !v)}

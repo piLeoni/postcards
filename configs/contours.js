@@ -4,7 +4,16 @@
 // and they sit on top of the hatching rather than competing with it.
 title("Contours")
 
-output({ width: "6in", height: "4in", scale: "1:20000", bearing: 0, projection: "webmercator", lat: 37.8771145, lng: -122.256196 })
+output({
+  width: "6in",
+  height: "4in",
+  scale: "1:20000",
+  bearing: 0,
+  projection: "webmercator",
+  lat: 37.8771145,
+  lng: -122.256196,
+  tileZoom: 14,
+})
 
 // The hatching, light, under the belts.
 draw({ id: "hatch", from: lines.terrain({ color: "#b9ad93", style: { line_space: 6 } }), stroke: "solid" })

@@ -44,12 +44,15 @@ test('changing a key rewrites its value and nothing else', () => {
 })
 
 test('adding and removing keys keeps the commas right', () => {
+  // Small growth stays on the line; past a line of editor it is reflowed.
+  const small = setOutputKeys(SCRIPT, { bearing: 15 })
+  assert.ok(small.includes('lng: -122.2, bearing: 15 })'), small)
   const added = setOutputKeys(SCRIPT, { bearing: 15, padding: ['1mm', '2mm'] })
-  assert.ok(added.includes('lng: -122.2, bearing: 15, padding: ["1mm", "2mm"] })'), added)
-  assert.deepEqual(outputOf(added).value.padding, ['1mm', '2mm'])
-  const removed = setOutputKeys(added, { width: null, padding: null })
-  assert.deepEqual(Object.keys(outputOf(removed).value), ['height', 'scale', 'lat', 'lng', 'bearing'])
-  assert.ok(removed.includes('output({ height: "4in"'), removed)
+  assert.deepEqual(outputOf(added).value, { width: '6in', height: '4in', scale: '1:8000', lat: 37.8, lng: -122.2, bearing: 15, padding: ['1mm', '2mm'] })
+  assert.ok(added.includes('  bearing: 15,\n'), added)
+  const removed = setOutputKeys(added, { width: null, height: null, padding: null })
+  assert.deepEqual(Object.keys(outputOf(removed).value), ['scale', 'lat', 'lng', 'bearing'])
+  assert.ok(removed.includes('  scale: "1:8000",\n'), removed)
   const slices = setOutputKeys(SCRIPT, { slices: { columns: 2, rows: 1, gutter: '5mm' } })
   assert.deepEqual(outputOf(slices).value.slices, { columns: 2, rows: 1, gutter: '5mm' })
 })
@@ -98,6 +101,49 @@ test('style and shape leave out the title and the output', () => {
   assert.notEqual(shapeOf(SCRIPT.replace('"solid"', '"dash"')), shapeOf(SCRIPT))
   const noted = setOutputComment(SCRIPT, 'scale', 'terrain 1 × 1 km')
   assert.equal(styleOf(noted), styleOf(SCRIPT))
+})
+
+test('a one-line output that grows past a line is reflowed one key per line', () => {
+  const text = 'output({ width: "6in", scale: "1:8000", lat: 37.8771145, lng: -122.256196 })\n'
+  const grown = setOutputKeys(text, { bearing: -34, tileZoom: 14 })
+  assert.equal(
+    grown,
+    `output({
+  width: "6in",
+  scale: "1:8000",
+  lat: 37.8771145,
+  lng: -122.256196,
+  bearing: -34,
+  tileZoom: 14,
+})
+`,
+  )
+  assert.deepEqual(outputOf(grown).value.tileZoom, 14)
+  // Small growth stays on the line.
+  const small = setOutputKeys('output({ width: "6in", height: "4in" })\n', { lat: 1 })
+  assert.equal(small, 'output({ width: "6in", height: "4in", lat: 1 })\n')
+  // Comments beside keys survive the reflow.
+  const noted = setOutputKeys(
+    'output({ width: "6in", height: "4in", scale: "1:8000", lat: 37.8771145, lng: -122.256196 })   // note\n',
+    { tileZoom: 14 },
+  )
+  assert.ok(noted.includes('  width: "6in",\n'), noted)
+  assert.ok(noted.includes('  tileZoom: 14,'), noted)
+  assert.ok(noted.includes('   note\n'), noted)
+  assert.ok(noted.includes('  lat: 37.8771145,\n'), noted)
+})
+
+test('the preset outputs are multi-line with an explicit tileZoom', async () => {
+  const { readFileSync, readdirSync } = await import('node:fs')
+  const { join } = await import('node:path')
+  const dir = join(import.meta.dirname, '..', 'presets')
+  for (const f of readdirSync(dir).filter((n) => n.endsWith('.js'))) {
+    const text = readFileSync(join(dir, f), 'utf8')
+    const o = outputOf(text)
+    assert.equal(o.kind, 'literal', f)
+    assert.equal(o.value.tileZoom, 14, f)
+    assert.ok(text.includes('output({\n  '), `${f}: output is multi-line`)
+  }
 })
 
 test('values are written as the script would write them', () => {

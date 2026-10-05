@@ -1,5 +1,14 @@
 title("Everything · tiles, roads from Overpass")
-output({ width: "6in", height: "4in", scale: "1:8000", bearing: 0, projection: "webmercator", lat: 37.8771145, lng: -122.256196 })
+output({
+  width: "6in",
+  height: "4in",
+  scale: "1:8000",
+  bearing: 0,
+  projection: "webmercator",
+  lat: 37.8771145,
+  lng: -122.256196,
+  tileZoom: 14,
+})
 
 // The same map; only the roads asked of Overpass (widths and lanes), in a
 // request for `highway` alone, so small and more likely to get through.

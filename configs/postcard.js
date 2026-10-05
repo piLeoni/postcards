@@ -1,7 +1,14 @@
 // The postcard: parks, water, roads and buildings, in pen. The CLI draws it
 // when given no profile: `drawland map --lat … --lng …`.
 
-output({ width: "6in", height: "4in", scale: "1:10000", bearing: 0, projection: "webmercator" })
+output({
+  width: "6in",
+  height: "4in",
+  scale: "1:10000",
+  bearing: 0,
+  projection: "webmercator",
+  tileZoom: 14,
+})
 
 // Parks. Each kind claims its area minus the kinds before it, so a garden
 // inside a park is dotted once.

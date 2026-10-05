@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { lengthText } from '../lib/frame'
-import { angleModel, Choice, countModel, degreesModel, Field, lengthModel, MAX_SCALE, MIN_SCALE, Scrub, scaleModel, Section, SNAP_DEG, terrainModel } from './controls'
+import { angleModel, Choice, countModel, degreesModel, Field, lengthModel, MAX_SCALE, MIN_SCALE, Scrub, scaleModel, Section, SNAP_DEG, terrainModel, tileZoomModel } from './controls'
 
 /** Degrees the map turns per pixel a label is dragged. */
 const PX_PER_DEG = 2.5
@@ -64,6 +64,7 @@ export default function OutputControls({ output, units, onEdit, onMove }) {
   const margin = lengthModel(u.padding)
   const gap = lengthModel(u.gutter)
   const terrain = terrainModel(u.terrain)
+  const tileZoom = tileZoomModel
 
   const setWidth = (v) => onEdit({ width: lengthText(v.mm, v.unit) })
   const setHeight = (v) => onEdit({ height: lengthText(v.mm, v.unit) })
@@ -101,6 +102,8 @@ export default function OutputControls({ output, units, onEdit, onMove }) {
     })
   }
   const setBearing = (b) => onEdit({ bearing: b })
+  // The tile zoom the output reads at, or automatic (`null` removes the key).
+  const setTileZoom = (v) => onEdit({ tileZoom: v.z })
   const setSlices = (patch) => onEdit({ slices: slicesKey({ columns, rows, gutter, ...patch }) })
   // Dragging a row's label moves both its values: sizes keep their shape.
   // The terrain width or height on its own: at the same scale, that side of the
@@ -182,6 +185,34 @@ export default function OutputControls({ output, units, onEdit, onMove }) {
           model={terrain}
           value={terrainH}
           onChange={growTerrainHeight}
+        />
+
+        <Scrub
+          icon="▦"
+          label="tile"
+          title="Drag to change the vector tiles' zoom: coarser or finer data, more or fewer tiles on the map"
+          model={tileZoom}
+          value={{ z: output.tileZoom ?? null }}
+          sign={-1}
+          onChange={setTileZoom}
+        />
+        <Field
+          label="tile zoom"
+          title="The vector tiles' zoom (0–14), or 'auto': the grid of the tiles the output reads is drawn on the map"
+          model={tileZoom}
+          value={{ z: output.tileZoom ?? null }}
+          onChange={setTileZoom}
+        />
+
+        <Choice
+          label="tile zoom"
+          title="The vector tiles' zoom: automatic (the deepest that fits), or set to a number"
+          options={[
+            ['auto', 'auto'],
+            ['set', 'set'],
+          ]}
+          value={output.tileZoom == null ? 'auto' : 'set'}
+          onChange={(v) => v === 'auto' && onEdit({ tileZoom: null })}
         />
       </Section>
 

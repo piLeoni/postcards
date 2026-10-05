@@ -1,5 +1,12 @@
 title("Buildings only")
-output({ width: "80mm", height: "60mm", scale: "1:4000", lat: 37.8771145, lng: -122.256196 })
+output({
+  width: "80mm",
+  height: "60mm",
+  scale: "1:4000",
+  lat: 37.8771145,
+  lng: -122.256196,
+  tileZoom: 14,
+})
 
 // Just buildings: the fastest draw there is.
 const footprints = areas.polygons(features.tiles("buildings"))

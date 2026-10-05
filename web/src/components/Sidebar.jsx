@@ -61,7 +61,7 @@ const PRESET_STYLES = PRESETS.map((p) => [p, styleOf(p.doc)])
 /** A file name from a title: `Parks and buildings` → `parks-and-buildings`. */
 const slug = (s) => s.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
 
-export default function Sidebar({ open, onClose, doc, setDoc, check, output, status, drawing, busy, onDraw, onStop, onShare }) {
+export default function Sidebar({ open, onClose, doc, setDoc, check, output, status, drawing, busy, onDraw, onDrawAfterApply, onStop, onShare }) {
   const [width, setWidth] = useAtom(sidebarWidthAtom)
   const [draft, setDraft] = useState(null)   // text typed but not applied yet
   const [notice, setNotice] = useState(null)   // { text, error? }
@@ -136,18 +136,34 @@ export default function Sidebar({ open, onClose, doc, setDoc, check, output, sta
 
   /** A script is only applied once it runs and the engine takes it; else it stays a draft and says why. */
   const applyDraft = async () => {
-    if (!dirty) return
+    if (!dirty) return true
     const text = draft
     const wrong = await check(text)
-    if (shownRef.current !== text) return
+    if (shownRef.current !== text) return false
     if (wrong) {
       setProblem({ kind: 'apply', title: 'Not applied', text: wrong })
       mark(wrong)
-      return
+      return false
     }
     clearProblem()
     setDoc(text)
     setDraft(null)
+    return true
+  }
+
+  /**
+   * Run applies first, then draws: a run over an edited script draws what the
+   * editor says, not the last applied one. A script that does not apply is not
+   * drawn; the reason is already on screen.
+   */
+  const run = async () => {
+    if (!dirty) {
+      onDraw()
+      return
+    }
+    const text = draft
+    if (!(await applyDraft())) return
+    onDrawAfterApply(text)
   }
 
   // A draw that fails says why in the same card.
@@ -330,10 +346,10 @@ export default function Sidebar({ open, onClose, doc, setDoc, check, output, sta
             size-="small"
             variant-={busy ? 'background1' : 'foreground0'}
             className="ml-auto inline-flex items-center gap-[0.75ch]"
-            title={busy ? 'Stop the draw' : drawing ? 'Draw the script again' : 'Draw the script'}
+            title={busy ? 'Stop the draw' : drawing ? 'Apply the script, then draw it again' : 'Apply the script, then draw it'}
             aria-label={busy ? 'Stop the draw' : 'Draw the script'}
             disabled={!output || (!busy && !onDraw)}
-            onClick={busy ? onStop : onDraw}
+            onClick={busy ? onStop : run}
           >
             {busy ? (
               <svg aria-hidden viewBox="0 0 12 12" className="h-[1em] w-[1em] shrink-0" fill="currentColor">
