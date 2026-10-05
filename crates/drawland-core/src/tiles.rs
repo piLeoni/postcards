@@ -30,7 +30,20 @@ const WIDTH_PX: usize = 2048;
 
 /// Features come from the deepest zoom, where every building is; past this
 /// many tiles the output is big enough to step out a zoom at a time.
+///
+/// Buildings live deeper still: OpenFreeMap has none at z12 and below, so a
+/// document that reads them pads out the cap rather than losing them. Tiles
+/// are small (tens of KB) and the host fetches them eight at a time, so a
+/// few hundred is a few seconds, not a memory problem.
 const MAX_FEATURE_TILES: usize = 64;
+const MAX_BUILDING_TILES: usize = 1024;
+
+/// Whether a selector asks for buildings specifically: only those pay for the
+/// deeper zoom, since the shallower layers (roads, water, landcover) read as
+/// well from fewer tiles.
+fn wants_buildings(selectors: &[String]) -> bool {
+    selectors.iter().any(|s| s.split(&[',', ' '][..]).any(|part| part.trim().split(':').next() == Some("building") || part.trim() == "buildings"))
+}
 
 /// What a document reads from the tiles, decided once Overpass (if the
 /// document asks it anything) has answered: the `tiles_select` selections,
@@ -50,6 +63,9 @@ pub struct Tiles {
     /// What `tiles_select` picks; `None` when the sea is all.
     select: Option<Filter>,
     ocean: bool,
+    /// How many tiles the deepest zoom may need before stepping out: the
+    /// larger cap when buildings are read, the smaller one otherwise.
+    max_tiles: usize,
     /// Everything read: the selections and the sea.
     filter: Filter,
     data: Features,
@@ -73,7 +89,8 @@ impl Tiles {
             all.push("ocean".into());
         }
         let filter = Filter::parse(&all).map_err(|e| e.to_string())?;
-        Ok(Tiles { bounds, select, ocean, filter, data: Features::new() })
+        let max_tiles = if wants_buildings(selectors) { MAX_BUILDING_TILES } else { MAX_FEATURE_TILES };
+        Ok(Tiles { bounds, select, ocean, max_tiles, filter, data: Features::new() })
     }
 
     /// `[west, south, east, north]`.
@@ -92,7 +109,7 @@ impl Tiles {
             return zoom_for(&self.bounds, WIDTH_PX, &ZoomLimits { max_zoom, ..ZoomLimits::default() });
         }
         let mut z = max_zoom;
-        while z > 0 && tiles_for(&self.bounds, z).len() > MAX_FEATURE_TILES {
+        while z > 0 && tiles_for(&self.bounds, z).len() > self.max_tiles {
             z -= 1;
         }
         z
@@ -219,10 +236,18 @@ mod tests {
         assert_eq!(t.zoom(14), 14);
         assert!(t.ocean().is_none());
         assert_eq!(t.filter().layers(), ["building", "transportation"]);
-        // A third of a degree is too many z14 tiles: a zoom out.
-        let wide = polygon![(x: -122.6, y: 37.6), (x: -122.3, y: 37.6), (x: -122.3, y: 37.9), (x: -122.6, y: 37.9)];
+        // Four degrees across is too many z14 tiles even for the buildings'
+        // larger cap: a zoom out.
+        let wide = polygon![(x: -124.0, y: 36.0), (x: -120.0, y: 36.0), (x: -120.0, y: 39.0), (x: -124.0, y: 39.0)];
         let big = Tiles::new(&wide, &["buildings".into()], false).unwrap();
-        assert!(big.zoom(14) < 14 && big.tiles(14).len() <= MAX_FEATURE_TILES);
+        assert!(big.zoom(14) < 14 && big.tiles(14).len() <= MAX_BUILDING_TILES);
+        // Buildings buy a deeper zoom than the rest on an output too big for
+        // the small cap but not for the buildings' one.
+        let strip = polygon![(x: 8.88, y: 45.33), (x: 9.47, y: 45.33), (x: 9.47, y: 45.61), (x: 8.88, y: 45.61)];
+        let with = Tiles::new(&strip, &["buildings".into()], false).unwrap();
+        let without = Tiles::new(&strip, &["roads".into()], false).unwrap();
+        assert_eq!(with.zoom(14), 14);
+        assert!(without.zoom(14) < 14);
         assert!(Tiles::new(&small, &["forrest".into()], false).is_err());
     }
 
