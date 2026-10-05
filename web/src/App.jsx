@@ -228,17 +228,17 @@ export default function App() {
     if (c) moveOutput(c)
   }, [moveOutput])
 
-  /** Move the map onto the output. */
+  /** Move the map onto the output, sized to it: the whole selection in view. */
   const centreMapOnOutput = useCallback(() => {
-    mapApiRef.current?.jumpTo?.(output?.lng, output?.lat)
+    if (output) mapApiRef.current?.fit?.(output.lng, output.lat)
   }, [output?.lat, output?.lng])
 
-  /** A place the search found: put the output there and bring the map to it. */
+  /** A place the search found: put the output there, and the map on it, sized to the selection. */
   const searchOutput = useCallback(
     ({ lat, lng }) => {
       if (!Number.isFinite(lat) || !Number.isFinite(lng)) return
       moveOutput({ lat, lng })
-      mapApiRef.current?.jumpTo?.(lng, lat)
+      mapApiRef.current?.fit?.(lng, lat)
     },
     [moveOutput],
   )

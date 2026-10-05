@@ -1,3 +1,4 @@
+import { atom } from 'jotai'
 import { atomWithStorage } from 'jotai/utils'
 import { START_DOC } from './presets'
 
@@ -12,17 +13,23 @@ try {
     if (localStorage.getItem(renamed) === null) localStorage.setItem(renamed, localStorage.getItem(key))
     localStorage.removeItem(key)
   }
+  // The search used to be saved between visits; it is now a session atom
+  // (`searchAtom`), so drop the old key rather than leave a stale query behind.
+  localStorage.removeItem('drawland.search')
 } catch {
   // No localStorage (private mode): nothing was saved.
 }
 
 /**
  * What the page keeps between visits, in one place: the script, where the map
- * was, how wide the column was, and the last search. Each is a Jotai atom
- * stored in `localStorage` under a `drawland.` key, so a reload — or a closed
- * tab reopened tomorrow — comes back where it was left. A page with no
+ * was, and how wide the column was. Each is a Jotai atom stored in
+ * `localStorage` under a `drawland.` key, so a reload — or a closed tab
+ * reopened tomorrow — comes back where it was left. A page with no
  * `localStorage` (private mode) still works; the atoms just start at their
  * defaults.
+ *
+ * The search is not among them: it lives for one session only (see
+ * `searchAtom`), and a reload starts it empty again.
  */
 
 /** Read the stored value on the very first render, not a moment after: the
@@ -40,5 +47,12 @@ export const mapViewAtom = atomWithStorage('drawland.mapView', null, undefined, 
 /** The right column's width, in px. */
 export const sidebarWidthAtom = atomWithStorage('drawland.sidebarWidth', 448, undefined, ON_INIT)
 
-/** The last search: the text typed, and the place picked from it, if any. */
-export const searchAtom = atomWithStorage('drawland.search', { query: '', place: null }, undefined, ON_INIT)
+/**
+ * The search, for one session only: the text typed, the matches it found, and
+ * the place picked from them, if any. It is deliberately *not* in
+ * `localStorage`: a reload should start from a clean field, not come back to a
+ * query and quietly run it again. Within the session it is kept whole, so
+ * closing the panel and reopening it shows the same results without another
+ * lookup.
+ */
+export const searchAtom = atom({ query: '', rows: [], state: 'idle', place: null })

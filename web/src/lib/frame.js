@@ -62,15 +62,20 @@ export function zoomFor(lat, groundWkm, boxPx) {
   return Math.log2((EARTH_M * cos * boxPx) / (TILE_PX * groundWkm * 1000))
 }
 
-/** How much to zoom, in levels, for the output to fill the map; 0 without an output. */
-export function zoomToFit(map, output) {
+/**
+ * How much to zoom, in levels, for the output to fill the map; 0 without an
+ * output. `pad` is the space kept around it, `FIT_PAD` by default: the
+ * automatic fit hugs the output, while an explicit "map to selection" asks for
+ * more air around it.
+ */
+export function zoomToFit(map, output, pad = FIT_PAD) {
   const g = groundKm(output)
   if (!g) return 0
   const el = map.getContainer()
   const kmPerPx = groundWidthAt(output.lat, map.getZoom(), 1)
   const k = Math.min(
-    (el.clientWidth - 2 * FIT_PAD) / (g[0] / kmPerPx),
-    (el.clientHeight - 2 * FIT_PAD) / (g[1] / kmPerPx),
+    (el.clientWidth - 2 * pad) / (g[0] / kmPerPx),
+    (el.clientHeight - 2 * pad) / (g[1] / kmPerPx),
   )
   return k > 0 ? Math.log2(k) : 0
 }

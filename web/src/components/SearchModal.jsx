@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import { useAtom } from 'jotai'
 import { searchAtom } from '../lib/store'
 
@@ -42,19 +42,24 @@ function placeParts(p) {
 
 export default function SearchModal({ open, onClose, onPick }) {
   const [saved, setSaved] = useAtom(searchAtom)
-  const [query, setQuery] = useState(saved.query ?? '')
-  const [rows, setRows] = useState([])
-  const [state, setState] = useState('idle') // idle | looking | empty | failed
+  // The field, the matches and what they mean all come from the one session
+  // atom, so closing and reopening the panel shows them again unchanged.
+  const { query, rows, state } = saved
   const inputRef = useRef(null)
   const abortRef = useRef(null)
+  // The exact text the shown matches answer. Reopening the panel sets the same
+  // text again; comparing against this, rather than running a lookup per render,
+  // is what keeps a reopen from searching a second time.
+  const searchedRef = useRef(null)
 
-  // Reopening shows the search as it was left, and the cursor already in the
-  // field with it; the lookup below runs again from that text.
+  // Reopening puts the cursor in the field, at the end of what was typed; the
+  // matches are already in the atom, so nothing is fetched for them.
   useEffect(() => {
     if (!open) return
-    setQuery(saved.query ?? '')
-    setRows([])
-    const t = setTimeout(() => inputRef.current?.focus(), 0)
+    const t = setTimeout(() => {
+      inputRef.current?.focus()
+      inputRef.current?.setSelectionRange(query.length, query.length)
+    }, 0)
     return () => clearTimeout(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
@@ -68,42 +73,43 @@ export default function SearchModal({ open, onClose, onPick }) {
   }, [open, onClose])
 
   // One query, one request: the previous one is dropped as soon as the text
-  // changes again, so a slow reply cannot overwrite a fresh one.
+  // changes again, so a slow reply cannot overwrite a fresh one. A text that is
+  // already answered — the state a reopen comes back to — is left alone.
   useEffect(() => {
     if (!open) return
-    const q = query.trim()
+    const q = saved.query.trim()
+    if (q === searchedRef.current) return
+    searchedRef.current = q
     abortRef.current?.abort()
     if (q.length < 3) {
-      setRows([])
-      setState('idle')
+      setSaved((s) => ({ ...s, rows: [], state: 'idle' }))
       return
     }
     const ctrl = new AbortController()
     abortRef.current = ctrl
     const t = setTimeout(async () => {
-      setState('looking')
+      setSaved((s) => ({ ...s, state: 'looking' }))
       try {
         const url = `${ENDPOINT}?format=jsonv2&addressdetails=1&limit=${LIMIT}&q=${encodeURIComponent(q)}`
         const res = await fetch(url, { signal: ctrl.signal, headers: { Accept: 'application/json' } })
         if (!res.ok) throw new Error(`Nominatim answered ${res.status}`)
         const data = await res.json()
-        setRows(Array.isArray(data) ? data : [])
-        setState(Array.isArray(data) && data.length ? 'idle' : 'empty')
+        const list = Array.isArray(data) ? data : []
+        setSaved((s) => (s.query.trim() === q ? { ...s, rows: list, state: list.length ? 'idle' : 'empty' } : s))
       } catch (e) {
         if (e?.name === 'AbortError') return
-        setRows([])
-        setState('failed')
+        setSaved((s) => (s.query.trim() === q ? { ...s, rows: [], state: 'failed' } : s))
       }
     }, DEBOUNCE_MS)
     return () => { clearTimeout(t); ctrl.abort() }
-  }, [open, query])
+  }, [open, saved.query, setSaved])
 
   if (!open) return null
 
   const pick = (p) => {
     const { title, detail } = placeParts(p)
     const text = detail ? `${title}, ${detail}` : title
-    setSaved((s) => ({ ...s, query: query.trim(), place: { lat: Number(p.lat), lng: Number(p.lon), text } }))
+    setSaved((s) => ({ ...s, place: { lat: Number(p.lat), lng: Number(p.lon), text } }))
     onPick?.({ lat: Number(p.lat), lng: Number(p.lon), text })
     onClose?.()
   }
@@ -143,10 +149,7 @@ export default function SearchModal({ open, onClose, onPick }) {
             placeholder="Eiffel Tower, Central Park, 10 Downing Street…"
             aria-label="Search an address or a place"
             className="min-w-0 flex-1 appearance-none bg-transparent py-[0.25lh] outline-none placeholder:opacity-40 [&::-webkit-search-cancel-button]:hidden"
-            onChange={(e) => {
-              setQuery(e.target.value)
-              setSaved((s) => ({ ...s, query: e.target.value }))
-            }}
+            onChange={(e) => setSaved((s) => ({ ...s, query: e.target.value }))}
           />
           {state === 'looking' && <span className="shrink-0 opacity-60">looking…</span>}
         </label>

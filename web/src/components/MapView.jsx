@@ -238,6 +238,13 @@ function calm(map) {
 const GAP = 4
 /** Pixels the tags keep from the map's edges. */
 const EDGE = 8
+/**
+ * Space kept around the output when the map is brought to it on purpose — the
+ * search, "map to selection" — as against the tighter `FIT_PAD` the automatic
+ * fit hugs it with. Twice the air, so the selection reads as a frame with room
+ * around it, not as something crammed to the edges.
+ */
+const FIT_AIR = 2 * FIT_PAD
 /** What floats over the map: the output, its menu, the buttons in the corner. */
 const RAISED = 'shadow-[0_2px_8px_rgba(0,0,0,0.18)]'
 
@@ -462,6 +469,11 @@ export default function MapView({
 
     // The only surface App gets on the map: where its centre is, and how to
     // move it there. Everything else flows through `output`.
+    //
+    // `fit` puts the map on a place *and* sizes it to the selection, a little
+    // wider than the automatic fit: the same ground the output covers, with
+    // `FIT_AIR` around it. It takes the new lon/lat because a move and a fit are
+    // written together, and the output atom has not caught up yet.
     if (apiRef) {
       apiRef.current = {
         center: () => {
@@ -469,6 +481,11 @@ export default function MapView({
           return { lat: c.lat, lng: c.lng }
         },
         jumpTo: (lng, lat) => map.jumpTo({ center: [lng, lat] }),
+        fit: (lng, lat) => {
+          const at = outputRef.current ? { ...outputRef.current, lat, lng } : null
+          const zoom = at ? map.getZoom() + zoomToFit(map, at, FIT_AIR) : map.getZoom()
+          map.jumpTo({ center: [lng, lat], zoom })
+        },
       }
     }
 
