@@ -37,6 +37,9 @@ pub enum RunError {
     Fill(#[from] FillError),
     #[error("def {def}: {source}")]
     Def { def: String, source: FillError },
+    /// A fill that would not fit the host's memory, with what to do about it.
+    #[error("{0}")]
+    TooLarge(String),
 }
 
 /// One evaluated def, or one named output published by a module.
@@ -94,6 +97,8 @@ pub struct Inputs<'a> {
     /// terrain; `None` when none does, so a document that never asks costs
     /// nothing.
     pub terrain: Option<crate::terrain::Grid>,
+    /// Bytes the filling may use at most; `None` draws without a ceiling.
+    pub memory_budget: Option<u64>,
 }
 
 /// Evaluate `grammar` against `inputs`, project to `output`, compose and write.
@@ -103,6 +108,22 @@ pub fn run(grammar: &Grammar, output: &Output, inputs: Inputs) -> Result<Rendere
     draw.ok("");
     Ok(out)
 }
+
+/// Whether to note resident memory at each step: `DRAWLAND_MEM` in the
+/// environment. Off by default; the notes go into the same progress log the
+/// terminal already shows.
+fn probing() -> bool {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ON.get_or_init(|| std::env::var_os("DRAWLAND_MEM").is_some())
+}
+
+/// One line of memory at a named step, when probing.
+fn probe(draw: &Task, what: &str) {
+    if probing() {
+        draw.log(Level::Info, &format!("mem {what}: {}", crate::progress::human_bytes(crate::progress::resident_bytes())));
+    }
+}
+
 
 /// [`run`], with every step a task under `draw`: projecting, the defs, each
 /// fill, composing, writing.
@@ -116,6 +137,7 @@ pub fn run_with(grammar: &Grammar, output: &Output, inputs: Inputs, draw: &Task)
 
     let project = draw.child("project", "project", (inputs.features.len() + inputs.tiles.len()) as u64, "features");
     let projector = crate::projection::Projector::new(output);
+    probe(draw, "start");
     let warp = &grammar.output.warp;
     let (w, h) = (output.width_mm, output.height_mm);
     let projected = |features: Vec<Feature>| -> Vec<Feature> {
@@ -130,6 +152,7 @@ pub fn run_with(grammar: &Grammar, output: &Output, inputs: Inputs, draw: &Task)
     };
     let features = projected(inputs.features);
     let tiles = projected(inputs.tiles);
+    probe(draw, "projected");
     let frame = MultiPolygon::new(vec![output.query_polygon()]);
     let ocean = inputs.ocean.map(|o| warp.bend_area(w, h, &projector.project_geometry(&geom::intersection(&o, &frame))));
     let engine = Engine {
@@ -142,11 +165,16 @@ pub fn run_with(grammar: &Grammar, output: &Output, inputs: Inputs, draw: &Task)
     project.ok("");
 
     let values = evaluate(grammar, &Found { osm: &features, tiles: &tiles }, &engine, draw)?;
+    probe(draw, "areas+lines");
 
     // Fills come last: they need areas, and they call into penfill.
     let fill_defs: Vec<&Def> = grammar.defs(Section::Fills).iter().filter(|d| matches!(d.op, Op::Fill(_))).collect();
     let fills_task = draw.child("fills", "fills", fill_defs.len() as u64, "fills");
     let mut fills: BTreeMap<Name, Lines> = BTreeMap::new();
+    // Bytes of fill strokes held so far, for the running ceiling: the fills
+    // all stay alive at once, so the budget is shared between them and not
+    // handed out fresh to each.
+    let mut held: u64 = 0;
     for def in fill_defs {
         let Op::Fill(spec) = &def.op else { continue };
         let name = def.reference();
@@ -155,19 +183,56 @@ pub fn run_with(grammar: &Grammar, output: &Output, inputs: Inputs, draw: &Task)
             .get(&spec.in_area)
             .ok_or_else(|| RunError::Plan(format!("{name}: missing input {}", spec.in_area)))?
             .area(&spec.in_area)?;
+        // Inside a page, a fill that cannot fit its memory must be refused
+        // before it starts: the WASM allocator traps rather than returning
+        // null, and the trap ends the draw with nothing to show. Running from
+        // the command line, `memory_budget` is `None` and this is skipped.
+        if let Some(budget) = inputs.memory_budget {
+            let spacing = fill::spacing_mm(&spec.spec).unwrap_or(0.5);
+            let generator = spec.spec.generator.clone().unwrap_or_else(|| "dots".into());
+            let estimate = crate::budget::cost(area_area(area), &generator, spacing);
+            let total = held.saturating_add(estimate.bytes);
+            if total > budget {
+                // Say what is actually in the way: the held fills only when
+                // there are any, so an over-budget first fill does not read
+                // "and the fills already held need 0 MB".
+                let why = if held == 0 {
+                    format!("this first fill alone needs {}, more than the {}", crate::progress::human_bytes(estimate.bytes), crate::progress::human_bytes(budget))
+                } else {
+                    format!(
+                        "this fill needs {}, on top of the {} already held, together more than the {}",
+                        crate::progress::human_bytes(estimate.bytes),
+                        crate::progress::human_bytes(held),
+                        crate::progress::human_bytes(budget),
+                    )
+                };
+                let detail = format!(
+                    "{name}: {why}. This fill lays about {} strokes over {} mm² of paper. \
+                     Widen the spacing, use a sparser pattern, shrink the output, or draw at a smaller scale.",
+                    thousands(estimate.strokes),
+                    thousands(estimate.area_mm2 as u64),
+                );
+                task.fail(&detail);
+                return Err(RunError::TooLarge(detail));
+            }
+            held = total;
+        }
         let lines = run_fill(spec, area, &values, &sources, &name, &task).map_err(|e| match e {
             RunError::Def { source, .. } => RunError::Def { def: def.label(), source },
             other => other,
         })?;
         task.ok(&format!("{} lines", thousands(lines.len() as u64)));
         fills_task.tick();
+        probe(draw, &format!("fill {name}"));
         fills.insert(name, lines);
     }
     fills_task.ok("");
+    probe(draw, "fills");
 
     let compose_task = draw.child("compose", "compose", 0, "");
     let groups = compose(grammar, &values, &fills, &compose_task)?;
     compose_task.ok(&format!("{} groups", groups.len()));
+    probe(draw, "composed");
 
     let svg_task = draw.child("svg", "svg", 0, "");
     let spec = &grammar.output;
@@ -421,8 +486,13 @@ fn module_output<'a>(
         .ok_or_else(|| RunError::Plan(format!("module_{module} was not evaluated")))
 }
 
-fn refs_of(rules: &UnionRules) -> Vec<Name> {
-    match rules {
+/// Paper area of a region, square millimetres, for the fill cost estimate.
+fn area_area(mp: &MultiPolygon<f64>) -> f64 {
+    use geo::Area;
+    mp.unsigned_area()
+}
+
+fn refs_of(rules: &UnionRules) -> Vec<Name> {    match rules {
         UnionRules::Refs(ns) => ns.clone(),
         UnionRules::Ref(n) => vec![n.clone()],
     }
@@ -550,6 +620,9 @@ fn compose(
     for id in &order {
         occlude_task.tick();
         let Some(lines) = parts.get(id) else { continue };
+        if probing() {
+            occlude_task.log(Level::Info, &format!("mem group {id} in: {}", crate::progress::human_bytes(crate::progress::resident_bytes())));
+        }
         let mut above = geom::empty();
         for (name, mask) in &grammar.compose.masks {
             if !mask.occludes.iter().any(|o| &o.0 == id) {
@@ -574,6 +647,9 @@ fn compose(
             }
         };
         let kept = geom::clip_lines(lines, &above, true);
+        if probing() {
+            occlude_task.log(Level::Info, &format!("mem group {id} clipping: {} in, {} out, {}", crate::progress::human_bytes(crate::progress::resident_bytes()), thousands(kept.len() as u64), thousands(lines.len() as u64)));
+        }
         out.push((id.clone(), kept));
     }
     occlude_task.ok("");
@@ -637,7 +713,7 @@ mod tests {
         run(
             &grammar,
             &output(),
-            Inputs { features: vec![], tiles: vec![], ocean: None, sources: &BTreeMap::new(), terrain: None },
+            Inputs { features: vec![], tiles: vec![], ocean: None, sources: &BTreeMap::new(), terrain: None, memory_budget: None },
         )
     }
 
@@ -731,7 +807,7 @@ mod tests {
              draw:\n  - { id: sea, from: $fills.waves }\n  - { id: ring, from: $lines.ring, stroke: solid }\n";
         let grammar = from_yaml(text).unwrap();
         let ocean = MultiPolygon::new(vec![output().query_polygon()]);
-        let out = run(&grammar, &output(), Inputs { features: vec![], tiles: vec![], ocean: Some(ocean), sources: &BTreeMap::new(), terrain: None })
+        let out = run(&grammar, &output(), Inputs { features: vec![], tiles: vec![], ocean: Some(ocean), sources: &BTreeMap::new(), terrain: None, memory_budget: None })
             .unwrap();
         let strokes = |id: &str| out.groups.iter().find(|(g, _)| g == id).map_or(0, |(_, n)| *n);
         assert!(strokes("sea") >= 40, "one line per mm across the output, got {}", strokes("sea"));

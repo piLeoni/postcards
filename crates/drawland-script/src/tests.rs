@@ -101,7 +101,7 @@ fn a_script_draws_contours_in_a_loop_over_elevation_bands() {
     let out = run(
         &g,
         &output,
-        Inputs { features: vec![], tiles: vec![], ocean: None, sources: &BTreeMap::new(), terrain: Some(terrain) },
+        Inputs { features: vec![], tiles: vec![], ocean: None, sources: &BTreeMap::new(), terrain: Some(terrain), memory_budget: None },
     )
     .unwrap();
     assert_eq!(out.groups.len(), 3, "three contour belts");
@@ -130,7 +130,7 @@ fn the_postcard_script_renders_without_osm_data() {
     let back = Grammar::from_json(&g.to_json().to_string()).unwrap();
     assert_eq!(back, g, "the graph survives JSON");
     let output = Output::new(&g.output, (-122.256196, 37.8771145));
-    let out = run(&g, &output, Inputs { features: vec![], tiles: vec![], ocean: None, sources: &BTreeMap::new(), terrain: None }).unwrap();
+    let out = run(&g, &output, Inputs { features: vec![], tiles: vec![], ocean: None, sources: &BTreeMap::new(), terrain: None, memory_budget: None }).unwrap();
     assert!(!out.svg.is_empty());
     assert_eq!(out.groups.len(), 15);
 }
@@ -167,7 +167,7 @@ fn a_script_draws_terrain_from_the_elevation() {
     let out = run(
         &g,
         &output,
-        Inputs { features: vec![], tiles: vec![], ocean: None, sources: &BTreeMap::new(), terrain: Some(terrain) },
+        Inputs { features: vec![], tiles: vec![], ocean: None, sources: &BTreeMap::new(), terrain: Some(terrain), memory_budget: None },
     )
     .unwrap();
     assert_eq!(out.groups.len(), 2, "two terrain groups");
@@ -216,7 +216,7 @@ fn a_burin_document_runs_inside_a_profile() {
     let out = run(
         &g,
         &output,
-        Inputs { features: vec![], tiles: vec![], ocean: None, sources: &BTreeMap::new(), terrain: Some(terrain) },
+        Inputs { features: vec![], tiles: vec![], ocean: None, sources: &BTreeMap::new(), terrain: Some(terrain), memory_budget: None },
     )
     .unwrap();
     assert_eq!(out.groups.len(), 1);

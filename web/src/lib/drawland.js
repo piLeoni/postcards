@@ -8,8 +8,12 @@ let ready = null
 export async function loadDrawland() {
   if (!ready) {
     ready = Function('return import("/pkg/drawland_wasm.js")')().then(async (m) => {
-      await m.default()
-      return m
+      // `m` is a frozen module namespace, so the memory handle is hung off a
+      // small wrapper instead of added to it. It is the module's own
+      // `WebAssembly.Memory` export, which the worker reads to size the fill
+      // budget. `m.default()` returns the wasm exports object.
+      const wasm = await m.default()
+      return { ...m, memory: wasm.memory }
     })
   }
   return ready

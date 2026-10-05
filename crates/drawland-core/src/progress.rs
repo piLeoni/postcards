@@ -13,6 +13,39 @@
 
 use std::sync::atomic::{AtomicU64, Ordering};
 
+/// A display was asked for resident memory: the bytes this process holds, or
+/// 0 when the platform cannot say (the browser, where WASM memory is the
+/// page's business, reaches none of this).
+#[cfg(unix)]
+pub fn resident_bytes() -> u64 {
+    // `/proc/self/statm` on Linux, `ps` elsewhere; the first number is pages.
+    if let Ok(text) = std::fs::read_to_string("/proc/self/statm") {
+        if let Some(pages) = text.split_whitespace().next().and_then(|n| n.parse::<u64>().ok()) {
+            return pages * 4096;
+        }
+    }
+    let out = std::process::Command::new("ps").args(["-o", "rss=", "-p"]).arg(std::process::id().to_string()).output();
+    out.ok()
+        .and_then(|o| String::from_utf8(o.stdout).ok())
+        .and_then(|s| s.trim().parse::<u64>().ok())
+        .map_or(0, |kb| kb * 1024)
+}
+
+#[cfg(not(unix))]
+pub fn resident_bytes() -> u64 {
+    0
+}
+
+/// `1.2 GB` for a byte count, for the probe notes.
+pub fn human_bytes(bytes: u64) -> String {
+    let gb = bytes as f64 / (1024.0 * 1024.0 * 1024.0);
+    if gb >= 1.0 {
+        format!("{gb:.2} GB")
+    } else {
+        format!("{:.0} MB", bytes as f64 / (1024.0 * 1024.0))
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Level {
     Info,

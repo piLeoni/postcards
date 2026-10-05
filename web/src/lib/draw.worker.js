@@ -31,6 +31,13 @@ async function run({ token, graph, lat, lng }) {
     download.log('info', `centre ${lat.toFixed(7)}, ${lng.toFixed(7)}`)
     const job = new engine.Job(graph, lat, lng)
     try {
+      // How much room there is, so a fill that cannot fit is refused with a
+      // message rather than trapping in the wasm allocator. `memory.buffer`
+      // is the current size, which grows as the draw runs, so the ceiling is
+      // the import's maximum, or the browser's own limit when there is none.
+      const buf = engine.memory?.buffer
+      const cap = buf?.maximum ?? 4 * 1024 * 1024 * 1024
+      if (cap) job.memoryBudget = cap
       // Overpass only for an output that selects from it (`osm_select`).
       let bytes = 0
       if (job.needsOsm) {

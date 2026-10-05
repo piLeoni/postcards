@@ -294,7 +294,7 @@ fn map_v3(
     let rendered = drawland_core::grammar_run::run_with(
         &grammar,
         &output,
-        drawland_core::grammar_run::Inputs { features, tiles, ocean, sources: &sources, terrain },
+        drawland_core::grammar_run::Inputs { features, tiles, ocean, sources: &sources, terrain, memory_budget: None },
         &draw,
     )
     .map_err(|e| e.to_string())?;

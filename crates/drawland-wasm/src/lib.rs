@@ -185,6 +185,35 @@ pub struct Job {
     /// only when a def draws terrain.
     elevation: Option<terramask::Elevation>,
     terrain: Option<drawland_core::terrain::Grid>,
+    /// What the filling may use at most, in bytes; `None` for no ceiling.
+    memory_budget: Option<u64>,
+    /// Set when a draw failed in a way that may have left the wasm heap
+    /// unusable. Every later call refuses, and `free` is left to the
+    /// finalizer, so a broken job cannot throw on drop and hide the real
+    /// error (`Job::draw`).
+    poisoned: bool,
+}
+
+impl Default for Job {
+    fn default() -> Self {
+        Job {
+            doc: Doc {
+                output: Output::new(&empty_spec(), (0.0, 0.0)),
+                keys: Vec::new(),
+                selectors: Vec::new(),
+                ocean: false,
+                body: Body::default(),
+            },
+            features: None,
+            tiles: None,
+            tile_features: Vec::new(),
+            ocean: None,
+            elevation: None,
+            terrain: None,
+            memory_budget: None,
+            poisoned: false,
+        }
+    }
 }
 
 #[wasm_bindgen]
@@ -207,7 +236,43 @@ impl Job {
             ocean: None,
             elevation: None,
             terrain: None,
+            memory_budget: None,
+            poisoned: false,
         })
+    }
+
+    /// What the filling may use at most, in bytes: the page sets this from
+    /// `WebAssembly.Memory.buffer.byteLength`, so a fill that would run the
+    /// page out of memory is refused with an error the panel can show,
+    /// instead of trapping in the allocator with nothing to say. `undefined`
+    /// removes the ceiling.
+    #[wasm_bindgen(setter, js_name = memoryBudget)]
+    pub fn set_memory_budget(&mut self, bytes: Option<f64>) {
+        // Aim for half the memory we have, not all of it: the fill's own
+        // strokes are not the only thing alive while it runs.
+        self.memory_budget = bytes.filter(|b| *b > 0.0).map(|b| (b / 2.0) as u64);
+    }
+
+    /// Free the job. Overridden so a job whose draw failed (`poisoned`) can be
+    /// dropped without running wasm-bindgen's own `free`, which would trap on
+    /// the broken heap and replace the real error with a confusing one. The
+    /// memory then goes when the page's finalizer runs, or with the page.
+    pub fn free(self) {
+        if self.poisoned {
+            std::mem::forget(self);
+            return;
+        }
+        // Not poisoned: the generated `free` (the default body) would do this,
+        // but a manual `free` replaces it, so drop explicitly.
+        drop(self);
+    }
+
+    /// A word a poisoned job gives for anything asked of it.
+    fn check_alive(&self) -> Result<(), JsValue> {
+        if self.poisoned {
+            return Err(err("this draw failed and its job can no longer run; run the script again"));
+        }
+        Ok(())
     }
 
     /// Whether the document selects anything from Overpass (`osm_select`, or
@@ -298,6 +363,7 @@ impl Job {
     /// tiles` row.
     #[wasm_bindgen(js_name = readTiles)]
     pub fn read_tiles(&mut self, on_event: js_sys::Function) -> Result<(), JsValue> {
+        self.check_alive()?;
         let Some(t) = self.plan()? else { return Ok(()) };
         let progress = JsProgress(on_event);
         let task = Task::begin(&progress, "read-tiles", Some("download"), "read tiles", 0, "");
@@ -324,6 +390,7 @@ impl Job {
     /// Draw the output, as the `draw` tree. `sources` maps the file names the
     /// document references to their SVG text; `{}` when it has none.
     pub fn draw(&mut self, sources: js_sys::Object, on_event: js_sys::Function) -> Result<Rendered, JsValue> {
+        self.check_alive()?;
         let features = match self.features.take() {
             Some(f) => f,
             None if self.needs_osm() => return Err(err("read the Overpass reply first")),
@@ -334,7 +401,31 @@ impl Job {
         let progress = JsProgress(on_event);
         let draw = Task::begin(&progress, "draw", None, "draw", 0, "");
         let terrain = self.terrain.take();
-        let out = self.doc.render(features, tile_features, ocean, terrain, &string_map(&sources), &draw).map_err(err)?;
+        let out =
+            match self.doc.render(
+                RenderInputs {
+                    features,
+                    tiles: tile_features,
+                    ocean,
+                    terrain,
+                    sources: string_map(&sources),
+                    memory_budget: self.memory_budget,
+                },
+                &draw,
+            ) {
+                Ok(out) => out,
+            Err(e) => {
+                // A draw that failed may have left the allocator and its
+                // bookkeeping in a state a later call cannot touch: dropping
+                // the `Job` would then trap inside wasm-bindgen's `free`,
+                // replacing the real error with "attempted to take ownership
+                // of Rust value while it was borrowed". So the failure is
+                // reported once, here, and the job becomes a value that only
+                // accepts being freed.
+                self.poisoned = true;
+                return Err(err(e));
+            }
+        };
         draw.ok("");
         let groups = js_sys::Array::new();
         for (id, n) in out.groups {
@@ -476,6 +567,12 @@ impl Progress for JsProgress {
     }
 }
 
+/// An empty graph: what `Job::default` holds before one is loaded. Only the
+/// default center needs an `Output`, and a `Default` page is 152.4 x 101.6 mm.
+fn empty_spec() -> drawland_core::profile::OutputSpec {
+    serde_json::from_str("{}").expect("an empty output spec is valid")
+}
+
 /// A graph, ready to run.
 struct Doc {
     output: Output,
@@ -488,8 +585,20 @@ struct Doc {
     body: Body,
 }
 
+#[derive(Default)]
 enum Body {
+    #[default]
+    Empty,
     Grammar(Box<Grammar>),
+}
+
+impl Body {
+    fn grammar(&self) -> Option<&Grammar> {
+        match self {
+            Body::Grammar(g) => Some(g),
+            Body::Empty => None,
+        }
+    }
 }
 
 struct Out {
@@ -509,34 +618,32 @@ impl Doc {
 
     /// Whether any def draws terrain: `lines.terrain`, or a burin document.
     fn terrain_defs(&self) -> bool {
-        match &self.body {
-            Body::Grammar(g) => g.draws_terrain(),
-        }
+        self.body.grammar().is_some_and(Grammar::draws_terrain)
     }
 
     /// The output as the graph carries it.
     fn spec(&self) -> &drawland_core::profile::OutputSpec {
-        match &self.body {
-            Body::Grammar(g) => &g.output,
-        }
+        static NONE: std::sync::OnceLock<drawland_core::profile::OutputSpec> = std::sync::OnceLock::new();
+        self.body.grammar().map_or_else(|| NONE.get_or_init(empty_spec), |g| &g.output)
     }
 
     /// The drawing, its steps as rows under `draw`.
-    fn render(
-        &self,
-        features: Vec<Feature>,
-        tiles: Vec<Feature>,
-        ocean: Option<MultiPolygon<f64>>,
-        terrain: Option<drawland_core::terrain::Grid>,
-        sources: &BTreeMap<String, String>,
-        draw: &Task,
-    ) -> Result<Out, String> {
+    fn render(&self, inputs: RenderInputs, draw: &Task) -> Result<Out, String> {
+        let error = |_: ()| "this graph was never loaded".to_string();
         match &self.body {
+            Body::Empty => Err(error(())),
             Body::Grammar(g) => {
                 let out = drawland_core::grammar_run::run_with(
                     g,
                     &self.output,
-                    drawland_core::grammar_run::Inputs { features, tiles, ocean, sources, terrain },
+                    drawland_core::grammar_run::Inputs {
+                        features: inputs.features,
+                        tiles: inputs.tiles,
+                        ocean: inputs.ocean,
+                        sources: &inputs.sources,
+                        terrain: inputs.terrain,
+                        memory_budget: inputs.memory_budget,
+                    },
                     draw,
                 )
                 .map_err(|e| e.to_string())?;
@@ -544,6 +651,16 @@ impl Doc {
             }
         }
     }
+}
+
+/// What one `render` call carries, gathered so the signature stays readable.
+struct RenderInputs {
+    features: Vec<Feature>,
+    tiles: Vec<Feature>,
+    ocean: Option<MultiPolygon<f64>>,
+    terrain: Option<drawland_core::terrain::Grid>,
+    sources: BTreeMap<String, String>,
+    memory_budget: Option<u64>,
 }
 
 fn default_center(map: &drawland_core::profile::OutputSpec) -> (f64, f64) {

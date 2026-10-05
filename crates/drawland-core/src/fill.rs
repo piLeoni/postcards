@@ -161,6 +161,16 @@ fn insets_natively(generator: &str) -> bool {
     matches!(generator, "rectilinear" | "zigzag" | "concentric" | "hilbert")
 }
 
+/// The spacing a fill will run at, in mm, without running it: what the cost
+/// estimate needs. `None` when the spec sets none and the generator has no
+/// fixed default worth guessing.
+pub fn spacing_mm(spec: &FillSpec) -> Option<f64> {
+    spec.spacing.map(|m| m.0).or_else(|| {
+        let generator = spec.generator.as_deref()?;
+        matches!(generator, "dots" | "waves" | "zigzag" | "rectilinear" | "lines" | "grid").then_some(0.5)
+    })
+}
+
 fn run_generator(region: &Region, generator: &str, spec: &FillSpec) -> Result<penfill::Strokes, FillError> {
     use penfill::*;
     let o = Opts { generator, options: &spec.options };

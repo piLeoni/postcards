@@ -45,7 +45,7 @@ fn main() {
     let sources = BTreeMap::new();
     let t0 = std::time::Instant::now();
     let terrain = read_terrain(&grammar, &output).expect("terrain");
-    let result = run(&grammar, &output, Inputs { features, tiles: tile_features, ocean, sources: &sources, terrain }).expect("render");
+    let result = run(&grammar, &output, Inputs { features, tiles: tile_features, ocean, sources: &sources, terrain, memory_budget: None }).expect("render");
     let ms = t0.elapsed().as_millis();
     for (id, n) in &result.groups {
         println!("  {id}: {n} strokes");

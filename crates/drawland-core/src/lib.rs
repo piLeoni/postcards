@@ -1,6 +1,7 @@
 //! draw.land map stage: OSM features in, a layered SVG in output millimetres out.
 
 pub mod board;
+pub mod budget;
 pub mod fill;
 pub mod geom;
 pub mod grammar;

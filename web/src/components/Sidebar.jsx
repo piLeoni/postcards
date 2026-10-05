@@ -425,7 +425,18 @@ export default function Sidebar({ open, onClose, doc, setDoc, check, output, sta
           >
             <div className="flex shrink-0 items-center gap-[1ch] border-b border-black py-[0.25lh] pr-[1ch] pl-[2ch]">
               <span className="font-bold">✗ {problem.title}</span>
-              <button type="button" {...KEY} className="ml-auto" aria-label="Close" title="Close" onClick={clearProblem}>
+              {/* Select-all-and-copy, and one button that does the same for a
+                  message too long to drag through. The text is kept raw. */}
+              <button
+                type="button"
+                {...KEY}
+                className="ml-auto"
+                title="Copy the whole message"
+                onClick={() => navigator.clipboard?.writeText(problem.text)}
+              >
+                copy
+              </button>
+              <button type="button" {...KEY} aria-label="Close" title="Close" onClick={clearProblem}>
                 ✕
               </button>
             </div>
