@@ -727,8 +727,8 @@ export default function MapView({
       */}
       <div
         ref={overlayRef}
-        className={`pointer-events-none absolute left-0 top-0 overflow-hidden ${RAISED} ${
-          drawing?.svg ? 'bg-white' : 'border border-black bg-white/20'
+        className={`pointer-events-none absolute left-0 top-0 overflow-hidden border border-black ${RAISED} ${
+          drawing?.svg ? 'bg-white' : 'bg-white/20'
         }`}
         style={{ display: 'none', willChange: 'transform' }}
       >
