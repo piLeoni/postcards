@@ -54,6 +54,16 @@ const ROLES = {
 }
 
 /**
+ * The engine's SVG carries a `<style>` with a bare `* { fill: none; ... }`,
+ * right for a file on its own. Inlined in the page, a `<style>` is global, so
+ * that rule reached every element in the app (the run button's icon turned
+ * into a hairline outline). Scope it to the drawing.
+ */
+function scopeStyle(svg) {
+  return svg.replace('<style>\n* {', '<style>\n.output-svg svg, .output-svg svg * {')
+}
+
+/**
  * Fold the `ROLES` into a map of `role -> resolved colour`. A role is either a
  * custom property, read from the page so the map follows the palette, or a
  * literal shade like `#c8c8c8`, used as-is.
@@ -725,7 +735,7 @@ export default function MapView({
         {drawing?.svg ? (
           <div
             className="output-svg h-full w-full"
-            dangerouslySetInnerHTML={{ __html: drawing.svg }}
+            dangerouslySetInnerHTML={{ __html: scopeStyle(drawing.svg) }}
           />
         ) : null}
         {output && <Guides output={output} />}

@@ -223,8 +223,6 @@ export default function Sidebar({ open, onClose, doc, setDoc, check, output, sta
 
   const groups = drawing?.groups ?? []
   const strokes = useMemo(() => groups.reduce((n, [, s]) => n + s, 0), [groups])
-  const empty = groups.filter(([, n]) => n === 0).map(([id]) => id)
-
   const failed = status.phase === 'error'
   // Engine errors start in lower case, like the terminal's; a message here
   // starts with a capital.
@@ -326,6 +324,11 @@ export default function Sidebar({ open, onClose, doc, setDoc, check, output, sta
               <svg aria-hidden viewBox="0 0 12 12" className="h-[1em] w-[1em] shrink-0" fill="currentColor">
                 <rect x="2" y="2" width="8" height="8" />
               </svg>
+            ) : drawing ? (
+              <svg aria-hidden viewBox="0 0 12 12" className="h-[1em] w-[1em] shrink-0">
+                <path d="M10 6A4 4 0 1 1 8 2.54" fill="none" stroke="currentColor" strokeWidth="1.5" />
+                <path d="M9.56 3.44L6.68 3.62L8.28 0.85z" fill="currentColor" />
+              </svg>
             ) : (
               <svg aria-hidden viewBox="0 0 12 12" className="h-[1em] w-[1em] shrink-0" fill="currentColor">
                 <path d="M2.5 1.5v9l8-4.5z" />
@@ -345,9 +348,6 @@ export default function Sidebar({ open, onClose, doc, setDoc, check, output, sta
           <p className={`mt-[0.5lh] shrink-0 break-words ${notice.error ? 'font-bold' : 'opacity-60'}`}>
             {notice.error ? `✗ ${sentence(notice.text)}` : sentence(notice.text)}
           </p>
-        )}
-        {!dirty && empty.length > 0 && (
-          <p className="mt-[0.5lh] shrink-0 break-words">! Nothing drawn for {empty.join(', ')}</p>
         )}
         <div className="relative mt-[0.5lh] min-h-0 flex-1 overflow-hidden border border-black pt-[0.5lh]">
           <div className="absolute top-[0.25lh] right-[2ch] z-10 flex gap-[1ch]">
