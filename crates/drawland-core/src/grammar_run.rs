@@ -796,6 +796,7 @@ mod tests {
             warp: Default::default(),
             padding: Default::default(),
             slices: Default::default(),
+            tile_zoom: None,
         };
         Output::new(&map, (0.0, 0.0))
     }

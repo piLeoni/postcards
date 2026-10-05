@@ -274,6 +274,7 @@ mod tests {
             scale: 10000.0,
             bearing: 0.0,
             projection: ProjectionMode::Utm,
+            tile_zoom: None,
         }
     }
 

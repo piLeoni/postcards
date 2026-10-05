@@ -3,7 +3,9 @@
  * it anything, then the vector tiles), then the engine, the same steps as
  * `drawland map`. The page sends `{ type: 'draw', token, graph,
  * lat, lng }` (the graph its script built, as JSON) and gets back every progress event as `{ type: 'event', token,
- * e }`, then `{ type: 'done', … }` or `{ type: 'error', … }`. Running here,
+ * e }`, the vector tiles as they download as `{ type: 'tiles', token, ids }`
+ * then `{ type: 'tiles', token, i, state }` (see `fetchTiles`), then
+ * `{ type: 'done', … }` or `{ type: 'error', … }`. Running here,
  * the engine's events reach the page while it works, so the bars move.
  */
 
@@ -52,7 +54,7 @@ async function run({ token, graph, lat, lng }) {
         job.read(json, emit)
         bytes = json.length
       }
-      await fetchTiles(engine, job, ac.signal, download)
+      await fetchTiles(engine, job, ac.signal, download, (m) => self.postMessage({ type: 'tiles', token, ...m }))
       if (ac.signal.aborted) return
       job.readTiles(emit)
       await fetchTerrain(job, ac.signal, download)

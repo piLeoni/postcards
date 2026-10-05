@@ -56,7 +56,12 @@ export default function App() {
   const [status, setStatus] = useState({ phase: 'loading' })
   const [drawing, setDrawing] = useState(null)
   const [load, setLoad] = useState(null)
-  const [loadTitle, setLoadTitle] = useState('')
+  // The progress card, put out of the way into the corner and back. It stays
+  // until the next draw, so a finished draw's report can be read again.
+  const [loadMin, setLoadMin] = useState(false)
+  // The vector tiles of the download running, `{ ids, state }`, drawn on the
+  // map until the drawing starts.
+  const [tiles, setTiles] = useState(null)
   const [menuOpen, setMenuOpen] = useState(false)
   // The share sheet, a panel over the map rather than over the script column.
   const [sharing, setSharing] = useState(false)
@@ -169,7 +174,6 @@ export default function App() {
       workerRef.current.onmessage = ({ data }) => onWorkerRef.current?.(data)
     }
 
-    setLoadTitle(`1:${Math.round(output.scale)} · ${lat.toFixed(4)}, ${lng.toFixed(4)}`)
     // Mount the output at once, so the first paint is the output itself and not
     // a flash of the old drawing; it repaints at most once a frame.
     const board = new engine.Board()
@@ -184,21 +188,61 @@ export default function App() {
       })
     }
     setLoad({ board, version })
+    setLoadMin(false)
     setStatus({ phase: 'working', detail: 'Downloading…' })
+    setTiles(null)
+    let tileState = null
+    let tilesQueued = false
+    const tilesChanged = () => {
+      if (tilesQueued) return
+      tilesQueued = true
+      requestAnimationFrame(() => {
+        tilesQueued = false
+        if (token === drawTokenRef.current && tileState) {
+          setTiles({
+            ids: tileState.ids,
+            state: tileState.state,
+            live: tileState.live !== false,
+            at: tileState.at ?? at,
+            zoom: tileState.zoom ?? tileState.ids[0],
+          })
+        }
+      })
+    }
 
     onWorkerRef.current = (msg) => {
       if (msg.token !== token) return
-      if (msg.type === 'event') {
+      if (msg.type === 'tiles') {
+        if (msg.ids) {
+          tileState = {
+            ids: msg.ids,
+            state: new Uint8Array(msg.ids.length / 3),
+            live: true,
+            at,
+            zoom: msg.ids[0],
+          }
+        }
+        else if (tileState) tileState.state[msg.i] = msg.state
+        tilesChanged()
+      } else if (msg.type === 'event') {
         board.apply(msg.e, performance.now())
         changed()
-        if (msg.e.kind === 'begin' && msg.e.id === 'draw') setStatus({ phase: 'working', detail: 'Drawing…' })
+        if (msg.e.kind === 'begin' && msg.e.id === 'draw') {
+          setStatus({ phase: 'working', detail: 'Drawing…' })
+          // Keep the grid on the map: only stop treating it as a live download.
+          if (tileState) {
+            tileState.live = false
+            setTiles({ ids: tileState.ids, state: tileState.state, live: false, at, zoom: tileState.zoom })
+          }
+        }
       } else if (msg.type === 'done') {
         setDrawing({ svg: msg.svg, groups: msg.groups, slices: msg.slices ?? [], ms: msg.ms, bytes: msg.bytes, at })
         setStatus({ phase: 'ready' })
-        // Let the finished tree be readable for a moment before it goes.
-        setTimeout(() => {
-          if (token === drawTokenRef.current) setLoad(null)
-        }, 1500)
+        if (tileState) {
+          setTiles({ ids: tileState.ids, state: tileState.state, live: false, at, zoom: tileState.zoom })
+        }
+        // The card stays, as the report of this draw; it goes on the next.
+        if (token === drawTokenRef.current) setLoadMin(true)
       } else if (msg.type === 'error') {
         if (msg.fatal) {
           workerRef.current?.terminate()
@@ -206,13 +250,13 @@ export default function App() {
         }
         board.failRunning(performance.now())
         changed()
+        tileState = null
+        setTiles(null)
         setStatus({ phase: 'error', detail: msg.message })
         setDrawing(null)
-        // The failed row reads for a moment, then the map is back; the
-        // sidebar keeps the error.
-        setTimeout(() => {
-          if (token === drawTokenRef.current) setLoad(null)
-        }, 2500)
+        // The failed row stays, put out of the way; the sidebar keeps the
+        // error too, and the card goes on the next draw.
+        if (token === drawTokenRef.current) setLoadMin(true)
       }
     }
     workerRef.current.postMessage({ type: 'draw', token, graph, lat, lng })
@@ -227,7 +271,8 @@ export default function App() {
   const stop = useCallback(() => {
     if (status.phase !== 'working') return
     drawTokenRef.current++
-    setLoad(null)
+    setLoadMin(true)
+    setTiles(null)
     setStatus({ phase: 'ready' })
   }, [status.phase])
 
@@ -238,6 +283,10 @@ export default function App() {
   useEffect(() => {
     if (drawing && drawing.at !== here) setDrawing(null)
   }, [drawing, here])
+  // The tile trace belongs to where it was read; a moved output drops it.
+  useEffect(() => {
+    setTiles((t) => (t?.at && t.at !== here ? null : t))
+  }, [here])
 
   // A cut output downloads one file per sheet, a moment apart: browsers drop
   // downloads fired in the same instant.
@@ -347,7 +396,9 @@ export default function App() {
           drawing={current}
           apiRef={mapApiRef}
           load={load}
-          loadTitle={loadTitle}
+          loadMin={loadMin}
+          onLoadMin={setLoadMin}
+          tiles={tiles}
           onEditOutput={() => setDrawing(null)}
           onDownload={downloadSvg}
           onMoveOutput={moveOutput}

@@ -190,10 +190,15 @@ fn read_tiles(
     mut tiles: Tiles,
     notes: &mut Vec<String>,
 ) -> Result<(Vec<Feature>, Option<geo::MultiPolygon<f64>>), String> {
-    let n = tiles.tiles(terramask::MAX_ZOOM).len() as u64;
+    let ids = tiles.tiles(terramask::MAX_ZOOM);
+    let n = ids.len() as u64;
     let task = download.child("tiles", "vector tiles", n, "tiles");
+    let (plan, warn) = tiles.note(terramask::MAX_ZOOM);
+    if warn {
+        task.log(Level::Warn, &plan);
+    }
     let found = terramask::Fetcher::with_source(tiles::TILES)
-        .water(tiles.bounds(), tiles.zoom(terramask::MAX_ZOOM), tiles.filter(), |done, total| {
+        .features_of(&ids, tiles.filter(), |done, total| {
             if done == 1 {
                 task.set_total(total as u64);
             }

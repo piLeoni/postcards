@@ -126,6 +126,11 @@ interface OutputOptions {
   slices?: { columns?: number; rows?: number; gutter?: Length | [Length, Length] }
   /** Bend the ground before drawing; the paper's edge stays. */
   warp?: Warp | Warp[]
+  /**
+   * The vector tiles' zoom, up to 14: deeper holds every building (none below
+   * 13), shallower downloads fewer tiles. Unset, the deepest under the cap.
+   */
+  tileZoom?: number
 }
 
 type Warp = { fisheye: number } | { twirl: number } | { wave: { amplitude: Length; wavelength: Length } }

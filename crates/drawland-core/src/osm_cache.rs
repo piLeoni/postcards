@@ -172,7 +172,7 @@ mod tests {
     use crate::profile::ProjectionMode;
 
     fn output(lng: f64, lat: f64, scale: f64) -> Output {
-        Output { center: (lng, lat), width_mm: 152.4, height_mm: 101.6, scale, bearing: 0.0, projection: ProjectionMode::Utm }
+        Output { center: (lng, lat), width_mm: 152.4, height_mm: 101.6, scale, bearing: 0.0, projection: ProjectionMode::Utm, tile_zoom: None }
     }
 
     fn keys() -> Vec<String> {

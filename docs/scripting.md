@@ -114,7 +114,9 @@ compose.mask({ from: dissolved, occludes: parkIds })
 
 The map is not always a postcard, so **the card becomes the output**: its place
 (`lat`, `lng`), paper (`width`, `height`, `padding`, `slices`), `scale`,
-`bearing`, `projection`. The rename covers the engine, the UI and the docs, and
+`bearing`, `projection`, and `tileZoom` (the vector tiles' zoom, up to 14;
+unset, the deepest whose tiles under the output stay under the download cap).
+The rename covers the engine, the UI and the docs, and
 comes first in the roadmap. "Output" is already used inside the
 engine (`grammar::Output` is a draw target, `grammar_run::Outputs` is a run's
 result); those get other names.

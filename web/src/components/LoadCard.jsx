@@ -6,7 +6,7 @@ import { useEffect, useState } from 'react'
  * It sits over the map, not on the card, so a redraw does not put anything
  * inside the drawing that is about to be replaced.
  */
-export default function LoadCard({ title, load }) {
+export default function LoadCard({ load, onMin }) {
   const [now, setNow] = useState(() => performance.now())
   const running = load.board.running()
   useEffect(() => {
@@ -22,12 +22,29 @@ export default function LoadCard({ title, load }) {
   const lines = [...tree, ...logs]
   return (
     <div
-      className="w-full max-w-[48rem] bg-white p-[2ch] text-[11px] leading-snug text-black"
+      className="pointer-events-auto w-full max-w-[48rem] bg-white p-[2ch] text-[11px] leading-snug text-black"
       style={{ boxShadow: '0 0 0 1px #000, 0 12px 32px rgb(0 0 0 / 0.18)' }}
     >
-      <div className="mb-[0.5lh] flex gap-[1ch] border-b border-black pb-[0.5lh]">
+      <div className="mb-[0.5lh] flex items-baseline gap-[1ch] border-b border-black pb-[0.5lh]">
         <span className="mr-auto font-bold">Drawing</span>
-        <span className="truncate">{title}</span>
+        {onMin && (
+          <span
+            role="button"
+            tabIndex={0}
+            title="Put the card away into the corner; click it there to bring it back"
+            aria-label="Put the progress card away"
+            className="shrink-0 cursor-pointer border border-black bg-white px-[0.4ch] font-mono hover:bg-black hover:text-white"
+            onClick={onMin}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                onMin()
+              }
+            }}
+          >
+            −
+          </span>
+        )}
       </div>
       <div className="max-h-[70vh] overflow-hidden">
         {lines.map((runs, i) => (

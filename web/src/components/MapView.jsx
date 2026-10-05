@@ -188,6 +188,8 @@ function calm(map) {
   const missing = POSITRON.filter((id) => !ids.has(id))
   if (missing.length) console.warn('map: Positron no longer has', missing.join(', '), '— those keep their own colour')
   for (const { id, type, 'source-layer': source } of layers ?? []) {
+    // Not Positron's, and not to be restyled: the tiles of the last download.
+    if (id.startsWith(TILE_LAYER) || id.startsWith(TILE_LABELS)) continue
     const set = (name, value) => {
       try {
         map.setPaintProperty(id, name, value)
@@ -233,6 +235,37 @@ function calm(map) {
       for (const [name, value] of Object.entries(roadPaint(id, c))) set(name, value)
     }
   }
+}
+
+/**
+ * The download's tiles, marked on the map: while they arrive so the wait is
+ * legible, and after the drawing as a faint trace of where its data came from.
+ * The id prefix is here, above `calm`, which must leave these layers alone.
+ */
+const TILE_LAYER = 'download-tiles'
+const TILE_LABELS = 'download-tiles-labels'
+
+const tileLabelLayout = {
+  'text-field': ['get', 'label'],
+  'text-size': 10,
+  'text-font': ['Open Sans Regular', 'Arial Unicode MS Regular'],
+  'text-anchor': 'top-left',
+  'text-offset': [0.4, 0.2],
+  'text-justify': 'left',
+  // With the map turned to the output's bearing, labels stay on the tile's
+  // north-west corner and turn with it instead of staying level on screen.
+  'text-rotation-alignment': 'map',
+  'text-pitch-alignment': 'map',
+  'text-keep-upright': false,
+  'text-allow-overlap': true,
+  'text-ignore-placement': true,
+}
+
+const tileLabelPaint = {
+  'text-color': '#333',
+  'text-opacity': ['match', ['get', 'state'], 0, 0.25, 0.5],
+  'text-halo-color': '#fff',
+  'text-halo-width': 1.5,
 }
 
 /** Space between the output and the label above it or the tags below it, px. */
@@ -351,13 +384,138 @@ function Guides({ output }) {
  * lags the map by a frame, which is what makes overlays look like they are
  * stuttering. So we hook `render` and move the node directly.
  */
+/** The folded card's label: what the draw it reports did or is doing. */
+function statusWord(load) {
+  if (load.board.running()) return 'drawing…'
+  const { tree, logs } = load.board.layout(performance.now())
+  const lines = [...tree, ...logs]
+  const bad = lines.map((runs) => runs.map((r) => r.text).join('')).find((t) => t.trim().startsWith('✗'))
+  if (bad) return `✗ ${bad.replace(/^✗\s*/, '').slice(0, 30)}`
+  const steps = lines.filter((runs) => runs.length && runs.every((r) => r.text.includes('✓') || /^\s*$/.test(r.text))).length
+  return steps ? `drawn · ${steps} steps` : 'drawn'
+}
+
+/** A web-mercator tile's corners, lon/lat, as a closed ring. */
+function tileRing(z, x, y) {
+  const n = 2 ** z
+  const lon = (x) => (x / n) * 360 - 180
+  const lat = (y) => (Math.atan(Math.sinh(Math.PI * (1 - (2 * y) / n))) * 180) / Math.PI
+  return [
+    [lon(x), lat(y)],
+    [lon(x + 1), lat(y)],
+    [lon(x + 1), lat(y + 1)],
+    [lon(x), lat(y + 1)],
+    [lon(x), lat(y)],
+  ]
+}
+
+/** North-west corner of a slippy-map tile, lon/lat (where the label sits). */
+function tileNw(z, x, y) {
+  const n = 2 ** z
+  const lon = (x / n) * 360 - 180
+  const lat = (Math.atan(Math.sinh(Math.PI * (1 - (2 * y) / n))) * 180) / Math.PI
+  return [lon, lat]
+}
+
+/**
+ * The vector tiles of the download, as App keeps them: `ids` `[z, x, y, …]`,
+ * `state` per tile (0 waiting, 1 read, 2 empty), `live` while they download,
+ * `at` where they were read. They stay on the map after the drawing, a trace
+ * of where its data came from, unless the output has moved since.
+ */
+function showTiles(map, tiles) {
+  if (!map.isStyleLoaded()) return false
+  const features = []
+  const marks = []
+  for (let i = 0; tiles && i < tiles.state.length; i++) {
+    const [z, x, y] = tiles.ids.slice(3 * i, 3 * i + 3)
+    const state = tiles.state[i]
+    const label = `${z}/${x}/${y}`
+    features.push({
+      type: 'Feature',
+      properties: { state },
+      geometry: { type: 'Polygon', coordinates: [tileRing(z, x, y)] },
+    })
+    marks.push({
+      type: 'Feature',
+      properties: { state, label },
+      geometry: { type: 'Point', coordinates: tileNw(z, x, y) },
+    })
+  }
+  const data = { type: 'FeatureCollection', features }
+  const labels = { type: 'FeatureCollection', features: marks }
+  if (!map.getSource(TILE_LAYER)) {
+    map.addSource(TILE_LAYER, { type: 'geojson', data })
+    map.addSource(TILE_LABELS, { type: 'geojson', data: labels })
+    // One strength always: no step down when the draw starts (that read as a glitch).
+    map.addLayer({
+      id: `${TILE_LAYER}-fill`,
+      type: 'fill',
+      source: TILE_LAYER,
+      paint: { 'fill-color': '#000', 'fill-opacity': ['match', ['get', 'state'], 1, 0.06, 0] },
+    })
+    map.addLayer({
+      id: `${TILE_LAYER}-line`,
+      type: 'line',
+      source: TILE_LAYER,
+      paint: {
+        'line-color': '#000',
+        'line-width': 0.5,
+        'line-opacity': ['match', ['get', 'state'], 2, 0.22, 0.3],
+        'line-dasharray': ['match', ['get', 'state'], 2, ['literal', [2, 2]], ['literal', [1, 0]]],
+      },
+    })
+    map.addLayer({
+      id: `${TILE_LAYER}-label`,
+      type: 'symbol',
+      source: TILE_LABELS,
+      layout: tileLabelLayout,
+      paint: tileLabelPaint,
+    })
+  } else {
+    map.getSource(TILE_LAYER).setData(data)
+    if (map.getSource(TILE_LABELS)) map.getSource(TILE_LABELS).setData(labels)
+    else map.addSource(TILE_LABELS, { type: 'geojson', data: labels })
+    if (!map.getLayer(`${TILE_LAYER}-label`)) {
+      map.addLayer({
+        id: `${TILE_LAYER}-label`,
+        type: 'symbol',
+        source: TILE_LABELS,
+        layout: tileLabelLayout,
+        paint: tileLabelPaint,
+      })
+    } else {
+      syncTileLabelLayout(map)
+    }
+  }
+  syncTileLabelLayout(map)
+  return true
+}
+
+function tilesLayerVisible(map, on) {
+  for (const id of [`${TILE_LAYER}-fill`, `${TILE_LAYER}-line`, `${TILE_LAYER}-label`]) {
+    if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none')
+  }
+}
+
+/** Label layout on an existing layer (e.g. after a hot reload). */
+function syncTileLabelLayout(map) {
+  const id = `${TILE_LAYER}-label`
+  if (!map.getLayer(id)) return
+  for (const [key, value] of Object.entries(tileLabelLayout)) {
+    map.setLayoutProperty(id, key, value)
+  }
+}
+
 export default function MapView({
   output,
   units,
   drawing,
   apiRef,
   load,
-  loadTitle,
+  loadMin,
+  onLoadMin,
+  tiles,
   onEditOutput,
   onDownload,
   onMoveOutput,
@@ -371,6 +529,7 @@ export default function MapView({
 }) {
   const [menu, setMenu] = useState(false)
   const [search, setSearch] = useState(false)
+  const [tilesOn, setTilesOn] = useState(true)
   const [mapView, setMapView] = useAtom(mapViewAtom)
   // The map is built once, in an effect with no dependencies; this holds the
   // saved view so that effect can read it without depending on it.
@@ -406,6 +565,8 @@ export default function MapView({
   unitsRef.current = units ?? { width: 'mm', height: 'mm', terrain: 'km' }
   const outputRef = useRef(output)
   outputRef.current = editRef.current ? { ...output, ...editRef.current } : output
+  const tilesRef = useRef(tiles)
+  tilesRef.current = tiles
 
   // The overlay's screen box, computed and applied outside React so it can be
   // set from inside the map's render callback without a re-render per frame.
@@ -518,6 +679,7 @@ export default function MapView({
     // Restyle the basemap on every load, so a `setStyle` swap keeps it too.
     map.on('style.load', () => {
       calm(map)
+      showTiles(map, tilesRef.current)
     })
 
     // The only surface App gets on the map: where its centre is, and how to
@@ -586,6 +748,18 @@ export default function MapView({
     setSvgUrl(url)
     return () => URL.revokeObjectURL(url)
   }, [drawing?.svg])
+
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map) return
+    const paint = () => {
+      showTiles(map, tilesRef.current)
+      tilesLayerVisible(map, tilesOn && Boolean(tilesRef.current))
+    }
+    if (paint()) return
+    map.once('load', paint)
+    return () => map.off('load', paint)
+  }, [tiles, tilesOn])
 
   // A new drawing closes the transform menu, so it is seen whole. The same one
   // shown again (the output back where it was drawn) leaves the menu be.
@@ -754,6 +928,7 @@ export default function MapView({
   }
 
   const slices = drawing?.slices?.length ?? 0
+  const tilesLive = tiles?.live === true
 
   return (
     <div className="relative h-full w-full min-w-0 overflow-hidden">
@@ -768,12 +943,18 @@ export default function MapView({
       <div
         ref={overlayRef}
         className={`pointer-events-none absolute left-0 top-0 overflow-hidden border border-black ${RAISED} ${
-          drawing?.svg ? 'bg-white' : 'bg-white/20'
+          drawing?.svg && !tilesLive ? 'bg-white' : 'bg-white/20'
         }`}
         style={{ display: 'none', willChange: 'transform' }}
       >
         {drawing?.svg && svgUrl ? (
-          <img className="block h-full w-full select-none" src={svgUrl} alt="" draggable={false} decoding="async" />
+          <img
+            className={`block h-full w-full select-none ${tilesLive ? 'opacity-20' : ''}`}
+            src={svgUrl}
+            alt=""
+            draggable={false}
+            decoding="async"
+          />
         ) : null}
         {output && <Guides output={output} />}
       </div>
@@ -816,7 +997,7 @@ export default function MapView({
       )}
 
       {output && (
-        <div className="absolute top-2 right-2 z-20 flex gap-1.5">
+        <div className="absolute top-2 right-2 z-20 flex flex-wrap justify-end gap-1.5">
           <span ref={awayRef} className="bg-white/90 px-1.5 py-0.5 font-mono text-[10px] whitespace-nowrap opacity-60" style={{ display: 'none' }}>
             The selection is out of view
           </span>
@@ -851,12 +1032,39 @@ export default function MapView({
       <ShareModal open={share} onClose={onShareClose} doc={shareDoc} />
 
       {/* The draw, reported over the map: a separate output, not a frame drawn
-          inside the output that is about to be replaced. */}
-      {load && (
-        <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center p-6">
-          <LoadCard title={loadTitle} load={load} />
+          inside the output that is about to be replaced. It stays until the
+          next draw, so a finished one can be read again; `—` puts it away. */}
+      {load && !loadMin && (
+        <div className="absolute inset-0 z-30 flex items-center justify-center p-6">
+          <LoadCard load={load} onMin={onLoadMin && (() => onLoadMin(true))} />
         </div>
       )}
+      {/* Bottom right, above attribution: tile grid (CAD-style layer) and the
+          folded progress report. Basemap styles can join this row later. */}
+      <div
+        className="absolute z-30 flex flex-col items-end gap-1.5"
+        style={{ right: EDGE, bottom: EDGE }}
+      >
+        {load && loadMin && (
+          <Tag
+            title="Bring back the progress and report of the last draw"
+            className={`cursor-pointer ${RAISED}`}
+            onClick={() => onLoadMin?.(false)}
+          >
+            ▸ {statusWord(load)}
+          </Tag>
+        )}
+        {tiles && (
+          <Tag
+            title="OpenFreeMap vector tiles (Web Mercator z/x/y, OpenMapTiles · © OpenStreetMap)"
+            aria-pressed={tilesOn}
+            className={`cursor-pointer ${RAISED}`}
+            onClick={() => setTilesOn((v) => !v)}
+          >
+            {tilesOn ? 'hide tiles' : 'show tiles'}
+          </Tag>
+        )}
+      </div>
     </div>
   )
 }

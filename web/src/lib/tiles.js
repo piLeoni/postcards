@@ -16,14 +16,22 @@ const CACHE_TILES = 256
 /** Downloads at once. */
 const PARALLEL = 8
 
-export async function fetchTiles(engine, job, signal, download) {
+/**
+ * `onTiles` hears the plan, `{ ids }` (`[z, x, y, …]`), then each tile as it
+ * lands, `{ i, state }`: 1 read, 2 empty (the source leaves it out).
+ */
+export async function fetchTiles(engine, job, signal, download, onTiles) {
   const tilejson = await (await fetch(engine.tileSource(), { signal })).json()
   const template = tilejson.tiles?.[0]
   if (!template) throw new Error('vector tiles: no tile URL in the TileJSON')
-  const ids = job.tiles(tilejson.maxzoom ?? 14)
+  const maxzoom = tilejson.maxzoom ?? 14
+  const ids = job.tiles(maxzoom)
   const n = ids.length / 3
   if (n === 0) return
   const row = download.child('tiles', 'vector tiles', n, 'tiles')
+  const [plan, warn] = job.tilesNote(maxzoom)
+  if (warn) row.log('warn', plan)
+  onTiles?.({ ids: Array.from(ids) })
   let next = 0
   let done = 0
   const worker = async () => {
@@ -33,7 +41,8 @@ export async function fetchTiles(engine, job, signal, download) {
       const bytes = await tile(template.replace('{z}', z).replace('{x}', x).replace('{y}', y), signal)
       // A tile the source leaves out has nothing in it.
       if (bytes) job.addTile(z, x, y, bytes)
-      row.step(++done)
+      onTiles?.({ i, state: bytes ? 1 : 2 })
+      row.step(++done, warn ? plan : '')
     }
   }
   try {
@@ -42,7 +51,7 @@ export async function fetchTiles(engine, job, signal, download) {
     row.fail(e?.name === 'AbortError' ? '' : 'download failed')
     throw e
   }
-  row.ok(`zoom ${ids[0]}`)
+  row.ok(warn ? plan : `zoom ${ids[0]}`)
 }
 
 async function tile(url, signal) {

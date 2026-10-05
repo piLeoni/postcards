@@ -10,7 +10,7 @@
 use crate::output::Output;
 use crate::osm::{needs_ocean, Element, Feature, Tags};
 use geo::{BoundingRect, Coord, Geometry, LineString, MultiPolygon, Polygon};
-use terramask::{merc_to_lonlat, tiles_for, zoom_for, Features, Filter, TileId, ZoomLimits};
+use terramask::{merc_to_lonlat, tiles_touching, zoom_for, Features, Filter, TileId, ZoomLimits};
 
 /// OpenFreeMap's planet tiles, as a TileJSON: no key, CORS open, weekly builds.
 /// Attribution: "© OpenMapTiles © OpenStreetMap contributors".
@@ -54,15 +54,27 @@ pub fn plan(output: &Output, selectors: &[String], ocean: bool, osm: Option<&[Fe
     if selectors.is_empty() && !sea {
         return Ok(None);
     }
-    Tiles::new(&output.query_polygon(), selectors, sea).map(Some)
+    let mut tiles = Tiles::new(&output.query_polygon(), selectors, sea)?;
+    tiles.set_zoom(output.tile_zoom);
+    Ok(Some(tiles))
 }
+
+/// Past this many tiles a download is worth a word to whoever waits for it.
+const LARGE_DOWNLOAD: usize = 300;
 
 /// The tiles under one output, gathered one by one.
 pub struct Tiles {
     bounds: [f64; 4],
+    /// The area itself (lon/lat), padded like `bounds`: only the tiles it
+    /// touches are read, a fraction of the box's when the output is turned.
+    ring: Vec<[f64; 2]>,
+    /// The zoom the document asks for, if it does.
+    zoom: Option<u8>,
     /// What `tiles_select` picks; `None` when the sea is all.
     select: Option<Filter>,
     ocean: bool,
+    /// Whether the selections read buildings, which only the deepest zooms hold.
+    buildings: bool,
     /// How many tiles the deepest zoom may need before stepping out: the
     /// larger cap when buildings are read, the smaller one otherwise.
     max_tiles: usize,
@@ -83,14 +95,27 @@ impl Tiles {
                 [r.min().x - dx, r.min().y - dy, r.max().x + dx, r.max().y + dy]
             })
             .unwrap_or_default();
+        let ring = {
+            let points = &area.exterior().0;
+            let n = points.len().saturating_sub(1).max(1) as f64;
+            let c = points.iter().take(points.len().saturating_sub(1).max(1)).fold(Coord { x: 0.0, y: 0.0 }, |c, p| c + *p) / n;
+            points.iter().map(|p| [c.x + (p.x - c.x) * (1.0 + 2.0 * PAD), c.y + (p.y - c.y) * (1.0 + 2.0 * PAD)]).collect()
+        };
         let select = (!selectors.is_empty()).then(|| Filter::parse(selectors)).transpose().map_err(|e| e.to_string())?;
         let mut all: Vec<String> = selectors.to_vec();
         if ocean {
             all.push("ocean".into());
         }
         let filter = Filter::parse(&all).map_err(|e| e.to_string())?;
-        let max_tiles = if wants_buildings(selectors) { MAX_BUILDING_TILES } else { MAX_FEATURE_TILES };
-        Ok(Tiles { bounds, select, ocean, max_tiles, filter, data: Features::new() })
+        let buildings = wants_buildings(selectors);
+        let max_tiles = if buildings { MAX_BUILDING_TILES } else { MAX_FEATURE_TILES };
+        Ok(Tiles { bounds, ring, zoom: None, select, ocean, buildings, max_tiles, filter, data: Features::new() })
+    }
+
+    /// Read the tiles at this zoom (capped by the source's), not the deepest
+    /// that fits: `None` goes back to choosing.
+    pub fn set_zoom(&mut self, zoom: Option<u8>) {
+        self.zoom = zoom;
     }
 
     /// `[west, south, east, north]`.
@@ -105,11 +130,14 @@ impl Tiles {
 
     /// The tile zoom, no deeper than `max_zoom` (the tile source's).
     pub fn zoom(&self, max_zoom: u8) -> u8 {
+        if let Some(z) = self.zoom {
+            return z.min(max_zoom);
+        }
         if self.select.is_none() {
             return zoom_for(&self.bounds, WIDTH_PX, &ZoomLimits { max_zoom, ..ZoomLimits::default() });
         }
         let mut z = max_zoom;
-        while z > 0 && tiles_for(&self.bounds, z).len() > self.max_tiles {
+        while z > 0 && self.tiles_at(z).len() > self.max_tiles {
             z -= 1;
         }
         z
@@ -117,7 +145,38 @@ impl Tiles {
 
     /// The tiles to download, for a source whose deepest zoom is `max_zoom`.
     pub fn tiles(&self, max_zoom: u8) -> Vec<TileId> {
-        tiles_for(&self.bounds, self.zoom(max_zoom))
+        self.tiles_at(self.zoom(max_zoom))
+    }
+
+    fn tiles_at(&self, z: u8) -> Vec<TileId> {
+        tiles_touching(&self.ring, z)
+    }
+
+    /// What the download will be, in a line for whoever waits for it, and
+    /// whether it deserves a warning: detail given up (buildings lost, or
+    /// any zoom short of the deepest), or a long download.
+    pub fn note(&self, max_zoom: u8) -> (String, bool) {
+        let z = self.zoom(max_zoom);
+        let n = self.tiles_at(z).len();
+        let mut text = format!("zoom {z}, {n} tiles");
+        let mut warn = false;
+        if self.select.is_some() && z < max_zoom && self.zoom.is_none() {
+            warn = true;
+            let deepest = self.tiles_at(max_zoom).len();
+            text += &format!(" — zoom {max_zoom} would be {deepest}, past the {} allowed", self.max_tiles);
+            if z <= 12 && self.buildings {
+                text += "; there are no buildings below zoom 13";
+            }
+            text += &format!(". Set output({{ tileZoom: {max_zoom} }}) to read it anyway");
+        } else if let Some(asked) = self.zoom.filter(|&a| a > max_zoom) {
+            warn = true;
+            text += &format!(" — tileZoom {asked} is deeper than the source's {max_zoom}");
+        }
+        if n > LARGE_DOWNLOAD {
+            warn = true;
+            text += &format!(" — a large download (~{} MB)", (n * 40).div_ceil(1000).max(1));
+        }
+        (text, warn)
     }
 
     /// One downloaded tile (raw or gzipped protobuf).
@@ -249,6 +308,46 @@ mod tests {
         assert_eq!(with.zoom(14), 14);
         assert!(without.zoom(14) < 14);
         assert!(Tiles::new(&small, &["forrest".into()], false).is_err());
+    }
+
+    /// The 50 km strip over Milan, turned 34°.
+    fn milan_strip() -> Output {
+        Output {
+            center: (9.1716726, 45.4684961),
+            width_mm: 5000.0,
+            height_mm: 100.0,
+            scale: 10000.0,
+            bearing: -34.0,
+            projection: crate::profile::ProjectionMode::Webmercator,
+            tile_zoom: None,
+        }
+    }
+
+    #[test]
+    fn a_turned_output_reads_only_the_tiles_under_it() {
+        let output = milan_strip();
+        let t = plan(&output, &["buildings".into()], false, None).unwrap().unwrap();
+        let box_tiles = terramask::tiles_for(&t.bounds(), 14).len();
+        let read = t.tiles(14);
+        assert_eq!(read[0].z, 14);        assert!(read.len() * 3 < box_tiles, "{} of {box_tiles}", read.len());
+        assert!(!t.note(14).1, "{}", t.note(14).0);
+    }
+
+    #[test]
+    fn the_document_can_set_the_zoom_and_hears_when_detail_is_lost() {
+        let mut output = milan_strip();
+        output.height_mm = 8000.0;
+        output.width_mm = 8000.0;
+        let auto = plan(&output, &["buildings".into()], false, None).unwrap().unwrap();
+        let (text, warn) = auto.note(14);
+        assert!(warn && text.contains("tileZoom: 14"), "{text}");
+        output.tile_zoom = Some(11);
+        let set = plan(&output, &["buildings".into()], false, None).unwrap().unwrap();
+        assert_eq!(set.zoom(14), 11);
+        output.tile_zoom = Some(16);
+        let deep = plan(&output, &["buildings".into()], false, None).unwrap().unwrap();
+        assert_eq!(deep.zoom(14), 14);
+        assert!(deep.note(14).0.contains("deeper than the source's"));
     }
 
     #[test]

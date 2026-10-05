@@ -260,6 +260,7 @@ mod tests {
                 scale: 10000.0,
                 bearing,
                 projection,
+                tile_zoom: None,
             };
             let p = Projector::new(&output);
             for ((lon, lat), (ex, ey)) in [(-122.39, 37.797), (-122.40, 37.792)].into_iter().zip(expected) {
@@ -279,6 +280,7 @@ mod tests {
             height_mm: 101.6,
             scale: 8000.0,
             bearing: 0.0,
+            tile_zoom: None,
             projection,
         };
         let p = Projector::new(&output(ProjectionMode::Webmercator));
@@ -309,6 +311,7 @@ mod tests {
             height_mm: 101.6,
             scale: 8000.0,
             bearing: 0.0,
+            tile_zoom: None,
             projection: ProjectionMode::Proj(projection.into()),
         };
         let g = Geodesic::wgs84();
@@ -353,6 +356,7 @@ mod tests {
             height_mm: 101.6,
             scale: 10000.0,
             bearing: 30.0,
+            tile_zoom: None,
             projection: ProjectionMode::Webmercator,
         };
         let p = Projector::new(&output);

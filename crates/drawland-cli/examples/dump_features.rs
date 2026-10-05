@@ -18,6 +18,7 @@ fn main() {
         scale: 10000.0,
         bearing: 0.0,
         projection: ProjectionMode::Utm,
+        tile_zoom: None,
     };
     for f in features_from_overpass(&json, &output.query_polygon(), OSM_TAGS).unwrap() {
         let element = match f.element {

@@ -45,6 +45,7 @@ fn main() {
         warp: Default::default(),
         padding: Default::default(),
         slices: Default::default(),
+        tile_zoom: None,
     };
     let output = drawland_core::output::Output::new(&spec, (0.0, 0.0));
     for g in drawland_core::fill::GENERATORS {

@@ -82,6 +82,11 @@ pub struct OutputSpec {
     /// The output cut into sheets, each written on its own.
     #[serde(default)]
     pub slices: crate::sheets::Slices,
+    /// The vector tiles' zoom, up to the source's deepest (14): deeper holds
+    /// every building, shallower downloads fewer tiles. Unset, the deepest
+    /// whose tiles stay under the download cap.
+    #[serde(default, rename = "tileZoom", alias = "tile_zoom", skip_serializing_if = "Option::is_none")]
+    pub tile_zoom: Option<u8>,
 }
 
 fn default_width() -> Mm {

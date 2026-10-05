@@ -368,6 +368,15 @@ impl Job {
         Ok(plan.map(|t| t.tiles(max_zoom).iter().flat_map(|t| [t.z as u32, t.x, t.y]).collect()).unwrap_or_default())
     }
 
+    /// The download `tiles` plans, in a line (`zoom 14, 67 tiles…`), and
+    /// whether it deserves a warning: a zoom short of the deepest, or many
+    /// tiles. Empty when no tiles are needed.
+    #[wasm_bindgen(js_name = tilesNote)]
+    pub fn tiles_note(&mut self, max_zoom: u8) -> Result<js_sys::Array, JsValue> {
+        let (text, warn) = self.plan()?.map(|t| t.note(max_zoom)).unwrap_or_default();
+        Ok(js_sys::Array::of2(&text.into(), &warn.into()))
+    }
+
     /// One of the `tiles`, as downloaded (raw or gzipped protobuf).
     #[wasm_bindgen(js_name = addTile)]
     pub fn add_tile(&mut self, z: u8, x: u32, y: u32, bytes: &[u8]) -> Result<(), JsValue> {

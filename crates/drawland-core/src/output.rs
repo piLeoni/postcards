@@ -15,6 +15,8 @@ pub struct Output {
     pub scale: f64,
     pub bearing: f64,
     pub projection: ProjectionMode,
+    /// The vector tiles' zoom when the document sets it (`tileZoom`).
+    pub tile_zoom: Option<u8>,
 }
 
 impl Output {
@@ -26,6 +28,7 @@ impl Output {
             scale: map.scale.0,
             bearing: map.bearing,
             projection: map.projection.clone(),
+            tile_zoom: map.tile_zoom,
         }
     }
 
@@ -211,6 +214,7 @@ mod tests {
             scale: 10000.0,
             bearing: 0.0,
             projection: ProjectionMode::Utm,
+            tile_zoom: None,
         }
     }
 
