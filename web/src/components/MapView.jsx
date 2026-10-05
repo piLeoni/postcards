@@ -55,16 +55,6 @@ const ROLES = {
 }
 
 /**
- * The engine's SVG carries a `<style>` with a bare `* { fill: none; ... }`,
- * right for a file on its own. Inlined in the page, a `<style>` is global, so
- * that rule reached every element in the app (the run button's icon turned
- * into a hairline outline). Scope it to the drawing.
- */
-function scopeStyle(svg) {
-  return svg.replace('<style>\n* {', '<style>\n.output-svg svg, .output-svg svg * {')
-}
-
-/**
  * Fold the `ROLES` into a map of `role -> resolved colour`. A role is either a
  * custom property, read from the page so the map follows the palette, or a
  * literal shade like `#c8c8c8`, used as-is.
@@ -583,6 +573,20 @@ export default function MapView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // The drawing is shown as an image, not inlined: inlined, every polyline is
+  // a DOM node, and a big output is millions of them to style and paint on
+  // each map frame. As an image it is rasterized once per size.
+  const [svgUrl, setSvgUrl] = useState(null)
+  useEffect(() => {
+    if (!drawing?.svg) {
+      setSvgUrl(null)
+      return
+    }
+    const url = URL.createObjectURL(drawing.svg)
+    setSvgUrl(url)
+    return () => URL.revokeObjectURL(url)
+  }, [drawing?.svg])
+
   // A new drawing closes the transform menu, so it is seen whole. The same one
   // shown again (the output back where it was drawn) leaves the menu be.
   const shownRef = useRef(null)
@@ -768,11 +772,8 @@ export default function MapView({
         }`}
         style={{ display: 'none', willChange: 'transform' }}
       >
-        {drawing?.svg ? (
-          <div
-            className="output-svg h-full w-full"
-            dangerouslySetInnerHTML={{ __html: scopeStyle(drawing.svg) }}
-          />
+        {drawing?.svg && svgUrl ? (
+          <img className="block h-full w-full select-none" src={svgUrl} alt="" draggable={false} decoding="async" />
         ) : null}
         {output && <Guides output={output} />}
       </div>

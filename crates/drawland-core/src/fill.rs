@@ -171,7 +171,19 @@ pub fn spacing_mm(spec: &FillSpec) -> Option<f64> {
     })
 }
 
+/// Whether `generator` hands its strokes on a row at a time rather than all
+/// at the end: for these a fill's memory does not grow with its area.
+pub fn streams(generator: &str) -> bool {
+    matches!(generator, "rectilinear" | "lines" | "grid" | "dots" | "waves")
+}
+
 fn run_generator(region: &Region, generator: &str, spec: &FillSpec) -> Result<penfill::Strokes, FillError> {
+    let mut out = Vec::new();
+    run_generator_into(region, generator, spec, &mut out)?;
+    Ok(out)
+}
+
+fn run_generator_into(region: &Region, generator: &str, spec: &FillSpec, sink: &mut dyn penfill::Sink) -> Result<(), FillError> {
     use penfill::*;
     let o = Opts { generator, options: &spec.options };
     let s = spec.spacing.map_or(0.5, |m| m.0);
@@ -188,22 +200,30 @@ fn run_generator(region: &Region, generator: &str, spec: &FillSpec) -> Result<pe
     };
     let mark = |default: f64| spec.mark.map_or(default, |m| m.0);
     let at = anchor(&o)?;
-    Ok(match generator {
-        "rectilinear" => rectilinear::fill_rectilinear(r, s, a, inset, at),
-        "zigzag" => zigzag::fill_zigzag_inset(r, s, a, inset, at),
-        "lines" => grid::fill_lines(r, s, a, at),
-        "grid" => grid::fill_grid(r, s, a, at),
-        "triangles" => grid::fill_triangles(r, s, a, at),
-        "honeycomb" => honeycomb::fill_honeycomb(r, s, a, o.mm("line_width")?.unwrap_or(0.0), at),
+    // The generators that stream hand their rows to `sink` themselves; the
+    // rest make the whole fill and pass it on at the end.
+    match generator {
+        "rectilinear" => rectilinear::fill_rectilinear_into(r, s, a, inset, at, sink),
+        "lines" => grid::fill_lines_into(r, s, a, at, sink),
+        "grid" => grid::fill_grid_into(r, s, a, at, sink),
         "dots" => {
             let lattice = match o.str("lattice")?.unwrap_or("square") {
                 "square" => Lattice::Square,
                 "hex" | "hexagonal" => Lattice::Hexagonal,
                 other => return Err(o.bad("lattice", format!("{other:?}: use square or hexagonal"))),
             };
-            dotswaves::fill_dots_with_lattice(r, s, a, mark(0.2), lattice, at)
+            dotswaves::fill_dots_with_lattice_into(r, s, a, mark(0.2), lattice, at, sink);
         }
-        "waves" => dotswaves::fill_waves(r, s, a, at),
+        "waves" => dotswaves::fill_waves_into(r, s, a, at, sink),
+        _ => {}
+    }
+    if streams(generator) {
+        return Ok(());
+    }
+    let whole = match generator {
+        "zigzag" => zigzag::fill_zigzag_inset(r, s, a, inset, at),
+        "triangles" => grid::fill_triangles(r, s, a, at),
+        "honeycomb" => honeycomb::fill_honeycomb(r, s, a, o.mm("line_width")?.unwrap_or(0.0), at),
         "wave_grid" => dotswaves::fill_wave_grid(r, s, a, at),
         "scales" => scales::fill_scales(r, s, a, at),
         "sunburst" => radial::fill_sunburst(r, s, a, at),
@@ -228,7 +248,9 @@ fn run_generator(region: &Region, generator: &str, spec: &FillSpec) -> Result<pe
         }
         "none" => vec![],
         other => return Err(FillError::UnknownGenerator(other.into())),
-    })
+    };
+    sink.batch(whole);
+    Ok(())
 }
 
 fn run_source(region: &Region, spec: &FillSpec, sources: &Sources) -> Result<penfill::Strokes, FillError> {
@@ -265,15 +287,21 @@ pub fn validate(spec: &FillSpec, sources: &Sources) -> Result<(), FillError> {
 /// Fill `region` (output mm) as `spec` says.
 pub fn fill(region: &MultiPolygon<f64>, spec: &FillSpec, sources: &Sources) -> Result<Lines, FillError> {
     let mut out = Vec::new();
+    fill_into(region, spec, sources, &mut out)?;
+    Ok(to_lines(out))
+}
+
+/// [`fill`], handing the strokes to `sink` as they are made instead of
+/// keeping them.
+pub fn fill_into(region: &MultiPolygon<f64>, spec: &FillSpec, sources: &Sources, sink: &mut dyn penfill::Sink) -> Result<(), FillError> {
     for r in regions(region) {
-        let strokes = match (&spec.source, spec.generator.as_deref()) {
-            (Some(_), _) => run_source(&r, spec, sources)?,
-            (None, Some(g)) => run_generator(&r, g, spec)?,
+        match (&spec.source, spec.generator.as_deref()) {
+            (Some(_), _) => sink.batch(run_source(&r, spec, sources)?),
+            (None, Some(g)) => run_generator_into(&r, g, spec, sink)?,
             (None, None) => return Err(FillError::Nothing),
-        };
-        out.extend(to_lines(strokes));
+        }
     }
-    Ok(out)
+    Ok(())
 }
 
 /// `content` cut to `region`: lines made elsewhere used as the fill's pattern.

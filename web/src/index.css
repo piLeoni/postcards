@@ -129,16 +129,6 @@ aside :is(h1, h2, h3, p, div, header, section) {
    stretch: it sits at that size in the corner of whatever box holds it, so
    zooming left it behind. Pin it to the box instead, which is in screen px
    and the same aspect as the paper. */
-.output-svg svg {
-  display: block;
-  width: 100%;
-  height: 100%;
-}
-
-.output-svg svg * {
-  shape-rendering: geometricPrecision;
-}
-
 /* Monaco paints bracket pairs blue, green and gold from its own classes,
    whatever the theme and the `bracketPairColorization` option say. */
 .monaco-editor [class*="bracket-highlighting-"] {

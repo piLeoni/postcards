@@ -240,7 +240,7 @@ export default function Sidebar({ open, onClose, doc, setDoc, check, output, sta
       : status.phase === 'loading'
         ? 'Starting…'
         : drawing
-          ? `Drawn in ${drawing.ms} ms · ${strokes.toLocaleString('en-US')} strokes · ${(drawing.svg.length / 1e6).toFixed(1)} MB`
+          ? `Drawn in ${drawing.ms} ms · ${strokes.toLocaleString('en-US')} strokes · ${(drawing.svg.size / 1e6).toFixed(1)} MB`
           : 'Not drawn yet'
 
   return (

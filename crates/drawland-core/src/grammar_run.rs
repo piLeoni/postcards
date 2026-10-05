@@ -128,6 +128,32 @@ fn probe(draw: &Task, what: &str) {
 /// [`run`], with every step a task under `draw`: projecting, the defs, each
 /// fill, composing, writing.
 pub fn run_with(grammar: &Grammar, output: &Output, inputs: Inputs, draw: &Task) -> Result<Rendered, RunError> {
+    let mut parts: Vec<String> = Vec::new();
+    let drawn = run_into(grammar, output, inputs, draw, &mut |k, text| {
+        if parts.len() <= k {
+            parts.resize(k + 1, String::new());
+        }
+        parts[k].push_str(text);
+    })?;
+    let mut parts = parts.into_iter();
+    let svg = parts.next().unwrap_or_default();
+    Ok(Rendered { svg, groups: drawn.groups, slices: drawn.slices.into_iter().zip(parts).collect() })
+}
+
+/// What [`run_into`] drew, beside the text it wrote.
+pub struct Drawn {
+    /// `(group id, stroke count)` in draw order.
+    pub groups: Vec<(String, usize)>,
+    /// The sheets' names when the output is cut: part `k` of the text is
+    /// sheet `k - 1`.
+    pub slices: Vec<String>,
+}
+
+/// [`run_with`], the SVG text handed to `out` in pieces as it is written:
+/// part 0 the whole output, part `k` the `k`th sheet. Every group is
+/// generated, masked, cut and written a batch of strokes at a time, so the
+/// drawing is never in memory whole, as lines or as text.
+pub fn run_into(grammar: &Grammar, output: &Output, inputs: Inputs, draw: &Task, out: &mut crate::sheets::Out) -> Result<Drawn, RunError> {
     let mut sources = Sources::new();
     for (file, text) in inputs.sources {
         let drawing =
@@ -167,80 +193,31 @@ pub fn run_with(grammar: &Grammar, output: &Output, inputs: Inputs, draw: &Task)
     let values = evaluate(grammar, &Found { osm: &features, tiles: &tiles }, &engine, draw)?;
     probe(draw, "areas+lines");
 
-    // Fills come last: they need areas, and they call into penfill.
-    let fill_defs: Vec<&Def> = grammar.defs(Section::Fills).iter().filter(|d| matches!(d.op, Op::Fill(_))).collect();
-    let fills_task = draw.child("fills", "fills", fill_defs.len() as u64, "fills");
-    let mut fills: BTreeMap<Name, Lines> = BTreeMap::new();
-    // Bytes of fill strokes held so far, for the running ceiling: the fills
-    // all stay alive at once, so the budget is shared between them and not
-    // handed out fresh to each.
-    let mut held: u64 = 0;
-    for def in fill_defs {
-        let Op::Fill(spec) = &def.op else { continue };
-        let name = def.reference();
-        let task = fills_task.child(&format!("fill:{name}"), &name.to_string(), 0, "pieces");
-        let area = values
-            .get(&spec.in_area)
-            .ok_or_else(|| RunError::Plan(format!("{name}: missing input {}", spec.in_area)))?
-            .area(&spec.in_area)?;
-        // Inside a page, a fill that cannot fit its memory must be refused
-        // before it starts: the WASM allocator traps rather than returning
-        // null, and the trap ends the draw with nothing to show. Running from
-        // the command line, `memory_budget` is `None` and this is skipped.
-        if let Some(budget) = inputs.memory_budget {
-            let spacing = fill::spacing_mm(&spec.spec).unwrap_or(0.5);
-            let generator = spec.spec.generator.clone().unwrap_or_else(|| "dots".into());
-            let estimate = crate::budget::cost(area_area(area), &generator, spacing);
-            let total = held.saturating_add(estimate.bytes);
-            if total > budget {
-                // Say what is actually in the way: the held fills only when
-                // there are any, so an over-budget first fill does not read
-                // "and the fills already held need 0 MB".
-                let why = if held == 0 {
-                    format!("this first fill alone needs {}, more than the {}", crate::progress::human_bytes(estimate.bytes), crate::progress::human_bytes(budget))
-                } else {
-                    format!(
-                        "this fill needs {}, on top of the {} already held, together more than the {}",
-                        crate::progress::human_bytes(estimate.bytes),
-                        crate::progress::human_bytes(held),
-                        crate::progress::human_bytes(budget),
-                    )
-                };
-                let detail = format!(
-                    "{name}: {why}. This fill lays about {} strokes over {} mm² of paper. \
-                     Widen the spacing, use a sparser pattern, shrink the output, or draw at a smaller scale.",
-                    thousands(estimate.strokes),
-                    thousands(estimate.area_mm2 as u64),
-                );
-                task.fail(&detail);
-                return Err(RunError::TooLarge(detail));
-            }
-            held = total;
-        }
-        let lines = run_fill(spec, area, &values, &sources, &name, &task).map_err(|e| match e {
-            RunError::Def { source, .. } => RunError::Def { def: def.label(), source },
-            other => other,
-        })?;
-        task.ok(&format!("{} lines", thousands(lines.len() as u64)));
-        fills_task.tick();
-        probe(draw, &format!("fill {name}"));
-        fills.insert(name, lines);
-    }
-    fills_task.ok("");
-    probe(draw, "fills");
-
+    // Fills are not made here but in their group, as it is written: one
+    // batch of strokes alive at a time.
+    let fill_count = grammar.defs(Section::Fills).iter().filter(|d| matches!(d.op, Op::Fill(_))).count();
+    let fills_task = draw.child("fills", "fills", fill_count as u64, "fills");
     let compose_task = draw.child("compose", "compose", 0, "");
-    let groups = compose(grammar, &values, &fills, &compose_task)?;
+    let spec = &grammar.output;
+    let mut layout = crate::sheets::Layout::new(output.width_mm, output.height_mm, spec.padding, &spec.slices);
+    let mut written = 0usize;
+    let mut counted = |k: usize, text: &str| {
+        if k == 0 {
+            written += text.len();
+        }
+        out(k, text);
+    };
+    let fills = Fills { values: &values, sources: &sources, budget: inputs.memory_budget, task: &fills_task };
+    compose(grammar, &values, &fills, &compose_task, &mut layout, &mut counted)?;
+    let (groups, slices) = layout.finish(&mut counted);
+    fills_task.ok("");
     compose_task.ok(&format!("{} groups", groups.len()));
     probe(draw, "composed");
 
-    let svg_task = draw.child("svg", "svg", 0, "");
-    let spec = &grammar.output;
-    let paper = crate::sheets::lay_out(output.width_mm, output.height_mm, spec.padding, &spec.slices, groups);
-    let strokes: usize = paper.groups.iter().map(|(_, n)| n).sum();
-    let cut = if paper.slices.is_empty() { String::new() } else { format!(" · {} slices", paper.slices.len()) };
-    svg_task.ok(&format!("{} strokes · {:.1} MB{cut}", thousands(strokes as u64), paper.svg.len() as f64 / 1e6));
-    Ok(Rendered { svg: paper.svg, groups: paper.groups, slices: paper.slices })
+    let strokes: usize = groups.iter().map(|(_, n)| n).sum();
+    let cut = if slices.is_empty() { String::new() } else { format!(" · {} slices", slices.len()) };
+    draw.child("svg", "svg", 0, "").ok(&format!("{} strokes · {:.1} MB{cut}", thousands(strokes as u64), written as f64 / 1e6));
+    Ok(Drawn { groups, slices })
 }
 
 /// The features a selection picks from, in output millimetres.
@@ -441,13 +418,13 @@ fn eval_module(module: &str, features: &[Feature], output: &Output) -> Result<Va
 /// A module output as draw lines (`outlines` / `details`), or as an area
 /// (`area`), which is recorded as a mask instead: modules mask, they do not
 /// stroke.
-fn module_lines(
+fn module_lines<'a>(
     module: &str,
     name: &str,
-    value: &Value,
+    value: &'a Value,
     group: &str,
     masks_by_id: &mut BTreeMap<String, MultiPolygon<f64>>,
-) -> Result<Option<Lines>, RunError> {
+) -> Result<Option<&'a Lines>, RunError> {
     let Value::Module { area, outlines, details, trails, centerlines, seams } = value else {
         return Err(RunError::Plan(format!("module_{module} did not produce module outputs")));
     };
@@ -456,11 +433,11 @@ fn module_lines(
             masks_by_id.insert(group.to_string(), area.clone());
             None
         }
-        "outlines" => Some(outlines.clone()),
-        "details" => Some(details.clone()),
-        "trails" => Some(trails.clone()),
-        "centerlines" => Some(centerlines.clone()),
-        "seams" => Some(seams.clone()),
+        "outlines" => Some(outlines),
+        "details" => Some(details),
+        "trails" => Some(trails),
+        "centerlines" => Some(centerlines),
+        "seams" => Some(seams),
         other => {
             return Err(RunError::Plan(format!(
                 "module {module}: unknown output {other:?} (area, outlines, details, trails, centerlines, seams)"
@@ -508,72 +485,183 @@ fn select(sel: &Selector, features: &[Feature]) -> Vec<Feature> {
     features.iter().filter(|f| sel.keeps(f)).cloned().collect()
 }
 
-/// penfill inside an area: one pass, or one per feature for `per: feature`.
-fn run_fill(
-    spec: &crate::grammar::Fill,
-    area: &MultiPolygon<f64>,
-    values: &BTreeMap<Name, Value>,
-    sources: &Sources,
-    def: &Name,
-    task: &Task,
-) -> Result<Lines, RunError> {
-    if let Some(content) = &spec.content {
-        let lines = values
-            .get(content)
-            .ok_or_else(|| RunError::Plan(format!("{def}: missing content {content}")))?
-            .lines(content)?;
-        task.set_total(1);
-        let out = fill::fill_with(area, lines);
-        task.tick();
-        return Ok(out);
-    }
-    let base = spec.spec.clone();
-    if spec.per_feature {
-        // One penfill run per polygon of the input area, so neighbouring
-        // buildings keep their own hatching instead of merging.
-        let pieces: Vec<MultiPolygon<f64>> = area.0.iter().map(|p| MultiPolygon::new(vec![p.clone()])).collect();
-        task.set_total(pieces.len() as u64);
-        let filled: Result<Vec<Lines>, FillError> = pieces
-            .par_iter()
-            .map(|m| {
-                let lines = fill::fill(m, &base, sources);
-                task.tick();
-                lines
-            })
-            .collect();
-        return Ok(filled?.into_iter().flatten().collect());
-    }
-    // One penfill pass over the whole area, so the pattern runs on across
-    // its polygons: a single step to count.
-    task.set_total(1);
-    let lines = fill::fill(area, &base, sources).map_err(|source| RunError::Def { def: def.to_string(), source })?;
-    task.tick();
-    Ok(lines)
+/// What the fills need to be made in their group: the evaluated defs, the
+/// SVG sources, the host's memory ceiling, and the task their rows go under.
+struct Fills<'a> {
+    values: &'a BTreeMap<Name, Value>,
+    sources: &'a Sources,
+    budget: Option<u64>,
+    task: &'a Task<'a>,
 }
 
-/// Turn `draw` + `compose` into ordered SVG groups.
+/// How many buildings `per: feature` fills at once, in parallel: enough to
+/// keep the cores busy, few enough that their strokes stay small.
+const PIECES_AT_ONCE: usize = 256;
+
+/// Make the fill `def` into `sink`: one pass, or one per feature for
+/// `per: feature`.
+fn run_fill(def: &Def, spec: &crate::grammar::Fill, fills: &Fills, sink: &mut GroupSink) -> Result<(), RunError> {
+    let name = def.reference();
+    let task = fills.task.child(&format!("fill:{name}"), &name.to_string(), 0, "pieces");
+    let area = fills
+        .values
+        .get(&spec.in_area)
+        .ok_or_else(|| RunError::Plan(format!("{name}: missing input {}", spec.in_area)))?
+        .area(&spec.in_area)?;
+    let failed = |source| RunError::Def { def: def.label(), source };
+    let start = sink.fed;
+    if let Some(content) = &spec.content {
+        let lines = fills
+            .values
+            .get(content)
+            .ok_or_else(|| RunError::Plan(format!("{name}: missing content {content}")))?
+            .lines(content)?;
+        task.set_total(1);
+        for l in fill::fill_with(area, lines) {
+            sink.line(l);
+        }
+    } else if spec.per_feature {
+        // One penfill run per polygon of the input area, so neighbouring
+        // buildings keep their own hatching instead of merging.
+        task.set_total(area.0.len() as u64);
+        for chunk in area.0.chunks(PIECES_AT_ONCE) {
+            let filled: Result<Vec<Lines>, FillError> = chunk
+                .par_iter()
+                .map(|p| {
+                    let lines = fill::fill(&MultiPolygon::new(vec![p.clone()]), &spec.spec, fills.sources);
+                    task.tick();
+                    lines
+                })
+                .collect();
+            for l in filled.map_err(failed)?.into_iter().flatten() {
+                sink.line(l);
+            }
+        }
+    } else {
+        // A generator that cannot stream holds its whole fill at once:
+        // inside a page, one that would not fit is refused before it starts,
+        // since the WASM allocator traps rather than failing. From the
+        // command line `budget` is `None` and this is skipped.
+        let generator = spec.spec.generator.clone().unwrap_or_else(|| "dots".into());
+        if let Some(budget) = fills.budget.filter(|_| spec.spec.source.is_some() || !fill::streams(&generator)) {
+            let spacing = fill::spacing_mm(&spec.spec).unwrap_or(0.5);
+            let estimate = crate::budget::cost(area_area(area), &generator, spacing);
+            if estimate.bytes > budget {
+                let detail = format!(
+                    "{name}: this fill needs {}, more than the {} the page has. It covers {} mm² of paper \
+                     with {generator} at {spacing} mm. Widen the spacing, use a sparser pattern, shrink the \
+                     output, or draw it with the command line.",
+                    crate::progress::human_bytes(estimate.bytes),
+                    crate::progress::human_bytes(budget),
+                    thousands(estimate.area_mm2 as u64),
+                );
+                task.fail(&detail);
+                return Err(RunError::TooLarge(detail));
+            }
+        }
+        task.set_total(1);
+        fill::fill_into(area, &spec.spec, fills.sources, sink).map_err(failed)?;
+    }
+    task.tick();
+    task.ok(&format!("{} lines", thousands((sink.fed - start) as u64)));
+    fills.task.tick();
+    Ok(())
+}
+
+/// One group on its way to the paper: strokes come in, are styled, gathered
+/// into a batch, cut by the masks over the group, and written. Only the
+/// batch is ever held.
+struct GroupSink<'a, 'o> {
+    stroke: Option<&'a crate::profile::StrokeSpec>,
+    /// What the masks over this group cover; empty when none does.
+    mask: &'a MultiPolygon<f64>,
+    pending: Lines,
+    points: usize,
+    /// Strokes taken in, before styling and masking: for the progress row.
+    fed: usize,
+    layout: &'a mut crate::sheets::Layout,
+    out: &'a mut crate::sheets::Out<'o>,
+}
+
+impl GroupSink<'_, '_> {
+    fn line(&mut self, line: geo::LineString<f64>) {
+        self.fed += 1;
+        match self.stroke {
+            None => self.push(line),
+            Some(s) => {
+                for l in fill::stroke(vec![line], s) {
+                    self.push(l);
+                }
+            }
+        }
+    }
+
+    fn push(&mut self, line: geo::LineString<f64>) {
+        self.points += line.0.len();
+        self.pending.push(line);
+        if self.points >= geom::BATCH_POINTS {
+            self.flush();
+        }
+    }
+
+    fn flush(&mut self) {
+        if self.pending.is_empty() {
+            return;
+        }
+        let batch = std::mem::take(&mut self.pending);
+        self.points = 0;
+        let kept = if self.mask.0.is_empty() { batch } else { geom::clip_lines(&batch, self.mask, true) };
+        self.layout.lines(&kept, self.out);
+    }
+}
+
+impl penfill::Sink for GroupSink<'_, '_> {
+    fn stroke(&mut self, pts: Vec<(f64, f64)>) {
+        if pts.len() >= 2 {
+            self.line(geo::LineString::new(pts.into_iter().map(|(x, y)| geo::Coord { x, y }).collect()));
+        }
+    }
+}
+
+/// What a draw entry draws: lines already made, a fill still to make, or
+/// nothing (a module's `area`, which masks instead).
+enum Drawing<'a> {
+    Lines(&'a Lines),
+    Fill(&'a Def, &'a crate::grammar::Fill),
+    Nothing,
+}
+
+/// Write `draw` + `compose` onto `layout`, group by group in order, each
+/// made as it is written.
 fn compose(
     grammar: &Grammar,
     values: &BTreeMap<Name, Value>,
-    fills: &BTreeMap<Name, Lines>,
+    fills: &Fills,
     task: &Task,
-) -> Result<Vec<(String, Lines)>, RunError> {
-    // 1. Gather each draw entry's lines, styled by its stroke.
-    let mut parts: BTreeMap<String, Lines> = BTreeMap::new();
+    layout: &mut crate::sheets::Layout,
+    out: &mut crate::sheets::Out,
+) -> Result<(), RunError> {
+    // 1. What each draw entry draws, and with what stroke.
+    let mut drawn: BTreeMap<String, (Drawing, Option<&crate::profile::StrokeSpec>)> = BTreeMap::new();
     let mut masks_by_id: BTreeMap<String, MultiPolygon<f64>> = BTreeMap::new();
 
     let strokes_task = task.child("compose:strokes", "strokes", grammar.draw.len() as u64, "draws");
     for draw in &grammar.draw {
-        let lines = match &draw.from.module {
+        let what = match &draw.from.module {
             Some(module) => {
                 let value = module_output(module, &draw.from.name.name, values, grammar)?;
                 module_lines(module, &draw.from.name.name, value, &draw.group(), &mut masks_by_id)?
+                    .map_or(Drawing::Nothing, Drawing::Lines)
             }
             None => match draw.from.name.section {
-                Section::Lines => {
-                    values.get(&draw.from.name).map(|v| v.lines(&draw.from.name).cloned()).transpose()?
-                }
-                Section::Fills => fills.get(&draw.from.name).cloned(),
+                Section::Lines => match values.get(&draw.from.name) {
+                    Some(v) => Drawing::Lines(v.lines(&draw.from.name)?),
+                    None => Drawing::Nothing,
+                },
+                Section::Fills => match grammar.find(&draw.from.name) {
+                    Some(def @ Def { op: Op::Fill(spec), .. }) => Drawing::Fill(def, spec),
+                    _ => Drawing::Nothing,
+                },
                 other => {
                     return Err(RunError::Plan(format!(
                         "draw from ${other}.{}: need $lines or $fills",
@@ -582,9 +670,7 @@ fn compose(
                 }
             },
         };
-        let lines = lines.unwrap_or_default();
-        let strokes = draw.stroke.as_ref().map_or(lines.clone(), |s| fill::stroke(lines, s));
-        parts.insert(draw.group(), strokes);
+        drawn.insert(draw.group(), (what, draw.stroke.as_ref()));
         strokes_task.tick();
     }
     strokes_task.ok("");
@@ -613,16 +699,13 @@ fn compose(
         ids
     };
 
-    // 4. Occlusion. A mask cuts exactly the groups it lists, wherever they sit
-    // in the order: the order is only the sequence the groups are drawn in.
-    let mut out: Vec<(String, Lines)> = Vec::new();
+    // 4. Each group made, masked and written. A mask cuts exactly the groups
+    // it lists, wherever they sit in the order: the order is only the
+    // sequence the groups are drawn in.
     let occlude_task = task.child("compose:occlude", "occlusion", order.len() as u64, "groups");
     for id in &order {
         occlude_task.tick();
-        let Some(lines) = parts.get(id) else { continue };
-        if probing() {
-            occlude_task.log(Level::Info, &format!("mem group {id} in: {}", crate::progress::human_bytes(crate::progress::resident_bytes())));
-        }
+        let Some((what, stroke)) = drawn.remove(id) else { continue };
         let mut above = geom::empty();
         for (name, mask) in &grammar.compose.masks {
             if !mask.occludes.iter().any(|o| &o.0 == id) {
@@ -646,14 +729,25 @@ fn compose(
                 geom::union_multi(&parts)
             }
         };
-        let kept = geom::clip_lines(lines, &above, true);
-        if probing() {
-            occlude_task.log(Level::Info, &format!("mem group {id} clipping: {} in, {} out, {}", crate::progress::human_bytes(crate::progress::resident_bytes()), thousands(kept.len() as u64), thousands(lines.len() as u64)));
+        layout.begin(id);
+        let mut sink = GroupSink { stroke, mask: &above, pending: Vec::new(), points: 0, fed: 0, layout, out };
+        match what {
+            Drawing::Lines(lines) => {
+                for l in lines {
+                    sink.line(l.clone());
+                }
+            }
+            Drawing::Fill(def, spec) => run_fill(def, spec, fills, &mut sink)?,
+            Drawing::Nothing => {}
         }
-        out.push((id.clone(), kept));
+        sink.flush();
+        layout.end();
+        if probing() {
+            occlude_task.log(Level::Info, &format!("mem group {id}: {}", crate::progress::human_bytes(crate::progress::resident_bytes())));
+        }
     }
     occlude_task.ok("");
-    Ok(out)
+    Ok(())
 }
 
 

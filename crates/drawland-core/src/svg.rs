@@ -14,6 +14,22 @@ fn num(out: &mut String, v: f64) {
 }
 
 pub fn write_svg(width_mm: f64, height_mm: f64, groups: &[(String, Lines)]) -> String {
+    let mut s = header(width_mm, height_mm);
+    for (id, lines) in groups {
+        group_open(&mut s, id);
+        for line in lines {
+            polyline(&mut s, line);
+        }
+        group_close(&mut s);
+    }
+    s.push_str(FOOTER);
+    s
+}
+
+/// The document's start, up to its first group. With [`group_open`],
+/// [`polyline`], [`group_close`] and [`FOOTER`], an SVG written a piece at a
+/// time comes out the same as [`write_svg`]'s.
+pub fn header(width_mm: f64, height_mm: f64) -> String {
     let mut s = String::new();
     s.push_str("<?xml version='1.0' encoding='utf-8'?>\n");
     let _ = write!(
@@ -21,27 +37,34 @@ pub fn write_svg(width_mm: f64, height_mm: f64, groups: &[(String, Lines)]) -> S
         "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{width_mm}mm\" height=\"{height_mm}mm\" viewBox=\"0 0 {width_mm} {height_mm}\">"
     );
     let _ = write!(s, "<style>{STYLE}</style>");
-    for (id, lines) in groups {
-        let _ = write!(s, "\n<g id=\"{id}\">");
-        for line in lines {
-            if line.0.len() < 2 {
-                continue;
-            }
-            s.push_str("\n<polyline points=\"");
-            for (i, c) in line.0.iter().enumerate() {
-                if i > 0 {
-                    s.push(' ');
-                }
-                num(&mut s, c.x);
-                s.push(',');
-                num(&mut s, c.y);
-            }
-            s.push_str("\" />");
-        }
-        s.push_str("\n</g>");
-    }
-    s.push_str("\n</svg>\n");
     s
+}
+
+pub const FOOTER: &str = "\n</svg>\n";
+
+pub fn group_open(s: &mut String, id: &str) {
+    let _ = write!(s, "\n<g id=\"{id}\">");
+}
+
+pub fn group_close(s: &mut String) {
+    s.push_str("\n</g>");
+}
+
+/// One line; nothing for a line of fewer than two points.
+pub fn polyline(s: &mut String, line: &geo::LineString<f64>) {
+    if line.0.len() < 2 {
+        return;
+    }
+    s.push_str("\n<polyline points=\"");
+    for (i, c) in line.0.iter().enumerate() {
+        if i > 0 {
+            s.push(' ');
+        }
+        num(s, c.x);
+        s.push(',');
+        num(s, c.y);
+    }
+    s.push_str("\" />");
 }
 
 #[cfg(test)]

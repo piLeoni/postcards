@@ -25,8 +25,13 @@ async function run({ token, graph, lat, lng }) {
   const ac = new AbortController()
   current = ac
   const emit = (e) => self.postMessage({ type: 'event', token, e })
+  let engine = null
+  // A trap leaves the job borrowed and the module's heap unusable: freeing
+  // the job then throws "attempted to take ownership of Rust value while it
+  // was borrowed", hiding the real error, and every later call is suspect.
+  let trapped = false
   try {
-    const engine = await loadDrawland()
+    engine = await loadDrawland()
     const download = Task.begin(emit, 'download', null, 'download')
     download.log('info', `centre ${lat.toFixed(7)}, ${lng.toFixed(7)}`)
     const job = new engine.Job(graph, lat, lng)
@@ -55,24 +60,50 @@ async function run({ token, graph, lat, lng }) {
       job.readTerrain(emit)
       download.ok()
       const t0 = performance.now()
-      const out = job.draw({}, emit)
+      // The SVG arrives in pieces as it is written, part 0 the whole output
+      // and part k the kth slice; a Blob keeps it out of the wasm heap and
+      // past the length a single JS string may have.
+      const parts = []
+      const onText = (k, text) => (parts[k] ??= []).push(text)
+      const out = job.draw({}, emit, onText)
       if (ac.signal.aborted) return
+      const blob = (k) => new Blob(parts[k] ?? [], { type: 'image/svg+xml' })
       self.postMessage({
         type: 'done',
         token,
-        svg: out.svg,
+        svg: blob(0),
         groups: out.groups,
-        slices: out.slices,
+        slices: out.slices.map((name, i) => [name, blob(i + 1)]),
         ms: Math.round(performance.now() - t0),
         bytes,
       })
+      out.free()
+    } catch (e) {
+      trapped = e instanceof WebAssembly.RuntimeError
+      throw e
     } finally {
-      job.free()
+      if (!trapped) job.free()
     }
   } catch (e) {
     if (e?.name === 'AbortError') return
-    const message = e instanceof Error ? e.message : String(e)
+    const message = trapped ? trapMessage(engine, e) : e instanceof Error ? e.message : String(e)
     emit({ kind: 'log', level: 'error', text: message })
-    self.postMessage({ type: 'error', token, message })
+    self.postMessage({ type: 'error', token, message, fatal: trapped })
+    // The page starts a fresh worker for the next draw.
+    if (trapped) self.close()
   }
+}
+
+/** What a trap in the engine was: a panic's own message, or the heap full. */
+function trapMessage(engine, e) {
+  let panic = null
+  try {
+    panic = engine?.lastPanic?.()
+  } catch {
+    // The instance is broken enough that even this call traps.
+  }
+  if (panic) return `the engine crashed: ${panic}`
+  const heap = engine?.memory?.buffer?.byteLength
+  const gb = heap ? ` (${(heap / 2 ** 30).toFixed(2)} GB in use)` : ''
+  return `the engine ran out of memory${gb}: ${e.message}. Widen the spacing, use a sparser pattern, shrink the output, or draw it with the command line.`
 }

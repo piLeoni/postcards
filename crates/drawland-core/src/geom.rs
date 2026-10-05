@@ -103,15 +103,35 @@ pub fn fill_holes(mp: &MultiPolygon<f64>) -> MultiPolygon<f64> {
     union_all(&shells)
 }
 
+/// Points [`clip_lines`] hands geo's clip at once. The sweep takes four to
+/// ten times the lines' own memory, so a big fill in one call is GBs; each
+/// batch sweeps the mask again, so batches are kept large. Counted in
+/// points, since a wave or a hatch line can hold thousands.
+pub const BATCH_POINTS: usize = 131_072;
+
 /// The parts of `lines` inside `mask` (or outside, with `invert`).
-pub fn clip_lines(lines: &[LineString<f64>], mask: &MultiPolygon<f64>, invert: bool) -> Lines {    if lines.is_empty() {
+pub fn clip_lines(lines: &[LineString<f64>], mask: &MultiPolygon<f64>, invert: bool) -> Lines {
+    if lines.is_empty() {
         return vec![];
     }
     if mask.0.is_empty() {
         return if invert { lines.to_vec() } else { vec![] };
     }
-    let mls = MultiLineString::new(lines.to_vec());
-    mask.clip(&mls, invert).0.into_iter().filter(|l| l.0.len() >= 2 && line_length(l) > 0.0).collect()
+    // Lines clip independently, so batches give the same result.
+    let mut out = Vec::new();
+    let mut start = 0;
+    while start < lines.len() {
+        let mut end = start;
+        let mut points = 0;
+        while end < lines.len() && (end == start || points + lines[end].0.len() <= BATCH_POINTS) {
+            points += lines[end].0.len();
+            end += 1;
+        }
+        let batch = MultiLineString::new(lines[start..end].to_vec());
+        out.extend(mask.clip(&batch, invert).0.into_iter().filter(|l| l.0.len() >= 2 && line_length(l) > 0.0));
+        start = end;
+    }
+    out
 }
 
 /// Polygon buffer with round joins; negative shrinks.

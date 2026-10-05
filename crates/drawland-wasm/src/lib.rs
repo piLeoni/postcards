@@ -24,29 +24,45 @@ use std::collections::BTreeMap;
 use terramask::TileId;
 use wasm_bindgen::prelude::*;
 
-/// A rendered output: the SVG, plus how many strokes each group drew.
+thread_local! {
+    static PANIC: std::cell::RefCell<Option<String>> = const { std::cell::RefCell::new(None) };
+}
+
+/// Keep a panic's message: in wasm a panic traps with only "unreachable", so
+/// the page asks [`last_panic`] what actually went wrong.
+#[wasm_bindgen(start)]
+pub fn start() {
+    std::panic::set_hook(Box::new(|info| {
+        PANIC.with(|p| *p.borrow_mut() = Some(info.to_string()));
+    }));
+}
+
+/// The message of the panic that trapped the last call, if one did. An
+/// allocation that fails aborts without a panic, so a trap with none is the
+/// heap running out.
+#[wasm_bindgen(js_name = lastPanic)]
+pub fn last_panic() -> Option<String> {
+    PANIC.with(|p| p.borrow_mut().take())
+}
+
+/// A rendered output: how many strokes each group drew, and the sheets. The
+/// SVG text itself went out through `draw`'s `on_text` as it was written.
 #[wasm_bindgen]
 pub struct Rendered {
-    svg: String,
     groups: js_sys::Array,
     slices: js_sys::Array,
 }
 
 #[wasm_bindgen]
 impl Rendered {
-    /// The output as an SVG string, in millimetres.
-    #[wasm_bindgen(getter)]
-    pub fn svg(&self) -> String {
-        self.svg.clone()
-    }
-
     /// `[["roads_main", 1234], …]` in draw order, for a legend or a check.
     #[wasm_bindgen(getter)]
     pub fn groups(&self) -> js_sys::Array {
         self.groups.clone()
     }
 
-    /// `[["r1c1", svg], …]` when the output is cut into slices; empty otherwise.
+    /// `["r1c1", …]` when the output is cut into slices, sheet `k` being
+    /// part `k + 1` of the text; empty otherwise.
     #[wasm_bindgen(getter)]
     pub fn slices(&self) -> js_sys::Array {
         self.slices.clone()
@@ -388,8 +404,11 @@ impl Job {
     }
 
     /// Draw the output, as the `draw` tree. `sources` maps the file names the
-    /// document references to their SVG text; `{}` when it has none.
-    pub fn draw(&mut self, sources: js_sys::Object, on_event: js_sys::Function) -> Result<Rendered, JsValue> {
+    /// document references to their SVG text; `{}` when it has none. The SVG
+    /// goes to `on_text(part, text)` in pieces as it is written, part 0 the
+    /// whole output and part `k` the `k`th slice, so it never sits whole in
+    /// this module's memory.
+    pub fn draw(&mut self, sources: js_sys::Object, on_event: js_sys::Function, on_text: js_sys::Function) -> Result<Rendered, JsValue> {
         self.check_alive()?;
         let features = match self.features.take() {
             Some(f) => f,
@@ -412,6 +431,9 @@ impl Job {
                     memory_budget: self.memory_budget,
                 },
                 &draw,
+                &mut |part, text| {
+                    let _ = on_text.call2(&JsValue::NULL, &JsValue::from_f64(part as f64), &JsValue::from_str(text));
+                },
             ) {
                 Ok(out) => out,
             Err(e) => {
@@ -432,10 +454,10 @@ impl Job {
             groups.push(&JsValue::from(js_sys::Array::of2(&JsValue::from_str(&id), &JsValue::from_f64(n as f64))));
         }
         let slices = js_sys::Array::new();
-        for (name, svg) in out.slices {
-            slices.push(&JsValue::from(js_sys::Array::of2(&JsValue::from_str(&name), &JsValue::from_str(&svg))));
+        for name in out.slices {
+            slices.push(&JsValue::from_str(&name));
         }
-        Ok(Rendered { svg: out.svg, groups, slices })
+        Ok(Rendered { groups, slices })
     }
 }
 
@@ -602,9 +624,8 @@ impl Body {
 }
 
 struct Out {
-    svg: String,
     groups: Vec<(String, usize)>,
-    slices: Vec<(String, String)>,
+    slices: Vec<String>,
 }
 
 impl Doc {
@@ -628,12 +649,12 @@ impl Doc {
     }
 
     /// The drawing, its steps as rows under `draw`.
-    fn render(&self, inputs: RenderInputs, draw: &Task) -> Result<Out, String> {
+    fn render(&self, inputs: RenderInputs, draw: &Task, out: &mut drawland_core::sheets::Out) -> Result<Out, String> {
         let error = |_: ()| "this graph was never loaded".to_string();
         match &self.body {
             Body::Empty => Err(error(())),
             Body::Grammar(g) => {
-                let out = drawland_core::grammar_run::run_with(
+                let drawn = drawland_core::grammar_run::run_into(
                     g,
                     &self.output,
                     drawland_core::grammar_run::Inputs {
@@ -645,9 +666,10 @@ impl Doc {
                         memory_budget: inputs.memory_budget,
                     },
                     draw,
+                    out,
                 )
                 .map_err(|e| e.to_string())?;
-                Ok(Out { svg: out.svg, groups: out.groups, slices: out.slices })
+                Ok(Out { groups: drawn.groups, slices: drawn.slices })
             }
         }
     }

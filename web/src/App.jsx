@@ -35,8 +35,9 @@ function unitsOf(doc) {
   }
 }
 
-function saveFile(name, text) {
-  const url = URL.createObjectURL(new Blob([text], { type: 'image/svg+xml' }))
+/** Download `svg`, a Blob, as `name`. */
+function saveFile(name, svg) {
+  const url = URL.createObjectURL(svg)
   const a = document.createElement('a')
   a.href = url
   a.download = name
@@ -199,6 +200,10 @@ export default function App() {
           if (token === drawTokenRef.current) setLoad(null)
         }, 1500)
       } else if (msg.type === 'error') {
+        if (msg.fatal) {
+          workerRef.current?.terminate()
+          workerRef.current = null
+        }
         board.failRunning(performance.now())
         changed()
         setStatus({ phase: 'error', detail: msg.message })

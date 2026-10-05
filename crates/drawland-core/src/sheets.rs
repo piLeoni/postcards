@@ -5,7 +5,7 @@
 //! nothing is moved or scaled.
 
 use crate::geom::Lines;
-use crate::svg::write_svg;
+use crate::svg;
 use crate::units::MmXY;
 use geo::{Coord, LineString};
 use serde::{Deserialize, Serialize};
@@ -79,44 +79,119 @@ pub struct Paper {
 /// Lay the composed groups on the paper: cropped to the padding and the
 /// sheets' margins, then cut into one drawing per sheet.
 pub fn lay_out(width: f64, height: f64, padding: MmXY, slices: &Slices, groups: Vec<(String, Lines)>) -> Paper {
-    let sheets = sheets(width, height, padding, slices);
-    let cropped = padding.x > 0.0 || padding.y > 0.0 || sheets.len() > 1;
-    let whole: Vec<(String, Lines)> = if cropped {
-        groups.iter().map(|(id, lines)| (id.clone(), sheets.iter().flat_map(|s| clip(lines, s.inner)).collect())).collect()
-    } else {
-        groups
+    let mut layout = Layout::new(width, height, padding, slices);
+    let mut parts: Vec<String> = Vec::new();
+    let mut out = |k: usize, text: &str| {
+        if parts.len() <= k {
+            parts.resize(k + 1, String::new());
+        }
+        parts[k].push_str(text);
     };
-    let parts = if sheets.len() > 1 {
-        sheets
-            .iter()
-            .map(|s| {
-                let [x0, y0, x1, y1] = s.at;
-                let mine: Vec<(String, Lines)> = whole
-                    .iter()
-                    .map(|(id, lines)| {
-                        let moved = clip(lines, s.inner)
-                            .into_iter()
-                            .map(|l| LineString::new(l.0.into_iter().map(|c| Coord { x: c.x - x0, y: c.y - y0 }).collect()))
-                            .collect();
-                        (id.clone(), moved)
-                    })
-                    .collect();
-                let um = |v: f64| (v * 1000.0).round() / 1000.0;
-                (s.name.clone(), write_svg(um(x1 - x0), um(y1 - y0), &mine))
-            })
-            .collect()
-    } else {
-        Vec::new()
-    };
-    Paper {
-        svg: write_svg(width, height, &whole),
-        groups: whole.iter().map(|(id, l)| (id.clone(), l.len())).collect(),
-        slices: parts,
+    for (id, lines) in &groups {
+        layout.begin(id);
+        layout.lines(lines, &mut out);
+        layout.end();
+    }
+    let (groups, names) = layout.finish(&mut out);
+    let mut parts = parts.into_iter();
+    Paper { svg: parts.next().unwrap_or_default(), groups, slices: names.into_iter().zip(parts).collect() }
+}
+
+/// Where the drawing's text goes as it is written: part 0 is the whole
+/// output, part `k` the `k`th sheet.
+pub type Out<'a> = dyn FnMut(usize, &str) + 'a;
+
+/// The paper written a batch of lines at a time: each batch is cropped,
+/// cut into the sheets and turned into SVG text at once, so a drawing is
+/// never held whole, as lines or as text. Text goes to the `out` callback
+/// in pieces of about [`PIECE`] bytes per part.
+pub struct Layout {
+    sheets: Vec<Sheet>,
+    cropped: bool,
+    /// The text not yet handed out: the whole output first, then each sheet's.
+    parts: Vec<String>,
+    groups: Vec<(String, usize)>,
+}
+
+/// Bytes of SVG text a part holds before handing them out.
+pub const PIECE: usize = 1 << 20;
+
+impl Layout {
+    pub fn new(width: f64, height: f64, padding: MmXY, slices: &Slices) -> Layout {
+        let sheets = sheets(width, height, padding, slices);
+        let cropped = padding.x > 0.0 || padding.y > 0.0 || sheets.len() > 1;
+        let mut parts = vec![svg::header(width, height)];
+        if sheets.len() > 1 {
+            let um = |v: f64| (v * 1000.0).round() / 1000.0;
+            parts.extend(sheets.iter().map(|s| svg::header(um(s.at[2] - s.at[0]), um(s.at[3] - s.at[1]))));
+        }
+        Layout { sheets, cropped, parts, groups: Vec::new() }
+    }
+
+    fn cut(&self) -> bool {
+        self.sheets.len() > 1
+    }
+
+    /// Start the group `id`, in every part.
+    pub fn begin(&mut self, id: &str) {
+        for p in &mut self.parts {
+            svg::group_open(p, id);
+        }
+        self.groups.push((id.to_string(), 0));
+    }
+
+    /// Lines of the group begun last.
+    pub fn lines(&mut self, lines: &[LineString<f64>], out: &mut Out) {
+        let cropped_lines;
+        let whole = if self.cropped {
+            cropped_lines = self.sheets.iter().flat_map(|s| clip(lines, s.inner)).collect::<Lines>();
+            &cropped_lines[..]
+        } else {
+            lines
+        };
+        if let Some(g) = self.groups.last_mut() {
+            g.1 += whole.len();
+        }
+        for l in whole {
+            svg::polyline(&mut self.parts[0], l);
+        }
+        if self.cut() {
+            for (k, s) in self.sheets.iter().enumerate() {
+                let [x0, y0, _, _] = s.at;
+                for l in clip(whole, s.inner) {
+                    let moved = LineString::new(l.0.into_iter().map(|c| Coord { x: c.x - x0, y: c.y - y0 }).collect());
+                    svg::polyline(&mut self.parts[k + 1], &moved);
+                }
+            }
+        }
+        for (k, p) in self.parts.iter_mut().enumerate() {
+            if p.len() >= PIECE {
+                out(k, p);
+                p.clear();
+            }
+        }
+    }
+
+    pub fn end(&mut self) {
+        for p in &mut self.parts {
+            svg::group_close(p);
+        }
+    }
+
+    /// Close every part and hand out what is left: the strokes each group
+    /// drew on the whole output, and the sheets' names (none when uncut).
+    pub fn finish(mut self, out: &mut Out) -> (Vec<(String, usize)>, Vec<String>) {
+        for (k, p) in self.parts.iter_mut().enumerate() {
+            p.push_str(svg::FOOTER);
+            out(k, p);
+        }
+        let names = if self.cut() { self.sheets.into_iter().map(|s| s.name).collect() } else { Vec::new() };
+        (std::mem::take(&mut self.groups), names)
     }
 }
 
 /// The parts of `lines` inside `r`, each run of inside segments one line.
-pub fn clip(lines: &Lines, r: Rect) -> Lines {
+pub fn clip(lines: &[LineString<f64>], r: Rect) -> Lines {
     let mut out = Vec::new();
     if r[2] <= r[0] || r[3] <= r[1] {
         return out;
