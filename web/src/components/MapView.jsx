@@ -12,6 +12,7 @@ import { outputBox, FIT_PAD, groundKm, hasLayout, lengthText, sheetsOf, sig3, zo
 import { mapViewAtom } from '../lib/store'
 import OutputControls from './OutputControls'
 import SearchModal from './SearchModal'
+import ShareModal from './ShareModal'
 import { norm, terrainPair } from './controls'
 import LoadCard from './LoadCard'
 
@@ -374,6 +375,9 @@ export default function MapView({
   onOutputToCentre,
   onCentreOnOutput,
   onSearch,
+  share,
+  shareDoc,
+  onShareClose,
 }) {
   const [menu, setMenu] = useState(false)
   const [search, setSearch] = useState(false)
@@ -840,6 +844,10 @@ export default function MapView({
       )}
 
       <SearchModal open={search} onClose={() => setSearch(false)} onPick={onSearch} />
+
+      {/* The share sheet is a panel over the map, the same sheet search and
+          load wear, centred on the drawing rather than on the script column. */}
+      <ShareModal open={share} onClose={onShareClose} doc={shareDoc} />
 
       {/* The draw, reported over the map: a separate output, not a frame drawn
           inside the output that is about to be replaced. */}

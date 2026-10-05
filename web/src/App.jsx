@@ -6,7 +6,11 @@ import { loadDrawland } from './lib/drawland'
 import { docAtom } from './lib/store'
 import { outputComment, outputUnit, setOutputComment, setOutputKeys } from './lib/doc'
 import { compile, literalOutputInfo } from './lib/graph'
+import { inlineShare, sharedScript } from './lib/share'
 import { terrainPair } from './components/controls'
+
+/** Whether the page opened on a self-contained share, read before anything strips the fragment. */
+const OPENED_INLINE = Boolean(inlineShare())
 
 /** Where the output is, how big, how it is cut and drawn: a drawing is only good for one of these. */
 const placeOf = (c) =>
@@ -53,6 +57,8 @@ export default function App() {
   const [load, setLoad] = useState(null)
   const [loadTitle, setLoadTitle] = useState('')
   const [menuOpen, setMenuOpen] = useState(false)
+  // The share sheet, a panel over the map rather than over the script column.
+  const [sharing, setSharing] = useState(false)
   // The sidebar is a column on a wide screen and a drawer on a narrow one.
   // Read the width, not just `matchMedia`: an emulated or resized viewport
   // does not always fire `change`, and the column would stay hidden.
@@ -76,6 +82,42 @@ export default function App() {
       })
   }, [])
 
+  // A shared script is somewhere else than where this reader's map was left:
+  // once it compiles, the map goes to its output. The self-contained form is
+  // the document from the first render; a short link sets this when it lands.
+  const fitSharedRef = useRef(OPENED_INLINE)
+  const docRef = useRef(doc)
+  docRef.current = doc
+  const outputRef = useRef(output)
+  outputRef.current = output
+
+  // A short link (`#s=<id>`) carries the script in the store, not the URL, so
+  // it is fetched once and applied. The self-contained `#js=`/`#py=` form was
+  // already read at import, before the document existed. A dead store leaves
+  // the stored document alone rather than emptying the page. Either way the
+  // fragment then goes, or a reload would put the share back over later edits.
+  useEffect(() => {
+    if (!engine) return
+    let live = true
+    sharedScript().then((shared) => {
+      if (!live) return
+      if (location.hash) history.replaceState(null, '', location.pathname + location.search)
+      if (!shared?.text || OPENED_INLINE) return
+      if (shared.text === docRef.current) {
+        // The same script as the one already open: nothing recompiles, so fit now.
+        const o = outputRef.current
+        if (o) mapApiRef.current?.fit?.(o.lng, o.lat)
+        else fitSharedRef.current = true
+        return
+      }
+      fitSharedRef.current = true
+      setDoc(shared.text)
+    })
+    return () => {
+      live = false
+    }
+  }, [engine, setDoc])
+
   // The document is the output: size, scale and where it sits all come from its
   // `output({…})`, and moving the output rewrites that call. A document with
   // no position is placed on the map's centre rather than at (0,0).
@@ -94,6 +136,11 @@ export default function App() {
         setGraph(c.json)
         setOutput({ ...info, computed: c.computed })
         setStatus((s) => (s.phase === 'loading' || s.phase === 'error' ? { phase: 'ready' } : s))
+        if (fitSharedRef.current) {
+          fitSharedRef.current = false
+          // After the map has rendered the new output, so the fit sizes to it.
+          requestAnimationFrame(() => mapApiRef.current?.fit?.(info.lng, info.lat))
+        }
       })
       .catch((e) => {
         if (live) setStatus({ phase: 'error', detail: e instanceof Error ? e.message : String(e) })
@@ -202,16 +249,18 @@ export default function App() {
   /**
    * Write keys of the output, then note beside the scale the terrain that
    * paper × scale comes to: `scale: "1:8000",   // terrain 1.22 × 0.813 km`.
-   * An output the script computes stays as the script says.
+   * The note's unit is the terrain unit from then on; `terrainUnit` is a new
+   * one, typed into a terrain field. An output the script computes stays as
+   * the script says.
    */
   const editOutput = useCallback(
-    (patch) =>
+    (patch, terrainUnit) =>
       setDoc((d) => {
         const text = setOutputKeys(d, patch)
-        if (!engine || text === d) return text
+        if (!engine || (text === d && !terrainUnit)) return text
         try {
           const c = literalOutputInfo(engine, text)
-          return c ? setOutputComment(text, 'scale', `terrain ${terrainPair(c, unitsOf(text).terrain)}`) : text
+          return c ? setOutputComment(text, 'scale', `terrain ${terrainPair(c, terrainUnit ?? unitsOf(text).terrain)}`) : text
         } catch {
           return text
         }
@@ -268,6 +317,7 @@ export default function App() {
       busy: status.phase === 'working',
       onDraw: draw,
       onStop: stop,
+      onShare: () => setSharing(true),
     }),
     [doc, check, output, status, current, draw, stop],
   )
@@ -300,6 +350,9 @@ export default function App() {
           onOutputToCentre={centreOutputOnMap}
           onCentreOnOutput={centreMapOnOutput}
           onSearch={searchOutput}
+          share={sharing}
+          shareDoc={doc}
+          onShareClose={() => setSharing(false)}
         />
         <button
           type="button"

@@ -61,7 +61,7 @@ const PRESET_STYLES = PRESETS.map((p) => [p, styleOf(p.doc)])
 /** A file name from a title: `Parks and buildings` → `parks-and-buildings`. */
 const slug = (s) => s.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
 
-export default function Sidebar({ open, onClose, doc, setDoc, check, output, status, drawing, busy, onDraw, onStop }) {
+export default function Sidebar({ open, onClose, doc, setDoc, check, output, status, drawing, busy, onDraw, onStop, onShare }) {
   const [width, setWidth] = useAtom(sidebarWidthAtom)
   const [draft, setDraft] = useState(null)   // text typed but not applied yet
   const [notice, setNotice] = useState(null)   // { text, error? }
@@ -206,6 +206,13 @@ export default function Sidebar({ open, onClose, doc, setDoc, check, output, sta
     }
   }
 
+  /**
+   * Open the share sheet for the applied document. The two transports it
+   * offers — the script in the URL, and the stored short link — are resolved
+   * there, where the choice is explained; this only opens it. The sheet itself
+   * is a panel over the map (see `App.jsx`), not over this column.
+   */
+
   const resize = (e) => {
     e.preventDefault()
     const move = (ev) => setWidth(clampWidth(window.innerWidth - ev.clientX))
@@ -308,6 +315,14 @@ export default function Sidebar({ open, onClose, doc, setDoc, check, output, sta
               </ul>
             </div>
           </details>
+          <button
+            type="button"
+            {...KEY}
+            title="Share the applied script: a link that carries it, or a short link to it"
+            onClick={onShare}
+          >
+            share
+          </button>
           {/* The run, in the shape every script tool has taught: play starts a
               draw, stop (while one runs) gives it up. */}
           <button

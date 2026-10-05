@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { lengthText } from '../lib/frame'
 import { angleModel, Choice, countModel, degreesModel, Field, lengthModel, MAX_SCALE, MIN_SCALE, Scrub, scaleModel, Section, SNAP_DEG, terrainModel } from './controls'
 
@@ -79,29 +79,35 @@ export default function OutputControls({ output, units, onEdit, onMove }) {
   }
   const scaleText = (v) => `1:${Math.round(Math.min(MAX_SCALE, Math.max(MIN_SCALE, v)))}`
   const setScale = (v) => onEdit({ scale: scaleText(v) })
+  // The terrain a paper-mode scale keeps, held across a drag: read back from
+  // the paper each step, it would carry that step's rounding into the next, and
+  // the paper would wobble. A terrain changed some other way is taken afresh.
+  const keptGroundRef = useRef(null)
+  const keptGround = () => {
+    const g = keptGroundRef.current
+    const near = (a, b) => Math.abs(a / b - 1) < 0.05
+    if (g && near(g.w, terrainW.m) && near(g.h, terrainH.m)) return g
+    return (keptGroundRef.current = { w: terrainW.m, h: terrainH.m })
+  }
   // The scale row: the same paper over new terrain, or new paper around the same terrain.
   const newScale = (v) => {
     if (scaleChanges === 'terrain') return setScale(v)
-    const s = Math.min(v, (Math.min(terrainW.m, terrainH.m) * 1000) / MIN_PAPER_MM)
+    const g = keptGround()
+    const s = Math.min(v, (Math.min(g.w, g.h) * 1000) / MIN_PAPER_MM)
     onEdit({
       scale: scaleText(s),
-      width: lengthText((terrainW.m * 1000) / s, u.width),
-      height: lengthText((terrainH.m * 1000) / s, u.height),
+      width: lengthText((g.w * 1000) / s, u.width),
+      height: lengthText((g.h * 1000) / s, u.height),
     })
   }
   const setBearing = (b) => onEdit({ bearing: b })
   const setSlices = (patch) => onEdit({ slices: slicesKey({ columns, rows, gutter, ...patch }) })
   // Dragging a row's label moves both its values: sizes keep their shape.
-  // The terrain width or height on its own: the paper's side grows to cover that
-  // much ground, and the scale takes back the rest, so the other side stays put.
-  const growTerrainWidth = (t) => {
-    const k = t.m / terrainW.m
-    onEdit({ width: lengthText(width.mm * k, u.width), scale: scaleText(output.scale / k) })
-  }
-  const growTerrainHeight = (t) => {
-    const k = t.m / terrainH.m
-    onEdit({ height: lengthText(height.mm * k, u.height), scale: scaleText(output.scale / k) })
-  }
+  // The terrain width or height on its own: at the same scale, that side of the
+  // paper grows to cover that much ground, and the other side stays put. The
+  // unit it was typed in becomes the terrain's.
+  const growTerrainWidth = (t) => onEdit({ width: lengthText((t.m * 1000) / output.scale, u.width) }, t.unit)
+  const growTerrainHeight = (t) => onEdit({ height: lengthText((t.m * 1000) / output.scale, u.height) }, t.unit)
   const growTerrain = (t) => setScale((output.scale * t.m) / terrainW.m)
   const growPaper = (v) => {
     const k = v.mm / width.mm
@@ -162,7 +168,7 @@ export default function OutputControls({ output, units, onEdit, onMove }) {
           onChange={chooseScaleChanges}
         />
 
-        <Scrub icon="▭" label="terrain" title="Drag to take in more or less terrain on the same paper: the scale follows" model={terrain} value={terrainW} onChange={growTerrain} />
+        <Scrub icon="▭" label="terrain" title="Drag to take in more or less terrain on the same paper: the scale follows" model={terrain} value={terrainW} sign={-1} onChange={growTerrain} />
         <Field
           label="terrain width"
           title="The terrain across the output: m, km, mi or ft; the paper follows, the other side stays put"

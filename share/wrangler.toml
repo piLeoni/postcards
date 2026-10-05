@@ -1,0 +1,37 @@
+# The share store: a dumb, content-addressed blob endpoint for draw.land
+# short links. `PUT /_share/<id>` writes a script, `GET /_share/<id>` reads it.
+#
+# Nothing is listed, searched or edited: an id is the sha256 of the script, so
+# the same script is always the same blob, and a write that is already there is
+# a no-op. That makes the store stateless and portable — moving providers needs
+# no migration — and it is the cheapest kind of storage there is, an object
+# store, not a database.
+
+name = "drawland-share"
+main = "src/index.js"
+compatibility_date = "2025-01-01"
+
+# The scripts are ~1–3 KB; a 64 KB ceiling is far above any real document and
+# caps what one request can cost.
+[vars]
+MAX_BYTES = "65536"
+# Writes allowed per IP per minute. Reads are cheap and unlimited; only the
+# write path can fill the bucket, so only it is limited.
+WRITE_PER_MIN = "30"
+
+[[r2_buckets]]
+binding = "SHARE"
+bucket_name = "drawland"
+
+# This Worker is only the share store: it answers `/_share/…` and nothing else.
+# The app is hosted separately (draw.land), so it calls the store
+# cross-origin, which is why the handler sends CORS headers.
+#
+# If the app is later hosted on Cloudflare Pages or on this Worker itself, add
+# this back so both live at one origin and the CORS layer is not needed:
+#
+#   [assets]
+#   directory = "../web/dist"
+#   binding = "ASSETS"
+#   not_found_handling = "single-page-application"
+
