@@ -455,18 +455,35 @@ export default function MapView({
     }
   }, [])
 
-  /** A drag that starts in the menu fades it over the output until release (see `place`). */
+  /**
+   * A drag that starts in the menu fades it over the output until release (see
+   * `place`). The wheel still zooms the map meanwhile: the label holding the
+   * pointer, or the menu under it, would take the wheel instead, so it is sent
+   * on to the map at the same spot.
+   */
   const holdMenu = (e) => {
     if (!e.target.closest?.('[data-drag]')) return
     menuDragRef.current = true
+    const wheel = (ev) => {
+      const map = mapRef.current
+      if (!map || map.getCanvasContainer().contains(ev.target)) return
+      ev.preventDefault()
+      ev.stopPropagation()
+      const { clientX, clientY, screenX, screenY, deltaX, deltaY, deltaZ, deltaMode, ctrlKey, shiftKey, altKey, metaKey } = ev
+      map.getCanvas().dispatchEvent(
+        new WheelEvent('wheel', { bubbles: true, cancelable: true, clientX, clientY, screenX, screenY, deltaX, deltaY, deltaZ, deltaMode, ctrlKey, shiftKey, altKey, metaKey }),
+      )
+    }
     const release = () => {
       menuDragRef.current = false
       window.removeEventListener('pointerup', release)
       window.removeEventListener('pointercancel', release)
+      window.removeEventListener('wheel', wheel, { capture: true })
       place()
     }
     window.addEventListener('pointerup', release)
     window.addEventListener('pointercancel', release)
+    window.addEventListener('wheel', wheel, { capture: true, passive: false })
     place()
   }
 
@@ -562,6 +579,15 @@ export default function MapView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // A new drawing closes the transform menu, so it is seen whole. The same one
+  // shown again (the output back where it was drawn) leaves the menu be.
+  const shownRef = useRef(null)
+  useEffect(() => {
+    if (!drawing || drawing === shownRef.current) return
+    shownRef.current = drawing
+    setMenu(false)
+  }, [drawing])
+
   // The rectangle lives on the map's render tick; recompute once after any
   // change that does not itself trigger a map render (sidebar edits, resize).
   useEffect(() => {
@@ -634,7 +660,13 @@ export default function MapView({
       at = ev
       if (!frame) frame = requestAnimationFrame(tick)
     }
+    // The wheel zooms the map mid-drag; the output keeps to the pointer.
+    const zoomed = () => {
+      if (at && !frame) frame = requestAnimationFrame(tick)
+    }
+    map.on('zoom', zoomed)
     const up = () => {
+      map.off('zoom', zoomed)
       window.removeEventListener('pointermove', move)
       window.removeEventListener('pointerup', up)
       document.body.style.cursor = ''

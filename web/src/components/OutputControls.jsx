@@ -92,6 +92,16 @@ export default function OutputControls({ output, units, onEdit, onMove }) {
   const setBearing = (b) => onEdit({ bearing: b })
   const setSlices = (patch) => onEdit({ slices: slicesKey({ columns, rows, gutter, ...patch }) })
   // Dragging a row's label moves both its values: sizes keep their shape.
+  // The terrain width or height on its own: the paper's side grows to cover that
+  // much ground, and the scale takes back the rest, so the other side stays put.
+  const growTerrainWidth = (t) => {
+    const k = t.m / terrainW.m
+    onEdit({ width: lengthText(width.mm * k, u.width), scale: scaleText(output.scale / k) })
+  }
+  const growTerrainHeight = (t) => {
+    const k = t.m / terrainH.m
+    onEdit({ height: lengthText(height.mm * k, u.height), scale: scaleText(output.scale / k) })
+  }
   const growTerrain = (t) => setScale((output.scale * t.m) / terrainW.m)
   const growPaper = (v) => {
     const k = v.mm / width.mm
@@ -155,17 +165,17 @@ export default function OutputControls({ output, units, onEdit, onMove }) {
         <Scrub icon="▭" label="terrain" title="Drag to take in more or less terrain on the same paper: the scale follows" model={terrain} value={terrainW} onChange={growTerrain} />
         <Field
           label="terrain width"
-          title="The terrain across the output: m, km, mi or ft; the scale follows, the paper keeps its size"
+          title="The terrain across the output: m, km, mi or ft; the paper follows, the other side stays put"
           model={terrain}
           value={terrainW}
-          onChange={(t) => setScale((t.m * 1000) / output.width_mm)}
+          onChange={growTerrainWidth}
         />
         <Field
           label="terrain height"
-          title="The terrain down the output: m, km, mi or ft; the scale follows, the paper keeps its size"
+          title="The terrain down the output: m, km, mi or ft; the paper follows, the other side stays put"
           model={terrain}
           value={terrainH}
-          onChange={(t) => setScale((t.m * 1000) / output.height_mm)}
+          onChange={growTerrainHeight}
         />
       </Section>
 
