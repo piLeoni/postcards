@@ -256,9 +256,9 @@ export default function Sidebar({ open, onClose, doc, setDoc, check, output, sta
         )}
       >
         <p className="opacity-60">
-          Any place on Earth as a line drawing: a clean, layered SVG for a
-          pen plotter, a laser cutter or any vector editor. Frame your map on
-          the map and generate it; every layer is yours to tune below.
+          Turn any place on Earth into a pen-and-ink drawing. Frame a view on
+          the map and draw.land produces a layered SVG, ready for a pen
+          plotter, a laser cutter or any vector editor. Fine-tune each layer below.
         </p>
       </Panel>
 
@@ -334,7 +334,7 @@ export default function Sidebar({ open, onClose, doc, setDoc, check, output, sta
                 <path d="M2.5 1.5v9l8-4.5z" />
               </svg>
             )}
-            {busy ? 'stop' : drawing ? 'rerun' : 'run'}
+            {busy ? 'STOP' : drawing ? 'RERUN' : 'RUN'}
           </button>
           <input
             ref={fileRef}
