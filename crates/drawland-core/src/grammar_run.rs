@@ -25,9 +25,45 @@ use crate::grammar::{Clip, Def, Grammar, Mask, Name, Op, Section, UnionRules};
 use crate::osm::Feature;
 use crate::progress::{thousands, Level, Task};
 use crate::select::Selector;
-use geo::MultiPolygon;
+use geo::{polygon, BoundingRect, MultiPolygon};
 use rayon::prelude::*;
 use std::collections::BTreeMap;
+
+/// When open sea fills most of the height but MVT tiles stop short of the
+/// card's left or right side, add thin caps so fills and rings reach the edge.
+fn extend_ocean_to_horizontal_edges(ocean: &MultiPolygon<f64>, frame: &MultiPolygon<f64>) -> MultiPolygon<f64> {
+    let (Some(ob), Some(fb)) = (ocean.bounding_rect(), frame.bounding_rect()) else {
+        return ocean.clone();
+    };
+    let eps = 0.4;
+    let tall = (ob.max().y - ob.min().y) > 0.85 * (fb.max().y - fb.min().y);
+    if !tall {
+        return ocean.clone();
+    }
+    let mut caps = Vec::new();
+    if ob.min().x > fb.min().x + eps {
+        caps.push(polygon![
+            (x: fb.min().x, y: fb.min().y),
+            (x: ob.min().x, y: fb.min().y),
+            (x: ob.min().x, y: fb.max().y),
+            (x: fb.min().x, y: fb.max().y),
+        ]);
+    }
+    if ob.max().x < fb.max().x - eps {
+        caps.push(polygon![
+            (x: ob.max().x, y: fb.min().y),
+            (x: fb.max().x, y: fb.min().y),
+            (x: fb.max().x, y: fb.max().y),
+            (x: ob.max().x, y: fb.max().y),
+        ]);
+    }
+    if caps.is_empty() {
+        return ocean.clone();
+    }
+    let capped = MultiPolygon::new(caps);
+    let parts = [ocean, &capped];
+    geom::intersection(&geom::union_multi(parts.iter().copied()), frame)
+}
 
 #[derive(Debug, thiserror::Error)]
 pub enum RunError {
@@ -180,7 +216,15 @@ pub fn run_into(grammar: &Grammar, output: &Output, inputs: Inputs, draw: &Task,
     let tiles = projected(inputs.tiles);
     probe(draw, "projected");
     let frame = MultiPolygon::new(vec![output.query_polygon()]);
-    let ocean = inputs.ocean.map(|o| warp.bend_area(w, h, &projector.project_geometry(&geom::intersection(&o, &frame))));
+    let frame_mm = warp.bend_area(w, h, &projector.project_geometry(&frame));
+    // MVT ocean rings stop a little inside each tile; grow in mm so waves meet the border.
+    const OCEAN_MARGIN_MM: f64 = 0.35;
+    let ocean = inputs.ocean.map(|o| {
+        let cut = geom::intersection(&o, &frame);
+        let bent = warp.bend_area(w, h, &projector.project_geometry(&cut));
+        let grown = geom::buffer(&bent, OCEAN_MARGIN_MM);
+        extend_ocean_to_horizontal_edges(&grown, &frame_mm)
+    });
     let engine = Engine {
         of: output,
         output: warp.bend_area(w, h, &projector.project_geometry(&frame)),

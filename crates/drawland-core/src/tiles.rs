@@ -65,6 +65,8 @@ const LARGE_DOWNLOAD: usize = 300;
 /// The tiles under one output, gathered one by one.
 pub struct Tiles {
     bounds: [f64; 4],
+    /// The output's ground rectangle (lon/lat), before padding.
+    query: Polygon<f64>,
     /// The area itself (lon/lat), padded like `bounds`: only the tiles it
     /// touches are read, a fraction of the box's when the output is turned.
     ring: Vec<[f64; 2]>,
@@ -109,7 +111,7 @@ impl Tiles {
         let filter = Filter::parse(&all).map_err(|e| e.to_string())?;
         let buildings = wants_buildings(selectors);
         let max_tiles = if buildings { MAX_BUILDING_TILES } else { MAX_FEATURE_TILES };
-        Ok(Tiles { bounds, ring, zoom: None, select, ocean, buildings, max_tiles, filter, data: Features::new() })
+        Ok(Tiles { bounds, query: area.clone(), ring, zoom: None, select, ocean, buildings, max_tiles, filter, data: Features::new() })
     }
 
     /// Read the tiles at this zoom (capped by the source's), not the deepest
@@ -190,18 +192,33 @@ impl Tiles {
         self.data.lines.extend(features.lines);
     }
 
-    /// The sea joined across tile edges and cut to the bounds, in lon/lat;
-    /// `None` when it was not asked for.
+    /// The sea joined across tile edges, in lon/lat, cut to the output and
+    /// grown a hair past the tile polygons so open water reaches the card
+    /// edge. `None` when it was not asked for.
     pub fn ocean(&self) -> Option<MultiPolygon<f64>> {
         if !self.ocean {
             return None;
+        }
+        if self.data.areas.is_empty() && self.data.lines.is_empty() {
+            return Some(MultiPolygon::new(vec![]));
         }
         let sea = Filter::parse(&["ocean"]).expect("a preset");
         let mut polys: Vec<Polygon<f64>> = Vec::new();
         for area in self.data.subset(&sea).merged(Some(self.bounds)).areas {
             polys.extend(polygons(&area.rings));
         }
-        Some(MultiPolygon::new(polys))
+        if polys.is_empty() {
+            return Some(MultiPolygon::new(vec![]));
+        }
+        let frame_mp = MultiPolygon::new(vec![self.query.clone()]);
+        let mut sea = MultiPolygon::new(polys);
+        let margin = ocean_margin_deg(&self.bounds, self.zoom(terramask::MAX_ZOOM));
+        if margin > 0.0 {
+            sea = crate::geom::intersection(&crate::geom::buffer(&sea, margin), &frame_mp);
+        } else {
+            sea = crate::geom::intersection(&sea, &frame_mp);
+        }
+        Some(sea)
     }
 
     /// What `tiles_select` can pick from, in lon/lat: each feature whole
@@ -248,6 +265,17 @@ fn line(pts: &[[f64; 2]]) -> LineString<f64> {
             Coord { x, y }
         })
         .collect()
+}
+
+/// Each exterior ring with the holes that follow it, in lon/lat.
+/// How far MVT ocean rings typically stop short of a tile edge, in degrees.
+fn ocean_margin_deg(bounds: &[f64; 4], z: u8) -> f64 {
+    const R: f64 = 6_378_137.0;
+    let lat = (bounds[1] + bounds[3]) / 2.0;
+    let tile_w_m = 2.0 * std::f64::consts::PI * R / (1u64 << z) as f64;
+    let margin_m = tile_w_m / 4096.0 * 64.0;
+    let m_per_deg = 111_320.0 * lat.to_radians().cos().max(1e-6);
+    margin_m / m_per_deg
 }
 
 /// Each exterior ring with the holes that follow it, in lon/lat.
@@ -348,6 +376,34 @@ mod tests {
         let deep = plan(&output, &["buildings".into()], false, None).unwrap().unwrap();
         assert_eq!(deep.zoom(14), 14);
         assert!(deep.note(14).0.contains("deeper than the source's"));
+    }
+
+    /// Open water across two tiles (Martha's Vineyard fixtures): the sea must
+    /// reach the west and east bounds, not stop on a tile seam.
+    #[test]
+    fn ocean_reaches_the_bounds_over_open_water() {
+        const WEST: &[u8] = include_bytes!("../../../../terramask/crates/terramask/tests/fixtures/12-1243-1528.pbf");
+        const EAST: &[u8] = include_bytes!("../../../../terramask/crates/terramask/tests/fixtures/12-1244-1528.pbf");
+        let (a, b) = (
+            TileId::new(12, 1243, 1528).merc_bounds(),
+            TileId::new(12, 1244, 1528).merc_bounds(),
+        );
+        let [w, s] = merc_to_lonlat(a[0], a[1]);
+        let [e, n] = merc_to_lonlat(b[2], b[3]);
+        let area = polygon![(x: w, y: s), (x: e, y: s), (x: e, y: n), (x: w, y: n)];
+        let mut tiles = Tiles::new(&area, &[], true).unwrap();
+        tiles.add_tile(TileId::new(12, 1243, 1528), WEST).unwrap();
+        tiles.add_tile(TileId::new(12, 1244, 1528), EAST).unwrap();
+        let q = area.bounding_rect().expect("query");
+        let sea = tiles.ocean().unwrap();
+        let r = sea.bounding_rect().expect("sea");
+        let eps = q.width() * 1e-3;
+        assert!(
+            (r.min().x - q.min().x).abs() < eps && (r.max().x - q.max().x).abs() < eps,
+            "sea should span the output ({:?}), got {:?}",
+            q,
+            r
+        );
     }
 
     #[test]
