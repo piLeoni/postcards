@@ -21,7 +21,7 @@
 //! load, never halfway through a render.
 
 use crate::profile::{FillSpec, StrokeSpec};
-use crate::select::{Selector, TagMatch};
+use crate::select::{Selector, TagMatch, TagTest};
 use crate::units::Mm;
 use serde::de::{self, Deserializer, MapAccess, Visitor};
 use serde::{Deserialize, Serialize};
@@ -111,6 +111,14 @@ pub struct TileSelect {
     /// As written.
     pub items: Vec<String>,
     pub filter: terramask::Filter,
+}
+
+/// `tools_where`: the features of `of` whose tags pass every test, as
+/// `{ of: $features.b, tags: { render_height: { min: 20, max: 40 } } }`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Where {
+    pub of: Name,
+    pub tags: Vec<(String, TagTest)>,
 }
 
 /// A compiled module, reading `from` when given, else every OSM feature.
@@ -234,6 +242,7 @@ pub enum Op {
     // ---- feature sets ----------------------------------------------------
     Select(Selector),
     TileSelect(TileSelect),
+    Where(Where),
 
     // ---- areas -----------------------------------------------------------
     Polygons(Name),
@@ -278,7 +287,7 @@ impl Op {
     /// What a def holding this operation defines.
     pub fn section(&self) -> Section {
         match self {
-            Op::Select(_) | Op::TileSelect(_) => Section::Features,
+            Op::Select(_) | Op::TileSelect(_) | Op::Where(_) => Section::Features,
             Op::Polygons(_)
             | Op::Union(_)
             | Op::Difference(_)
@@ -315,6 +324,7 @@ impl Op {
                 .chain(i.keep_rule.as_deref().map(Op::refs).unwrap_or_default())
                 .collect(),
             Op::Grow(g) => vec![g.of.clone()],
+            Op::Where(w) => vec![w.of.clone()],
             Op::Rings(r) => vec![r.of.clone()],
             Op::ClipLines(c) => vec![c.lines.clone(), c.within.clone()],
             Op::Terrain(t) => t.in_area.iter().cloned().collect(),
@@ -865,7 +875,7 @@ pub struct Target {
 fn parse_op(raw: RawOp, section: Section) -> Result<Op, GrammarError> {
     let (key, value) = only_op(raw).map_err(GrammarError::Invalid)?;
     let target = match key.as_str() {
-        "osm_select" | "tiles_select" => Section::Features,
+        "osm_select" | "tiles_select" | "tools_where" => Section::Features,
         "tools_polygons" | "tools_union" | "tools_difference" | "tools_intersect" | "tools_fill_holes"
         | "tools_grow" | "engine_frame" | "engine_ocean" => Section::Areas,
         "tools_rings" | "tools_lines" | "tools_segments" | "tools_dedupe" | "tools_merge" | "tools_join"
@@ -905,6 +915,7 @@ fn parse_op(raw: RawOp, section: Section) -> Result<Op, GrammarError> {
     let op = match key.as_str() {
         "osm_select" => Op::Select(parse_selector(&value)?),
         "tiles_select" => Op::TileSelect(parse_tile_select(&value)?),
+        "tools_where" => Op::Where(parse_where(&value)?),
         "engine_frame" => Op::Frame,
         "engine_ocean" => Op::Ocean,
         "tools_polygons" => Op::Polygons(name_ref(&value, "tools_polygons")?),
@@ -1220,6 +1231,61 @@ fn parse_tile_select(value: &Value) -> Result<TileSelect, GrammarError> {
     Ok(TileSelect { items, filter })
 }
 
+fn parse_where(value: &Value) -> Result<Where, GrammarError> {
+    #[derive(Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct Raw {
+        of: String,
+        tags: serde_json::Map<String, Value>,
+    }
+    let raw: Raw = json(value, "tools_where")?;
+    let of = refname(&raw.of)?;
+    if of.section != Section::Features {
+        return Err(GrammarError::Invalid(format!("tools_where.of is {of}, but it must be a $features set")));
+    }
+    if raw.tags.is_empty() {
+        return Err(GrammarError::Invalid("tools_where needs at least one tag".into()));
+    }
+    let bad = |k: &str, v: &Value| {
+        GrammarError::Invalid(format!(
+            "tools_where.{k} is {v}: write true, false, a value, a list of values or {{ min, max }}"
+        ))
+    };
+    let mut tags = Vec::new();
+    for (k, v) in raw.tags {
+        let test = match &v {
+            Value::Bool(p) => TagTest::Match(TagMatch::Present(*p)),
+            Value::String(s) => TagTest::Match(TagMatch::Values(vec![s.clone()])),
+            Value::Number(n) => TagTest::Match(TagMatch::Values(vec![n.to_string()])),
+            Value::Array(items) => TagTest::Match(TagMatch::Values(
+                items
+                    .iter()
+                    .map(|i| match i {
+                        Value::String(s) => Ok(s.clone()),
+                        Value::Number(n) => Ok(n.to_string()),
+                        _ => Err(bad(&k, &v)),
+                    })
+                    .collect::<Result<_, _>>()?,
+            )),
+            Value::Object(r) => {
+                let bound = |name: &str| -> Result<Option<f64>, GrammarError> {
+                    match r.get(name) {
+                        None | Some(Value::Null) => Ok(None),
+                        Some(b) => b.as_f64().map(Some).ok_or_else(|| bad(&k, &v)),
+                    }
+                };
+                if r.keys().any(|key| key != "min" && key != "max") || r.is_empty() {
+                    return Err(bad(&k, &v));
+                }
+                TagTest::Range { min: bound("min")?, max: bound("max")? }
+            }
+            Value::Null => return Err(bad(&k, &v)),
+        };
+        tags.push((k, test));
+    }
+    Ok(Where { of, tags })
+}
+
 fn parse_selector(value: &Value) -> Result<Selector, GrammarError> {
     #[derive(Deserialize)]
     struct Raw {
@@ -1306,6 +1372,29 @@ pub fn op_to_json(op: &Op) -> Value {
             ("osm_select", Value::Object(body))
         }
         Op::TileSelect(t) => ("tiles_select", t.items.iter().cloned().map(Value::String).collect()),
+        Op::Where(w) => {
+            let tags: serde_json::Map<String, Value> = w
+                .tags
+                .iter()
+                .map(|(k, t)| {
+                    let v = match t {
+                        TagTest::Match(m) => tag_json(m),
+                        TagTest::Range { min, max } => {
+                            let mut r = serde_json::Map::new();
+                            if let Some(lo) = min {
+                                r.insert("min".into(), json!(lo));
+                            }
+                            if let Some(hi) = max {
+                                r.insert("max".into(), json!(hi));
+                            }
+                            Value::Object(r)
+                        }
+                    };
+                    (k.clone(), v)
+                })
+                .collect();
+            ("tools_where", json!({ "of": w.of.to_string(), "tags": tags }))
+        }
         Op::Polygons(n) => ("tools_polygons", Value::String(n.to_string())),
         Op::Union(u) => ("tools_union", union(u)),
         Op::Difference(d) => ("tools_difference", json!({ "base": d.base.to_string(), "cut": refs_json(&d.cut) })),

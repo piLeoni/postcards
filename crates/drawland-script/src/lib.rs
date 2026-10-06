@@ -440,7 +440,7 @@ pub fn library_names() -> Result<Vec<String>, ScriptError> {
     install(&mut ctx).map_err(|e| ScriptError { message: format!("library: {e}"), at: None })?;
     let listing = ctx
         .eval(Source::from_bytes(
-            "JSON.stringify(['features','areas','engine','lines','fills','burin','modules','draw','compose','output','title'].flatMap((n) =>              typeof globalThis[n] === 'function' ? [n] : [n, ...Object.keys(globalThis[n]).map((k) => n + '.' + k)]))",
+            "JSON.stringify(['features','areas','engine','lines','fills','burin','ink','modules','draw','compose','output','title'].flatMap((n) =>              typeof globalThis[n] === 'function' ? [n] : [n, ...Object.keys(globalThis[n]).map((k) => n + '.' + k)]))",
         ))
         .and_then(|v| v.to_string(&mut ctx))
         .map_err(|e| ScriptError { message: e.to_string(), at: None })?

@@ -92,7 +92,7 @@ interface FillOptions {
   source?: { file: string; size?: string; position?: string; repeat?: string }
 }
 
-/** `solid`, `dash`, `dotted`, `none`, or the dashes' sizes. Also supports color, width, and cap style. */
+/** `solid`, `dash`, `dotted`, `none`, or an object: the dashes' sizes and the ink (`color`, `width` in mm, `cap`). */
 type Stroke =
   | "solid" | "dash" | "dotted" | "none"
   | { style?: "solid" | "dash" | "dotted" | "none"; dash?: Length; gap?: Length; mark?: Length; color?: string; width?: Length; cap?: "round" | "square" | "butt" }
@@ -157,6 +157,28 @@ declare const features: {
   osm(tags: Tags): Features
   /** Features from OpenFreeMap's vector tiles: presets (`"buildings"`) or rules (`"landcover:park,garden"`). No Overpass. */
   tiles(...items: (TilePreset | TilePreset[])[]): Features
+  /**
+   * The features whose tags pass every test: a value, a list of them, `true`
+   * or `false` for present or absent, or a numeric range, `min` included and
+   * `max` not. Ranges side by side split a set into bands, each drawn with
+   * its own ink:
+   *
+   *   features.where(buildings, { render_height: { min: 20, max: 40 } })
+   *
+   * Tile features carry the vector tile's attributes (`render_height`,
+   * `class`, `rank`, `brunnel`); OSM features their tags (`building:levels`).
+   */
+  where(of: Features, tags: Record<string, TagValue | number | { min?: number; max?: number }>): Features
+}
+
+/** Ink worked out from data, for a stroke's `color` and `width`. */
+declare const ink: {
+  /** The colour at `t` (0 to 1) along evenly spaced `stops`: `ink.ramp(["#fde68a", "#7c2d12"], 0.5)`. */
+  ramp(stops: string[], t: number): string
+  /** The width at `t` (0 to 1) between `thin` and `thick`: `ink.width(0.1, 0.6, 0.5)` is `"0.35mm"`. */
+  width(thin: number | `${number}mm`, thick: number | `${number}mm`, t: number): `${number}mm`
+  /** Where `v` sits between `lo` and `hi`, kept to 0 to 1: what `ramp` and `width` take. */
+  at(v: number, lo: number, hi: number): number
 }
 
 /** Polygons, and what can be done with them. */

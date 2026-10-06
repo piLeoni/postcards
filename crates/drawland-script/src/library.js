@@ -64,6 +64,68 @@
       if (!flat.length) fail("features.tiles needs a preset or a layer:class rule");
       return make(Features, "features", { tiles_select: flat });
     },
+    // The features whose tags pass every test: a value, a list, true/false,
+    // or `{ min, max }` on a number (`min` included, `max` not).
+    where(of, tags) {
+      const ref = need(of, Features, "features.where");
+      object(tags, "features.where tags");
+      if (!Object.keys(tags).length) fail("features.where needs at least one tag");
+      for (const [k, v] of Object.entries(tags)) {
+        if (v !== null && typeof v === "object" && !Array.isArray(v)) {
+          const extra = Object.keys(v).filter((b) => b !== "min" && b !== "max");
+          if (extra.length || !Object.keys(v).length) fail(`features.where: ${k} takes { min, max }, got ${JSON.stringify(v)}`);
+          for (const b of ["min", "max"]) {
+            if (v[b] !== undefined && (typeof v[b] !== "number" || !isFinite(v[b]))) {
+              fail(`features.where: ${k}.${b} must be a number, got ${describe(v[b])}`);
+            }
+          }
+        }
+      }
+      return make(Features, "features", { tools_where: { of: ref, tags } });
+    },
+  };
+
+  // Ink worked out from data: a colour or a width at `t`, 0 to 1, for a
+  // stroke's `color` and `width`.
+  const mm = (v, where) => {
+    const n = typeof v === "number" ? v : typeof v === "string" && /^\s*[\d.]+\s*mm\s*$/.test(v) ? parseFloat(v) : NaN;
+    if (!isFinite(n)) fail(`${where} is a length in millimetres like 0.3 or "0.3mm", got ${describe(v)}`);
+    return n;
+  };
+  const unit = (t, where) => {
+    if (typeof t !== "number" || isNaN(t)) fail(`${where}: t is a number from 0 to 1, got ${describe(t)}`);
+    return Math.min(1, Math.max(0, t));
+  };
+  const rgb = (hex, where) => {
+    const m = typeof hex === "string" && /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(hex);
+    if (!m) fail(`${where}: colours are "#rgb" or "#rrggbb", got ${describe(hex)}`);
+    const h = m[1].length === 3 ? [...m[1]].map((c) => c + c).join("") : m[1];
+    return [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16));
+  };
+  const ink = {
+    // The colour at `t` along `stops`, evenly spaced: ink.ramp(["#fde68a", "#7c2d12"], 0.5).
+    ramp(stops, t) {
+      if (!Array.isArray(stops) || stops.length < 2) fail(`ink.ramp needs two colours or more, got ${describe(stops)}`);
+      const cs = stops.map((s) => rgb(s, "ink.ramp"));
+      const at = unit(t, "ink.ramp") * (cs.length - 1);
+      const i = Math.min(cs.length - 2, Math.floor(at));
+      const f = at - i;
+      const mix = cs[i].map((a, k) => Math.round(a + (cs[i + 1][k] - a) * f));
+      return "#" + mix.map((c) => c.toString(16).padStart(2, "0")).join("");
+    },
+    // The width at `t` between `thin` and `thick`: ink.width(0.1, 0.6, t) is "0.35mm" at the middle.
+    width(thin, thick, t) {
+      const a = mm(thin, "ink.width thin");
+      const b = mm(thick, "ink.width thick");
+      return `${+(a + (b - a) * unit(t, "ink.width")).toFixed(3)}mm`;
+    },
+    // Where `v` sits between `lo` and `hi`, as the 0 to 1 the others take.
+    at(v, lo, hi) {
+      if (![v, lo, hi].every((x) => typeof x === "number" && isFinite(x)) || lo === hi) {
+        fail("ink.at takes three numbers, the value and two different ends");
+      }
+      return Math.min(1, Math.max(0, (v - lo) / (hi - lo)));
+    },
   };
 
   const areas = {
@@ -286,7 +348,7 @@
     dl.title(text);
   }
 
-  const lib = { features, areas, engine, lines, fills, burin, modules, draw, compose, output, title };
+  const lib = { features, areas, engine, lines, fills, burin, ink, modules, draw, compose, output, title };
   for (const [name, value] of Object.entries(lib)) {
     if (typeof value === "object") Object.freeze(value);
     Object.defineProperty(globalThis, name, { value, enumerable: false, writable: false, configurable: false });

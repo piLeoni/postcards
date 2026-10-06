@@ -311,6 +311,9 @@ fn eval_op(
         Op::TileSelect(t) => {
             Value::Features(features.tiles.iter().filter(|f| crate::tiles::keeps(&t.filter, f)).cloned().collect())
         }
+        Op::Where(w) => Value::Features(
+            feats(&w.of)?.into_iter().filter(|f| crate::select::passes(&w.tags, f)).collect(),
+        ),
 
         // ---- areas ---------------------------------------------------------
         Op::Polygons(n) => Value::Area(union_features(&feats(n)?)),

@@ -320,6 +320,27 @@ fn module_outputs_draw_and_mask_but_do_not_transform() {
     assert_eq!(e.at.map(|a| a.0), Some(2));
 }
 
+#[test]
+fn where_bands_features_and_ink_works_out_the_strokes() {
+    let g = evaluate(
+        "const b = features.tiles('buildings')\n\
+         for (const [lo, hi] of [[0, 20], [20, 1000]]) {\n\
+           const t = ink.at(lo, 0, 20)\n\
+           draw({ id: `h${lo}`, from: lines.rings(areas.polygons(features.where(b, { render_height: { min: lo, max: hi } }))),\n\
+                  stroke: { color: ink.ramp(['#000000', '#ffffff'], t), width: ink.width(0.1, 0.5, t) } })\n\
+         }\n",
+    )
+    .unwrap();
+    let strokes: Vec<_> = g.draw.iter().map(|d| d.stroke.clone().unwrap()).collect();
+    assert_eq!(strokes[0].color.as_deref(), Some("#000000"));
+    assert_eq!(strokes[1].color.as_deref(), Some("#ffffff"));
+    assert_eq!(strokes[1].width.map(|w| w.0), Some(0.5));
+    assert!(evaluate("ink.ramp(['#fff'], 0)").is_err());
+    let e = err("const b = features.tiles('buildings')\nfeatures.where(b, { render_height: { above: 3 } })\n");
+    assert!(e.message.contains("{ min, max }"), "{e}");
+    assert_eq!(e.at.map(|a| a.0), Some(2));
+}
+
 /// The names `drawland.d.ts` declares inside `declare const <object>: { … }`
 /// or as `declare function`.
 fn declared() -> Vec<String> {

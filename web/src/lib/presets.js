@@ -15,8 +15,9 @@ import parks from '../presets/parks.js?raw'
 import buildings from '../presets/buildings.js?raw'
 import goldenGate from '../presets/golden-gate.js?raw'
 import engravedSea from '../presets/engraved-sea.js?raw'
-import showcaseColorThickness from '../presets/showcase-color-thickness.js?raw'
-import showcaseVariableThickness from '../presets/showcase-variable-thickness.js?raw'
+import inkByHeight from '../presets/ink-by-height.js?raw'
+import inkByRiver from '../presets/ink-by-river.js?raw'
+import inkByElevation from '../presets/ink-by-elevation.js?raw'
 import { titleOf } from './doc'
 
 export const PRESETS = [
@@ -27,8 +28,9 @@ export const PRESETS = [
   { id: 'buildings', hint: 'the fastest draw', doc: buildings },
   { id: 'golden-gate', hint: 'burin land and sea, at the Golden Gate', doc: goldenGate },
   { id: 'engraved-sea', hint: 'burin hills, coast concentrics and waving currents', doc: engravedSea },
-  { id: 'showcase-color-thickness', hint: 'each layer its own colour, width and cap', doc: showcaseColorThickness },
-  { id: 'showcase-variable-thickness', hint: 'roads heavier than buildings', doc: showcaseVariableThickness },
+  { id: 'ink-by-height', hint: 'each building inked by its height', doc: inkByHeight },
+  { id: 'ink-by-river', hint: 'buildings inked by their distance from the water, roads by class', doc: inkByRiver },
+  { id: 'ink-by-elevation', hint: 'contours tinted and weighted by their height', doc: inkByElevation },
 ].map((p) => ({ ...p, name: titleOf(p.doc) ?? p.id, graph: graphs[p.id] }))
 
 /** The output the app opens on. */
