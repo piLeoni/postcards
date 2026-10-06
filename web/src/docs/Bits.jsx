@@ -1,4 +1,14 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
+import { highlight } from './highlight'
+
+/**
+ * The documentation's text and code, in the page's own style.
+ *
+ * Code blocks are highlighted here, not by Monaco: a block is a fixed snippet,
+ * so the tokenizer (`highlight.js`) runs once and the editor's own scale is
+ * applied as classes (`.flame` in `index.css`). Copying is offered because the
+ * reader usually wants the snippet in the editor.
+ */
 
 /** Inline code: `text`.
  *
@@ -6,7 +16,7 @@ import { useState } from 'react'
  * name in a sentence, not something to copy whole.
  */
 export function C({ children }) {
-  return <code className="border border-black bg-[var(--background1)] px-[0.5ch] whitespace-nowrap">{children}</code>
+  return <code className="thin bg-[var(--background1)] px-[0.5ch] whitespace-nowrap">{children}</code>
 }
 
 /** A code block, with a copy button.
@@ -18,6 +28,8 @@ export function C({ children }) {
 export function Code({ children, lang = 'js', title }) {
   const [copied, setCopied] = useState(false)
   const text = textOf(children)
+  // Highlighted once per snippet: the page's blocks never change.
+  const html = useMemo(() => ({ __html: highlight(text, lang) }), [text, lang])
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(text)
@@ -31,7 +43,7 @@ export function Code({ children, lang = 'js', title }) {
     setTimeout(() => setCopied(false), 1500)
   }
   return (
-    <figure className="my-[1lh] border border-black">
+    <figure className="thin my-[1lh]">
       <div className="flex items-center gap-[1ch] border-b border-black bg-[var(--background1)] px-[1ch] py-[0.25lh]">
         <span className="text-[10px] tracking-[0.15em] uppercase opacity-60">{lang}</span>
         {title ? <span className="truncate opacity-60">{title}</span> : null}
@@ -46,8 +58,8 @@ export function Code({ children, lang = 'js', title }) {
           {copied ? 'copied' : 'copy'}
         </button>
       </div>
-      <pre className="overflow-x-auto px-[1ch] py-[0.5lh]">
-        <code>{children}</code>
+      <pre className="flame overflow-x-auto px-[1ch] py-[0.5lh]">
+        <code dangerouslySetInnerHTML={html} />
       </pre>
     </figure>
   )

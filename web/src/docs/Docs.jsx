@@ -13,12 +13,12 @@ import { GROUP_OF, NAV, SECTION_IDS } from './nav'
 export default function Docs() {
   const active = useScrollSpy(SECTION_IDS)
   return (
-    <div className="min-h-0 w-full flex-1 overflow-y-auto" box-="square">
+    <div className="docs-scroll min-h-0 w-full flex-1 overflow-y-auto">
       <div className="mx-auto flex max-w-[1600px] flex-col lg:flex-row">
-        <nav className="shrink-0 border-black px-[2ch] py-[2lh] lg:sticky lg:top-0 lg:max-h-screen lg:w-[30ch] lg:overflow-y-auto lg:border-r">
+        <nav className="docs-scroll shrink-0 border-black px-[2ch] py-[2lh] lg:sticky lg:top-0 lg:max-h-screen lg:w-[30ch] lg:overflow-y-auto lg:border-r">
           <Index active={active} />
         </nav>
-        <article className="min-w-0 flex-1 px-[2ch] py-[2lh] lg:px-[4ch]">
+        <article className="min-w-0 flex-1 px-[2ch] py-[3lh] lg:px-[4ch]">
           <Body />
         </article>
       </div>
@@ -140,7 +140,7 @@ function T({ children }) {
 
 function Note({ children }) {
   return (
-    <p box-="square" className="my-[1lh] max-w-[80ch] bg-[var(--background1)] py-[1ch] leading-relaxed">
+    <p className="thin my-[1lh] max-w-[80ch] bg-[var(--background1)] px-[1ch] py-[1ch] leading-relaxed">
       {children}
     </p>
   )
@@ -248,7 +248,7 @@ cargo run --release -p drawland-cli -- map graph.json -o map.svg
 
 # The graph a profile builds, and stop.
 cargo run --release -p drawland-cli -- map profile.js --dump-graph`}</Code>
-      <div box-="square" className="my-[1lh] max-w-[80ch] overflow-x-auto">
+      <div className="thin my-[1lh] max-w-[80ch] overflow-x-auto">
         <table className="w-full border-collapse">
           <thead>
             <tr className="bg-[var(--background1)] text-left">
@@ -299,7 +299,7 @@ function Libraries() {
         draw.land is the first big user of a family of our own libraries. They are separate projects, with
         their own users and their own tests, and draw.land depends on them by path.
       </P>
-      <div box-="square" className="my-[1lh] max-w-[80ch] overflow-x-auto">
+      <div className="thin my-[1lh] max-w-[80ch] overflow-x-auto">
         <table className="w-full border-collapse">
           <thead>
             <tr className="bg-[var(--background1)] text-left">
@@ -415,7 +415,7 @@ function Building() {
 
       <H id="kinds">Handles</H>
       <P>Three kinds of handle, and every function says which one it takes.</P>
-      <div box-="square" className="my-[1lh] max-w-[80ch] overflow-x-auto">
+      <div className="thin my-[1lh] max-w-[80ch] overflow-x-auto">
         <table className="w-full border-collapse">
           <thead>
             <tr className="bg-[var(--background1)] text-left">
@@ -520,7 +520,7 @@ const metro = features.osm({ railway: ["subway", "light_rail"], underground: tru
         Roads are the usual reason to mix the two sources: OSM carries <C>width</C> and <C>lanes</C>, which
         give real widths, and the tiles do not.
       </P>
-      <div box-="square" className="my-[1lh] max-w-[80ch] overflow-x-auto">
+      <div className="thin my-[1lh] max-w-[80ch] overflow-x-auto">
         <table className="w-full border-collapse">
           <thead>
             <tr className="bg-[var(--background1)] text-left">
@@ -648,7 +648,7 @@ draw({ id: "roads", from: roads.outlines })                          // the carr
 draw({ id: "center", from: roads.centerlines, stroke: "dash" })
 draw({ id: "trails", from: roads.trails })
 compose.mask({ from: roads.area, occludes: ["park", "water"] })       // the strip they cover`}</Code>
-      <div box-="square" className="my-[1lh] max-w-[80ch] overflow-x-auto">
+      <div className="thin my-[1lh] max-w-[80ch] overflow-x-auto">
         <table className="w-full border-collapse">
           <thead>
             <tr className="bg-[var(--background1)] text-left">
