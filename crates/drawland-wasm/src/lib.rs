@@ -163,7 +163,7 @@ pub fn output_info(graph: &str) -> Result<JsValue, JsValue> {
 pub fn tiles_plan(graph: &str, max_zoom: u8) -> Result<JsValue, JsValue> {
     let d = Doc::load(graph)?;
     let o = js_sys::Object::new();
-    let plan = tiles::plan(&d.output, &d.selectors, d.ocean, None).map_err(err)?;
+    let plan = tiles::plan(&d.output, &d.selectors, None).map_err(err)?;
     let ids = plan.as_ref().map(|t| t.tiles(max_zoom)).unwrap_or_default();
     let zoom = ids.first().map_or(max_zoom, |t| t.z);
     let (note, warn) = plan.as_ref().map(|t| t.note(max_zoom)).unwrap_or_default();
@@ -228,7 +228,6 @@ pub struct Job {
     /// Planned on the first `tiles` call, once Overpass has answered.
     tiles: Option<Option<Tiles>>,
     tile_features: Vec<Feature>,
-    ocean: Option<MultiPolygon<f64>>,
     /// The elevation tiles handed over, then the grid they fold into; read
     /// only when a def draws terrain.
     elevation: Option<terramask::Elevation>,
@@ -249,13 +248,11 @@ impl Default for Job {
                 output: Output::new(&empty_spec(), (0.0, 0.0)),
                 keys: Vec::new(),
                 selectors: Vec::new(),
-                ocean: false,
                 body: Body::default(),
             },
             features: None,
             tiles: None,
             tile_features: Vec::new(),
-            ocean: None,
             elevation: None,
             terrain: None,
             memory_budget: None,
@@ -281,7 +278,6 @@ impl Job {
             features: None,
             tiles: None,
             tile_features: Vec::new(),
-            ocean: None,
             elevation: None,
             terrain: None,
             memory_budget: None,
@@ -425,21 +421,21 @@ impl Job {
         let progress = JsProgress(on_event);
         let task = Task::begin(&progress, "read-tiles", Some("download"), "read tiles", 0, "");
         let features = t.features();
-        let ocean = t.ocean();
         let found = format!("{} tile features", thousands(features.len() as u64));
-        task.ok(&match &ocean {
-            Some(sea) => format!("{found} · sea in {} polygons", sea.0.len()),
-            None => found,
+        let ocean_n = features.iter().filter(|f| f.tag("class") == Some("ocean")).count();
+        task.ok(&if ocean_n > 0 {
+            format!("{found} · {ocean_n} ocean polygons")
+        } else {
+            found
         });
         self.tile_features = features;
-        self.ocean = ocean;
         Ok(())
     }
 
     fn plan(&mut self) -> Result<Option<&mut Tiles>, JsValue> {
         if self.tiles.is_none() {
             let d = &self.doc;
-            self.tiles = Some(tiles::plan(&d.output, &d.selectors, d.ocean, self.features.as_deref()).map_err(err)?);
+            self.tiles = Some(tiles::plan(&d.output, &d.selectors, self.features.as_deref()).map_err(err)?);
         }
         Ok(self.tiles.as_mut().and_then(Option::as_mut))
     }
@@ -457,7 +453,6 @@ impl Job {
             None => Vec::new(),
         };
         let tile_features = std::mem::take(&mut self.tile_features);
-        let ocean = self.ocean.take();
         let progress = JsProgress(on_event);
         let draw = Task::begin(&progress, "draw", None, "draw", 0, "");
         let terrain = self.terrain.take();
@@ -466,7 +461,6 @@ impl Job {
                 RenderInputs {
                     features,
                     tiles: tile_features,
-                    ocean,
                     terrain,
                     sources: string_map(&sources),
                     memory_budget: self.memory_budget,
@@ -643,8 +637,6 @@ struct Doc {
     keys: Vec<String>,
     /// `tiles_select` items.
     selectors: Vec<String>,
-    /// Whether it draws the sea.
-    ocean: bool,
     body: Body,
 }
 
@@ -673,9 +665,9 @@ impl Doc {
     fn load(text: &str) -> Result<Doc, JsValue> {
         let grammar = Grammar::from_json(text).map_err(err)?;
         let keys = grammar.osm_keys();
-        let (selectors, ocean) = (grammar.tile_selectors(), grammar.draws_ocean());
+        let selectors = grammar.tile_selectors();
         let output = Output::new(&grammar.output, default_center(&grammar.output));
-        Ok(Doc { output, keys, selectors, ocean, body: Body::Grammar(Box::new(grammar)) })
+        Ok(Doc { output, keys, selectors, body: Body::Grammar(Box::new(grammar)) })
     }
 
     /// Whether any def draws terrain: `lines.terrain`, or a burin document.
@@ -701,7 +693,6 @@ impl Doc {
                     drawland_core::grammar_run::Inputs {
                         features: inputs.features,
                         tiles: inputs.tiles,
-                        ocean: inputs.ocean,
                         sources: &inputs.sources,
                         terrain: inputs.terrain,
                         memory_budget: inputs.memory_budget,
@@ -720,7 +711,6 @@ impl Doc {
 struct RenderInputs {
     features: Vec<Feature>,
     tiles: Vec<Feature>,
-    ocean: Option<MultiPolygon<f64>>,
     terrain: Option<drawland_core::terrain::Grid>,
     sources: BTreeMap<String, String>,
     memory_budget: Option<u64>,

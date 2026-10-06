@@ -445,12 +445,15 @@ output({ lat: 48.8575, lng: 2.2945, width: "6in", height: "4in", scale: "1:10000
 const bldg = features.tiles("buildings")
 const green = features.tiles("landcover:park,garden,grass")
 const wet = features.tiles("water")
+const oceanTiles = features.tiles("ocean")
 const ways = features.tiles("roads", "paths")
 
 // Polygons from the features, merged: one area each.
 const buildings = areas.polygons(bldg)
 const parks = areas.polygons(green)
-const water = areas.union(areas.polygons(wet), engine.ocean())
+const frame = engine.frame()
+const ocean = areas.extendToFrame(areas.grow(areas.intersect(areas.polygons(oceanTiles), frame), "0.35mm"), frame)
+const water = areas.union(areas.polygons(wet), ocean)
 
 // Lines: rings for outlines, patterns from penfill for fills.
 const bldgFill = fills.fill({ in: buildings, per: "feature", pattern: "zigzag", spacing: "0.4mm", angle: 45 })
@@ -582,9 +585,10 @@ const ring = areas.difference(parks, water)      // base without the cuts
 const shore = areas.intersect(buildings, water)
 const solid = areas.fillHoles(blocks)            // yards in blocks, lakes in parks
 const fat = areas.grow(roads.area, "0.3mm")      // negative shrinks
+areas.extendToFrame(sea, frame)                 // west/east to the card when tiles stop short
 
 engine.frame()                                   // the paper's rectangle
-engine.ocean()                                   // the sea, from the coastline`}</Code>
+engine.ocean()                                   // shorthand for ocean tiles + grow + extendToFrame`}</Code>
       <P>
         <C>areas.grow</C> is the workhorse of cheap effects: a grown area minus itself is a ring, a grown river
         gives distance bands, a shrunk area insets a fill. Look at the <T>ink by distance</T> preset in the

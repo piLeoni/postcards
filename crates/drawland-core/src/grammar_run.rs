@@ -25,45 +25,9 @@ use crate::grammar::{Clip, Def, Grammar, Mask, Name, Op, Section, UnionRules};
 use crate::osm::Feature;
 use crate::progress::{thousands, Level, Task};
 use crate::select::Selector;
-use geo::{polygon, BoundingRect, MultiPolygon};
+use geo::MultiPolygon;
 use rayon::prelude::*;
 use std::collections::BTreeMap;
-
-/// When open sea fills most of the height but MVT tiles stop short of the
-/// card's left or right side, add thin caps so fills and rings reach the edge.
-fn extend_ocean_to_horizontal_edges(ocean: &MultiPolygon<f64>, frame: &MultiPolygon<f64>) -> MultiPolygon<f64> {
-    let (Some(ob), Some(fb)) = (ocean.bounding_rect(), frame.bounding_rect()) else {
-        return ocean.clone();
-    };
-    let eps = 0.4;
-    let tall = (ob.max().y - ob.min().y) > 0.85 * (fb.max().y - fb.min().y);
-    if !tall {
-        return ocean.clone();
-    }
-    let mut caps = Vec::new();
-    if ob.min().x > fb.min().x + eps {
-        caps.push(polygon![
-            (x: fb.min().x, y: fb.min().y),
-            (x: ob.min().x, y: fb.min().y),
-            (x: ob.min().x, y: fb.max().y),
-            (x: fb.min().x, y: fb.max().y),
-        ]);
-    }
-    if ob.max().x < fb.max().x - eps {
-        caps.push(polygon![
-            (x: ob.max().x, y: fb.min().y),
-            (x: fb.max().x, y: fb.min().y),
-            (x: fb.max().x, y: fb.max().y),
-            (x: ob.max().x, y: fb.max().y),
-        ]);
-    }
-    if caps.is_empty() {
-        return ocean.clone();
-    }
-    let capped = MultiPolygon::new(caps);
-    let parts = [ocean, &capped];
-    geom::intersection(&geom::union_multi(parts.iter().copied()), frame)
-}
 
 #[derive(Debug, thiserror::Error)]
 pub enum RunError {
@@ -125,8 +89,6 @@ pub struct Inputs<'a> {
     /// Vector tile features in lon/lat, as `tiles::Tiles::features` returns
     /// them: what `tiles_select` picks from.
     pub tiles: Vec<Feature>,
-    /// Ocean polygons in lon/lat, when the output shows a coastline.
-    pub ocean: Option<MultiPolygon<f64>>,
     /// SVG text of every file named by a fill `source`.
     pub sources: &'a BTreeMap<String, String>,
     /// The elevation under the output, read by the host when a def draws
@@ -216,19 +178,9 @@ pub fn run_into(grammar: &Grammar, output: &Output, inputs: Inputs, draw: &Task,
     let tiles = projected(inputs.tiles);
     probe(draw, "projected");
     let frame = MultiPolygon::new(vec![output.query_polygon()]);
-    let frame_mm = warp.bend_area(w, h, &projector.project_geometry(&frame));
-    // MVT ocean rings stop a little inside each tile; grow in mm so waves meet the border.
-    const OCEAN_MARGIN_MM: f64 = 0.35;
-    let ocean = inputs.ocean.map(|o| {
-        let cut = geom::intersection(&o, &frame);
-        let bent = warp.bend_area(w, h, &projector.project_geometry(&cut));
-        let grown = geom::buffer(&bent, OCEAN_MARGIN_MM);
-        extend_ocean_to_horizontal_edges(&grown, &frame_mm)
-    });
     let engine = Engine {
         of: output,
         output: warp.bend_area(w, h, &projector.project_geometry(&frame)),
-        ocean: ocean.unwrap_or_else(geom::empty),
         terrain: inputs.terrain.as_ref(),
         projector: &projector,
     };
@@ -275,7 +227,6 @@ struct Found<'a> {
 struct Engine<'a> {
     of: &'a Output,
     output: MultiPolygon<f64>,
-    ocean: MultiPolygon<f64>,
     /// The elevation under the output, when a def draws terrain; `None` when
     /// none does, so nothing is fetched for a document that never asks.
     terrain: Option<&'a crate::terrain::Grid>,
@@ -383,7 +334,13 @@ fn eval_op(
         Op::FillHoles(n) => Value::Area(geom::fill_holes(&area(n)?)),
         Op::Grow(g) => Value::Area(geom::buffer(&area(&g.of)?, g.by.0)),
         Op::Frame => Value::Area(engine.output.clone()),
-        Op::Ocean => Value::Area(engine.ocean.clone()),
+        Op::ExtendToFrame(e) => {
+            let of = area(&e.of)?;
+            let within = area(&e.within)?;
+            let min_h = e.min_height_frac.unwrap_or(0.85);
+            let gap = e.gap_mm.map(|m| m.0).unwrap_or(0.4);
+            Value::Area(geom::extend_to_horizontal_frame_edges(&of, &within, min_h, gap))
+        }
 
         // ---- lines ---------------------------------------------------------
         Op::Rings(r) => {
@@ -855,7 +812,7 @@ mod tests {
         run(
             &grammar,
             &output(),
-            Inputs { features: vec![], tiles: vec![], ocean: None, sources: &BTreeMap::new(), terrain: None, memory_budget: None },
+            Inputs { features: vec![], tiles: vec![], sources: &BTreeMap::new(), terrain: None, memory_budget: None },
         )
     }
 
@@ -939,18 +896,12 @@ mod tests {
     }
 
     #[test]
-    fn the_ocean_and_the_card_are_areas_in_card_mm() {
-        // The whole output is sea: its fill covers the output, and the output's
-        // ring sits on the output's edge, 100 by 50 mm.
-        let text = "output: { width: 100mm, height: 50mm }\n\
-             $areas:\n  sea: { engine_ocean: {} }\n  frame: { engine_frame: {} }\n  wet: { tools_union: [$areas.sea] }\n\
+    fn extend_to_frame_reaches_the_card_edges() {
+        let text = "$areas:\n  frame: { engine_frame: {} }\n  inner: { tools_grow: { of: $areas.frame, by: -5mm } }\n  wet: { tools_extend_to_frame: { of: $areas.inner, within: $areas.frame } }\n\
              $lines:\n  ring: { tools_rings: $areas.frame }\n\
              $fills:\n  waves: { tools_fill: { in: $areas.wet, pattern: lines, spacing: 1mm } }\n\
              draw:\n  - { id: sea, from: $fills.waves }\n  - { id: ring, from: $lines.ring, stroke: solid }\n";
-        let grammar = from_yaml(text).unwrap();
-        let ocean = MultiPolygon::new(vec![output().query_polygon()]);
-        let out = run(&grammar, &output(), Inputs { features: vec![], tiles: vec![], ocean: Some(ocean), sources: &BTreeMap::new(), terrain: None, memory_budget: None })
-            .unwrap();
+        let out = run_yaml(text).unwrap();
         let strokes = |id: &str| out.groups.iter().find(|(g, _)| g == id).map_or(0, |(_, n)| *n);
         assert!(strokes("sea") >= 40, "one line per mm across the output, got {}", strokes("sea"));
         assert_eq!(strokes("ring"), 1);

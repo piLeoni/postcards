@@ -195,13 +195,21 @@ declare const areas: {
   fillHoles(of: Area): Area
   /** Grown by a length; a negative one shrinks it. */
   grow(of: Area, by: Length): Area
+  /**
+   * When `of` spans most of `within` but stops short of its west or east side,
+   * stretch it to those edges (common with vector-tile water).
+   */
+  extendToFrame(of: Area, within: Area, options?: { minHeightFrac?: number; gapMm?: Length }): Area
 }
 
 /** Areas the engine makes, not OSM. */
 declare const engine: {
   /** The paper's rectangle. */
   frame(): Area
-  /** The sea, from the coastline in the vector tiles; empty inland. */
+  /**
+   * Open sea from `features.tiles("ocean")`, buffered and extended to the card.
+   * Prefer building the same chain yourself with `areas.extendToFrame`.
+   */
   ocean(): Area
 }
 

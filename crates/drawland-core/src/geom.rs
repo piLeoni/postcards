@@ -4,7 +4,7 @@
 use geo::algorithm::buffer::{Buffer, BufferStyle, LineCap, LineJoin};
 use geo::orient::{Direction, Orient};
 use geo::{
-    BooleanOps, Coord, Geometry, LineString, MultiLineString, MultiPolygon, Polygon, Validation,
+    polygon, BooleanOps, BoundingRect, Coord, Geometry, LineString, MultiLineString, MultiPolygon, Polygon, Validation,
 };
 use std::collections::{HashMap, HashSet};
 
@@ -82,6 +82,45 @@ pub fn intersection(a: &MultiPolygon<f64>, b: &MultiPolygon<f64>) -> MultiPolygo
         return empty();
     }
     a.intersection(b)
+}
+
+/// When `of` fills most of the height of `frame` but stops short of its west
+/// or east side, add thin caps so strokes and fills can reach the border.
+pub fn extend_to_horizontal_frame_edges(
+    of: &MultiPolygon<f64>,
+    frame: &MultiPolygon<f64>,
+    min_height_frac: f64,
+    gap_mm: f64,
+) -> MultiPolygon<f64> {
+    let (Some(ob), Some(fb)) = (of.bounding_rect(), frame.bounding_rect()) else {
+        return of.clone();
+    };
+    if (ob.max().y - ob.min().y) <= min_height_frac * (fb.max().y - fb.min().y) {
+        return of.clone();
+    }
+    let mut caps = Vec::new();
+    if ob.min().x > fb.min().x + gap_mm {
+        caps.push(polygon![
+            (x: fb.min().x, y: fb.min().y),
+            (x: ob.min().x, y: fb.min().y),
+            (x: ob.min().x, y: fb.max().y),
+            (x: fb.min().x, y: fb.max().y),
+        ]);
+    }
+    if ob.max().x < fb.max().x - gap_mm {
+        caps.push(polygon![
+            (x: ob.max().x, y: fb.min().y),
+            (x: fb.max().x, y: fb.min().y),
+            (x: fb.max().x, y: fb.max().y),
+            (x: ob.max().x, y: fb.max().y),
+        ]);
+    }
+    if caps.is_empty() {
+        return of.clone();
+    }
+    let capped = MultiPolygon::new(caps);
+    let parts = [of, &capped];
+    intersection(&union_multi(parts.iter().copied()), frame)
 }
 
 /// Exterior and interior rings as closed lines.

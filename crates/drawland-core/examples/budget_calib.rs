@@ -64,7 +64,7 @@ fn main() {
             let base = LIVE.load(Ordering::Relaxed);
             PEAK.store(base, Ordering::Relaxed);
             let t = std::time::Instant::now();
-            let Ok(out) = run(&grammar, &output, Inputs { features: vec![], tiles: vec![], ocean: None, sources: &Default::default(), terrain: None, memory_budget: None }) else {
+            let Ok(out) = run(&grammar, &output, Inputs { features: vec![], tiles: vec![], sources: &Default::default(), terrain: None, memory_budget: None }) else {
                 println!("{g:<12} {s}: failed");
                 continue;
             };

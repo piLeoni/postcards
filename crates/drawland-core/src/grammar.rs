@@ -135,6 +135,16 @@ pub struct Grow {
     pub by: Mm,
 }
 
+/// Stretch `of` to the west and east edges of `within` when it already spans
+/// most of the height (tile polygons that stop short of the card border).
+#[derive(Debug, Clone, PartialEq)]
+pub struct ExtendToFrame {
+    pub of: Name,
+    pub within: Name,
+    pub min_height_frac: Option<f64>,
+    pub gap_mm: Option<Mm>,
+}
+
 /// `tools_terrain`: pen-and-ink terrain in an area, drawn by burin from the
 /// elevation under the output.
 #[derive(Debug, Clone, PartialEq)]
@@ -253,8 +263,7 @@ pub enum Op {
     Grow(Grow),
     /// The output rectangle.
     Frame,
-    /// The sea, fetched by the host. Not an OSM tag.
-    Ocean,
+    ExtendToFrame(ExtendToFrame),
 
     // ---- lines -----------------------------------------------------------
     Rings(Rings),
@@ -295,7 +304,7 @@ impl Op {
             | Op::FillHoles(_)
             | Op::Grow(_)
             | Op::Frame
-            | Op::Ocean => Section::Areas,
+            | Op::ExtendToFrame(_) => Section::Areas,
             Op::Rings(_) | Op::Lines(_) | Op::Segments(_) | Op::Dedupe(_) | Op::Merge(_) | Op::Join(_)
             | Op::ClipLines(_) | Op::Terrain(_) | Op::Burin(_) => Section::Lines,
             Op::Fill(_) => Section::Fills,
@@ -308,7 +317,7 @@ impl Op {
     /// The names this operation reads.
     pub fn refs(&self) -> Vec<Name> {
         match self {
-            Op::Select(_) | Op::TileSelect(_) | Op::Frame | Op::Ocean => vec![],
+            Op::Select(_) | Op::TileSelect(_) | Op::Frame => vec![],
             Op::Module(m) => m.from.iter().cloned().collect(),
             Op::Polygons(n) | Op::FillHoles(n) | Op::Dedupe(n) | Op::Merge(n) | Op::Lines(n) | Op::Segments(n) => {
                 vec![n.clone()]
@@ -324,6 +333,7 @@ impl Op {
                 .chain(i.keep_rule.as_deref().map(Op::refs).unwrap_or_default())
                 .collect(),
             Op::Grow(g) => vec![g.of.clone()],
+            Op::ExtendToFrame(e) => vec![e.of.clone(), e.within.clone()],
             Op::Where(w) => vec![w.of.clone()],
             Op::Rings(r) => vec![r.of.clone()],
             Op::ClipLines(c) => vec![c.lines.clone(), c.within.clone()],
@@ -554,9 +564,9 @@ impl Grammar {
         out
     }
 
-    /// Whether the profile draws the sea (`engine_ocean`).
+    /// Whether the profile reads open-sea polygons from the vector tiles.
     pub fn draws_ocean(&self) -> bool {
-        self.all_defs().any(|d| matches!(d.op, Op::Ocean))
+        self.tile_selectors().iter().any(|s| s == "ocean")
     }
 
     /// SVG files named by a fill `source`, for the host to read.
@@ -877,7 +887,7 @@ fn parse_op(raw: RawOp, section: Section) -> Result<Op, GrammarError> {
     let target = match key.as_str() {
         "osm_select" | "tiles_select" | "tools_where" => Section::Features,
         "tools_polygons" | "tools_union" | "tools_difference" | "tools_intersect" | "tools_fill_holes"
-        | "tools_grow" | "engine_frame" | "engine_ocean" => Section::Areas,
+        | "tools_grow" | "tools_extend_to_frame" | "engine_frame" => Section::Areas,
         "tools_rings" | "tools_lines" | "tools_segments" | "tools_dedupe" | "tools_merge" | "tools_join"
         | "tools_clip" | "tools_terrain" | "tools_burin" => Section::Lines,
         "tools_fill" => Section::Fills,
@@ -917,7 +927,6 @@ fn parse_op(raw: RawOp, section: Section) -> Result<Op, GrammarError> {
         "tiles_select" => Op::TileSelect(parse_tile_select(&value)?),
         "tools_where" => Op::Where(parse_where(&value)?),
         "engine_frame" => Op::Frame,
-        "engine_ocean" => Op::Ocean,
         "tools_polygons" => Op::Polygons(name_ref(&value, "tools_polygons")?),
         "tools_union" => Op::Union(union_rules(&value, "tools_union")?),
         "tools_difference" => {
@@ -965,6 +974,23 @@ fn parse_op(raw: RawOp, section: Section) -> Result<Op, GrammarError> {
             }
             let raw: Raw = json(&value, "tools_grow")?;
             Op::Grow(Grow { of: refname(&raw.of)?, by: raw.by })
+        }
+        "tools_extend_to_frame" => {
+            #[derive(Deserialize)]
+            #[serde(deny_unknown_fields)]
+            struct Raw {
+                of: String,
+                within: String,
+                min_height_frac: Option<f64>,
+                gap_mm: Option<Mm>,
+            }
+            let raw: Raw = json(&value, "tools_extend_to_frame")?;
+            Op::ExtendToFrame(ExtendToFrame {
+                of: refname(&raw.of)?,
+                within: refname(&raw.within)?,
+                min_height_frac: raw.min_height_frac,
+                gap_mm: raw.gap_mm,
+            })
         }
         "tools_terrain" => {
             #[derive(Deserialize)]
@@ -1453,7 +1479,15 @@ pub fn op_to_json(op: &Op) -> Value {
         }
         Op::Grow(g) => ("tools_grow", json!({ "of": g.of.to_string(), "by": g.by })),
         Op::Frame => ("engine_frame", json!({})),
-        Op::Ocean => ("engine_ocean", json!({})),
+        Op::ExtendToFrame(e) => (
+            "tools_extend_to_frame",
+            json!({
+                "of": e.of.to_string(),
+                "within": e.within.to_string(),
+                "min_height_frac": e.min_height_frac,
+                "gap_mm": e.gap_mm,
+            }),
+        ),
         Op::Rings(r) => ("tools_rings", json!({ "of": r.of.to_string(), "exterior_only": r.exterior_only })),
         Op::Lines(n) => ("tools_lines", Value::String(n.to_string())),
         Op::Segments(n) => ("tools_segments", Value::String(n.to_string())),
@@ -1847,10 +1881,10 @@ compose:
 
     #[test]
     fn tile_selections_and_modules_reading_them() {
-        let text = "$features:\n  bldg: { tiles_select: buildings }\n  ways: { tiles_select: [roads, \"paths\"] }\n\
-                    $areas:\n  roads: { module_roads: { from: $features.ways } }\n  sea: { engine_ocean: {} }\n";
+        let text = "$features:\n  bldg: { tiles_select: buildings }\n  ways: { tiles_select: [roads, \"paths\"] }\n  sea: { tiles_select: ocean }\n\
+                    $areas:\n  roads: { module_roads: { from: $features.ways } }\n";
         let g = parse(text).unwrap();
-        assert_eq!(g.tile_selectors(), ["buildings", "roads", "paths"]);
+        assert_eq!(g.tile_selectors(), ["buildings", "roads", "paths", "ocean"]);
         assert!(g.osm_keys().is_empty(), "nothing reads Overpass");
         assert!(g.draws_ocean());
         assert_eq!(g.find(&Name::parse("$areas.roads").unwrap()).unwrap().op.refs(), [Name::parse("$features.ways").unwrap()]);

@@ -122,7 +122,6 @@ fn map(term: &Term, http: &osm_http::Http, profile_path: &Path, place: Place, ou
 struct Needs {
     keys: Vec<String>,
     tiles: Vec<String>,
-    ocean: bool,
 }
 
 /// What the download brings, in lon/lat.
@@ -134,7 +133,7 @@ fn fetch(
     output: &Output,
     needs: &Needs,
     grammar: &Grammar,
-) -> Result<(Vec<Feature>, Vec<Feature>, Option<geo::MultiPolygon<f64>>, Option<drawland_core::terrain::Grid>), String> {
+) -> Result<(Vec<Feature>, Vec<Feature>, Option<drawland_core::terrain::Grid>), String> {
     let area = output.query_polygon();
     let mut notes: Vec<String> = Vec::new();
     let osm = if needs.keys.is_empty() {
@@ -149,13 +148,13 @@ fn fetch(
         notes.push(format!("{:.1} MB · {found}", json.len() as f64 / 1e6));
         Some(features)
     };
-    let (tile_features, ocean) = match tiles::plan(output, &needs.tiles, needs.ocean, osm.as_deref())? {
+    let tile_features = match tiles::plan(output, &needs.tiles, osm.as_deref())? {
         Some(t) => read_tiles(&download, t, &mut notes)?,
-        None => (Vec::new(), None),
+        None => Vec::new(),
     };
     let terrain = read_terrain(&download, grammar, output)?;
     download.ok(&notes.join(" · "));
-    Ok((osm.unwrap_or_default(), tile_features, ocean, terrain))
+    Ok((osm.unwrap_or_default(), tile_features, terrain))
 }
 
 /// The elevation under the output, when a `tools_terrain` or `tools_burin` def
@@ -189,7 +188,7 @@ fn read_tiles(
     download: &Task,
     mut tiles: Tiles,
     notes: &mut Vec<String>,
-) -> Result<(Vec<Feature>, Option<geo::MultiPolygon<f64>>), String> {
+) -> Result<Vec<Feature>, String> {
     let ids = tiles.tiles(terramask::MAX_ZOOM);
     let n = ids.len() as u64;
     let task = download.child("tiles", "vector tiles", n, "tiles");
@@ -210,14 +209,15 @@ fn read_tiles(
 
     let task = download.child("read-tiles", "read tiles", 0, "");
     let features = tiles.features();
-    let ocean = tiles.ocean();
     let found = format!("{} tile features", thousands(features.len() as u64));
-    task.ok(&match &ocean {
-        Some(sea) => format!("{found} · sea in {} polygons", sea.0.len()),
-        None => found.clone(),
+    let ocean_n = features.iter().filter(|f| f.tag("class") == Some("ocean")).count();
+    task.ok(&if ocean_n > 0 {
+        format!("{found} · {ocean_n} ocean polygons")
+    } else {
+        found.clone()
     });
     notes.push(format!("{n} tiles · {found}"));
-    Ok((features, ocean))
+    Ok(features)
 }
 
 /// Writes the SVG as the last row under `draw`, which ends with it; an output
@@ -290,16 +290,16 @@ fn map_v3(
     let download = Task::begin(term, "download", None, "download", 0, "");
     let center = locate(&download, http, place, grammar.output.address.clone(), (grammar.output.lat, grammar.output.lng))?;
     let output = Output::new(&grammar.output, center);
-    let needs = Needs { keys: grammar.osm_keys(), tiles: grammar.tile_selectors(), ocean: grammar.draws_ocean() };
+    let needs = Needs { keys: grammar.osm_keys(), tiles: grammar.tile_selectors() };
     // Terrain is read only when a def draws it: the same grid burin's own
     // front ends use, cached a tile at a time like everything else.
-    let (features, tiles, ocean, terrain) = fetch(http, download, &output, &needs, &grammar)?;
+    let (features, tiles, terrain) = fetch(http, download, &output, &needs, &grammar)?;
 
     let draw = Task::begin(term, "draw", None, "draw", 0, "");
     let rendered = drawland_core::grammar_run::run_with(
         &grammar,
         &output,
-        drawland_core::grammar_run::Inputs { features, tiles, ocean, sources: &sources, terrain, memory_budget: None },
+        drawland_core::grammar_run::Inputs { features, tiles, sources: &sources, terrain, memory_budget: None },
         &draw,
     )
     .map_err(|e| e.to_string())?;

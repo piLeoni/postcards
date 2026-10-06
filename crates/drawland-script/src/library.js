@@ -155,11 +155,29 @@
       if (typeof by !== "number" && typeof by !== "string") fail(`areas.grow: by is a length like "0.5mm", got ${describe(by)}`);
       return make(Area, "areas", { tools_grow: { of: need(of, Area, "areas.grow"), by } });
     },
+    /**
+     * When `of` spans most of `within` but stops short of its west or east
+     * side (vector tiles often do), stretch it to those edges.
+     */
+    extendToFrame(of, within, options = {}) {
+      object(options, "areas.extendToFrame options");
+      const op = { tools_extend_to_frame: { of: need(of, Area, "areas.extendToFrame"), within: need(within, Area, "areas.extendToFrame within") } };
+      if (options.minHeightFrac != null) op.tools_extend_to_frame.min_height_frac = options.minHeightFrac;
+      if (options.gapMm != null) op.tools_extend_to_frame.gap_mm = options.gapMm;
+      return make(Area, "areas", op);
+    },
+  };
+
+  const oceanFromTiles = () => {
+    const frame = engine.frame();
+    const raw = areas.intersect(areas.polygons(features.tiles("ocean")), frame);
+    return areas.extendToFrame(areas.grow(raw, "0.35mm"), frame);
   };
 
   const engine = {
     frame() { return make(Area, "areas", { engine_frame: {} }); },
-    ocean() { return make(Area, "areas", { engine_ocean: {} }); },
+    /** Open sea from vector tiles, grown to the card edge. Prefer explicit `features.tiles("ocean")` + `areas.extendToFrame`. */
+    ocean() { return oceanFromTiles(); },
   };
 
   const lines = {

@@ -30,22 +30,22 @@ fn main() {
         let json = std::fs::read_to_string(&cache).expect("cache file");
         features_from_overpass(&json, &output.query_polygon(), &keys).expect("features")
     };
-    let (tile_features, ocean) = match tiles::plan(&output, &grammar.tile_selectors(), grammar.draws_ocean(), (!keys.is_empty()).then_some(&features[..])).expect("tile plan") {
+    let tile_features = match tiles::plan(&output, &grammar.tile_selectors(), (!keys.is_empty()).then_some(&features[..])).expect("tile plan") {
         Some(mut t) => {
             let found = terramask::Fetcher::with_source(tiles::TILES)
-                .water(t.bounds(), t.zoom(terramask::MAX_ZOOM), t.filter(), |_, _| {})
+                .features_of(&t.tiles(terramask::MAX_ZOOM), t.filter(), |_, _| {})
                 .expect("vector tiles");
             t.add_features(found);
-            (t.features(), t.ocean())
+            t.features()
         }
-        None => (Vec::new(), None),
+        None => Vec::new(),
     };
     println!("{want}: {} OSM features, keys {:?} · {} tile features", features.len(), keys, tile_features.len());
 
     let sources = BTreeMap::new();
     let t0 = std::time::Instant::now();
     let terrain = read_terrain(&grammar, &output).expect("terrain");
-    let result = run(&grammar, &output, Inputs { features, tiles: tile_features, ocean, sources: &sources, terrain, memory_budget: None }).expect("render");
+    let result = run(&grammar, &output, Inputs { features, tiles: tile_features, sources: &sources, terrain, memory_budget: None }).expect("render");
     let ms = t0.elapsed().as_millis();
     for (id, n) in &result.groups {
         println!("  {id}: {n} strokes");

@@ -14,12 +14,15 @@ output({
 const bldg = features.tiles("buildings")
 const green = features.tiles("landcover:park,garden,grass/grass,wood")
 const wet = features.tiles("water:lake,river,pond,dock")
+const oceanTiles = features.tiles("ocean")
 const ways = features.tiles("roads", "paths")
 
 const roads = modules.roads({ from: ways })
 const buildings = areas.polygons(bldg)
 const parks = areas.polygons(green)
-const water = areas.union(areas.polygons(wet), engine.ocean())
+const frame = engine.frame()
+const ocean = areas.extendToFrame(areas.grow(areas.intersect(areas.polygons(oceanTiles), frame), "0.35mm"), frame)
+const water = areas.union(areas.polygons(wet), ocean)
 
 const parkRing = lines.rings(parks)
 const bldgRing = lines.rings(buildings)
