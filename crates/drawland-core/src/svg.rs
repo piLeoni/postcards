@@ -4,7 +4,8 @@
 use crate::geom::Lines;
 use std::fmt::Write;
 
-const STYLE: &str = "\n* {\n  fill: none;\n  stroke: black;\n  stroke-width: 0.1;\n}\n";
+// Default SVG style - individual groups will have their own styles
+const DEFAULT_STYLE: &str = "\n* {\n  fill: none;\n  stroke: black;\n  stroke-width: 0.1;\n}\n";
 
 /// Shortest decimal for `v` at 0.1 µm resolution.
 fn num(out: &mut String, v: f64) {
@@ -14,9 +15,14 @@ fn num(out: &mut String, v: f64) {
 }
 
 pub fn write_svg(width_mm: f64, height_mm: f64, groups: &[(String, Lines)]) -> String {
+    write_svg_with_styles(width_mm, height_mm, groups, &[])
+}
+
+pub fn write_svg_with_styles(width_mm: f64, height_mm: f64, groups: &[(String, Lines)], styles: &[(String, Option<&crate::profile::StrokeSpec>)]) -> String {
     let mut s = header(width_mm, height_mm);
-    for (id, lines) in groups {
-        group_open(&mut s, id);
+    for (i, (id, lines)) in groups.iter().enumerate() {
+        let stroke_spec = styles.get(i).and_then(|(_, spec)| *spec);
+        group_open_with_style(&mut s, id, stroke_spec);
         for line in lines {
             polyline(&mut s, line);
         }
@@ -36,14 +42,43 @@ pub fn header(width_mm: f64, height_mm: f64) -> String {
         s,
         "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{width_mm}mm\" height=\"{height_mm}mm\" viewBox=\"0 0 {width_mm} {height_mm}\">"
     );
-    let _ = write!(s, "<style>{STYLE}</style>");
+    let _ = write!(s, "<style>{DEFAULT_STYLE}</style>");
     s
 }
 
 pub const FOOTER: &str = "\n</svg>\n";
 
 pub fn group_open(s: &mut String, id: &str) {
-    let _ = write!(s, "\n<g id=\"{id}\">");
+    group_open_with_style(s, id, None);
+}
+
+pub fn group_open_with_style(s: &mut String, id: &str, stroke_spec: Option<&crate::profile::StrokeSpec>) {
+    if let Some(spec) = stroke_spec {
+        let mut style_attrs = String::new();
+        
+        // Add color if specified
+        if let Some(color) = &spec.color {
+            style_attrs.push_str(&format!("stroke:{};", color));
+        }
+        
+        // Add width if specified (convert mm to user units)
+        if let Some(width) = &spec.width {
+            style_attrs.push_str(&format!("stroke-width:{};", width.0));
+        }
+        
+        // Add line cap if specified
+        if let Some(cap) = &spec.cap {
+            style_attrs.push_str(&format!("stroke-linecap:{};", cap));
+        }
+        
+        if !style_attrs.is_empty() {
+            let _ = write!(s, "\n<g id=\"{id}\" style=\"{style_attrs}\">");
+        } else {
+            let _ = write!(s, "\n<g id=\"{id}\">");
+        }
+    } else {
+        let _ = write!(s, "\n<g id=\"{id}\">");
+    }
 }
 
 pub fn group_close(s: &mut String) {
@@ -71,6 +106,8 @@ pub fn polyline(s: &mut String, line: &geo::LineString<f64>) {
 mod tests {
     use super::*;
     use geo::line_string;
+    use crate::profile::StrokeSpec;
+    use crate::units::Mm;
 
     #[test]
     fn groups_and_points() {
@@ -79,5 +116,19 @@ mod tests {
         assert!(svg.contains("width=\"152.4mm\""));
         assert!(svg.contains("<g id=\"roads_outlines\">"));
         assert!(svg.contains("points=\"0,1.2346 2.5,0\""));
+    }
+
+    #[test]
+    fn groups_with_stroke_styles() {
+        let groups = vec![("test_group".to_string(), vec![line_string![(x: 0.0, y: 0.0), (x: 10.0, y: 10.0)]])];
+        let stroke_spec = StrokeSpec {
+            color: Some("#ff0000".to_string()),
+            width: Some(Mm(0.5)),
+            cap: Some("round".to_string()),
+            ..Default::default()
+        };
+        let styles = vec![("test_group".to_string(), Some(&stroke_spec))];
+        let svg = write_svg_with_styles(100.0, 50.0, &groups, &styles);
+        assert!(svg.contains("<g id=\"test_group\" style=\"stroke:#ff0000;stroke-width:0.5;stroke-linecap:round;\">"));
     }
 }

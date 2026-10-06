@@ -134,8 +134,13 @@ impl Layout {
 
     /// Start the group `id`, in every part.
     pub fn begin(&mut self, id: &str) {
+        self.begin_with_style(id, None)
+    }
+    
+    /// Start the group `id` with optional stroke style, in every part.
+    pub fn begin_with_style(&mut self, id: &str, stroke_spec: Option<&crate::profile::StrokeSpec>) {
         for p in &mut self.parts {
-            svg::group_open(p, id);
+            svg::group_open_with_style(p, id, stroke_spec);
         }
         self.groups.push((id.to_string(), 0));
     }

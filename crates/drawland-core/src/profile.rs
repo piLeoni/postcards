@@ -173,12 +173,19 @@ pub enum StrokeStyle {
 }
 
 /// `solid`, `dash`, `dotted`, `none`, or a mapping `{ style, dash, gap, mark }`.
+/// Also supports `color`, `width` (in mm), and `cap` for SVG output.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct StrokeSpec {
     pub style: Option<StrokeStyle>,
     pub dash: Option<Mm>,
     pub gap: Option<Mm>,
     pub mark: Option<Mm>,
+    /// Stroke color in CSS format (#RRGGBB, rgb(...), etc.)
+    pub color: Option<String>,
+    /// Stroke width in millimeters
+    pub width: Option<Mm>,
+    /// Stroke line cap: round, square, butt
+    pub cap: Option<String>,
 }
 
 
@@ -195,6 +202,12 @@ impl<'de> Deserialize<'de> for StrokeSpec {
             gap: Option<Mm>,
             #[serde(default)]
             mark: Option<Mm>,
+            #[serde(default)]
+            color: Option<String>,
+            #[serde(default)]
+            width: Option<Mm>,
+            #[serde(default)]
+            cap: Option<String>,
         }
         #[derive(Deserialize)]
         #[serde(untagged)]
@@ -204,7 +217,15 @@ impl<'de> Deserialize<'de> for StrokeSpec {
         }
         Ok(match Raw::deserialize(d)? {
             Raw::Keyword(style) => StrokeSpec { style: Some(style), ..StrokeSpec::default() },
-            Raw::Fields(f) => StrokeSpec { style: f.style, dash: f.dash, gap: f.gap, mark: f.mark },
+            Raw::Fields(f) => StrokeSpec { 
+                style: f.style, 
+                dash: f.dash, 
+                gap: f.gap, 
+                mark: f.mark,
+                color: f.color,
+                width: f.width,
+                cap: f.cap,
+            },
         })
     }
 }
@@ -212,8 +233,9 @@ impl<'de> Deserialize<'de> for StrokeSpec {
 impl Serialize for StrokeSpec {
     fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
         use serde::ser::SerializeMap;
-        if let (Some(style), None, None, None) = (self.style, self.dash, self.gap, self.mark) {
-            return style.serialize(s);
+        if self.style.is_some() && self.dash.is_none() && self.gap.is_none() && self.mark.is_none() 
+            && self.color.is_none() && self.width.is_none() && self.cap.is_none() {
+            return self.style.unwrap().serialize(s);
         }
         let mut map = s.serialize_map(None)?;
         if let Some(v) = &self.style {
@@ -224,7 +246,49 @@ impl Serialize for StrokeSpec {
                 map.serialize_entry(key, &v)?;
             }
         }
+        if let Some(color) = &self.color {
+            map.serialize_entry("color", color)?;
+        }
+        if let Some(width) = &self.width {
+            map.serialize_entry("width", width)?;
+        }
+        if let Some(cap) = &self.cap {
+            map.serialize_entry("cap", cap)?;
+        }
         map.end()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn stroke_spec_serializes_simple_style() {
+        let spec = StrokeSpec { 
+            style: Some(StrokeStyle::Solid), 
+            ..Default::default() 
+        };
+        let json = serde_json::to_string(&spec).unwrap();
+        assert_eq!(json, "\"solid\"");
+    }
+
+    #[test]
+    fn stroke_spec_serializes_complex_with_new_fields() {
+        let spec = StrokeSpec { 
+            style: Some(StrokeStyle::Dash),
+            dash: Some(Mm(0.5)),
+            color: Some("#ff0000".to_string()),
+            width: Some(Mm(0.3)),
+            cap: Some("round".to_string()),
+            ..Default::default()
+        };
+        let json = serde_json::to_string(&spec).unwrap();
+        assert!(json.contains("\"style\":\"dash\""));
+        assert!(json.contains("\"dash\":0.5"));
+        assert!(json.contains("\"color\":\"#ff0000\""));
+        assert!(json.contains("\"width\":0.3"));
+        assert!(json.contains("\"cap\":\"round\""));
     }
 }
 
@@ -235,6 +299,9 @@ impl StrokeSpec {
             dash: over.dash.or(self.dash),
             gap: over.gap.or(self.gap),
             mark: over.mark.or(self.mark),
+            color: over.color.clone().or_else(|| self.color.clone()),
+            width: over.width.or(self.width),
+            cap: over.cap.clone().or_else(|| self.cap.clone()),
         }
     }
 }

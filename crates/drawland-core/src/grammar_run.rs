@@ -729,7 +729,7 @@ fn compose(
                 geom::union_multi(&parts)
             }
         };
-        layout.begin(id);
+        layout.begin_with_style(id, stroke);
         let mut sink = GroupSink { stroke, mask: &above, pending: Vec::new(), points: 0, fed: 0, layout, out };
         match what {
             Drawing::Lines(lines) => {
