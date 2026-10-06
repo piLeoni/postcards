@@ -4,8 +4,8 @@
 use crate::geom::Lines;
 use std::fmt::Write;
 
-// Default SVG style - individual groups will have their own styles
-const DEFAULT_STYLE: &str = "\n* {\n  fill: none;\n  stroke: black;\n  stroke-width: 0.1;\n}\n";
+/// Set on the root and inherited, so a group's own `style` wins over it.
+const DEFAULT_STYLE: &str = "\nsvg {\n  fill: none;\n  stroke: black;\n  stroke-width: 0.1;\n}\n";
 
 /// Shortest decimal for `v` at 0.1 µm resolution.
 fn num(out: &mut String, v: f64) {

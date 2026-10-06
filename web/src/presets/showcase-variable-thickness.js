@@ -1,4 +1,4 @@
-title("Showcase: Variable Thickness Based on Position")
+title("Showcase: Line weight by feature")
 output({
   width: "152.4mm",
   height: "101.6mm",
@@ -8,8 +8,7 @@ output({
   tileZoom: 14,
 })
 
-// Showcase example demonstrating variable thickness based on position/feature importance
-// Hierarchical road styling with color-coded roads and varying stroke widths
+// Roads heavier than buildings: each layer its own colour, width and cap.
 
 // Feature sources
 const buildingFeatures = features.tiles("buildings")
