@@ -275,17 +275,7 @@ export default function Sidebar({ open, onClose, doc, setDoc, check, output, sta
         title={<span className="tracking-[0.2em]">DRAWLAND</span>}
         className="shrink-0"
         aside={(
-          <>
-            <button
-              type="button"
-              {...KEY}
-              title="The documentation: the library, the engine, the other languages"
-              onClick={(e) => go(e, '/docs')}
-            >
-              docs
-            </button>
-            <button type="button" aria-label="Close" {...KEY} className="lg:hidden" onClick={onClose}>✕</button>
-          </>
+          <button type="button" aria-label="Close" {...KEY} className="lg:hidden" onClick={onClose}>✕</button>
         )}
       >
         <p className="opacity-60">

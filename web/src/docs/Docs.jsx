@@ -345,8 +345,9 @@ function Libraries() {
 function Header() {
   return (
     <header id="start" className="scroll-mt-[2lh] border-b border-black pb-[1lh]">
-      <p className="tracking-[0.3em] opacity-60">DOCUMENTATION</p>
-      <h1 className="mt-[0.5lh] text-[2em] font-bold">draw.land</h1>
+      {/* The wordmark is just the name: the header carries the link back to the
+          map, so nothing here is a second navigation. */}
+      <h1 className="text-[2em] font-bold">draw.land</h1>
       <P>
         draw.land turns any place on Earth into a <T>layered pen-and-ink SVG</T>, in paper millimetres, ready for
         a plotter, a laser cutter or a vector editor. This page builds one; this document is everything behind

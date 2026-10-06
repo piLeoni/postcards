@@ -4,7 +4,8 @@
  * sections nested under it.
  */
 export const NAV = [
-  { id: 'start', title: 'draw.land', sub: [] },
+  // No entry for the opening section: nothing sits above it to scroll back to,
+  // and the header already carries the link back to the map.
   { id: 'building', title: 'Building a map', sub: ['profiles', 'engine', 'kinds', 'walkthrough'] },
   { id: 'features', title: 'features', sub: ['features-tiles', 'features-osm', 'features-where'] },
   { id: 'geometry', title: 'Areas and lines', sub: ['areas', 'lines', 'fills', 'modules', 'terrain'] },
