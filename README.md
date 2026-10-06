@@ -12,6 +12,11 @@ for now.
 
 ## Use
 
+The web page draws maps and carries the documentation at `/docs`: the library
+reference, the profiles it runs, and where the Rust, command-line and Python
+front ends stand. Start here: [`docs/library.md`](docs/library.md) is the
+reference, and `crates/drawland-script/drawland.d.ts` is its exact description.
+
 ```bash
 ./generate.sh "1730 Highland Pl, Berkeley, CA 94709"
 # → exports/1730_highland_pl_berkeley_ca_94709/map.svg
