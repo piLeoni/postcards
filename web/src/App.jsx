@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useAtom } from 'jotai'
 import MapView from './components/MapView'
 import Sidebar from './components/Sidebar'
+import Docs from './docs/Docs'
 import { loadDrawland } from './lib/drawland'
 import { docAtom } from './lib/store'
 import { outputComment, outputUnit, setOutputComment, setOutputKeys } from './lib/doc'
@@ -11,6 +12,24 @@ import { terrainPair } from './components/controls'
 
 /** Whether the page opened on a self-contained share, read before anything strips the fragment. */
 const OPENED_INLINE = Boolean(inlineShare())
+
+/** The project on GitHub: the header and the sidebar both point here. */
+export const REPO = 'https://github.com/piLeoni/postcards'
+
+/** Whether the URL is the docs page, `/docs` (or `#docs` for a plain file server). */
+const isDocs = () => /^\/docs\/?$/.test(location.pathname) || location.hash === '#docs'
+
+/** A link that puts `path` in the URL without the page being asked to fetch it.
+ *
+ * The docs page is not a file the site is served with (a static host would 404
+ * on a reload), and a link the router is not asked about keeps the map and the
+ * editor alive behind it.
+ */
+function go(e, path) {
+  e.preventDefault()
+  history.pushState(null, '', path)
+  window.dispatchEvent(new PopStateEvent('popstate'))
+}
 
 /** Where the output is, how big, how it is cut and drawn: a drawing is only good for one of these. */
 const placeOf = (c) =>
@@ -49,6 +68,8 @@ export default function App() {
   const [engine, setEngine] = useState(null)
   const [engineError, setEngineError] = useState(null)
   const [doc, setDoc] = useAtom(docAtom)
+  // Which page is on screen: the map and its editor, or the documentation.
+  const [docs, setDocs] = useState(isDocs)
   // The graph the document builds, as the engine's JSON, and whether its
   // output is the script's own (then the page shows it but cannot move it).
   const [graph, setGraph] = useState(null)
@@ -88,6 +109,14 @@ export default function App() {
   // Handles into the map, for the two explicit centre actions. Nothing else
   // reads them: the map is otherwise free to scroll without touching the output.
   const mapApiRef = useRef(null)
+
+  // The docs link is a real one (`/docs`), opened in place: the map, the editor
+  // and the drawing are kept alive behind the page, so going back is instant.
+  useEffect(() => {
+    const onNav = () => setDocs(isDocs())
+    window.addEventListener('popstate', onNav)
+    return () => window.removeEventListener('popstate', onNav)
+  }, [])
 
   useEffect(() => {
     loadDrawland()
@@ -453,8 +482,10 @@ export default function App() {
   }
 
   return (
-    <div className="relative flex h-full min-h-0 w-full flex-col lg:flex-row">
-      <main className="relative min-h-0 min-w-0 flex-1">
+    <div className="flex h-full min-h-0 w-full flex-col">
+      <SiteHeader docs={docs} />
+      <div className="relative flex min-h-0 w-full flex-1 flex-col lg:flex-row">
+        <main className="relative min-h-0 min-w-0 flex-1">
         <MapView
           output={output}
           units={units}
@@ -497,6 +528,58 @@ export default function App() {
       ) : null}
 
       <Sidebar open={menuOpen || isDesktop} onClose={() => setMenuOpen(false)} {...sidebar} />
+      </div>
+
+      {/* The documentation, over the page. Kept mounted behind, not unmounted:
+          the map, the editor and the drawing are as they were on the way back. */}
+      {docs ? (
+        <div className="fixed inset-0 z-50 flex flex-col bg-white">
+          <SiteHeader docs={docs} over />
+          <Docs />
+        </div>
+      ) : null}
     </div>
+  )
+}
+
+/** The links that belong to the site rather than to the drawing. */
+function SiteHeader({ docs, over = false }) {
+  return (
+    <header
+      className={`z-40 flex shrink-0 items-center gap-[1ch] border-b border-black px-[1ch] py-[0.25lh] ${over ? '' : 'bg-white'}`}
+    >
+      <a
+        is-="button"
+        size-="small"
+        variant-="background0"
+        href="/"
+        onClick={(e) => go(e, '/')}
+        aria-current={docs ? undefined : 'page'}
+      >
+        map
+      </a>
+      <a
+        is-="button"
+        size-="small"
+        variant-="background0"
+        href="/docs"
+        onClick={(e) => go(e, '/docs')}
+        aria-current={docs ? 'page' : undefined}
+      >
+        docs
+      </a>
+      <a
+        is-="button"
+        size-="small"
+        variant-="background1"
+        className="ml-auto"
+        href={REPO}
+        target="_blank"
+        rel="noreferrer"
+        title={REPO}
+      >
+        GitHub ↗
+      </a>
+    </header>
   )
 }

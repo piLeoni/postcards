@@ -19,7 +19,12 @@ const KEY = { 'size-': 'small', 'variant-': 'background1' }
 const DEFAULT_WIDTH = 448
 const MIN_WIDTH = 320
 const clampWidth = (w) => Math.round(Math.min(Math.max(w, MIN_WIDTH), window.innerWidth * 0.7))
-const REPO = 'https://github.com/piLeoni/postcards'
+/** The site's pages, opened in place rather than fetched (see `App.jsx`). */
+const go = (e, path) => {
+  e.preventDefault()
+  history.pushState(null, '', path)
+  window.dispatchEvent(new PopStateEvent('popstate'))
+}
 const sentence = (s) => s.charAt(0).toUpperCase() + s.slice(1)
 
 /** Where an engine message points, `line 3 column 11`, if it does. */
@@ -271,9 +276,14 @@ export default function Sidebar({ open, onClose, doc, setDoc, check, output, sta
         className="shrink-0"
         aside={(
           <>
-            <a is-="button" {...KEY} href={REPO} target="_blank" rel="noreferrer" title={REPO}>
-              GitHub
-            </a>
+            <button
+              type="button"
+              {...KEY}
+              title="The documentation: the library, the engine, the other languages"
+              onClick={(e) => go(e, '/docs')}
+            >
+              docs
+            </button>
             <button type="button" aria-label="Close" {...KEY} className="lg:hidden" onClick={onClose}>✕</button>
           </>
         )}
