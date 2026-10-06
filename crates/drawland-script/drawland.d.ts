@@ -92,10 +92,10 @@ interface FillOptions {
   source?: { file: string; size?: string; position?: string; repeat?: string }
 }
 
-/** `solid`, `dash`, `dotted`, `none`, or the dashes' sizes. */
+/** `solid`, `dash`, `dotted`, `none`, or the dashes' sizes. Also supports color, width, and cap style. */
 type Stroke =
   | "solid" | "dash" | "dotted" | "none"
-  | { style?: "solid" | "dash" | "dotted" | "none"; dash?: Length; gap?: Length; mark?: Length }
+  | { style?: "solid" | "dash" | "dotted" | "none"; dash?: Length; gap?: Length; mark?: Length; color?: string; width?: Length; cap?: "round" | "square" | "butt" }
 
 interface DrawOptions {
   /** The SVG group's id; a plotter can give each group its own pen. */
