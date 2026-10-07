@@ -4,10 +4,10 @@
 //! cut, like the panels of a triptych. Both crop the composed drawing;
 //! nothing is moved or scaled.
 
-use crate::geom::Lines;
+use crate::geom::{self, Lines};
 use crate::svg;
 use crate::units::MmXY;
-use geo::{Coord, LineString};
+use geo::{Coord, LineString, MultiPolygon, polygon};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
@@ -145,6 +145,75 @@ impl Layout {
         self.groups.push((id.to_string(), 0));
     }
 
+    /// Start a flat-fill group; colour from the draw entry's stroke.
+    pub fn begin_fill(&mut self, id: &str, stroke_spec: Option<&crate::profile::StrokeSpec>) {
+        let color = svg::fill_color(stroke_spec);
+        for p in &mut self.parts {
+            svg::group_open_fill(p, id, &color);
+        }
+        self.groups.push((id.to_string(), 0));
+    }
+
+    /// Filled polygons for the group begun last.
+    pub fn solids(&mut self, mp: &MultiPolygon<f64>, out: &mut Out) {
+        if mp.0.is_empty() {
+            return;
+        }
+        let whole = if self.cropped {
+            let mut merged = geom::empty();
+            for s in &self.sheets {
+                merged = geom::union_multi([&merged, &geom::intersection(mp, &rect_mp(s.inner))]);
+            }
+            merged
+        } else {
+            mp.clone()
+        };
+        let paths = whole.0.len();
+        if let Some(g) = self.groups.last_mut() {
+            g.1 += paths;
+        }
+        svg::multipolygon(&mut self.parts[0], &whole);
+        if self.cut() {
+            for (k, s) in self.sheets.iter().enumerate() {
+                let piece = geom::intersection(mp, &rect_mp(s.inner));
+                if piece.0.is_empty() {
+                    continue;
+                }
+                let [x0, y0, _, _] = s.at;
+                let moved = MultiPolygon::new(
+                    piece
+                        .0
+                        .into_iter()
+                        .map(|p| {
+                            let ext = LineString::new(
+                                p.exterior()
+                                    .0
+                                    .iter()
+                                    .map(|c| Coord { x: c.x - x0, y: c.y - y0 })
+                                    .collect(),
+                            );
+                            let holes = p
+                                .interiors()
+                                .iter()
+                                .map(|h| {
+                                    LineString::new(h.0.iter().map(|c| Coord { x: c.x - x0, y: c.y - y0 }).collect())
+                                })
+                                .collect();
+                            geo::Polygon::new(ext, holes)
+                        })
+                        .collect(),
+                );
+                svg::multipolygon(&mut self.parts[k + 1], &moved);
+            }
+        }
+        for (k, p) in self.parts.iter_mut().enumerate() {
+            if p.len() >= PIECE {
+                out(k, p);
+                p.clear();
+            }
+        }
+    }
+
     /// Lines of the group begun last.
     pub fn lines(&mut self, lines: &[LineString<f64>], out: &mut Out) {
         let cropped_lines;
@@ -193,6 +262,16 @@ impl Layout {
         let names = if self.cut() { self.sheets.into_iter().map(|s| s.name).collect() } else { Vec::new() };
         (std::mem::take(&mut self.groups), names)
     }
+}
+
+fn rect_mp(r: Rect) -> MultiPolygon<f64> {
+    MultiPolygon::new(vec![polygon![
+        (x: r[0], y: r[1]),
+        (x: r[2], y: r[1]),
+        (x: r[2], y: r[3]),
+        (x: r[0], y: r[3]),
+        (x: r[0], y: r[1]),
+    ]])
 }
 
 /// The parts of `lines` inside `r`, each run of inside segments one line.

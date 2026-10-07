@@ -316,6 +316,19 @@ export function styleOf(text) {
 }
 
 /**
+ * A preset's title and style, at the literal `output({…})` already in
+ * `current` (place, paper, bearing, tile zoom). When the current script
+ * computes its output, the preset is returned unchanged.
+ */
+export function injectStyleAtPlace(current, preset) {
+  const place = outputOf(current)
+  if (place?.kind !== 'literal') return preset
+  let text = preset
+  for (const [key, value] of Object.entries(place.value)) text = setOutputKeys(text, { [key]: value })
+  return text
+}
+
+/**
  * The script with its literal title and output blanked, lines kept: two
  * scripts with the same shape build the same graph, its script lines
  * included. The key the page caches graphs under.

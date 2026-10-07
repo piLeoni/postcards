@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useAtom } from 'jotai'
 import Editor from '@monaco-editor/react'
 import { PRESETS } from '../lib/presets'
-import { setOutputKeys, styleOf, titleOf } from '../lib/doc'
+import { injectStyleAtPlace, outputOf, styleOf, titleOf } from '../lib/doc'
 import { sidebarWidthAtom } from '../lib/store'
 import { EDITOR_THEME, defineEditorTheme, editorFont } from '../lib/editorTheme'
 import LIBRARY from '../../../crates/drawland-script/drawland.d.ts?raw'
@@ -66,7 +66,7 @@ const PRESET_STYLES = PRESETS.map((p) => [p, styleOf(p.doc)])
 /** A file name from a title: `Parks and buildings` → `parks-and-buildings`. */
 const slug = (s) => s.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
 
-export default function Sidebar({ open, onClose, doc, setDoc, check, output, status, drawing, busy, onDraw, onDrawAfterApply, onStop, onShare }) {
+export default function Sidebar({ open, onClose, doc, setDoc, check, output, status, drawing, busy, onDraw, onDrawAfterApply, onStop, onShare, onPlaceMap }) {
   const [width, setWidth] = useAtom(sidebarWidthAtom)
   const [draft, setDraft] = useState(null)   // text typed but not applied yet
   const [notice, setNotice] = useState(null)   // { text, error? }
@@ -184,12 +184,25 @@ export default function Sidebar({ open, onClose, doc, setDoc, check, output, sta
   }, [dirty, problem])
   applyDraftRef.current = applyDraft
 
-  /** A preset brings its style; the output stays where you put it. */
+  /** A preset brings title, place, paper and style; the map follows its centre. */
   const loadPreset = (p) => {
     presetMenuRef.current?.removeAttribute('open')
-    setDoc(output ? setOutputKeys(p.doc, { lat: output.lat, lng: output.lng }) : p.doc)
+    setDoc(p.doc)
     setDraft(null)
+    const o = outputOf(p.doc)
+    if (o?.kind === 'literal' && Number.isFinite(o.value?.lat) && Number.isFinite(o.value?.lng)) {
+      onPlaceMap?.({ lat: o.value.lat, lng: o.value.lng, bearing: o.value.bearing })
+    }
     flash(`Loaded ${p.name}`)
+  }
+
+  /** The preset's style and title, keeping the output already on the map. */
+  const injectPreset = (p) => {
+    presetMenuRef.current?.removeAttribute('open')
+    const text = injectStyleAtPlace(shown, p.doc)
+    setDoc(text)
+    setDraft(null)
+    flash(`Injected ${p.name} here`)
   }
 
   /** A file that the engine does not take opens as a draft, with the reason. */
@@ -306,25 +319,35 @@ export default function Sidebar({ open, onClose, doc, setDoc, check, output, sta
           </button>
           {/* Static, so the menu opens under the whole row rather than this button. */}
           <details ref={presetMenuRef} is-="popover" className="static">
-            <summary is-="button" {...KEY} title="Replace the style with a ready-made one; the output stays where it is">
+            <summary is-="button" {...KEY} title="Replace the profile with a ready-made one; the map centres on its place">
               presets ▾
             </summary>
             <div className="z-30 w-full border border-black bg-white">
               <ul className="max-h-[60vh] divide-y divide-black overflow-y-auto">
                 {PRESETS.map((p) => (
-                  <li key={p.id}>
+                  <li key={p.id} className="flex items-stretch">
                     <button
                       type="button"
                       size-="small"
                       variant-="background0"
                       aria-current={p === preset || undefined}
-                      className={`h-auto w-full flex-col items-start justify-start px-[1ch] py-[0.5lh] text-left hover:bg-black hover:text-white hover:no-underline ${
+                      className={`h-auto min-w-0 flex-1 flex-col items-start justify-start px-[1ch] py-[0.5lh] text-left hover:bg-black hover:text-white hover:no-underline ${
                         p === preset ? 'bg-black text-white' : ''
                       }`}
                       onClick={() => loadPreset(p)}
                     >
                       <span className="font-bold">{p === preset ? `● ${p.name}` : p.name}</span>
                       <span className="opacity-60">{p === preset ? `the style in use · ${p.hint}` : p.hint}</span>
+                    </button>
+                    <button
+                      type="button"
+                      size-="small"
+                      variant-="background0"
+                      title="Use this preset's layers here; keep the map position and paper"
+                      className="shrink-0 border-l border-black px-[1ch] py-[0.5lh] hover:bg-black hover:text-white hover:no-underline"
+                      onClick={() => injectPreset(p)}
+                    >
+                      inject here
                     </button>
                   </li>
                 ))}

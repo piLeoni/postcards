@@ -1,4 +1,4 @@
-title("Golden Gate · natural land and sea")
+title("_Golden Gate · natural land and sea")
 output({
   width: "6in",
   height: "4in",

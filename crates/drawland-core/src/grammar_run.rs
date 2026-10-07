@@ -337,9 +337,8 @@ fn eval_op(
         Op::ExtendToFrame(e) => {
             let of = area(&e.of)?;
             let within = area(&e.within)?;
-            let min_h = e.min_height_frac.unwrap_or(0.85);
-            let gap = e.gap_mm.map(|m| m.0).unwrap_or(0.4);
-            Value::Area(geom::extend_to_horizontal_frame_edges(&of, &within, min_h, gap))
+            let reach = e.gap_mm.map(|m| m.0).unwrap_or(1.0);
+            Value::Area(geom::extend_to_frame_edges(&of, &within, reach))
         }
 
         // ---- lines ---------------------------------------------------------
@@ -572,6 +571,44 @@ fn run_fill(def: &Def, spec: &crate::grammar::Fill, fills: &Fills, sink: &mut Gr
     Ok(())
 }
 
+/// Flat fill: paint the area (minus masks), no pen strokes.
+fn run_solid_fill(
+    def: &Def,
+    spec: &crate::grammar::Fill,
+    fills: &Fills,
+    mask: &MultiPolygon<f64>,
+    layout: &mut crate::sheets::Layout,
+    out: &mut crate::sheets::Out<'_>,
+) -> Result<(), RunError> {
+    if spec.content.is_some() {
+        return Err(RunError::Plan(format!("{}: solid fill cannot use content", def.reference())));
+    }
+    let name = def.reference();
+    let task = fills.task.child(&format!("fill:{name}"), &name.to_string(), 0, "pieces");
+    let area = fills
+        .values
+        .get(&spec.in_area)
+        .ok_or_else(|| RunError::Plan(format!("{name}: missing input {}", spec.in_area)))?
+        .area(&spec.in_area)?;
+    if spec.per_feature {
+        task.set_total(area.0.len() as u64);
+        for p in &area.0 {
+            let piece = MultiPolygon::new(vec![p.clone()]);
+            let painted = fill::solid_regions(&piece, mask);
+            layout.solids(&painted, out);
+            task.tick();
+        }
+    } else {
+        task.set_total(1);
+        let painted = fill::solid_regions(area, mask);
+        layout.solids(&painted, out);
+        task.tick();
+    }
+    task.ok("solid");
+    fills.task.tick();
+    Ok(())
+}
+
 /// One group on its way to the paper: strokes come in, are styled, gathered
 /// into a batch, cut by the masks over the group, and written. Only the
 /// batch is ever held.
@@ -733,19 +770,28 @@ fn compose(
                 geom::union_multi(&parts)
             }
         };
-        layout.begin_with_style(id, stroke);
-        let mut sink = GroupSink { stroke, mask: &above, pending: Vec::new(), points: 0, fed: 0, layout, out };
         match what {
-            Drawing::Lines(lines) => {
-                for l in lines {
-                    sink.line(l.clone());
-                }
+            Drawing::Fill(def, spec) if fill::is_solid(&spec.spec) => {
+                layout.begin_fill(id, stroke);
+                run_solid_fill(def, spec, fills, &above, layout, out)?;
+                layout.end();
             }
-            Drawing::Fill(def, spec) => run_fill(def, spec, fills, &mut sink)?,
-            Drawing::Nothing => {}
+            other => {
+                layout.begin_with_style(id, stroke);
+                let mut sink = GroupSink { stroke, mask: &above, pending: Vec::new(), points: 0, fed: 0, layout, out };
+                match other {
+                    Drawing::Lines(lines) => {
+                        for l in lines {
+                            sink.line(l.clone());
+                        }
+                    }
+                    Drawing::Fill(def, spec) => run_fill(def, spec, fills, &mut sink)?,
+                    Drawing::Nothing => {}
+                }
+                sink.flush();
+                layout.end();
+            }
         }
-        sink.flush();
-        layout.end();
         if probing() {
             occlude_task.log(Level::Info, &format!("mem group {id}: {}", crate::progress::human_bytes(crate::progress::resident_bytes())));
         }
@@ -897,7 +943,7 @@ mod tests {
 
     #[test]
     fn extend_to_frame_reaches_the_card_edges() {
-        let text = "$areas:\n  frame: { engine_frame: {} }\n  inner: { tools_grow: { of: $areas.frame, by: -5mm } }\n  wet: { tools_extend_to_frame: { of: $areas.inner, within: $areas.frame } }\n\
+        let text = "$areas:\n  frame: { engine_frame: {} }\n  inner: { tools_grow: { of: $areas.frame, by: -5mm } }\n  wet: { tools_extend_to_frame: { of: $areas.inner, within: $areas.frame, gap_mm: 6mm } }\n\
              $lines:\n  ring: { tools_rings: $areas.frame }\n\
              $fills:\n  waves: { tools_fill: { in: $areas.wet, pattern: lines, spacing: 1mm } }\n\
              draw:\n  - { id: sea, from: $fills.waves }\n  - { id: ring, from: $lines.ring, stroke: solid }\n";
@@ -905,6 +951,14 @@ mod tests {
         let strokes = |id: &str| out.groups.iter().find(|(g, _)| g == id).map_or(0, |(_, n)| *n);
         assert!(strokes("sea") >= 40, "one line per mm across the output, got {}", strokes("sea"));
         assert_eq!(strokes("ring"), 1);
+    }
+
+    #[test]
+    fn solid_fill_paints_the_area_in_svg() {
+        let yaml = "$areas:\n  a: { engine_frame: {} }\n$fills:\n  bg: { tools_fill: { in: $areas.a, pattern: solid } }\ndraw:\n  - { id: bg, from: $fills.bg, stroke: { color: \"#aabbcc\" } }\n";
+        let out = run_yaml(yaml).unwrap();
+        assert!(out.svg.contains("fill:#aabbcc"));
+        assert!(out.svg.contains("<path"));
     }
 
     #[test]

@@ -37,6 +37,12 @@ const placeOf = (c) =>
     ? [c.lat, c.lng, c.width_mm, c.height_mm, c.scale, c.bearing, c.padding_x_mm, c.padding_y_mm, c.columns, c.rows, c.gutter_x_mm, c.gutter_y_mm, c.projection].join()
     : ''
 
+/** `placeOf` without the bearing: the same ground, so the same tiles under it, turned or not. */
+const groundOf = (at) => at.split(',').filter((_, i) => i !== 5).join()
+
+/** How long the output must hold still before the tiles under it are planned again. */
+const PLAN_SETTLE_MS = 250
+
 /**
  * The unit each length of the output is written in. One not written takes the
  * paper's; the terrain keeps the unit noted beside the scale, or takes km
@@ -77,6 +83,8 @@ export default function App() {
   // Which document `graph`/`output` were compiled from, so a draw asked for
   // right after an apply can wait for the right compile instead of racing it.
   const [compiledDoc, setCompiledDoc] = useState(null)
+  const compiledDocRef = useRef(compiledDoc)
+  compiledDocRef.current = compiledDoc
   const [status, setStatus] = useState({ phase: 'loading' })
   const [drawing, setDrawing] = useState(null)
   const [load, setLoad] = useState(null)
@@ -151,7 +159,7 @@ export default function App() {
       if (shared.text === docRef.current) {
         // The same script as the one already open: nothing recompiles, so fit now.
         const o = outputRef.current
-        if (o) mapApiRef.current?.fit?.(o.lng, o.lat)
+        if (o) mapApiRef.current?.fit?.(o.lng, o.lat, o.bearing)
         else fitSharedRef.current = true
         return
       }
@@ -182,10 +190,11 @@ export default function App() {
         setOutput({ ...info, computed: c.computed })
         setCompiledDoc(doc)
         setStatus((s) => (s.phase === 'loading' || s.phase === 'error' ? { phase: 'ready' } : s))
+        requestAnimationFrame(() => mapApiRef.current?.syncBearing?.())
         if (fitSharedRef.current) {
           fitSharedRef.current = false
           // After the map has rendered the new output, so the fit sizes to it.
-          requestAnimationFrame(() => mapApiRef.current?.fit?.(info.lng, info.lat))
+          requestAnimationFrame(() => mapApiRef.current?.fit?.(info.lng, info.lat, info.bearing))
         }
       })
       .catch((e) => {
@@ -311,6 +320,7 @@ export default function App() {
         if (tileState) {
           setTiles({ ids: tileState.ids, state: tileState.state, live: false, at, zoom: tileState.zoom })
         }
+        requestAnimationFrame(() => mapApiRef.current?.syncBearing?.())
         // The card stays, as the report of this draw; it goes on the next.
         if (token === drawTokenRef.current) setLoadMin(true)
       } else if (msg.type === 'error') {
@@ -346,6 +356,13 @@ export default function App() {
     setStatus({ phase: 'ready' })
   }, [status.phase])
 
+  // While the script and the compiled graph disagree, tile overlays stay hidden:
+  // a preset or an apply moves the map at once, but `output`/`here` trail until
+  // compile finishes, and the old grid would sit on the wrong ground.
+  // A turn alone (`turnedDocRef`) keeps the output on the same ground.
+  const turnedDocRef = useRef(null)
+  const compileStale = Boolean(doc && compiledDoc && doc !== compiledDoc && doc !== turnedDocRef.current)
+
   // A drawing belongs to where the output was when it was drawn: once the output
   // moves or changes scale or size, it is stale and goes.
   const here = placeOf(output)
@@ -363,9 +380,11 @@ export default function App() {
   // Re-planned when the output moves, resizes, turns, or changes `tileZoom`
   // (all of which give a new `here`), and when the script changes the
   // selectors (`graph`).
+  // A drag (move, rotate, scale) changes `here` every frame: plan once it stops.
   useEffect(() => {
     if (!graph || !here) return
-    planTiles(graph, here)
+    const t = setTimeout(() => planTiles(graph, here), PLAN_SETTLE_MS)
+    return () => clearTimeout(t)
   }, [graph, here, planTiles])
 
   // A cut output downloads one file per sheet, a moment apart: browsers drop
@@ -388,17 +407,23 @@ export default function App() {
    * the script says.
    */
   const editOutput = useCallback(
-    (patch, terrainUnit) =>
+    (patch, terrainUnit) => {
+      if (patch.bearing !== undefined) mapApiRef.current?.setBearing?.(patch.bearing)
+      const turnOnly = Object.keys(patch).every((k) => k === 'bearing')
       setDoc((d) => {
-        const text = setOutputKeys(d, patch)
-        if (!engine || (text === d && !terrainUnit)) return text
-        try {
-          const c = literalOutputInfo(engine, text)
-          return c ? setOutputComment(text, 'scale', `terrain ${terrainPair(c, terrainUnit ?? unitsOf(text).terrain)}`) : text
-        } catch {
-          return text
+        let text = setOutputKeys(d, patch)
+        if (engine && (text !== d || terrainUnit)) {
+          try {
+            const c = literalOutputInfo(engine, text)
+            if (c) text = setOutputComment(text, 'scale', `terrain ${terrainPair(c, terrainUnit ?? unitsOf(text).terrain)}`)
+          } catch {
+            // The text as `setOutputKeys` left it.
+          }
         }
-      }),
+        if (turnOnly && (d === compiledDocRef.current || d === turnedDocRef.current)) turnedDocRef.current = text
+        return text
+      })
+    },
     [engine],
   )
   const moveOutput = useCallback(({ lat, lng }) => editOutput({ lat, lng }), [editOutput])
@@ -413,15 +438,15 @@ export default function App() {
 
   /** Move the map onto the output, sized to it: the whole selection in view. */
   const centreMapOnOutput = useCallback(() => {
-    if (output) mapApiRef.current?.fit?.(output.lng, output.lat)
-  }, [output?.lat, output?.lng])
+    if (output) mapApiRef.current?.fit?.(output.lng, output.lat, output.bearing)
+  }, [output?.lat, output?.lng, output?.bearing])
 
   /** A place the search found: put the output there, and the map on it, sized to the selection. */
   const searchOutput = useCallback(
     ({ lat, lng }) => {
       if (!Number.isFinite(lat) || !Number.isFinite(lng)) return
       moveOutput({ lat, lng })
-      mapApiRef.current?.fit?.(lng, lat)
+      mapApiRef.current?.fit?.(lng, lat, outputRef.current?.bearing)
     },
     [moveOutput],
   )
@@ -453,6 +478,16 @@ export default function App() {
     draw()
   }, [compiledDoc, output, draw])
 
+  const placeMap = useCallback(({ lat, lng, bearing }) => {
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return
+    mapApiRef.current?.fit?.(lng, lat, bearing)
+  }, [])
+
+  const tilesOnMap = compileStale ? null : tiles?.at === here ? tiles : null
+  // While the output turns the old plan stays: the map turns under it, and the
+  // tiles are on the same ground until the new plan says otherwise.
+  const plannedOnMap = compileStale ? null : planned?.at && here && groundOf(planned.at) === groundOf(here) ? planned : null
+
   const sidebar = useMemo(
     () => ({
       doc,
@@ -466,8 +501,9 @@ export default function App() {
       onDrawAfterApply: drawAfterApply,
       onStop: stop,
       onShare: () => setSharing(true),
+      onPlaceMap: placeMap,
     }),
-    [doc, check, output, status, current, draw, drawAfterApply, stop],
+    [doc, check, output, status, current, draw, drawAfterApply, stop, placeMap],
   )
 
   if (engineError) {
@@ -494,8 +530,8 @@ export default function App() {
           load={load}
           loadMin={loadMin}
           onLoadMin={setLoadMin}
-          tiles={tiles}
-          planned={planned}
+          tiles={tilesOnMap}
+          planned={plannedOnMap}
           onEditOutput={() => setDrawing(null)}
           onDownload={downloadSvg}
           onMoveOutput={moveOutput}

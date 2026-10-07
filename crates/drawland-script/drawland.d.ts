@@ -44,7 +44,7 @@ type TilePreset =
 type Pattern =
   | "rectilinear" | "zigzag" | "lines" | "grid" | "triangles" | "honeycomb" | "dots" | "waves" | "wave_grid"
   | "scales" | "sunburst" | "spiral" | "concentric" | "hilbert" | "stipple" | "grass" | "gravel" | "scribble"
-  | "truchet" | "marble" | "wood" | "cracks" | "terrazzo" | "chess" | "pat" | "none"
+  | "truchet" | "marble" | "wood" | "cracks" | "terrazzo" | "chess" | "pat" | "none" | "solid"
 
 /** A built-in hatch for `pattern: "pat"`. */
 type PatName =
@@ -196,10 +196,11 @@ declare const areas: {
   /** Grown by a length; a negative one shrinks it. */
   grow(of: Area, by: Length): Area
   /**
-   * When `of` spans most of `within` but stops short of its west or east side,
-   * stretch it to those edges (common with vector-tile water).
+   * Close the thin gaps between `of` and the edges of `within` (vector-tile
+   * water that stops just short of the card border): parts of `of` within
+   * `gapMm` (default 1 mm) of an edge are stretched out to it, nothing else.
    */
-  extendToFrame(of: Area, within: Area, options?: { minHeightFrac?: number; gapMm?: Length }): Area
+  extendToFrame(of: Area, within: Area, options?: { gapMm?: Length }): Area
 }
 
 /** Areas the engine makes, not OSM. */

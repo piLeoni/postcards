@@ -1,4 +1,4 @@
-title("Ink by height · Midtown")
+title("_Ink by height · Midtown")
 output({
   width: "6in",
   height: "4in",

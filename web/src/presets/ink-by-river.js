@@ -1,4 +1,4 @@
-title("Ink by distance · the Seine")
+title("_Ink by distance · the Seine")
 output({
   width: "6in",
   height: "4in",

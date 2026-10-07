@@ -1,4 +1,4 @@
-title("Parks and buildings")
+title("_Parks and buildings")
 output({
   width: "6in",
   height: "4in",

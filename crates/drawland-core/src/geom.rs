@@ -84,36 +84,42 @@ pub fn intersection(a: &MultiPolygon<f64>, b: &MultiPolygon<f64>) -> MultiPolygo
     a.intersection(b)
 }
 
-/// When `of` fills most of the height of `frame` but stops short of its west
-/// or east side, add thin caps so strokes and fills can reach the border.
-pub fn extend_to_horizontal_frame_edges(
-    of: &MultiPolygon<f64>,
-    frame: &MultiPolygon<f64>,
-    min_height_frac: f64,
-    gap_mm: f64,
-) -> MultiPolygon<f64> {
-    let (Some(ob), Some(fb)) = (of.bounding_rect(), frame.bounding_rect()) else {
+/// Close the gaps, up to `reach` wide, between `of` and the edges of `frame`
+/// (tile polygons that stop just short of the card border).
+///
+/// Only the parts of `of` within `reach` of an edge are stretched, each
+/// straight out to that edge over its own span along it: water that is far
+/// from an edge never reaches it, so the land between the coast and the far
+/// side of the card stays land.
+pub fn extend_to_frame_edges(of: &MultiPolygon<f64>, frame: &MultiPolygon<f64>, reach: f64) -> MultiPolygon<f64> {
+    let Some(fb) = frame.bounding_rect() else {
         return of.clone();
     };
-    if (ob.max().y - ob.min().y) <= min_height_frac * (fb.max().y - fb.min().y) {
+    if of.0.is_empty() || reach <= 0.0 {
         return of.clone();
     }
+    let (x0, y0, x1, y1) = (fb.min().x, fb.min().y, fb.max().x, fb.max().y);
+    let rect = |ax: f64, ay: f64, bx: f64, by: f64| -> Polygon<f64> {
+        polygon![(x: ax, y: ay), (x: bx, y: ay), (x: bx, y: by), (x: ax, y: by)]
+    };
+    // Each edge's band, and for a piece of water in it, the cap from the edge
+    // to where the water starts.
+    type Cap = fn(geo::Rect<f64>, (f64, f64, f64, f64)) -> Option<[f64; 4]>;
+    const EPS: f64 = 1e-6;
+    let sides: [(Polygon<f64>, Cap); 4] = [
+        (rect(x0, y0, x0 + reach, y1), |b, (x0, _, _, _)| (b.min().x > x0 + EPS).then(|| [x0, b.min().y, b.min().x, b.max().y])),
+        (rect(x1 - reach, y0, x1, y1), |b, (_, _, x1, _)| (b.max().x < x1 - EPS).then(|| [b.max().x, b.min().y, x1, b.max().y])),
+        (rect(x0, y0, x1, y0 + reach), |b, (_, y0, _, _)| (b.min().y > y0 + EPS).then(|| [b.min().x, y0, b.max().x, b.min().y])),
+        (rect(x0, y1 - reach, x1, y1), |b, (_, _, _, y1)| (b.max().y < y1 - EPS).then(|| [b.min().x, b.max().y, b.max().x, y1])),
+    ];
     let mut caps = Vec::new();
-    if ob.min().x > fb.min().x + gap_mm {
-        caps.push(polygon![
-            (x: fb.min().x, y: fb.min().y),
-            (x: ob.min().x, y: fb.min().y),
-            (x: ob.min().x, y: fb.max().y),
-            (x: fb.min().x, y: fb.max().y),
-        ]);
-    }
-    if ob.max().x < fb.max().x - gap_mm {
-        caps.push(polygon![
-            (x: ob.max().x, y: fb.min().y),
-            (x: fb.max().x, y: fb.min().y),
-            (x: fb.max().x, y: fb.max().y),
-            (x: ob.max().x, y: fb.max().y),
-        ]);
+    for (band, cap) in sides {
+        let near = intersection(of, &MultiPolygon::new(vec![band]));
+        for piece in &near.0 {
+            if let Some([ax, ay, bx, by]) = piece.bounding_rect().and_then(|b| cap(b, (x0, y0, x1, y1))) {
+                caps.push(rect(ax, ay, bx, by));
+            }
+        }
     }
     if caps.is_empty() {
         return of.clone();
@@ -412,6 +418,36 @@ mod tests {
         let inside: f64 = clip_lines(&edge, &sq, false).iter().map(line_length).sum();
         assert!((outside - 2.0).abs() < 1e-9, "difference keeps {outside}");
         assert!((inside - 2.0).abs() < 1e-9, "intersection keeps {inside}");
+    }
+
+    fn square(x0: f64, y0: f64, x1: f64, y1: f64) -> MultiPolygon<f64> {
+        MultiPolygon::new(vec![polygon![(x: x0, y: y0), (x: x1, y: y0), (x: x1, y: y1), (x: x0, y: y1)]])
+    }
+
+    #[test]
+    fn extend_to_frame_leaves_a_coast_far_from_the_other_edges_alone() {
+        use geo::Area;
+        // A west coast: the sea touches the west, north and south edges and
+        // stops halfway across. Nothing east of the coast may turn to water.
+        let frame = square(0.0, 0.0, 150.0, 100.0);
+        let sea = MultiPolygon::new(vec![polygon![(x: 0.0, y: 0.0), (x: 60.0, y: 0.0), (x: 30.0, y: 100.0), (x: 0.0, y: 100.0)]]);
+        let got = extend_to_frame_edges(&sea, &frame, 1.0);
+        assert!((got.unsigned_area() - sea.unsigned_area()).abs() < 1e-6, "area {} vs {}", got.unsigned_area(), sea.unsigned_area());
+        assert!(got.bounding_rect().unwrap().max().x <= 60.0 + 1e-9);
+    }
+
+    #[test]
+    fn extend_to_frame_closes_a_thin_gap_at_the_edge_only() {
+        use geo::Area;
+        let frame = square(0.0, 0.0, 150.0, 100.0);
+        // Stops 0.5 mm short of the west edge, 70 mm short of the east one.
+        let sea = square(0.5, 20.0, 80.0, 60.0);
+        let got = extend_to_frame_edges(&sea, &frame, 1.0);
+        let b = got.bounding_rect().unwrap();
+        assert!(b.min().x <= 1e-9, "reaches the west edge, got {:?}", b);
+        assert!((b.max().x - 80.0).abs() < 1e-9, "east side untouched, got {:?}", b);
+        assert!((b.min().y - 20.0).abs() < 1e-9 && (b.max().y - 60.0).abs() < 1e-9, "only over its own span, got {:?}", b);
+        assert!((got.unsigned_area() - 80.0 * 40.0).abs() < 1e-6);
     }
 
     #[test]

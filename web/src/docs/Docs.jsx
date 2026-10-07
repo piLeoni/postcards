@@ -585,7 +585,7 @@ const ring = areas.difference(parks, water)      // base without the cuts
 const shore = areas.intersect(buildings, water)
 const solid = areas.fillHoles(blocks)            // yards in blocks, lakes in parks
 const fat = areas.grow(roads.area, "0.3mm")      // negative shrinks
-areas.extendToFrame(sea, frame)                 // west/east to the card when tiles stop short
+areas.extendToFrame(sea, frame)                 // to the card edge where tiles stop just short
 
 engine.frame()                                   // the paper's rectangle
 engine.ocean()                                   // shorthand for ocean tiles + grow + extendToFrame`}</Code>

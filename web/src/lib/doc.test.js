@@ -9,6 +9,7 @@ import {
   setOutputComment,
   setOutputKeys,
   setTitle,
+  injectStyleAtPlace,
   shapeOf,
   styleOf,
   titleOf,
@@ -90,6 +91,20 @@ test('the title is read and written as a literal', () => {
   assert.equal(setTitle('draw()\n', 'New'), 'title("New")\ndraw()\n')
   assert.ok(!setTitle(SCRIPT, '').includes('title('))
   assert.equal(titleOf('const t = "x"\ntitle(t)'), null)
+})
+
+test('injectStyleAtPlace keeps the current output on a preset', () => {
+  const preset = `title("City grain")
+output({ width: "6in", height: "4in", scale: "1:8000", lat: 37.8771145, lng: -122.256196, tileZoom: 14 })
+
+draw({ id: "x" })`
+  const here = setOutputKeys(SCRIPT, { lat: 48.8, lng: 2.3, bearing: 12 })
+  const injected = injectStyleAtPlace(here, preset)
+  assert.equal(titleOf(injected), 'City grain')
+  assert.equal(styleOf(injected), styleOf(preset))
+  assert.deepEqual(outputOf(injected).value.lat, 48.8)
+  assert.deepEqual(outputOf(injected).value.lng, 2.3)
+  assert.deepEqual(outputOf(injected).value.bearing, 12)
 })
 
 test('style and shape leave out the title and the output', () => {

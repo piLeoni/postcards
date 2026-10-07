@@ -156,13 +156,12 @@
       return make(Area, "areas", { tools_grow: { of: need(of, Area, "areas.grow"), by } });
     },
     /**
-     * When `of` spans most of `within` but stops short of its west or east
-     * side (vector tiles often do), stretch it to those edges.
+     * Close the thin gaps (up to `gapMm`, 1 mm by default) between `of` and
+     * the edges of `within`, where vector tiles stop just short of them.
      */
     extendToFrame(of, within, options = {}) {
       object(options, "areas.extendToFrame options");
       const op = { tools_extend_to_frame: { of: need(of, Area, "areas.extendToFrame"), within: need(within, Area, "areas.extendToFrame within") } };
-      if (options.minHeightFrac != null) op.tools_extend_to_frame.min_height_frac = options.minHeightFrac;
       if (options.gapMm != null) op.tools_extend_to_frame.gap_mm = options.gapMm;
       return make(Area, "areas", op);
     },

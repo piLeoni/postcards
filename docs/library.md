@@ -125,7 +125,7 @@ mix: OSM's `width` and `lanes` give real widths, which the tiles lack.
 | `areas.intersect(base, keep)` | the part of `base` inside `keep` |
 | `areas.fillHoles(a)` | holes closed (yards in blocks, lakes in parks) |
 | `areas.grow(a, by)` | grown by a length; negative shrinks |
-| `areas.extendToFrame(of, within)` | stretch `of` to the west/east edges of `within` when it already spans most of the height |
+| `areas.extendToFrame(of, within)` | close the thin gaps (up to `gapMm`, default 1 mm) between `of` and the edges of `within` |
 | `engine.frame()` | the paper's rectangle |
 | `engine.ocean()` | shorthand: `ocean` tiles, clipped to the frame, grown, then `extendToFrame` |
 
@@ -150,7 +150,9 @@ of penfill's patterns and returns the lines.
   `honeycomb`, `dots`, `waves`, `wave_grid`, `scales`, `sunburst`, `spiral`,
   `concentric`, `hilbert`, `stipple`, `grass`, `gravel`, `scribble`,
   `truchet`, `marble`, `wood`, `cracks`, `terrazzo`, `chess`, `pat` (a
-  classic hatch by `name`: `BRICK`, `HERRINGBONE`, `ANSI31` …), `none`.
+  classic hatch by `name`: `BRICK`, `HERRINGBONE`, `ANSI31` …), `none`,
+  `solid` (flat colour in SVG; no pen strokes — set colour with `draw({ stroke:
+  { color } })`).
 - `spacing` (default 0.5mm), `angle` (degrees), `mark` (dot size), `inset`,
   `seed` (random patterns).
 - `per: "feature"`: one pattern per polygon (each building hatched on its own)

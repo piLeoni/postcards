@@ -135,13 +135,12 @@ pub struct Grow {
     pub by: Mm,
 }
 
-/// Stretch `of` to the west and east edges of `within` when it already spans
-/// most of the height (tile polygons that stop short of the card border).
+/// Close the thin gaps between `of` and the edges of `within` (tile polygons
+/// that stop just short of the card border); `gap_mm` is the widest closed.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ExtendToFrame {
     pub of: Name,
     pub within: Name,
-    pub min_height_frac: Option<f64>,
     pub gap_mm: Option<Mm>,
 }
 
@@ -981,14 +980,15 @@ fn parse_op(raw: RawOp, section: Section) -> Result<Op, GrammarError> {
             struct Raw {
                 of: String,
                 within: String,
-                min_height_frac: Option<f64>,
+                // Read and ignored: saved graphs still carry it.
+                #[serde(rename = "min_height_frac")]
+                _min_height_frac: Option<f64>,
                 gap_mm: Option<Mm>,
             }
             let raw: Raw = json(&value, "tools_extend_to_frame")?;
             Op::ExtendToFrame(ExtendToFrame {
                 of: refname(&raw.of)?,
                 within: refname(&raw.within)?,
-                min_height_frac: raw.min_height_frac,
                 gap_mm: raw.gap_mm,
             })
         }
@@ -1484,7 +1484,6 @@ pub fn op_to_json(op: &Op) -> Value {
             json!({
                 "of": e.of.to_string(),
                 "within": e.within.to_string(),
-                "min_height_frac": e.min_height_frac,
                 "gap_mm": e.gap_mm,
             }),
         ),

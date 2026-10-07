@@ -32,8 +32,14 @@ pub enum FillError {
 pub const GENERATORS: &[&str] = &[
     "rectilinear", "zigzag", "lines", "grid", "triangles", "honeycomb", "dots", "waves", "wave_grid",
     "scales", "sunburst", "spiral", "concentric", "hilbert", "stipple", "grass", "gravel", "scribble",
-    "truchet", "marble", "wood", "cracks", "terrazzo", "chess", "pat", "none",
+    "truchet", "marble", "wood", "cracks", "terrazzo", "chess", "pat", "none", "solid",
 ];
+
+/// Flat colour fill (SVG `fill`, no pen strokes). Colour comes from the draw
+/// entry's `stroke.color`, like hatch ink.
+pub fn is_solid(spec: &FillSpec) -> bool {
+    spec.source.is_none() && spec.generator.as_deref() == Some("solid")
+}
 
 /// Parsed SVG sources by the file name the profile uses.
 pub type Sources = BTreeMap<String, SvgDrawing>;
@@ -246,7 +252,7 @@ fn run_generator_into(region: &Region, generator: &str, spec: &FillSpec, sink: &
                 .ok_or_else(|| o.bad("name", format!("{name:?}: known {}", pat::BUILTIN.join(", "))))?;
             pat::fill_pat(r, &pattern, o.mm("scale")?.unwrap_or(s), a, at)
         }
-        "none" => vec![],
+        "none" | "solid" => vec![],
         other => return Err(FillError::UnknownGenerator(other.into())),
     };
     sink.batch(whole);
@@ -269,6 +275,14 @@ fn run_source(region: &Region, spec: &FillSpec, sources: &Sources) -> Result<pen
 }
 
 /// Check a spec before any geometry work, so a typo fails fast.
+/// Region to paint for a solid fill, with mask areas subtracted.
+pub fn solid_regions(area: &MultiPolygon<f64>, mask: &MultiPolygon<f64>) -> MultiPolygon<f64> {
+    if mask.0.is_empty() {
+        return area.clone();
+    }
+    geom::difference(area, mask)
+}
+
 pub fn validate(spec: &FillSpec, sources: &Sources) -> Result<(), FillError> {
     if let Some(src) = &spec.source {
         if !sources.contains_key(&src.file) {
@@ -277,6 +291,9 @@ pub fn validate(spec: &FillSpec, sources: &Sources) -> Result<(), FillError> {
         return Ok(());
     }
     let generator = spec.generator.as_deref().ok_or(FillError::Nothing)?;
+    if generator == "solid" {
+        return Ok(());
+    }
     if !GENERATORS.contains(&generator) {
         return Err(FillError::UnknownGenerator(generator.into()));
     }

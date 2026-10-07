@@ -1,4 +1,4 @@
-title("Buildings only")
+title("_Buildings only")
 output({
   width: "80mm",
   height: "60mm",

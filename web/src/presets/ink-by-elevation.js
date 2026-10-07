@@ -1,4 +1,4 @@
-title("Ink by elevation · Mount Tamalpais")
+title("_Ink by elevation · Mount Tamalpais")
 output({
   width: "6in",
   height: "4in",

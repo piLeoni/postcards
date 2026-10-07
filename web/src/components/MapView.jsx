@@ -244,6 +244,8 @@ function calm(map) {
  */
 const TILE_LAYER = 'download-tiles'
 const TILE_LABELS = 'download-tiles-labels'
+/** Below this map zoom, z/x/y labels on the tile grid are hidden (the grid stays). */
+const TILE_LABEL_MIN_ZOOM = 11
 
 const tileLabelLayout = {
   'text-field': ['get', 'label'],
@@ -481,8 +483,16 @@ function showTiles(map, tiles) {
     for (const [k, v] of Object.entries(tileLinePaint)) map.setPaintProperty(`${TILE_LAYER}-line`, k, v)
   }
   if (!map.getLayer(`${TILE_LAYER}-label`)) {
-    map.addLayer({ id: `${TILE_LAYER}-label`, type: 'symbol', source: TILE_LABELS, layout: tileLabelLayout, paint: tileLabelPaint })
+    map.addLayer({
+      id: `${TILE_LAYER}-label`,
+      type: 'symbol',
+      source: TILE_LABELS,
+      minzoom: TILE_LABEL_MIN_ZOOM,
+      layout: tileLabelLayout,
+      paint: tileLabelPaint,
+    })
   } else {
+    map.setLayerZoomRange(`${TILE_LAYER}-label`, TILE_LABEL_MIN_ZOOM, 24)
     syncTileLabelLayout(map)
   }
   syncTileLabelLayout(map)
@@ -567,6 +577,26 @@ export default function MapView({
   tilesRef.current = tiles
   const plannedRef = useRef(planned)
   plannedRef.current = planned
+
+  // The bearing last asked for by `setBearing` (a rotate drag, the field),
+  // held until the compiled output has it: compiles trail the drag, and
+  // turning the map back to each one as it lands makes it shake.
+  const wantBearingRef = useRef(null)
+  if (wantBearingRef.current !== null && output && Math.abs(norm(norm(output.bearing ?? 0) - wantBearingRef.current)) < 1e-4) {
+    wantBearingRef.current = null
+  }
+
+  /** Turn the map to the output's bearing about its centre (see `applyOutputBearingRef`). */
+  const applyOutputBearingRef = useRef(() => {})
+  applyOutputBearingRef.current = () => {
+    const map = mapRef.current
+    if (!map || (editRef.current && !editRef.current.done)) return
+    const c = outputRef.current
+    if (!c) return
+    const b = wantBearingRef.current ?? norm(c.bearing ?? 0)
+    if (Math.abs(norm(map.getBearing() - b)) < 1e-6) return
+    map.easeTo({ bearing: b, around: [c.lng, c.lat], duration: 0 })
+  }
 
   // The overlay's screen box, computed and applied outside React so it can be
   // set from inside the map's render callback without a re-render per frame.
@@ -676,6 +706,9 @@ export default function MapView({
       place()
     })
 
+    const onZoomEnd = () => applyOutputBearingRef.current()
+    map.on('zoomend', onZoomEnd)
+
     // Restyle the basemap on every load, so a `setStyle` swap keeps it too.
     map.on('style.load', () => {
       calm(map)
@@ -695,12 +728,22 @@ export default function MapView({
           const c = map.getCenter()
           return { lat: c.lat, lng: c.lng }
         },
-        jumpTo: (lng, lat) => map.jumpTo({ center: [lng, lat] }),
-        fit: (lng, lat) => {
+        jumpTo: (lng, lat) => {
+          const c = outputRef.current
+          map.jumpTo({ center: [lng, lat], bearing: wantBearingRef.current ?? norm(c?.bearing ?? 0) })
+        },
+        fit: (lng, lat, bearing) => {
           const at = outputRef.current ? { ...outputRef.current, lat, lng } : null
           const zoom = at ? map.getZoom() + zoomToFit(map, at, FIT_AIR) : map.getZoom()
-          map.jumpTo({ center: [lng, lat], zoom })
+          const b = wantBearingRef.current ?? (Number.isFinite(bearing) ? norm(bearing) : norm(at?.bearing ?? 0))
+          map.jumpTo({ center: [lng, lat], zoom, bearing: b })
         },
+        setBearing: (bearing) => {
+          const c = outputRef.current
+          wantBearingRef.current = norm(bearing)
+          map.easeTo({ bearing: wantBearingRef.current, around: c ? [c.lng, c.lat] : undefined, duration: 0 })
+        },
+        syncBearing: () => applyOutputBearingRef.current(),
       }
     }
 
@@ -720,6 +763,7 @@ export default function MapView({
       map.resize()
       if (map.style) map.redraw()
       else map.triggerRepaint()
+      applyOutputBearingRef.current()
     })
     resized.observe(containerRef.current)
 
@@ -727,6 +771,7 @@ export default function MapView({
       resized.disconnect()
       map.off('render', place)
       map.off('moveend', keep)
+      map.off('zoomend', onZoomEnd)
       if (apiRef) apiRef.current = null
       map.remove()
       mapRef.current = null
@@ -784,14 +829,19 @@ export default function MapView({
 
   // A bearing written in the document turns the map about the output, so the
   // output stays where it is on screen. During a rotate the map already turns.
+  // Read `outputRef`, not `output` alone: a drag can finish before compile
+  // catches up, and syncing from stale props would snap the map back.
   const bearing = norm(output?.bearing ?? 0)
   useEffect(() => {
-    const map = mapRef.current
-    const c = outputRef.current
-    if (!map || (editRef.current && !editRef.current.done)) return
-    if (Math.abs(norm(map.getBearing() - bearing)) < 1e-6) return
-    map.easeTo({ bearing, around: c ? [c.lng, c.lat] : undefined, duration: 0 })
-  }, [bearing])
+    applyOutputBearingRef.current()
+  }, [bearing, output?.lat, output?.lng])
+
+  // A finished draw swaps the SVG in; re-seat bearing in case the camera moved
+  // while tiles were downloading (the document's bearing did not change).
+  useEffect(() => {
+    if (!drawing?.svg) return
+    requestAnimationFrame(() => applyOutputBearingRef.current())
+  }, [drawing?.svg])
 
   // When the output's ground size changes in the document, zoom out only if it
   // no longer fits the map: an output that still fits keeps the zoom, so a new
@@ -807,7 +857,11 @@ export default function MapView({
     const b = outputBox(map, output)
     const el = map.getContainer()
     if (b && b.w <= el.clientWidth - 2 * FIT_PAD && b.h <= el.clientHeight - 2 * FIT_PAD) return
-    map.jumpTo({ zoom: map.getZoom() + zoomToFit(map, output) })
+    map.jumpTo({
+      center: [output.lng, output.lat],
+      zoom: map.getZoom() + zoomToFit(map, output),
+      bearing: norm(output.bearing ?? 0),
+    })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [groundKey])
 

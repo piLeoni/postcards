@@ -2,6 +2,7 @@
 //! ids are the contract with vpype (`[layers.<id>]`) and the G-code export.
 
 use crate::geom::Lines;
+use geo::{LineString, MultiPolygon};
 use std::fmt::Write;
 
 /// Set on the root and inherited, so a group's own `style` wins over it.
@@ -83,6 +84,58 @@ pub fn group_open_with_style(s: &mut String, id: &str, stroke_spec: Option<&crat
 
 pub fn group_close(s: &mut String) {
     s.push_str("\n</g>");
+}
+
+/// A group of filled polygons (`stroke:none`). `color` is a CSS colour.
+pub fn group_open_fill(s: &mut String, id: &str, color: &str) {
+    let _ = write!(
+        s,
+        "\n<g id=\"{id}\" style=\"stroke:none;fill:{color};fill-rule:evenodd\">"
+    );
+}
+
+/// Fill colour from a draw stroke, defaulting to black ink.
+pub fn fill_color(stroke_spec: Option<&crate::profile::StrokeSpec>) -> String {
+    stroke_spec
+        .and_then(|s| s.color.as_deref())
+        .filter(|c| !c.is_empty())
+        .unwrap_or("#000000")
+        .to_string()
+}
+
+fn path_ring(s: &mut String, ring: &LineString<f64>) {
+    let pts = &ring.0;
+    if pts.len() < 4 {
+        return;
+    }
+    let n = pts.len();
+    let closed = pts.first() == pts.last();
+    let end = if closed { n - 1 } else { n };
+    if end < 3 {
+        return;
+    }
+    s.push_str("\n<path d=\"");
+    for (i, c) in pts[..end].iter().enumerate() {
+        if i == 0 {
+            s.push('M');
+        } else {
+            s.push('L');
+        }
+        num(s, c.x);
+        s.push(' ');
+        num(s, c.y);
+    }
+    s.push_str(" Z\" />");
+}
+
+/// One multipolygon as filled paths (exterior and holes per polygon).
+pub fn multipolygon(s: &mut String, mp: &MultiPolygon<f64>) {
+    for poly in &mp.0 {
+        path_ring(s, poly.exterior());
+        for hole in poly.interiors() {
+            path_ring(s, hole);
+        }
+    }
 }
 
 /// One line; nothing for a line of fewer than two points.

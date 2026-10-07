@@ -1,4 +1,4 @@
-title("Everything · vector tiles")
+title("_Everything · vector tiles")
 output({
   width: "6in",
   height: "4in",

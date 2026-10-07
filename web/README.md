@@ -52,8 +52,8 @@ want it and press "generate card".
   format the CLI reads, so anything you write there works in `drawland map`
   too. `cargo run --example check_web_presets` parses each one, so a preset that
   stops parsing fails there rather than in a browser.
-- "presets" replaces the style with a ready-made one; the card stays where
-  it is. The preset whose style the config has (everything but `title:` and
+- "presets" replaces the profile with a ready-made one and centres the map on
+  its `output({ lat, lng })`. The preset whose style the config has (everything but `title:` and
   `card:`) is highlighted in the menu. A preset brings its name as the
   config's `title:`, which "save" names the file after.
 - "load" and "save" in the sidebar read and write the config, saved under

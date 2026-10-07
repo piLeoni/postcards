@@ -18,9 +18,13 @@ import engravedSea from '../presets/engraved-sea.js?raw'
 import inkByHeight from '../presets/ink-by-height.js?raw'
 import inkByRiver from '../presets/ink-by-river.js?raw'
 import inkByElevation from '../presets/ink-by-elevation.js?raw'
+import flatColor from '../presets/flat-color.js?raw'
+import cityGrain from '../presets/city-grain.js?raw'
 import { titleOf } from './doc'
 
 export const PRESETS = [
+  { id: 'city-grain', hint: 'same drawing as Everything · vector tiles — use inject here to try it elsewhere', doc: cityGrain },
+  { id: 'flat-color', hint: 'solid fills for water, parks and buildings (screen-style)', doc: flatColor },
   { id: 'full', hint: 'roads, trails, parks, water, buildings; all from OpenFreeMap', doc: full },
   { id: 'mixed', hint: 'the same output; only the roads asked of Overpass', doc: mixed },
   { id: 'overpass', hint: 'the same output, all from Overpass', doc: overpass },
@@ -34,4 +38,4 @@ export const PRESETS = [
 ].map((p) => ({ ...p, name: titleOf(p.doc) ?? p.id, graph: graphs[p.id] }))
 
 /** The output the app opens on. */
-export const START_DOC = PRESETS.find((p) => p.id === 'parks').doc
+export const START_DOC = PRESETS.find((p) => p.id === 'city-grain').doc
