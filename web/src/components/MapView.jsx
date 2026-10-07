@@ -685,6 +685,9 @@ export default function MapView({
       maxPitch: 0,
       dragRotate: false,
       pitchWithRotate: false,
+      // MapLibre eases a bearing under 7° to north at the end of every drag,
+      // pans included; the bearing is the output's, never snapped.
+      bearingSnap: 0,
       renderWorldCopies: false,
       attributionControl: false,
     })
