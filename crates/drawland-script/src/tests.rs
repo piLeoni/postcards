@@ -351,6 +351,28 @@ fn areas_buffer_accepts_a_cap_option() {
 }
 
 #[test]
+fn labels_accept_user_defined_rules() {
+    let g = evaluate(
+        "const s = features.tiles('road_names')\n\
+         const names = modules.labels({\n\
+           from: s,\n\
+           rules: [{ tags: { class: ['primary'] }, size: '2.5mm' }],\n\
+         })\n",
+    )
+    .unwrap();
+    let l = g
+        .defs(Section::Lines)
+        .iter()
+        .find_map(|d| match &d.op {
+            Op::Labels(x) => Some(x),
+            _ => None,
+        })
+        .expect("labels");
+    assert_eq!(l.style.rules.len(), 1);
+    assert_eq!(l.style.rules[0].size, Some(drawland_core::units::Mm(2.5)));
+}
+
+#[test]
 fn labels_read_several_feature_sets_and_draw_as_lines() {
     let g = evaluate(
         "const streets = features.tiles('road_names')\n\

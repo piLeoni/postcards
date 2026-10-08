@@ -407,6 +407,24 @@ interface LabelOptions {
   keys?: string | string[]
   /** A built-in single-stroke font. Default `"futural"`. */
   font?: "futural"
+  /**
+   * Overrides for features that match `tags` (same syntax as `features.where`).
+   * First matching rule wins; unset fields keep the defaults above.
+   */
+  rules?: LabelRule[]
+}
+
+/** One style override inside `modules.labels({ rules: [...] })`. */
+interface LabelRule {
+  /** Tag tests, e.g. `{ class: ["motorway", "primary"] }` or `{ "tiles:layer": "park" }`. */
+  tags: Tags
+  font?: "futural"
+  size?: Length
+  minSize?: Length
+  padding?: Length
+  spacing?: Length
+  curved?: boolean
+  upper?: boolean
 }
 
 /** What the labels module publishes. */

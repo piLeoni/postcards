@@ -222,6 +222,21 @@ together so no set's names cover another's.
 | `upper` | `false` | write in capitals |
 | `keys` | `["name", "ref"]` | the tags the text is read from, the first present |
 | `font` | `"futural"` | the built-in font |
+| `rules` | — | a list of `{ tags, font?, size?, minSize?, … }`; the **first** rule whose `tags` match (same tests as `features.where`) overrides the defaults for that feature |
+
+```js
+modules.labels({
+  from: [streetNames, features.tiles("parks")],
+  size: "2mm",
+  minSize: "1mm",
+  rules: [
+    { tags: { class: ["motorway", "trunk", "primary"] }, size: "2.3mm", minSize: "2mm" },
+    { tags: { "tiles:layer": "park" }, size: "2.5mm", upper: true },
+  ],
+})
+```
+
+Nothing in `rules` is hardcoded: if you omit `rules`, only the defaults apply.
 
 ## `draw({...})`: ink
 

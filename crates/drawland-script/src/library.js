@@ -344,9 +344,9 @@
     // level inside areas, larger the more the feature matters.
     labels(options = {}) {
       object(options, "modules.labels options");
-      const { from, size, minSize, padding, spacing, curved, upper, keys, font, ...rest } = options;
+      const { from, size, minSize, padding, spacing, curved, upper, keys, font, rules, ...rest } = options;
       const extra = Object.keys(rest);
-      if (extra.length) fail(`modules.labels: unknown option ${extra[0]} (from, size, minSize, padding, spacing, curved, upper, keys, font)`);
+      if (extra.length) fail(`modules.labels: unknown option ${extra[0]} (from, size, minSize, padding, spacing, curved, upper, keys, font, rules)`);
       const sets = Array.isArray(from) ? from : [from];
       if (!sets.length) fail("modules.labels: from needs at least one feature set");
       const op = { from: sets.map((f, i) => need(f, Features, sets.length > 1 ? `modules.labels from (input ${i + 1})` : "modules.labels from")) };
@@ -362,6 +362,25 @@
         op.keys = ks;
       }
       if (font !== undefined) op.font = String(font);
+      if (rules !== undefined) {
+        if (!Array.isArray(rules) || !rules.length) fail(`modules.labels: rules is a non-empty list, got ${describe(rules)}`);
+        op.rules = rules.map((rule, i) => {
+          object(rule, `modules.labels rules[${i}]`);
+          const { tags, font: rf, size: rs, minSize, padding: rp, spacing: rsp, curved: rc, upper: ru, ...rrest } = rule;
+          if (Object.keys(rrest).length) fail(`modules.labels rules[${i}]: unknown key ${Object.keys(rrest)[0]}`);
+          object(tags, `modules.labels rules[${i}].tags`);
+          if (!Object.keys(tags).length) fail(`modules.labels rules[${i}].tags needs at least one tag`);
+          const entry = { tags };
+          if (rf !== undefined) entry.font = String(rf);
+          if (rs !== undefined) entry.size = rs;
+          if (minSize !== undefined) entry.min_size = minSize;
+          if (rp !== undefined) entry.padding = rp;
+          if (rsp !== undefined) entry.spacing = rsp;
+          if (rc !== undefined) entry.curved = !!rc;
+          if (ru !== undefined) entry.upper = !!ru;
+          return entry;
+        });
+      }
       return Object.freeze({ lines: make(Lines, "lines", { tools_labels: op }) });
     },
   };

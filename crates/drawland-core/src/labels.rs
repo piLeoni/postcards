@@ -15,11 +15,14 @@
 //! page, inside it.
 
 use crate::geom::{self, Lines};
-use crate::osm::Feature;
+use crate::osm::{Feature, Tags};
+use crate::select::{self, TagTest};
 use crate::text::{self, Glyph, BASELINE, CAP_HEIGHT, CAP_TOP};
 use crate::units::Mm;
 use geo::{Area, Centroid, Contains, Coord, InteriorPoint, LineString, MultiPolygon, Point, Polygon};
-use serde::{Deserialize, Serialize};
+use serde::de::Error as DeError;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde_json::Value;
 use std::collections::{BTreeMap, HashMap};
 
 /// How labels look and how close they may come. Every field has a default.
@@ -42,6 +45,168 @@ pub struct Style {
     pub upper: bool,
     /// The tags the text is read from, the first one present.
     pub keys: Vec<String>,
+    /// The first rule whose `tags` match wins; its fields override the defaults above.
+    #[serde(default, deserialize_with = "deserialize_rules")]
+    pub rules: Vec<LabelRule>,
+}
+
+/// One user-defined override: same tag syntax as `features.where`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct LabelRule {
+    pub tags: Vec<(String, TagTest)>,
+    pub font: Option<String>,
+    pub size: Option<Mm>,
+    pub min_size: Option<Mm>,
+    pub padding: Option<Mm>,
+    pub spacing: Option<Mm>,
+    pub curved: Option<bool>,
+    pub upper: Option<bool>,
+}
+
+#[derive(Deserialize)]
+struct LabelRuleIn {
+    tags: serde_json::Map<String, Value>,
+    font: Option<String>,
+    size: Option<Mm>,
+    min_size: Option<Mm>,
+    padding: Option<Mm>,
+    spacing: Option<Mm>,
+    curved: Option<bool>,
+    upper: Option<bool>,
+}
+
+impl LabelRule {
+    fn from_in(raw: LabelRuleIn) -> Result<LabelRule, String> {
+        Ok(LabelRule {
+            tags: select::parse_tag_tests(raw.tags)?,
+            font: raw.font,
+            size: raw.size,
+            min_size: raw.min_size,
+            padding: raw.padding,
+            spacing: raw.spacing,
+            curved: raw.curved,
+            upper: raw.upper,
+        })
+    }
+}
+
+impl Serialize for LabelRule {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let mut m = serializer.serialize_map(None)?;
+        m.serialize_entry("tags", &select::tag_tests_to_map(&self.tags))?;
+        if let Some(v) = &self.font {
+            m.serialize_entry("font", v)?;
+        }
+        if let Some(v) = &self.size {
+            m.serialize_entry("size", v)?;
+        }
+        if let Some(v) = &self.min_size {
+            m.serialize_entry("min_size", v)?;
+        }
+        if let Some(v) = &self.padding {
+            m.serialize_entry("padding", v)?;
+        }
+        if let Some(v) = &self.spacing {
+            m.serialize_entry("spacing", v)?;
+        }
+        if let Some(v) = self.curved {
+            m.serialize_entry("curved", &v)?;
+        }
+        if let Some(v) = self.upper {
+            m.serialize_entry("upper", &v)?;
+        }
+        m.end()
+    }
+}
+
+fn deserialize_rules<'de, D: Deserializer<'de>>(d: D) -> Result<Vec<LabelRule>, D::Error> {
+    let raw = Vec::<LabelRuleIn>::deserialize(d)?;
+    raw.into_iter()
+        .map(LabelRule::from_in)
+        .collect::<Result<_, _>>()
+        .map_err(D::Error::custom)
+}
+
+/// Resolved look for one feature after defaults and the first matching rule.
+#[derive(Debug, Clone)]
+struct EffectiveStyle {
+    font: String,
+    size: Mm,
+    min_size: Mm,
+    padding: Mm,
+    spacing: Mm,
+    curved: bool,
+    upper: bool,
+}
+
+impl Style {
+    fn for_tags(&self, tags: &Tags) -> Result<EffectiveStyle, String> {
+        let stub = Feature {
+            element: crate::osm::Element::Tile,
+            id: 0,
+            tags: tags.clone(),
+            geometry: geo::Geometry::Point(Point::new(0.0, 0.0)),
+        };
+        self.for_feature(&stub)
+    }
+
+    fn for_feature(&self, f: &Feature) -> Result<EffectiveStyle, String> {
+        let mut eff = EffectiveStyle {
+            font: self.font.clone(),
+            size: self.size,
+            min_size: self.min_size,
+            padding: self.padding,
+            spacing: self.spacing,
+            curved: self.curved,
+            upper: self.upper,
+        };
+        for rule in &self.rules {
+            if select::passes(&rule.tags, f) {
+                if let Some(font) = &rule.font {
+                    eff.font = font.clone();
+                }
+                if let Some(size) = rule.size {
+                    eff.size = size;
+                }
+                if let Some(min_size) = rule.min_size {
+                    eff.min_size = min_size;
+                }
+                if let Some(padding) = rule.padding {
+                    eff.padding = padding;
+                }
+                if let Some(spacing) = rule.spacing {
+                    eff.spacing = spacing;
+                }
+                if let Some(curved) = rule.curved {
+                    eff.curved = curved;
+                }
+                if let Some(upper) = rule.upper {
+                    eff.upper = upper;
+                }
+                break;
+            }
+        }
+        if text::font(&eff.font).is_none() {
+            return Err(format!("labels: no font {:?} (built in: {})", eff.font, text::FONTS.join(", ")));
+        }
+        Ok(eff)
+    }
+}
+
+/// Every font named in `style` (defaults and rules) must be built in.
+pub fn validate_style(style: &Style) -> Result<(), String> {
+    if text::font(&style.font).is_none() {
+        return Err(format!("labels: no font {:?} (built in: {})", style.font, text::FONTS.join(", ")));
+    }
+    for rule in &style.rules {
+        if let Some(font) = &rule.font {
+            if text::font(font).is_none() {
+                return Err(format!("labels: no font {:?} (built in: {})", font, text::FONTS.join(", ")));
+            }
+        }
+    }
+    Ok(())
 }
 
 impl Default for Style {
@@ -55,6 +220,7 @@ impl Default for Style {
             curved: true,
             upper: false,
             keys: vec!["name".into(), "ref".into()],
+            rules: Vec::new(),
         }
     }
 }
@@ -88,6 +254,7 @@ struct Candidate {
     /// Length or the square root of the area, mm: the tie-break, larger first.
     extent: f64,
     shape: Shape,
+    style: EffectiveStyle,
 }
 
 /// A glyph's footprint: four corners, in order.
@@ -261,63 +428,76 @@ impl Pose {
 
 /// The labels of `features` (output millimetres), as pen strokes.
 pub fn place(features: &[Feature], frame: &MultiPolygon<f64>, style: &Style) -> Result<Lines, String> {
-    let font = text::font(&style.font)
-        .ok_or_else(|| format!("labels: no font {:?} (built in: {})", style.font, text::FONTS.join(", ")))?;
+    validate_style(style)?;
     let page = frame.unsigned_area().max(1.0);
     let mut candidates = Vec::new();
     // Roads come in pieces; one chain per name and class, so a street is one
     // candidate however the data cut it.
-    let mut roads: BTreeMap<(String, String), (f64, Lines)> = BTreeMap::new();
+    let mut roads: BTreeMap<(String, String), (f64, Lines, Tags)> = BTreeMap::new();
     for f in features {
-        let Some(name) = style.keys.iter().find_map(|k| f.tag(k)).map(str::trim).filter(|s| !s.is_empty()) else {
+        let Some(raw) = style.keys.iter().find_map(|k| f.tag(k)).map(str::trim).filter(|s| !s.is_empty()) else {
             continue;
         };
-        let name = if style.upper { name.to_uppercase() } else { name.to_string() };
+        let eff = style.for_feature(f)?;
+        let name = if eff.upper { raw.to_uppercase() } else { raw.to_string() };
         let polys = geom::polygons(&f.geometry);
         if let Some(poly) = polys.into_iter().max_by(|a, b| a.unsigned_area().total_cmp(&b.unsigned_area())) {
             let area = poly.unsigned_area();
             let rank = (0.25 + (area / page).sqrt()).min(1.0);
-            candidates.push(Candidate { text: name, rank, extent: area.sqrt(), shape: Shape::Area(poly) });
+            candidates.push(Candidate {
+                text: name,
+                rank,
+                extent: area.sqrt(),
+                shape: Shape::Area(poly),
+                style: eff,
+            });
         } else {
             let class = f.tag("class").or_else(|| f.tag("highway")).unwrap_or("").to_string();
-            let entry = roads.entry((name, class)).or_insert((road_rank(f), Vec::new()));
+            let entry = roads.entry((name, class)).or_insert((road_rank(f), Vec::new(), f.tags.clone()));
             entry.1.extend(geom::lines_of(&f.geometry));
         }
     }
-    for ((name, _), (rank, lines)) in roads {
+    for ((name, _), (rank, lines, tags)) in roads {
+        let eff = style.for_tags(&tags)?;
         for chain in geom::linemerge(&lines) {
             let pts: Vec<Coord<f64>> = chain.0;
             if pts.len() < 2 {
                 continue;
             }
             let extent = Path::new(pts.clone()).length();
-            candidates.push(Candidate { text: name.clone(), rank, extent, shape: Shape::Road(pts) });
+            candidates.push(Candidate { text: name.clone(), rank, extent, shape: Shape::Road(pts), style: eff.clone() });
         }
     }
     candidates.sort_by(|a, b| b.rank.total_cmp(&a.rank).then(b.extent.total_cmp(&a.extent)));
 
-    let (big, small) = (style.size.0.max(0.1), style.min_size.0.max(0.1));
-    let mut taken = Taken::new(big * 4.0);
+    let max_cap = candidates
+        .iter()
+        .map(|c| c.style.size.0.max(c.style.min_size.0))
+        .fold(style.size.0, f64::max);
+    let mut taken = Taken::new(max_cap * 4.0);
     let mut named: HashMap<String, Vec<Coord<f64>>> = HashMap::new();
     let mut out = Lines::new();
     let inside = |q: &Quad| q.0.iter().all(|c| frame.contains(&Point::from(*c)));
     for c in &candidates {
+        let eff = &c.style;
+        let font = text::font(&eff.font).expect("validated");
+        let (big, small) = (eff.size.0.max(0.1), eff.min_size.0.max(0.1));
         let size = small + (big - small) * c.rank.clamp(0.0, 1.0);
         let k = size / CAP_HEIGHT;
         let (glyphs, width) = font.layout(&c.text);
         let width = width * k;
         let clear = |poses: &[(Pose, &Glyph)], taken: &Taken| {
             poses.iter().all(|(p, g)| {
-                let q = p.quad(g, style.padding.0);
+                let q = p.quad(g, eff.padding.0);
                 inside(&p.quad(g, 0.0)) && !taken.hits(&q)
             })
         };
         let far = |at: Coord<f64>, named: &HashMap<String, Vec<Coord<f64>>>| {
-            named.get(&c.text).is_none_or(|seen| seen.iter().all(|&s| dist(s, at) >= style.spacing.0))
+            named.get(&c.text).is_none_or(|seen| seen.iter().all(|&s| dist(s, at) >= eff.spacing.0))
         };
         let keep = |poses: Vec<(Pose, &Glyph)>, at: Coord<f64>, taken: &mut Taken, out: &mut Lines, named: &mut HashMap<String, Vec<Coord<f64>>>| {
             for (p, g) in &poses {
-                taken.add(p.quad(g, style.padding.0));
+                taken.add(p.quad(g, eff.padding.0));
                 p.strokes(g, out);
             }
             named.entry(c.text.clone()).or_default().push(at);
@@ -335,7 +515,7 @@ pub fn place(features: &[Feature], frame: &MultiPolygon<f64>, style: &Style) -> 
                 let tries = ((hi - lo) / step).ceil() as i64;
                 let mut placed: Vec<f64> = Vec::new();
                 // Every straight stretch first; bent text only where none is left.
-                let passes: &[bool] = if style.curved { &[false, true] } else { &[false] };
+                let passes: &[bool] = if eff.curved { &[false, true] } else { &[false] };
                 for &bend in passes {
                     for i in 0..=2 * tries {
                         let off = ((i + 1) / 2) as f64 * step * if i % 2 == 1 { 1.0 } else { -1.0 };
@@ -343,7 +523,7 @@ pub fn place(features: &[Feature], frame: &MultiPolygon<f64>, style: &Style) -> 
                         if s < lo - 1e-9 || s > hi + 1e-9 {
                             continue;
                         }
-                        if placed.iter().any(|&p| (p - s).abs() < style.spacing.0.max(width + size)) {
+                        if placed.iter().any(|&p| (p - s).abs() < eff.spacing.0.max(width + size)) {
                             continue;
                         }
                         let at = path.point(s);

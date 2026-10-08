@@ -1128,13 +1128,7 @@ fn parse_op(raw: RawOp, section: Section) -> Result<Op, GrammarError> {
                 return Err(GrammarError::Invalid(format!("tools_labels.from has {f}, but it reads $features sets")));
             }
             let style: crate::labels::Style = json(&Value::Object(body), "tools_labels")?;
-            if crate::text::font(&style.font).is_none() {
-                return Err(GrammarError::Invalid(format!(
-                    "tools_labels: no font {:?} (built in: {})",
-                    style.font,
-                    crate::text::FONTS.join(", ")
-                )));
-            }
+            crate::labels::validate_style(&style).map_err(GrammarError::Invalid)?;
             Op::Labels(Labels { from, style })
         }
         "tools_rings" => match &value {
@@ -1344,43 +1338,7 @@ fn parse_where(value: &Value) -> Result<Where, GrammarError> {
     if raw.tags.is_empty() {
         return Err(GrammarError::Invalid("tools_where needs at least one tag".into()));
     }
-    let bad = |k: &str, v: &Value| {
-        GrammarError::Invalid(format!(
-            "tools_where.{k} is {v}: write true, false, a value, a list of values or {{ min, max }}"
-        ))
-    };
-    let mut tags = Vec::new();
-    for (k, v) in raw.tags {
-        let test = match &v {
-            Value::Bool(p) => TagTest::Match(TagMatch::Present(*p)),
-            Value::String(s) => TagTest::Match(TagMatch::Values(vec![s.clone()])),
-            Value::Number(n) => TagTest::Match(TagMatch::Values(vec![n.to_string()])),
-            Value::Array(items) => TagTest::Match(TagMatch::Values(
-                items
-                    .iter()
-                    .map(|i| match i {
-                        Value::String(s) => Ok(s.clone()),
-                        Value::Number(n) => Ok(n.to_string()),
-                        _ => Err(bad(&k, &v)),
-                    })
-                    .collect::<Result<_, _>>()?,
-            )),
-            Value::Object(r) => {
-                let bound = |name: &str| -> Result<Option<f64>, GrammarError> {
-                    match r.get(name) {
-                        None | Some(Value::Null) => Ok(None),
-                        Some(b) => b.as_f64().map(Some).ok_or_else(|| bad(&k, &v)),
-                    }
-                };
-                if r.keys().any(|key| key != "min" && key != "max") || r.is_empty() {
-                    return Err(bad(&k, &v));
-                }
-                TagTest::Range { min: bound("min")?, max: bound("max")? }
-            }
-            Value::Null => return Err(bad(&k, &v)),
-        };
-        tags.push((k, test));
-    }
+    let tags = crate::select::parse_tag_tests(raw.tags).map_err(|e| GrammarError::Invalid(format!("tools_where: {e}")))?;
     Ok(Where { of, tags })
 }
 
