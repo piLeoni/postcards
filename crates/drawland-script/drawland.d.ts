@@ -196,7 +196,8 @@ declare const areas: {
   /** Grown by a length; a negative one shrinks it. */
   grow(of: Area, by: Length): Area
   /** A strip around lines: `by` is the half-width (flat caps), merged into one area. */
-  buffer(of: Lines, by: Length): Area
+  /** Half-width strip around the lines, merged. Joins are round; default cap is round. */
+  buffer(of: Lines, by: Length, options?: { cap?: "round" | "flat" }): Area
   /**
    * Close the thin gaps between `of` and the edges of `within` (vector-tile
    * water that stops just short of the card border): parts of `of` within

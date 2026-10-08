@@ -21,7 +21,7 @@
 use crate::fill::{self, FillError, Sources};
 use crate::geom::{self, Lines};
 use crate::output::Output;
-use crate::grammar::{Clip, Def, Grammar, Mask, Name, Op, Section, UnionRules};
+use crate::grammar::{Clip, Def, Grammar, LineBufferCap, Mask, Name, Op, Section, UnionRules};
 use crate::osm::Feature;
 use crate::progress::{thousands, Level, Task};
 use crate::select::Selector;
@@ -336,7 +336,13 @@ fn eval_op(
         Op::BufferLines(b) => {
             let ls = lines(&b.lines)?;
             let radius = b.by.0;
-            let parts: Vec<MultiPolygon<f64>> = ls.iter().map(|l| geom::buffer_line_flat(l, radius)).collect();
+            let parts: Vec<MultiPolygon<f64>> = ls
+                .iter()
+                .map(|l| match b.cap {
+                    LineBufferCap::Round => geom::buffer_line_round(l, radius),
+                    LineBufferCap::Flat => geom::buffer_line_flat(l, radius),
+                })
+                .collect();
             Value::Area(geom::union_multi(&parts))
         }
         Op::Frame => Value::Area(engine.output.clone()),

@@ -1,5 +1,5 @@
 use super::*;
-use drawland_core::grammar::{Op, UnionRules};
+use drawland_core::grammar::{LineBufferCap, Op, UnionRules};
 use drawland_core::grammar_run::{run, Inputs};
 use drawland_core::output::Output;
 use std::collections::BTreeMap;
@@ -339,6 +339,15 @@ fn where_bands_features_and_ink_works_out_the_strokes() {
     let e = err("const b = features.tiles('buildings')\nfeatures.where(b, { render_height: { above: 3 } })\n");
     assert!(e.message.contains("{ min, max }"), "{e}");
     assert_eq!(e.at.map(|a| a.0), Some(2));
+}
+
+#[test]
+fn areas_buffer_accepts_a_cap_option() {
+    let g = evaluate("const l = lines.of(features.tiles('roads'))\nconst a = areas.buffer(l, '0.3mm', { cap: 'flat' })\n").unwrap();
+    let Op::BufferLines(b) = &g.defs(Section::Areas)[0].op else { panic!("buffer") };
+    assert_eq!(b.cap, LineBufferCap::Flat);
+    let e = err("const l = lines.of(features.tiles('roads'))\nareas.buffer(l, '0.3mm', { cap: 'square' })\n");
+    assert!(e.message.contains("cap"), "{e}");
 }
 
 #[test]

@@ -187,9 +187,17 @@ pub fn buffer(mp: &MultiPolygon<f64>, distance: f64) -> MultiPolygon<f64> {
     mp.buffer(distance)
 }
 
-/// A line buffered with flat ends and round joins.
+/// A line buffered with flat ends and round joins (roads: keeps narrow gaps open).
 pub fn buffer_line_flat(line: &LineString<f64>, radius: f64) -> MultiPolygon<f64> {
     let style = BufferStyle::new(radius).line_cap(LineCap::Butt).line_join(LineJoin::Round(round_angle()));
+    line.buffer_with_style(style)
+}
+
+/// A line buffered with round ends and round joins (`areas.buffer`: halos, masks).
+pub fn buffer_line_round(line: &LineString<f64>, radius: f64) -> MultiPolygon<f64> {
+    let style = BufferStyle::new(radius)
+        .line_cap(LineCap::Round(round_angle()))
+        .line_join(LineJoin::Round(round_angle()));
     line.buffer_with_style(style)
 }
 

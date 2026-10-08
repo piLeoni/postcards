@@ -155,10 +155,21 @@
       if (typeof by !== "number" && typeof by !== "string") fail(`areas.grow: by is a length like "0.5mm", got ${describe(by)}`);
       return make(Area, "areas", { tools_grow: { of: need(of, Area, "areas.grow"), by } });
     },
-    /** Half-width buffer around lines (flat caps), merged into one area. */
-    buffer(of, by) {
+    /**
+     * Half-width buffer around lines, merged into one area. Joins are always
+     * round; `options.cap` is `"round"` (default) or `"flat"` (butt caps).
+     */
+    buffer(of, by, options = {}) {
+      object(options, "areas.buffer options");
       if (typeof by !== "number" && typeof by !== "string") fail(`areas.buffer: by is a length like "0.2mm", got ${describe(by)}`);
-      return make(Area, "areas", { tools_buffer_lines: { lines: need(of, Lines, "areas.buffer"), by } });
+      const op = { tools_buffer_lines: { lines: need(of, Lines, "areas.buffer"), by } };
+      if (options.cap !== undefined) {
+        if (options.cap !== "round" && options.cap !== "flat") {
+          fail(`areas.buffer: cap is "round" or "flat", got ${describe(options.cap)}`);
+        }
+        if (options.cap === "flat") op.tools_buffer_lines.cap = "flat";
+      }
+      return make(Area, "areas", op);
     },
     /**
      * Close the thin gaps (up to `gapMm`, 1 mm by default) between `of` and

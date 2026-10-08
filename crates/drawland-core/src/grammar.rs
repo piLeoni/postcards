@@ -135,11 +135,22 @@ pub struct Grow {
     pub by: Mm,
 }
 
-/// Buffer lines by a half-width (flat caps, round joins), merged into one area.
+/// How `tools_buffer_lines` ends each stroke.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum LineBufferCap {
+    #[default]
+    Round,
+    Flat,
+}
+
+/// Buffer lines by a half-width, merged into one area. Caps and joins are round
+/// unless `cap` is `flat` (butt caps; joins stay round).
 #[derive(Debug, Clone, PartialEq)]
 pub struct BufferLines {
     pub lines: Name,
     pub by: Mm,
+    pub cap: LineBufferCap,
 }
 
 /// Close the thin gaps between `of` and the edges of `within` (tile polygons
@@ -374,7 +385,7 @@ impl Op {
             (Op::Intersect(a), Op::Intersect(b)) => a.base == b.base && a.keep == b.keep,
             (Op::FillHoles(a), Op::FillHoles(b)) => a == b,
             (Op::Grow(a), Op::Grow(b)) => a.of == b.of,
-            (Op::BufferLines(a), Op::BufferLines(b)) => a.lines == b.lines,
+            (Op::BufferLines(a), Op::BufferLines(b)) => a.lines == b.lines && a.by == b.by && a.cap == b.cap,
             (Op::Rings(a), Op::Rings(b)) => a.of == b.of,
             (Op::Lines(a), Op::Lines(b)) => a == b,
             (Op::Segments(a), Op::Segments(b)) => a == b,
@@ -1003,9 +1014,11 @@ fn parse_op(raw: RawOp, section: Section) -> Result<Op, GrammarError> {
             struct Raw {
                 lines: String,
                 by: Mm,
+                #[serde(default)]
+                cap: LineBufferCap,
             }
             let raw: Raw = json(&value, "tools_buffer_lines")?;
-            Op::BufferLines(BufferLines { lines: refname(&raw.lines)?, by: raw.by })
+            Op::BufferLines(BufferLines { lines: refname(&raw.lines)?, by: raw.by, cap: raw.cap })
         }
         "tools_extend_to_frame" => {
             #[derive(Deserialize)]
@@ -1542,7 +1555,16 @@ pub fn op_to_json(op: &Op) -> Value {
             ("tools_labels", body)
         }
         Op::Grow(g) => ("tools_grow", json!({ "of": g.of.to_string(), "by": g.by })),
-        Op::BufferLines(b) => ("tools_buffer_lines", json!({ "lines": b.lines.to_string(), "by": b.by })),
+        Op::BufferLines(b) => {
+            let mut body = serde_json::Map::from_iter([
+                ("lines".into(), Value::String(b.lines.to_string())),
+                ("by".into(), json!(b.by)),
+            ]);
+            if b.cap == LineBufferCap::Flat {
+                body.insert("cap".into(), json!("flat"));
+            }
+            ("tools_buffer_lines", Value::Object(body))
+        }
         Op::Frame => ("engine_frame", json!({})),
         Op::ExtendToFrame(e) => (
             "tools_extend_to_frame",
