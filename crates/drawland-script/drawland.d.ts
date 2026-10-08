@@ -408,6 +408,13 @@ interface LabelOptions {
   /** A built-in single-stroke font. Default `"futural"`. */
   font?: "futural"
   /**
+   * Concentric buffer passes around each placed name (0 = centre stroke only).
+   * Each pass adds an outline at `bufferStep`, `2× bufferStep`, … Default `0`.
+   */
+  buffer?: number
+  /** Half-width per buffer pass. Default `"0.1mm"`. */
+  bufferStep?: Length
+  /**
    * Overrides for features that match `tags` (same syntax as `features.where`).
    * First matching rule wins; unset fields keep the defaults above.
    */
@@ -425,6 +432,8 @@ interface LabelRule {
   spacing?: Length
   curved?: boolean
   upper?: boolean
+  buffer?: number
+  bufferStep?: Length
 }
 
 /** What the labels module publishes. */

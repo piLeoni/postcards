@@ -222,7 +222,9 @@ together so no set's names cover another's.
 | `upper` | `false` | write in capitals |
 | `keys` | `["name", "ref"]` | the tags the text is read from, the first present |
 | `font` | `"futural"` | the built-in font |
-| `rules` | — | a list of `{ tags, font?, size?, minSize?, … }`; the **first** rule whose `tags` match (same tests as `features.where`) overrides the defaults for that feature |
+| `buffer` | `0` | concentric buffer passes around each name (1, 2, 3…); each pass adds an outline at `bufferStep`, `2× bufferStep`, … on top of the centre stroke |
+| `bufferStep` | `"0.1mm"` | half-width per buffer pass (round caps) |
+| `rules` | — | a list of `{ tags, font?, size?, minSize?, buffer?, bufferStep?, … }`; the **first** rule whose `tags` match (same tests as `features.where`) overrides the defaults for that feature |
 
 ```js
 modules.labels({

@@ -45,6 +45,10 @@ pub struct Style {
     pub upper: bool,
     /// The tags the text is read from, the first one present.
     pub keys: Vec<String>,
+    /// Concentric buffer passes drawn around each placed name (0 = single stroke only).
+    pub buffer: u32,
+    /// Half-width added per buffer pass, round caps.
+    pub buffer_step: Mm,
     /// The first rule whose `tags` match wins; its fields override the defaults above.
     #[serde(default, deserialize_with = "deserialize_rules")]
     pub rules: Vec<LabelRule>,
@@ -61,6 +65,8 @@ pub struct LabelRule {
     pub spacing: Option<Mm>,
     pub curved: Option<bool>,
     pub upper: Option<bool>,
+    pub buffer: Option<u32>,
+    pub buffer_step: Option<Mm>,
 }
 
 #[derive(Deserialize)]
@@ -73,6 +79,8 @@ struct LabelRuleIn {
     spacing: Option<Mm>,
     curved: Option<bool>,
     upper: Option<bool>,
+    buffer: Option<u32>,
+    buffer_step: Option<Mm>,
 }
 
 impl LabelRule {
@@ -86,6 +94,8 @@ impl LabelRule {
             spacing: raw.spacing,
             curved: raw.curved,
             upper: raw.upper,
+            buffer: raw.buffer,
+            buffer_step: raw.buffer_step,
         })
     }
 }
@@ -116,6 +126,12 @@ impl Serialize for LabelRule {
         if let Some(v) = self.upper {
             m.serialize_entry("upper", &v)?;
         }
+        if let Some(v) = self.buffer.filter(|&n| n > 0) {
+            m.serialize_entry("buffer", &v)?;
+        }
+        if let Some(v) = &self.buffer_step {
+            m.serialize_entry("buffer_step", v)?;
+        }
         m.end()
     }
 }
@@ -138,6 +154,8 @@ struct EffectiveStyle {
     spacing: Mm,
     curved: bool,
     upper: bool,
+    buffer: u32,
+    buffer_step: Mm,
 }
 
 impl Style {
@@ -160,6 +178,8 @@ impl Style {
             spacing: self.spacing,
             curved: self.curved,
             upper: self.upper,
+            buffer: self.buffer,
+            buffer_step: self.buffer_step,
         };
         for rule in &self.rules {
             if select::passes(&rule.tags, f) {
@@ -183,6 +203,12 @@ impl Style {
                 }
                 if let Some(upper) = rule.upper {
                     eff.upper = upper;
+                }
+                if let Some(buffer) = rule.buffer {
+                    eff.buffer = buffer;
+                }
+                if let Some(buffer_step) = rule.buffer_step {
+                    eff.buffer_step = buffer_step;
                 }
                 break;
             }
@@ -220,9 +246,25 @@ impl Default for Style {
             curved: true,
             upper: false,
             keys: vec!["name".into(), "ref".into()],
+            buffer: 0,
+            buffer_step: Mm(0.1),
             rules: Vec::new(),
         }
     }
+}
+
+/// The centre stroke plus `passes` concentric outlines (each pass buffers all strokes by one more step).
+fn stroke_with_buffers(strokes: &Lines, passes: u32, step: Mm) -> Lines {
+    let mut out = strokes.clone();
+    if passes == 0 || step.0 <= 0.0 {
+        return out;
+    }
+    for pass in 1..=passes {
+        let radius = pass as f64 * step.0;
+        let parts: Vec<MultiPolygon<f64>> = strokes.iter().map(|l| geom::buffer_line_round(l, radius)).collect();
+        out.extend(geom::rings(&geom::union_multi(&parts)));
+    }
+    out
 }
 
 /// How much a road matters, 0 to 1, by its OpenMapTiles class or OSM `highway`.
@@ -496,10 +538,12 @@ pub fn place(features: &[Feature], frame: &MultiPolygon<f64>, style: &Style) -> 
             named.get(&c.text).is_none_or(|seen| seen.iter().all(|&s| dist(s, at) >= eff.spacing.0))
         };
         let keep = |poses: Vec<(Pose, &Glyph)>, at: Coord<f64>, taken: &mut Taken, out: &mut Lines, named: &mut HashMap<String, Vec<Coord<f64>>>| {
+            let mut chunk = Lines::new();
             for (p, g) in &poses {
                 taken.add(p.quad(g, eff.padding.0));
-                p.strokes(g, out);
+                p.strokes(g, &mut chunk);
             }
+            out.extend(stroke_with_buffers(&chunk, eff.buffer, eff.buffer_step));
             named.entry(c.text.clone()).or_default().push(at);
         };
         match &c.shape {

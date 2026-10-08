@@ -70,7 +70,13 @@ compose.mask({ name: "bldg_cover", from: buildings, occludes: [...park, ...wetDr
 const streetNames = features.where(features.tiles("road_names"), {
   class: ["motorway", "trunk", "primary", "secondary", "tertiary", "minor"],
 })
-const labels = modules.labels({ from: [streetNames, features.tiles("parks")] })
-const labelClear = areas.buffer(labels.lines, "0.4mm")
+const labels = modules.labels({
+  from: [streetNames, features.tiles("parks")],
+  rules: [
+    { tags: { "tiles:layer": "park" }, size: "2.5mm", minSize: "2.2mm", buffer: 2, bufferStep: "0.1mm" },
+    { tags: { class: ["motorway", "trunk", "primary"] }, buffer: 1, bufferStep: "0.08mm" },
+  ],
+})
+const labelClear = areas.buffer(labels.lines, "0.45mm")
 compose.mask({ name: "label_clear", from: labelClear, occludes: [...park, ...wetDraws, ...road, ...building] })
-draw({ id: "labels", from: labels.lines, stroke: { style: "solid", color: "#d40000" } })
+draw({ id: "labels", from: labels.lines, stroke: "solid" })
