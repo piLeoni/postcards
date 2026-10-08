@@ -52,6 +52,30 @@
     return v;
   }
 
+  /** Draw.land Hershey id (`"futural"`) or `{ origin: "drawland" | "google", … }`. */
+  function labelFont(font, where) {
+    if (typeof font === "string") {
+      if (!font) fail(`${where}: font id is a non-empty string`);
+      return font;
+    }
+    const o = object(font, where);
+    if (o.origin === "drawland") {
+      if (typeof o.id !== "string" || !o.id) fail(`${where}: drawland font needs id`);
+      return { origin: "drawland", id: o.id };
+    }
+    if (o.origin === "google") {
+      const { family, weight = 400, italic = false } = o;
+      if (typeof family !== "string" || !family) fail(`${where}: google font needs family`);
+      if (typeof weight !== "number" || !Number.isFinite(weight)) {
+        fail(`${where}: google font weight is a number, got ${describe(weight)}`);
+      }
+      const out = { origin: "google", family, weight: Math.round(weight) };
+      if (italic) out.italic = true;
+      return out;
+    }
+    fail(`${where}: font origin is "drawland" or "google"`);
+  }
+
   const make = (Kind, section, op) => new Kind(dl.node(section, op));
 
   const features = {
@@ -344,9 +368,9 @@
     // level inside areas, larger the more the feature matters.
     labels(options = {}) {
       object(options, "modules.labels options");
-      const { from, size, minSize, padding, spacing, curved, upper, keys, font, buffer, bufferStep, rules, ...rest } = options;
+      const { from, size, minSize, padding, spacing, curved, upper, keys, font, buffer, bufferStep, keepCenterline, rules, ...rest } = options;
       const extra = Object.keys(rest);
-      if (extra.length) fail(`modules.labels: unknown option ${extra[0]} (from, size, minSize, padding, spacing, curved, upper, keys, font, buffer, bufferStep, rules)`);
+      if (extra.length) fail(`modules.labels: unknown option ${extra[0]} (from, size, minSize, padding, spacing, curved, upper, keys, font, buffer, bufferStep, keepCenterline, rules)`);
       const sets = Array.isArray(from) ? from : [from];
       if (!sets.length) fail("modules.labels: from needs at least one feature set");
       const op = { from: sets.map((f, i) => need(f, Features, sets.length > 1 ? `modules.labels from (input ${i + 1})` : "modules.labels from")) };
@@ -361,7 +385,7 @@
         if (!ks.length || !ks.every((k) => typeof k === "string")) fail(`modules.labels: keys is a tag or a list of tags, got ${describe(keys)}`);
         op.keys = ks;
       }
-      if (font !== undefined) op.font = String(font);
+      if (font !== undefined) op.font = labelFont(font, "modules.labels font");
       if (buffer !== undefined) {
         if (typeof buffer !== "number" || !Number.isInteger(buffer) || buffer < 0) {
           fail(`modules.labels: buffer is a non-negative integer, got ${describe(buffer)}`);
@@ -369,16 +393,17 @@
         if (buffer > 0) op.buffer = buffer;
       }
       if (bufferStep !== undefined) op.buffer_step = bufferStep;
+      if (keepCenterline !== undefined) op.keep_centerline = !!keepCenterline;
       if (rules !== undefined) {
         if (!Array.isArray(rules) || !rules.length) fail(`modules.labels: rules is a non-empty list, got ${describe(rules)}`);
         op.rules = rules.map((rule, i) => {
           object(rule, `modules.labels rules[${i}]`);
-          const { tags, font: rf, size: rs, minSize, padding: rp, spacing: rsp, curved: rc, upper: ru, buffer: rb, bufferStep: rbs, ...rrest } = rule;
+          const { tags, font: rf, size: rs, minSize, padding: rp, spacing: rsp, curved: rc, upper: ru, buffer: rb, bufferStep: rbs, keepCenterline: rkl, ...rrest } = rule;
           if (Object.keys(rrest).length) fail(`modules.labels rules[${i}]: unknown key ${Object.keys(rrest)[0]}`);
           object(tags, `modules.labels rules[${i}].tags`);
           if (!Object.keys(tags).length) fail(`modules.labels rules[${i}].tags needs at least one tag`);
           const entry = { tags };
-          if (rf !== undefined) entry.font = String(rf);
+          if (rf !== undefined) entry.font = labelFont(rf, `modules.labels rules[${i}].font`);
           if (rs !== undefined) entry.size = rs;
           if (minSize !== undefined) entry.min_size = minSize;
           if (rp !== undefined) entry.padding = rp;
@@ -392,6 +417,7 @@
             if (rb > 0) entry.buffer = rb;
           }
           if (rbs !== undefined) entry.buffer_step = rbs;
+          if (rkl !== undefined) entry.keep_centerline = !!rkl;
           return entry;
         });
       }

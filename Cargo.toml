@@ -31,6 +31,7 @@ clap = { version = "4.6", features = ["derive"] }
 ureq = { version = "3", features = ["json"] }
 sha1_smol = "1"
 approx = "0.5"
+ttf-parser = { version = "0.25", features = ["std"] }
 
 [profile.release]
 lto = "thin"

@@ -17,7 +17,7 @@
 use crate::geom::{self, Lines};
 use crate::osm::{Feature, Tags};
 use crate::select::{self, TagTest};
-use crate::text::{self, Glyph, BASELINE, CAP_HEIGHT, CAP_TOP};
+use crate::text::{self, LabelFont, LabelGlyph, LabelLayout, CAP_HEIGHT, CAP_TOP, BASELINE};
 use crate::units::Mm;
 use geo::{Area, Centroid, Contains, Coord, InteriorPoint, LineString, MultiPolygon, Point, Polygon};
 use serde::de::Error as DeError;
@@ -25,12 +25,19 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Value;
 use std::collections::{BTreeMap, HashMap};
 
+/// TTF bytes keyed by [`text::google_font_key`].
+pub type GoogleFonts = BTreeMap<String, Vec<u8>>;
+
+fn default_keep_centerline() -> bool {
+    true
+}
+
 /// How labels look and how close they may come. Every field has a default.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Style {
-    /// A built-in single-stroke font: `futural`.
-    pub font: String,
+    /// Draw.land Hershey font (`"futural"`) or `{ origin: "google", family, weight? }`.
+    pub font: LabelFont,
     /// Capital height of the most important labels.
     pub size: Mm,
     /// Capital height of the least important.
@@ -49,6 +56,9 @@ pub struct Style {
     pub buffer: u32,
     /// Half-width added per buffer pass, round caps.
     pub buffer_step: Mm,
+    /// When `buffer` > 0, keep the centre stroke as well as the outlines.
+    #[serde(default = "default_keep_centerline", rename = "keep_centerline")]
+    pub keep_centerline: bool,
     /// The first rule whose `tags` match wins; its fields override the defaults above.
     #[serde(default, deserialize_with = "deserialize_rules")]
     pub rules: Vec<LabelRule>,
@@ -58,7 +68,7 @@ pub struct Style {
 #[derive(Debug, Clone, PartialEq)]
 pub struct LabelRule {
     pub tags: Vec<(String, TagTest)>,
-    pub font: Option<String>,
+    pub font: Option<text::LabelFont>,
     pub size: Option<Mm>,
     pub min_size: Option<Mm>,
     pub padding: Option<Mm>,
@@ -67,12 +77,13 @@ pub struct LabelRule {
     pub upper: Option<bool>,
     pub buffer: Option<u32>,
     pub buffer_step: Option<Mm>,
+    pub keep_centerline: Option<bool>,
 }
 
 #[derive(Deserialize)]
 struct LabelRuleIn {
     tags: serde_json::Map<String, Value>,
-    font: Option<String>,
+    font: Option<text::LabelFont>,
     size: Option<Mm>,
     min_size: Option<Mm>,
     padding: Option<Mm>,
@@ -81,6 +92,7 @@ struct LabelRuleIn {
     upper: Option<bool>,
     buffer: Option<u32>,
     buffer_step: Option<Mm>,
+    keep_centerline: Option<bool>,
 }
 
 impl LabelRule {
@@ -96,6 +108,7 @@ impl LabelRule {
             upper: raw.upper,
             buffer: raw.buffer,
             buffer_step: raw.buffer_step,
+            keep_centerline: raw.keep_centerline,
         })
     }
 }
@@ -132,6 +145,9 @@ impl Serialize for LabelRule {
         if let Some(v) = &self.buffer_step {
             m.serialize_entry("buffer_step", v)?;
         }
+        if self.keep_centerline == Some(false) {
+            m.serialize_entry("keep_centerline", &false)?;
+        }
         m.end()
     }
 }
@@ -147,7 +163,7 @@ fn deserialize_rules<'de, D: Deserializer<'de>>(d: D) -> Result<Vec<LabelRule>, 
 /// Resolved look for one feature after defaults and the first matching rule.
 #[derive(Debug, Clone)]
 struct EffectiveStyle {
-    font: String,
+    font: LabelFont,
     size: Mm,
     min_size: Mm,
     padding: Mm,
@@ -156,6 +172,7 @@ struct EffectiveStyle {
     upper: bool,
     buffer: u32,
     buffer_step: Mm,
+    keep_centerline: bool,
 }
 
 impl Style {
@@ -180,6 +197,7 @@ impl Style {
             upper: self.upper,
             buffer: self.buffer,
             buffer_step: self.buffer_step,
+            keep_centerline: self.keep_centerline,
         };
         for rule in &self.rules {
             if select::passes(&rule.tags, f) {
@@ -210,35 +228,63 @@ impl Style {
                 if let Some(buffer_step) = rule.buffer_step {
                     eff.buffer_step = buffer_step;
                 }
+                if let Some(keep_centerline) = rule.keep_centerline {
+                    eff.keep_centerline = keep_centerline;
+                }
                 break;
             }
         }
-        if text::font(&eff.font).is_none() {
-            return Err(format!("labels: no font {:?} (built in: {})", eff.font, text::FONTS.join(", ")));
-        }
+        text::validate_label_font(&eff.font)?;
         Ok(eff)
     }
 }
 
-/// Every font named in `style` (defaults and rules) must be built in.
+/// Every draw.land font named in `style` must be built in; Google fonts load at run time.
 pub fn validate_style(style: &Style) -> Result<(), String> {
-    if text::font(&style.font).is_none() {
-        return Err(format!("labels: no font {:?} (built in: {})", style.font, text::FONTS.join(", ")));
-    }
+    text::validate_label_font(&style.font)?;
     for rule in &style.rules {
         if let Some(font) = &rule.font {
-            if text::font(font).is_none() {
-                return Err(format!("labels: no font {:?} (built in: {})", font, text::FONTS.join(", ")));
-            }
+            text::validate_label_font(font)?;
         }
     }
     Ok(())
 }
 
+/// Cache keys for Google fonts referenced by this style (`Roboto:400`, …).
+pub fn google_font_keys(style: &Style) -> Vec<String> {
+    let mut keys = Vec::new();
+    if let Some(k) = style.font.google_key() {
+        keys.push(k);
+    }
+    for rule in &style.rules {
+        if let Some(font) = &rule.font {
+            if let Some(k) = font.google_key() {
+                keys.push(k);
+            }
+        }
+    }
+    keys.sort();
+    keys.dedup();
+    keys
+}
+
+/// Every Google font key any `tools_labels` def in the grammar needs.
+pub fn google_font_keys_in_grammar(grammar: &crate::grammar::Grammar) -> Vec<String> {
+    let mut keys = Vec::new();
+    for def in grammar.all_defs() {
+        if let crate::grammar::Op::Labels(l) = &def.op {
+            keys.extend(google_font_keys(&l.style));
+        }
+    }
+    keys.sort();
+    keys.dedup();
+    keys
+}
+
 impl Default for Style {
     fn default() -> Style {
         Style {
-            font: "futural".into(),
+            font: LabelFont::drawland("futural"),
             size: Mm(2.0),
             min_size: Mm(1.1),
             padding: Mm(0.5),
@@ -248,17 +294,18 @@ impl Default for Style {
             keys: vec!["name".into(), "ref".into()],
             buffer: 0,
             buffer_step: Mm(0.1),
+            keep_centerline: true,
             rules: Vec::new(),
         }
     }
 }
 
 /// The centre stroke plus `passes` concentric outlines (each pass buffers all strokes by one more step).
-fn stroke_with_buffers(strokes: &Lines, passes: u32, step: Mm) -> Lines {
-    let mut out = strokes.clone();
+fn stroke_with_buffers(strokes: &Lines, passes: u32, step: Mm, keep_center: bool) -> Lines {
     if passes == 0 || step.0 <= 0.0 {
-        return out;
+        return strokes.clone();
     }
+    let mut out = if keep_center { strokes.clone() } else { Lines::new() };
     for pass in 1..=passes {
         let radius = pass as f64 * step.0;
         let parts: Vec<MultiPolygon<f64>> = strokes.iter().map(|l| geom::buffer_line_round(l, radius)).collect();
@@ -430,14 +477,8 @@ fn lerp(a: Coord<f64>, b: Coord<f64>, t: f64) -> Coord<f64> {
     Coord { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t }
 }
 
-/// The middle of the capitals, font units: what sits on the road's centreline.
-const MID: f64 = (CAP_TOP + BASELINE) / 2.0;
-/// How far below the baseline a glyph's box reaches, font units, for the
-/// descenders of g, p, y.
-const DESCENT: f64 = 3.0;
-
 /// One glyph set down: font-unit point `(x, y)` (x from the glyph's left
-/// edge) goes to `origin + x·k·u + (y - MID)·k·v`, `v` the text's downward.
+/// edge) goes to `origin + x·k·u + (y - mid)·k·v`, `v` the text's downward.
 struct Pose {
     origin: Coord<f64>,
     u: Coord<f64>,
@@ -449,27 +490,33 @@ impl Pose {
         Coord { x: -self.u.y, y: self.u.x }
     }
 
-    fn map(&self, (x, y): (f64, f64)) -> Coord<f64> {
+    fn map(&self, g: &LabelGlyph, (x, y): (f64, f64)) -> Coord<f64> {
         let v = self.v();
-        let (a, b) = (x * self.k, (y - MID) * self.k);
+        let mid = (g.top + g.bottom) / 2.0;
+        let (a, b) = (x * self.k, (y - mid) * self.k);
         Coord { x: self.origin.x + a * self.u.x + b * v.x, y: self.origin.y + a * self.u.y + b * v.y }
     }
 
-    fn quad(&self, g: &Glyph, pad: f64) -> Quad {
+    fn quad(&self, g: &LabelGlyph, pad: f64) -> Quad {
         let p = pad / self.k;
-        let (x0, x1, y0, y1) = (-p, g.advance() + p, CAP_TOP - p, BASELINE + DESCENT + p);
-        Quad([self.map((x0, y0)), self.map((x1, y0)), self.map((x1, y1)), self.map((x0, y1))])
+        let (x0, x1, y0, y1) = (-p, g.advance + p, g.top - p, g.bottom + p);
+        Quad([
+            self.map(g, (x0, y0)),
+            self.map(g, (x1, y0)),
+            self.map(g, (x1, y1)),
+            self.map(g, (x0, y1)),
+        ])
     }
 
-    fn strokes(&self, g: &Glyph, out: &mut Lines) {
+    fn strokes(&self, g: &LabelGlyph, out: &mut Lines) {
         for s in &g.strokes {
-            out.push(LineString::from(s.iter().map(|&p| self.map(p)).collect::<Vec<_>>()));
+            out.push(LineString::from(s.iter().map(|&p| self.map(g, p)).collect::<Vec<_>>()));
         }
     }
 }
 
 /// The labels of `features` (output millimetres), as pen strokes.
-pub fn place(features: &[Feature], frame: &MultiPolygon<f64>, style: &Style) -> Result<Lines, String> {
+pub fn place(features: &[Feature], frame: &MultiPolygon<f64>, style: &Style, google_fonts: &GoogleFonts) -> Result<Lines, String> {
     validate_style(style)?;
     let page = frame.unsigned_area().max(1.0);
     let mut candidates = Vec::new();
@@ -522,13 +569,18 @@ pub fn place(features: &[Feature], frame: &MultiPolygon<f64>, style: &Style) -> 
     let inside = |q: &Quad| q.0.iter().all(|c| frame.contains(&Point::from(*c)));
     for c in &candidates {
         let eff = &c.style;
-        let font = text::font(&eff.font).expect("validated");
+        let google_bytes = eff
+            .font
+            .google_key()
+            .and_then(|k| google_fonts.get(&k))
+            .map(|b| b.as_slice());
+        let layout = text::layout(&eff.font, google_bytes, &c.text)?;
         let (big, small) = (eff.size.0.max(0.1), eff.min_size.0.max(0.1));
         let size = small + (big - small) * c.rank.clamp(0.0, 1.0);
-        let k = size / CAP_HEIGHT;
-        let (glyphs, width) = font.layout(&c.text);
-        let width = width * k;
-        let clear = |poses: &[(Pose, &Glyph)], taken: &Taken| {
+        let k = size / layout.cap_height;
+        let glyphs = &layout.glyphs;
+        let width = layout.width * k;
+        let clear = |poses: &[(Pose, &LabelGlyph)], taken: &Taken| {
             poses.iter().all(|(p, g)| {
                 let q = p.quad(g, eff.padding.0);
                 inside(&p.quad(g, 0.0)) && !taken.hits(&q)
@@ -537,13 +589,13 @@ pub fn place(features: &[Feature], frame: &MultiPolygon<f64>, style: &Style) -> 
         let far = |at: Coord<f64>, named: &HashMap<String, Vec<Coord<f64>>>| {
             named.get(&c.text).is_none_or(|seen| seen.iter().all(|&s| dist(s, at) >= eff.spacing.0))
         };
-        let keep = |poses: Vec<(Pose, &Glyph)>, at: Coord<f64>, taken: &mut Taken, out: &mut Lines, named: &mut HashMap<String, Vec<Coord<f64>>>| {
+        let keep = |poses: Vec<(Pose, &LabelGlyph)>, at: Coord<f64>, taken: &mut Taken, out: &mut Lines, named: &mut HashMap<String, Vec<Coord<f64>>>| {
             let mut chunk = Lines::new();
             for (p, g) in &poses {
                 taken.add(p.quad(g, eff.padding.0));
                 p.strokes(g, &mut chunk);
             }
-            out.extend(stroke_with_buffers(&chunk, eff.buffer, eff.buffer_step));
+            out.extend(stroke_with_buffers(&chunk, eff.buffer, eff.buffer_step, eff.keep_centerline));
             named.entry(c.text.clone()).or_default().push(at);
         };
         match &c.shape {
@@ -583,15 +635,15 @@ pub fn place(features: &[Feature], frame: &MultiPolygon<f64>, style: &Style) -> 
                 }
             }
             Shape::Area(poly) => {
-                let fits = |poses: &[(Pose, &Glyph)]| poses.iter().all(|(p, g)| poly.contains(&p.quad(g, 0.0).polygon()));
+                let fits = |poses: &[(Pose, &LabelGlyph)]| poses.iter().all(|(p, g)| poly.contains(&p.quad(g, 0.0).polygon()));
                 for at in area_spots(poly, width, size) {
                     if !far(at, &named) {
                         continue;
                     }
                     let start = Coord { x: at.x - width / 2.0, y: at.y };
-                    let poses: Vec<(Pose, &Glyph)> = glyphs
+                    let poses: Vec<(Pose, &LabelGlyph)> = glyphs
                         .iter()
-                        .map(|&(x, g)| (Pose { origin: Coord { x: start.x + x * k, y: start.y }, u: Coord { x: 1.0, y: 0.0 }, k }, g))
+                        .map(|g| (Pose { origin: Coord { x: start.x + g.x * k, y: start.y }, u: Coord { x: 1.0, y: 0.0 }, k }, g))
                         .collect();
                     if fits(&poses) && clear(&poses, &taken) {
                         keep(poses, at, &mut taken, &mut out, &mut named);
@@ -612,9 +664,9 @@ fn along<'g>(
     width: f64,
     size: f64,
     k: f64,
-    glyphs: &[(f64, &'g Glyph)],
+    glyphs: &'g [LabelGlyph],
     curved: bool,
-) -> Option<Vec<(Pose, &'g Glyph)>> {
+) -> Option<Vec<(Pose, &'g LabelGlyph)>> {
     let (s0, s1) = (s - width / 2.0, s + width / 2.0);
     let (p0, p1) = (path.point(s0), path.point(s1));
     let d = sub(p1, p0);
@@ -626,7 +678,7 @@ fn along<'g>(
         return Some(
             glyphs
                 .iter()
-                .map(|&(x, g)| (Pose { origin: Coord { x: a.x + x * k * u.x, y: a.y + x * k * u.y }, u, k }, g))
+                .map(|g| (Pose { origin: Coord { x: a.x + g.x * k * u.x, y: a.y + g.x * k * u.y }, u, k }, g))
                 .collect(),
         );
     }
@@ -636,9 +688,9 @@ fn along<'g>(
     let mut poses = Vec::with_capacity(glyphs.len());
     let mut last: Option<Coord<f64>> = None;
     let mut turned = 0.0;
-    for &(x, g) in glyphs {
-        let half = g.advance() * k / 2.0;
-        let mid = (x * k) + half;
+    for g in glyphs {
+        let half = g.advance * k / 2.0;
+        let mid = (g.x * k) + half;
         let sign = if flip { -1.0 } else { 1.0 };
         let at = if flip { s1 - mid } else { s0 + mid };
         let reach = half.max(size * 0.8);
@@ -701,7 +753,7 @@ mod tests {
     fn crossing_roads_do_not_overlap() {
         let a = road("Fulton Street", "primary", &[(0.0, 50.0), (100.0, 50.0)]);
         let b = road("Great Avenue", "minor", &[(50.0, 0.0), (50.0, 100.0)]);
-        let out = place(&[a, b], &frame(), &Style::default()).unwrap();
+        let out = place(&[a, b], &frame(), &Style::default(), &GoogleFonts::new()).unwrap();
         assert!(!out.is_empty());
         // The primary is placed first, on its middle; the avenue is pushed off
         // the crossing.
@@ -712,8 +764,8 @@ mod tests {
     #[test]
     fn text_reads_left_to_right() {
         let a = road("AB", "primary", &[(90.0, 50.0), (10.0, 50.0)]);
-        let style = Style { font: "futural".into(), ..Style::default() };
-        let out = place(&[a], &frame(), &style).unwrap();
+        let style = Style { font: LabelFont::drawland("futural"), ..Style::default() };
+        let out = place(&[a], &frame(), &style, &GoogleFonts::new()).unwrap();
         // The first stroke drawn is the `A`, left of the `B`.
         let first = out[0].0[0].x;
         let last = out.last().unwrap().0[0].x;
@@ -723,6 +775,6 @@ mod tests {
     #[test]
     fn a_short_road_goes_unlabelled() {
         let a = road("A very long street name", "minor", &[(10.0, 10.0), (14.0, 10.0)]);
-        assert!(place(&[a], &frame(), &Style::default()).unwrap().is_empty());
+        assert!(place(&[a], &frame(), &Style::default(), &GoogleFonts::new()).unwrap().is_empty());
     }
 }

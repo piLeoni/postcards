@@ -16,6 +16,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 rayon = { workspace = true }
+ttf-parser = { workspace = true }
 
 [dev-dependencies]
 serde-saphyr = { workspace = true }

@@ -13,6 +13,7 @@ import { loadDrawland } from './drawland'
 import { fetchOverpass } from './overpass'
 import { fetchTiles } from './tiles'
 import { fetchTerrain } from './terrain'
+import { fetchGoogleFonts } from './googleFonts'
 import { Task } from './progress'
 
 let current = null
@@ -60,6 +61,8 @@ async function run({ token, graph, lat, lng }) {
       await fetchTerrain(job, ac.signal, download)
       if (ac.signal.aborted) return
       job.readTerrain(emit)
+      await fetchGoogleFonts(engine, graph, job, ac.signal, download)
+      if (ac.signal.aborted) return
       download.ok()
       const t0 = performance.now()
       // The SVG arrives in pieces as it is written, part 0 the whole output

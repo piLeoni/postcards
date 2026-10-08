@@ -175,6 +175,19 @@ pub fn tiles_plan(graph: &str, max_zoom: u8) -> Result<JsValue, JsValue> {
     Ok(o.into())
 }
 
+/// Google font cache keys (`Roboto:400`, …) any `modules.labels` def in `graph` needs.
+#[wasm_bindgen(js_name = googleFontKeys)]
+pub fn google_font_keys(graph: &str) -> Result<js_sys::Array, JsValue> {
+    let d = Doc::load(graph)?;
+    let arr = js_sys::Array::new();
+    if let Body::Grammar(g) = &d.body {
+        for k in drawland_core::labels::google_font_keys_in_grammar(g) {
+            arr.push(&JsValue::from_str(&k));
+        }
+    }
+    Ok(arr)
+}
+
 /// How to ask Overpass, the same as the command line: `{ endpoints, pauses,
 /// timeoutS, maxSlotWaitS }`, the servers in order, the seconds to wait
 /// before each round of them, how long to wait for one to answer, and the
@@ -234,6 +247,7 @@ pub struct Job {
     terrain: Option<drawland_core::terrain::Grid>,
     /// What the filling may use at most, in bytes; `None` for no ceiling.
     memory_budget: Option<u64>,
+    google_fonts: std::collections::BTreeMap<String, Vec<u8>>,
     /// Set when a draw failed in a way that may have left the wasm heap
     /// unusable. Every later call refuses, and `free` is left to the
     /// finalizer, so a broken job cannot throw on drop and hide the real
@@ -256,6 +270,7 @@ impl Default for Job {
             elevation: None,
             terrain: None,
             memory_budget: None,
+            google_fonts: std::collections::BTreeMap::new(),
             poisoned: false,
         }
     }
@@ -281,6 +296,7 @@ impl Job {
             elevation: None,
             terrain: None,
             memory_budget: None,
+            google_fonts: std::collections::BTreeMap::new(),
             poisoned: false,
         })
     }
@@ -405,6 +421,14 @@ impl Job {
         Ok(js_sys::Array::of2(&text.into(), &warn.into()))
     }
 
+    /// TTF bytes for a [`google_font_keys`] entry.
+    #[wasm_bindgen(js_name = addGoogleFont)]
+    pub fn add_google_font(&mut self, key: &str, bytes: &[u8]) -> Result<(), JsValue> {
+        self.check_alive()?;
+        self.google_fonts.insert(key.to_string(), bytes.to_vec());
+        Ok(())
+    }
+
     /// One of the `tiles`, as downloaded (raw or gzipped protobuf).
     #[wasm_bindgen(js_name = addTile)]
     pub fn add_tile(&mut self, z: u8, x: u32, y: u32, bytes: &[u8]) -> Result<(), JsValue> {
@@ -464,6 +488,7 @@ impl Job {
                     terrain,
                     sources: string_map(&sources),
                     memory_budget: self.memory_budget,
+                    google_fonts: self.google_fonts.clone(),
                 },
                 &draw,
                 &mut |part, text| {
@@ -696,6 +721,7 @@ impl Doc {
                         sources: &inputs.sources,
                         terrain: inputs.terrain,
                         memory_budget: inputs.memory_budget,
+                        google_fonts: inputs.google_fonts,
                     },
                     draw,
                     out,
@@ -714,6 +740,7 @@ struct RenderInputs {
     terrain: Option<drawland_core::terrain::Grid>,
     sources: BTreeMap<String, String>,
     memory_budget: Option<u64>,
+    google_fonts: BTreeMap<String, Vec<u8>>,
 }
 
 fn default_center(map: &drawland_core::profile::OutputSpec) -> (f64, f64) {

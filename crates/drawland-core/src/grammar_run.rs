@@ -97,6 +97,8 @@ pub struct Inputs<'a> {
     pub terrain: Option<crate::terrain::Grid>,
     /// Bytes the filling may use at most; `None` draws without a ceiling.
     pub memory_budget: Option<u64>,
+    /// TTF bytes for `modules.labels` Google fonts, keyed by `text::google_font_key`.
+    pub google_fonts: BTreeMap<String, Vec<u8>>,
 }
 
 /// Evaluate `grammar` against `inputs`, project to `output`, compose and write.
@@ -183,6 +185,7 @@ pub fn run_into(grammar: &Grammar, output: &Output, inputs: Inputs, draw: &Task,
         output: warp.bend_area(w, h, &projector.project_geometry(&frame)),
         terrain: inputs.terrain.as_ref(),
         projector: &projector,
+        google_fonts: &inputs.google_fonts,
     };
     project.ok("");
 
@@ -232,6 +235,7 @@ struct Engine<'a> {
     terrain: Option<&'a crate::terrain::Grid>,
     /// The projection, so terrain pixels land in the same millimetres.
     projector: &'a crate::projection::Projector,
+    google_fonts: &'a crate::labels::GoogleFonts,
 }
 
 /// Evaluate every non-fill def, in dependency order (waves).
@@ -405,7 +409,7 @@ fn eval_op(
             for n in &l.from {
                 named.extend(feats(n)?);
             }
-            Value::Lines(crate::labels::place(&named, &engine.output, &l.style)?)
+            Value::Lines(crate::labels::place(&named, &engine.output, &l.style, engine.google_fonts)?)
         }
         Op::Fill(_) => return Err("tools_fill is evaluated in the fill pass".into()),
         Op::Module(m) => match &m.from {
@@ -877,7 +881,7 @@ mod tests {
         run(
             &grammar,
             &output(),
-            Inputs { features: vec![], tiles: vec![], sources: &BTreeMap::new(), terrain: None, memory_budget: None },
+            Inputs { features: vec![], tiles: vec![], sources: &BTreeMap::new(), terrain: None, memory_budget: None, google_fonts: BTreeMap::new() },
         )
     }
 

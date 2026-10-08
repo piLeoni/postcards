@@ -1,5 +1,6 @@
 //! `drawland map`: a profile and a place in, the layered map SVG out.
 
+mod google_fonts;
 mod osm_http;
 mod term;
 
@@ -295,11 +296,16 @@ fn map_v3(
     // front ends use, cached a tile at a time like everything else.
     let (features, tiles, terrain) = fetch(http, download, &output, &needs, &grammar)?;
 
+    let mut google_fonts = BTreeMap::new();
+    for key in drawland_core::labels::google_font_keys_in_grammar(&grammar) {
+        google_fonts.insert(key.clone(), google_fonts::fetch(&key)?);
+    }
+
     let draw = Task::begin(term, "draw", None, "draw", 0, "");
     let rendered = drawland_core::grammar_run::run_with(
         &grammar,
         &output,
-        drawland_core::grammar_run::Inputs { features, tiles, sources: &sources, terrain, memory_budget: None },
+        drawland_core::grammar_run::Inputs { features, tiles, sources: &sources, terrain, memory_budget: None, google_fonts },
         &draw,
     )
     .map_err(|e| e.to_string())?;

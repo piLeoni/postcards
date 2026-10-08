@@ -221,9 +221,10 @@ together so no set's names cover another's.
 | `curved` | `true` | bend text along curving roads |
 | `upper` | `false` | write in capitals |
 | `keys` | `["name", "ref"]` | the tags the text is read from, the first present |
-| `font` | `"futural"` | the built-in font |
+| `font` | `"futural"` | draw.land Hershey id (`"futural"`) or `{ origin: "drawland", id }` / `{ origin: "google", family, weight?, italic? }` (Google fonts download at draw time) |
 | `buffer` | `0` | concentric buffer passes around each name (1, 2, 3…); each pass adds an outline at `bufferStep`, `2× bufferStep`, … on top of the centre stroke |
 | `bufferStep` | `"0.1mm"` | half-width per buffer pass (round caps) |
+| `keepCenterline` | `true` | with `buffer` > 0, keep the centre stroke; `false` draws only the concentric outlines |
 | `rules` | — | a list of `{ tags, font?, size?, minSize?, buffer?, bufferStep?, … }`; the **first** rule whose `tags` match (same tests as `features.where`) overrides the defaults for that feature |
 
 ```js

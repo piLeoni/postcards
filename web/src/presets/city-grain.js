@@ -73,7 +73,15 @@ const streetNames = features.where(features.tiles("road_names"), {
 const labels = modules.labels({
   from: [streetNames, features.tiles("parks")],
   rules: [
-    { tags: { "tiles:layer": "park" }, size: "2.5mm", minSize: "2.2mm", buffer: 2, bufferStep: "0.1mm" },
+    {
+      tags: { "tiles:layer": "park" },
+      size: "2.5mm",
+      minSize: "2.2mm",
+      buffer: 2,
+      bufferStep: "0.1mm",
+      keepCenterline: false,
+      font: { origin: "google", family: "Roboto Slab", weight: 700 },
+    },
     { tags: { class: ["motorway", "trunk", "primary"] }, buffer: 1, bufferStep: "0.08mm" },
   ],
 })

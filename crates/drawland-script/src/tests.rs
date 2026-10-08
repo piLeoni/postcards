@@ -101,7 +101,7 @@ fn a_script_draws_contours_in_a_loop_over_elevation_bands() {
     let out = run(
         &g,
         &output,
-        Inputs { features: vec![], tiles: vec![], sources: &BTreeMap::new(), terrain: Some(terrain), memory_budget: None },
+        Inputs { features: vec![], tiles: vec![], sources: &BTreeMap::new(), terrain: Some(terrain), memory_budget: None, google_fonts: BTreeMap::new() },
     )
     .unwrap();
     assert_eq!(out.groups.len(), 3, "three contour belts");
@@ -130,7 +130,7 @@ fn the_postcard_script_renders_without_osm_data() {
     let back = Grammar::from_json(&g.to_json().to_string()).unwrap();
     assert_eq!(back, g, "the graph survives JSON");
     let output = Output::new(&g.output, (-122.256196, 37.8771145));
-    let out = run(&g, &output, Inputs { features: vec![], tiles: vec![], sources: &BTreeMap::new(), terrain: None, memory_budget: None }).unwrap();
+    let out = run(&g, &output, Inputs { features: vec![], tiles: vec![], sources: &BTreeMap::new(), terrain: None, memory_budget: None, google_fonts: BTreeMap::new() }).unwrap();
     assert!(!out.svg.is_empty());
     assert_eq!(out.groups.len(), 15);
 }
@@ -167,7 +167,7 @@ fn a_script_draws_terrain_from_the_elevation() {
     let out = run(
         &g,
         &output,
-        Inputs { features: vec![], tiles: vec![], sources: &BTreeMap::new(), terrain: Some(terrain), memory_budget: None },
+        Inputs { features: vec![], tiles: vec![], sources: &BTreeMap::new(), terrain: Some(terrain), memory_budget: None, google_fonts: BTreeMap::new() },
     )
     .unwrap();
     assert_eq!(out.groups.len(), 2, "two terrain groups");
@@ -216,7 +216,7 @@ fn a_burin_document_runs_inside_a_profile() {
     let out = run(
         &g,
         &output,
-        Inputs { features: vec![], tiles: vec![], sources: &BTreeMap::new(), terrain: Some(terrain), memory_budget: None },
+        Inputs { features: vec![], tiles: vec![], sources: &BTreeMap::new(), terrain: Some(terrain), memory_budget: None, google_fonts: BTreeMap::new() },
     )
     .unwrap();
     assert_eq!(out.groups.len(), 1);
@@ -373,6 +373,32 @@ fn labels_accept_user_defined_rules() {
 }
 
 #[test]
+fn labels_accept_keep_centerline_and_font_origins() {
+    let g = evaluate(
+        "modules.labels({ from: features.tiles('parks'), buffer: 2, keepCenterline: false })\n\
+         modules.labels({\n\
+           from: features.tiles('road_names'),\n\
+           font: { origin: 'google', family: 'Roboto', weight: 500 },\n\
+           rules: [{ tags: { class: ['primary'] }, buffer: 1, keepCenterline: false }],\n\
+         })\n",
+    )
+    .unwrap();
+    let styles: Vec<_> = g
+        .defs(Section::Lines)
+        .iter()
+        .filter_map(|d| match &d.op {
+            Op::Labels(x) => Some(&x.style),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(styles.len(), 2);
+    assert!(!styles[0].keep_centerline);
+    assert!(styles[1].keep_centerline);
+    assert!(!styles[1].rules[0].keep_centerline.unwrap());
+    assert!(styles[1].font.google_spec().is_some());
+}
+
+#[test]
 fn labels_read_several_feature_sets_and_draw_as_lines() {
     let g = evaluate(
         "const streets = features.tiles('road_names')\n\
@@ -390,7 +416,7 @@ fn labels_read_several_feature_sets_and_draw_as_lines() {
     assert_eq!(labels.from.len(), 2);
     assert_eq!(labels.style.size.0, 2.2);
     assert!(labels.style.upper);
-    assert_eq!(labels.style.font, "futural");
+    assert_eq!(labels.style.font.drawland_id(), Some("futural"));
     let e = err("modules.labels({ from: features.tiles('parks'), colour: 'red' })");
     assert!(e.message.contains("unknown option colour"), "{e}");
 }

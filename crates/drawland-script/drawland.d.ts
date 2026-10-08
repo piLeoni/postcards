@@ -405,8 +405,8 @@ interface LabelOptions {
   upper?: boolean
   /** The tags the text is read from, the first present. Default `["name", "ref"]`. */
   keys?: string | string[]
-  /** A built-in single-stroke font. Default `"futural"`. */
-  font?: "futural"
+  /** Draw.land Hershey font or a Google outline font. Default `"futural"`. */
+  font?: LabelFont
   /**
    * Concentric buffer passes around each placed name (0 = centre stroke only).
    * Each pass adds an outline at `bufferStep`, `2× bufferStep`, … Default `0`.
@@ -414,6 +414,8 @@ interface LabelOptions {
   buffer?: number
   /** Half-width per buffer pass. Default `"0.1mm"`. */
   bufferStep?: Length
+  /** With `buffer` > 0, keep the centre stroke. Default `true`; `false` = outlines only. */
+  keepCenterline?: boolean
   /**
    * Overrides for features that match `tags` (same syntax as `features.where`).
    * First matching rule wins; unset fields keep the defaults above.
@@ -425,7 +427,7 @@ interface LabelOptions {
 interface LabelRule {
   /** Tag tests, e.g. `{ class: ["motorway", "primary"] }` or `{ "tiles:layer": "park" }`. */
   tags: Tags
-  font?: "futural"
+  font?: LabelFont
   size?: Length
   minSize?: Length
   padding?: Length
@@ -434,6 +436,28 @@ interface LabelRule {
   upper?: boolean
   buffer?: number
   bufferStep?: Length
+  keepCenterline?: boolean
+}
+
+/** `modules.labels` font: draw.land monoline (Hershey) or Google outline. */
+type LabelFont =
+  | DrawlandFontId
+  | DrawlandFont
+  | GoogleFont
+
+/** Built-in single-stroke font id (today: `"futural"`). */
+type DrawlandFontId = "futural"
+
+interface DrawlandFont {
+  origin: "drawland"
+  id: DrawlandFontId | string
+}
+
+interface GoogleFont {
+  origin: "google"
+  family: string
+  weight?: number
+  italic?: boolean
 }
 
 /** What the labels module publishes. */

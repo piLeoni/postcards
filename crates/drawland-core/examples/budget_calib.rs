@@ -4,6 +4,7 @@
 //! Run: cargo run --release -p drawland-core --example budget_calib
 
 use std::alloc::{GlobalAlloc, Layout, System};
+use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 struct Counting;
@@ -64,7 +65,7 @@ fn main() {
             let base = LIVE.load(Ordering::Relaxed);
             PEAK.store(base, Ordering::Relaxed);
             let t = std::time::Instant::now();
-            let Ok(out) = run(&grammar, &output, Inputs { features: vec![], tiles: vec![], sources: &Default::default(), terrain: None, memory_budget: None }) else {
+            let Ok(out) = run(&grammar, &output, Inputs { features: vec![], tiles: vec![], sources: &Default::default(), terrain: None, memory_budget: None, google_fonts: BTreeMap::new() }) else {
                 println!("{g:<12} {s}: failed");
                 continue;
             };
