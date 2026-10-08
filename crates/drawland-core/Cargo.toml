@@ -10,6 +10,7 @@ penfill = { workspace = true }
 burin-map-core = { workspace = true }
 terramask = { workspace = true }
 geo = { workspace = true }
+i_overlay = { workspace = true }
 geographiclib-rs = { workspace = true }
 proj4rs = { workspace = true }
 serde = { workspace = true }

@@ -225,8 +225,13 @@ impl Tiles {
             .lines
             .iter()
             .map(|l| (tags(&l.layer, &l.class, &l.subclass, &l.tags), Geometry::LineString(line(&l.points))));
+        let pins = joined.pins.iter().map(|p| {
+            let [x, y] = merc_to_lonlat(p.position[0], p.position[1]);
+            (tags(&p.layer, &p.class, &p.subclass, &p.tags), Geometry::Point(geo::Point::new(x, y)))
+        });
         areas
             .chain(lines)
+            .chain(pins)
             .enumerate()
             .map(|(i, (tags, geometry))| Feature { element: Element::Tile, id: i as i64, tags, geometry })
             .collect()

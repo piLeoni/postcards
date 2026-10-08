@@ -13,6 +13,8 @@
 //! Outline fonts (Google Fonts and similar) are traced as closed contours for
 //! the plotter; see [`layout`].
 
+use crate::geom::{self, Lines};
+use geo::{Area, Coord, LineString, MultiPolygon, Polygon};
 use serde::{Deserialize, Serialize};
 use std::sync::OnceLock;
 
@@ -413,6 +415,40 @@ fn layout_google(bytes: &[u8], text: &str) -> Result<LabelLayout, String> {
         bottom: -(face.descender() as f64),
         outline: true,
     })
+}
+
+/// The filled shape of an outline glyph from its closed contours, as the font
+/// fills it: by the non-zero rule over all of them at once, windings as
+/// drawn. Overlapping strokes (variable fonts keep them, even within one
+/// contour) merge into one body; counters, wound the other way, stay open.
+pub(crate) fn glyph_silhouette(contours: &Lines) -> MultiPolygon<f64> {
+    use i_overlay::core::fill_rule::FillRule;
+    use i_overlay::float::simplify::SimplifyShape;
+    let paths: Vec<Vec<[f64; 2]>> = contours
+        .iter()
+        .map(|c| {
+            let mut p: Vec<[f64; 2]> = c.0.iter().map(|q| [q.x, q.y]).collect();
+            if p.len() > 1 && p.first() == p.last() {
+                p.pop();
+            }
+            p
+        })
+        .filter(|p| p.len() >= 3)
+        .collect();
+    if paths.is_empty() {
+        return geom::empty();
+    }
+    let ring = |r: &Vec<[f64; 2]>| LineString::from(r.iter().map(|p| Coord { x: p[0], y: p[1] }).collect::<Vec<_>>());
+    let polys = paths
+        .simplify_shape(FillRule::NonZero)
+        .iter()
+        .filter_map(|shape| {
+            let (outer, holes) = shape.split_first()?;
+            Some(Polygon::new(ring(outer), holes.iter().map(ring).collect()))
+        })
+        .filter(|p| p.unsigned_area() > 0.0)
+        .collect();
+    MultiPolygon::new(polys)
 }
 
 /// The plain letter under a Latin accent, so `é` is drawn as `e`.

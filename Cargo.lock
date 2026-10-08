@@ -626,6 +626,7 @@ dependencies = [
  "burin-map-core",
  "geo",
  "geographiclib-rs",
+ "i_overlay 4.5.2",
  "penfill",
  "proj4rs",
  "rayon",

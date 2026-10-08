@@ -258,31 +258,6 @@ impl Placed {
     }
 }
 
-/// The filled shape of an outline glyph from its closed contours. Fonts fill
-/// by the non-zero rule: a contour wound the other way from the glyph's
-/// largest one is a counter. Taken largest first, so a counter is cut from
-/// the letter around it and an island inside a counter is put back.
-fn glyph_shape(contours: Lines) -> MultiPolygon<f64> {
-    let mut parts: Vec<(f64, MultiPolygon<f64>)> = contours
-        .into_iter()
-        .filter(|c| c.0.len() >= 4)
-        .map(|c| {
-            let p = Polygon::new(c, vec![]);
-            (p.signed_area(), geom::make_valid(&p))
-        })
-        .filter(|(a, _)| *a != 0.0)
-        .collect();
-    parts.sort_by(|a, b| b.0.abs().total_cmp(&a.0.abs()));
-    let Some(lead) = parts.first().map(|(a, _)| a.signum()) else { return geom::empty() };
-    parts.into_iter().fold(geom::empty(), |shape, (a, p)| {
-        if a.signum() == lead {
-            geom::union_multi([&shape, &p])
-        } else {
-            geom::difference(&shape, &p)
-        }
-    })
-}
-
 /// `strokes` with `passes` concentric outlines around them (each pass buffers
 /// them all by one more step), and the area inside the outermost one.
 fn buffered(strokes: Lines, passes: u32, step: Mm, keep_strokes: bool) -> (Lines, MultiPolygon<f64>) {
@@ -318,9 +293,31 @@ fn road_rank(f: &Feature) -> f64 {
     }
 }
 
+fn pin_rank(f: &Feature) -> f64 {
+    let layer = f.tag("tiles:layer").unwrap_or("");
+    let class = f.tag("class").unwrap_or("");
+    if layer == "place" {
+        return match class {
+            "city" => 1.0,
+            "town" => 0.85,
+            "suburb" => 0.55,
+            "neighbourhood" | "neighborhood" => 0.5,
+            "quarter" => 0.45,
+            "island" => 0.4,
+            "hamlet" | "village" => 0.35,
+            _ => 0.3,
+        };
+    }
+    if layer == "poi" {
+        return 0.25;
+    }
+    0.2
+}
+
 enum Shape {
     Road(Vec<Coord<f64>>),
     Area(Polygon<f64>),
+    Pin(Coord<f64>),
 }
 
 struct Candidate {
@@ -534,6 +531,9 @@ pub fn place(features: &[Feature], frame: &MultiPolygon<f64>, style: &Style, goo
             let area = poly.unsigned_area();
             let rank = (0.25 + (area / page).sqrt()).min(1.0);
             candidates.push(Candidate { text: name, rank, extent: area.sqrt(), shape: Shape::Area(poly), look, rule });
+        } else if let geo::Geometry::Point(p) = &f.geometry {
+            let rank = pin_rank(f);
+            candidates.push(Candidate { text: name, rank, extent: 1.0, shape: Shape::Pin(p.0), look, rule });
         } else {
             let class = f.tag("class").or_else(|| f.tag("highway")).unwrap_or("").to_string();
             let entry = roads.entry((name, class)).or_insert_with(|| (road_rank(f), Vec::new(), look, rule));
@@ -586,9 +586,14 @@ pub fn place(features: &[Feature], frame: &MultiPolygon<f64>, style: &Style, goo
                 taken.add(p.quad(&layout, look.padding.0));
                 let s = p.strokes(&layout);
                 if layout.outline {
-                    glyphs.push(glyph_shape(s.clone()));
+                    // The pen traces the letter's edge, not the contours it
+                    // was built from: those overlap inside the letter.
+                    let shape = text::glyph_silhouette(&s);
+                    strokes.extend(geom::rings(&shape));
+                    glyphs.push(shape);
+                } else {
+                    strokes.extend(s);
                 }
-                strokes.extend(s);
             }
             let (lines, outer) = buffered(strokes, look.buffer, look.buffer_step, look.keep_centerline);
             out.lines.extend(lines.clone());
@@ -648,19 +653,20 @@ pub fn place(features: &[Feature], frame: &MultiPolygon<f64>, style: &Style, goo
                     if !far(at, &named) {
                         continue;
                     }
-                    let start = Coord { x: at.x - width / 2.0, y: at.y };
-                    let poses: Vec<Pose> = (0..layout.glyphs.len())
-                        .map(|i| Pose {
-                            glyph: i,
-                            origin: Coord { x: start.x + layout.glyphs[i].x * k, y: start.y },
-                            u: Coord { x: 1.0, y: 0.0 },
-                            k,
-                        })
-                        .collect();
+                    let poses = horizontal_label(&layout, at, width, k);
                     if fits(&poses) && clear(&poses, &taken) {
                         keep(poses, at, &mut taken, &mut out, &mut named);
                         break;
                     }
+                }
+            }
+            Shape::Pin(at) => {
+                if !frame.contains(&Point::from(*at)) || !far(*at, &named) {
+                    continue;
+                }
+                let poses = horizontal_label(&layout, *at, width, k);
+                if clear(&poses, &taken) {
+                    keep(poses, *at, &mut taken, &mut out, &mut named);
                 }
             }
         }
@@ -712,6 +718,18 @@ fn along(path: &Path, s: f64, width: f64, size: f64, k: f64, glyphs: &[LabelGlyp
         poses.push(Pose { glyph, origin: Coord { x: c.x - half * u.x, y: c.y - half * u.y }, u, k });
     }
     (turned <= 120f64.to_radians()).then_some(poses)
+}
+
+fn horizontal_label(layout: &LabelLayout, at: Coord<f64>, width: f64, k: f64) -> Vec<Pose> {
+    let start = Coord { x: at.x - width / 2.0, y: at.y };
+    (0..layout.glyphs.len())
+        .map(|i| Pose {
+            glyph: i,
+            origin: Coord { x: start.x + layout.glyphs[i].x * k, y: start.y },
+            u: Coord { x: 1.0, y: 0.0 },
+            k,
+        })
+        .collect()
 }
 
 /// Where to try an area's label, best first: its interior point, its centroid,
@@ -853,6 +871,64 @@ mod tests {
         Some((font, fonts))
     }
 
+    fn assert_glyphs_merge(font: LabelFont, bytes: &[u8], sample: &str) {
+        let layout = text::layout(&font, Some(bytes), sample).unwrap();
+        assert!(layout.outline);
+        for (ch, g) in sample.chars().zip(&layout.glyphs) {
+            if g.strokes.is_empty() {
+                continue;
+            }
+            let contours: Lines = g
+                .strokes
+                .iter()
+                .map(|s| LineString::from(s.iter().map(|&(x, y)| Coord { x, y }).collect::<Vec<_>>()))
+                .collect();
+            let parts = text::glyph_silhouette(&contours).0.len();
+            let disjoint = ch == 'i' || ch == 'j';
+            assert!(
+                disjoint || parts <= 1,
+                "'{ch}' should be one merged body, got {parts} parts from {} contours",
+                g.strokes.len()
+            );
+        }
+    }
+
+    #[test]
+    fn outline_glyph_overlapping_contours_merge_to_one_silhouette() {
+        let Some((font, fonts)) = system_face() else { return };
+        let bytes = fonts.values().next().unwrap();
+        assert_glyphs_merge(font, bytes, "adng");
+    }
+
+    /// Google's Roboto (`fonts.gstatic.com`, the file the page downloads), a
+    /// variable font whose contours overlap, `P` and `e` each within itself.
+    /// Skipped unless it is at `/tmp/roboto.ttf`.
+    #[test]
+    fn roboto_glyphs_are_one_body_each_with_their_counters() {
+        let Ok(bytes) = std::fs::read("/tmp/roboto.ttf") else { return };
+        let font: LabelFont = serde_json::from_value(serde_json::json!({ "origin": "google", "family": "Roboto" })).unwrap();
+        assert_glyphs_merge(font.clone(), &bytes, "Lands End");
+        let sample = "LandsEOPeg";
+        let counters = [0, 1, 0, 1, 0, 0, 1, 1, 1, 1];
+        let layout = text::layout(&font, Some(&bytes), sample).unwrap();
+        for ((ch, g), want) in sample.chars().zip(&layout.glyphs).zip(counters) {
+            let contours: Lines = g
+                .strokes
+                .iter()
+                .map(|s| LineString::from(s.iter().map(|&(x, y)| Coord { x, y }).collect::<Vec<_>>()))
+                .collect();
+            let shape = text::glyph_silhouette(&contours);
+            assert_eq!(shape.0.len(), 1, "'{ch}' is one body");
+            assert_eq!(shape.0[0].interiors().len(), want, "'{ch}' counters");
+        }
+
+        // The pen draws each letter's edge once: one ring per body and counter.
+        let fonts = GoogleFonts::from([(font.google_key().unwrap(), bytes)]);
+        let style = Style { font, size: Mm(6.0), min_size: Mm(6.0), ..Style::default() };
+        let placed = place(&[park(sample)], &frame(), &style, &fonts).unwrap();
+        assert_eq!(placed.lines.len(), sample.len() + counters.iter().sum::<usize>());
+    }
+
     #[test]
     fn an_outline_font_covers_its_glyphs_with_the_counters_open() {
         let Some((font, fonts)) = system_face() else { return };
@@ -860,7 +936,6 @@ mod tests {
         let placed = place(&[park("OPg")], &frame(), &style, &fonts).unwrap();
         assert!(!placed.lines.is_empty(), "the contours are drawn");
         let area = placed.area();
-        // `O`, `P` and `g` each keep their counter.
         assert_eq!(area.0.len(), 3);
         assert!(area.0.iter().all(|p| p.interiors().len() == 1));
         // One baseline: the `g` hangs below the capitals, whose bottoms line up.

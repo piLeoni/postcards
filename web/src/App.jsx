@@ -4,6 +4,7 @@ import MapView from './components/MapView'
 import Sidebar from './components/Sidebar'
 import Docs from './docs/Docs'
 import { loadDrawland } from './lib/drawland'
+import { loadGoogleFontsForGraph } from './lib/googleFonts'
 import { docAtom } from './lib/store'
 import { outputComment, outputUnit, setOutputComment, setOutputKeys } from './lib/doc'
 import { compile, literalOutputInfo } from './lib/graph'
@@ -114,6 +115,7 @@ export default function App() {
     return () => window.removeEventListener('resize', on)
   }, [])
   const drawTokenRef = useRef(0)
+  const drawAbortRef = useRef(null)
   // Handles into the map, for the two explicit centre actions. Nothing else
   // reads them: the map is otherwise free to scroll without touching the output.
   const mapApiRef = useRef(null)
@@ -339,7 +341,18 @@ export default function App() {
         if (token === drawTokenRef.current) setLoadMin(true)
       }
     }
-    workerRef.current.postMessage({ type: 'draw', token, graph, lat, lng })
+    drawAbortRef.current?.abort()
+    const ac = new AbortController()
+    drawAbortRef.current = ac
+    loadGoogleFontsForGraph(engine, graph, ac.signal)
+      .then((googleFonts) => {
+        if (token !== drawTokenRef.current || ac.signal.aborted) return
+        workerRef.current.postMessage({ type: 'draw', token, graph, lat, lng, googleFonts })
+      })
+      .catch((e) => {
+        if (token !== drawTokenRef.current || e?.name === 'AbortError') return
+        onWorkerRef.current?.({ type: 'error', token, message: e?.message ?? String(e), fatal: false })
+      })
   }, [engine, graph, output])
 
   /**
@@ -350,6 +363,7 @@ export default function App() {
    */
   const stop = useCallback(() => {
     if (status.phase !== 'working') return
+    drawAbortRef.current?.abort()
     drawTokenRef.current++
     setLoadMin(true)
     setTiles(null)

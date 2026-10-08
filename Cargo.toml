@@ -19,6 +19,8 @@ burin-map-script = { path = "../burin-map/crates/burin-map-script", version = "0
 # Reads tiles only; the CLI turns `fetch` on, the page downloads them itself.
 terramask = { path = "../terramask/crates/terramask", version = "0.2.0", default-features = false }
 geo = "0.33"
+# The boolean engine under geo, for the non-zero fill of font outlines.
+i_overlay = "4.5"
 geographiclib-rs = "0.2"
 # Without default features: the aeqd projection pulls in C, which the WASM build cannot compile.
 proj4rs = { version = "0.2", default-features = false }

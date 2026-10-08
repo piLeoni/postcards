@@ -66,21 +66,30 @@ compose.mask({ name: "wet_cover", from: water, occludes: [...park] })
 compose.mask({ name: "roads_cover", from: roads.area, occludes: [...park, ...wetDraws] })
 compose.mask({ name: "bldg_cover", from: buildings, occludes: [...park, ...wetDraws, ...road] })
 
-// Street and park names: a halo cut from everything below, then the letters on top.
-const streetNames = features.where(features.tiles("road_names"), {
-  class: ["motorway", "trunk", "primary", "secondary", "tertiary", "minor"],
-})
+// Names: streets (all classes in the tiles — Venice calli are often path/service),
+// parks, neighbourhoods, and a few POI types.
+const streetNames = features.tiles("road_names")
+const places = features.tiles("place:suburb,neighbourhood,quarter,island")
+const pois = features.tiles("poi:attraction,museum,monument,castle,theme_park,viewpoint")
 const labels = modules.labels({
-  from: [streetNames, features.tiles("parks")],
+  from: [streetNames, features.tiles("parks"), places, pois],
   rules: [
     {
       id: "park",
       tags: { "tiles:layer": "park" },
       size: "2.5mm",
       minSize: "2.2mm",
-      font: { origin: "google", family: "DynaPuff" },
+      font: { origin: "google", family: "Roboto" },
     },
-    { id: "major", tags: { class: ["motorway", "trunk", "primary"] }, buffer: 1, bufferStep: "0.08mm" },
+    {
+      id: "place",
+      tags: { "tiles:layer": "place" },
+      size: "2.6mm",
+      minSize: "2.1mm",
+    },
+    { id: "poi", tags: { "tiles:layer": "poi" }, size: "2mm", minSize: "1.6mm" },
+    { id: "major", tags: { class: ["motorway", "trunk", "primary"] }, buffer: 1, bufferStep: "0.1mm", keepCenterline: false },
+    { id: "street", tags: { "tiles:layer": "transportation_name" } },
   ],
 })
 const labelClear = areas.union(labels.area, areas.buffer(labels.lines, "0.45mm"))

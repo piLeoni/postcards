@@ -23,7 +23,7 @@ self.onmessage = ({ data }) => {
   if (data.type === 'draw') run(data)
 }
 
-async function run({ token, graph, lat, lng }) {
+async function run({ token, graph, lat, lng, googleFonts }) {
   current?.abort()
   const ac = new AbortController()
   current = ac
@@ -61,7 +61,18 @@ async function run({ token, graph, lat, lng }) {
       await fetchTerrain(job, ac.signal, download)
       if (ac.signal.aborted) return
       job.readTerrain(emit)
-      await fetchGoogleFonts(engine, graph, job, ac.signal, download)
+      if (googleFonts && Object.keys(googleFonts).length) {
+        const row = download.child('google-fonts', 'google-fonts', Object.keys(googleFonts).length, 'google fonts')
+        let n = 0
+        for (const [key, bytes] of Object.entries(googleFonts)) {
+          job.addGoogleFont(key, bytes)
+          n += 1
+          row.step(n, key)
+        }
+        row.ok(`${n} font${n === 1 ? '' : 's'}`)
+      } else {
+        await fetchGoogleFonts(engine, graph, job, ac.signal, download)
+      }
       if (ac.signal.aborted) return
       download.ok()
       const t0 = performance.now()
