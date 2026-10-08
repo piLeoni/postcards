@@ -333,6 +333,12 @@ fn eval_op(
         }
         Op::FillHoles(n) => Value::Area(geom::fill_holes(&area(n)?)),
         Op::Grow(g) => Value::Area(geom::buffer(&area(&g.of)?, g.by.0)),
+        Op::BufferLines(b) => {
+            let ls = lines(&b.lines)?;
+            let radius = b.by.0;
+            let parts: Vec<MultiPolygon<f64>> = ls.iter().map(|l| geom::buffer_line_flat(l, radius)).collect();
+            Value::Area(geom::union_multi(&parts))
+        }
         Op::Frame => Value::Area(engine.output.clone()),
         Op::ExtendToFrame(e) => {
             let of = area(&e.of)?;

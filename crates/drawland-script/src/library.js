@@ -155,6 +155,11 @@
       if (typeof by !== "number" && typeof by !== "string") fail(`areas.grow: by is a length like "0.5mm", got ${describe(by)}`);
       return make(Area, "areas", { tools_grow: { of: need(of, Area, "areas.grow"), by } });
     },
+    /** Half-width buffer around lines (flat caps), merged into one area. */
+    buffer(of, by) {
+      if (typeof by !== "number" && typeof by !== "string") fail(`areas.buffer: by is a length like "0.2mm", got ${describe(by)}`);
+      return make(Area, "areas", { tools_buffer_lines: { lines: need(of, Lines, "areas.buffer"), by } });
+    },
     /**
      * Close the thin gaps (up to `gapMm`, 1 mm by default) between `of` and
      * the edges of `within`, where vector tiles stop just short of them.

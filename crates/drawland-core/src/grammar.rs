@@ -135,6 +135,13 @@ pub struct Grow {
     pub by: Mm,
 }
 
+/// Buffer lines by a half-width (flat caps, round joins), merged into one area.
+#[derive(Debug, Clone, PartialEq)]
+pub struct BufferLines {
+    pub lines: Name,
+    pub by: Mm,
+}
+
 /// Close the thin gaps between `of` and the edges of `within` (tile polygons
 /// that stop just short of the card border); `gap_mm` is the widest closed.
 #[derive(Debug, Clone, PartialEq)]
@@ -260,6 +267,7 @@ pub enum Op {
     Intersect(Intersect),
     FillHoles(Name),
     Grow(Grow),
+    BufferLines(BufferLines),
     /// The output rectangle.
     Frame,
     ExtendToFrame(ExtendToFrame),
@@ -302,6 +310,7 @@ impl Op {
             | Op::Intersect(_)
             | Op::FillHoles(_)
             | Op::Grow(_)
+            | Op::BufferLines(_)
             | Op::Frame
             | Op::ExtendToFrame(_) => Section::Areas,
             Op::Rings(_) | Op::Lines(_) | Op::Segments(_) | Op::Dedupe(_) | Op::Merge(_) | Op::Join(_)
@@ -332,6 +341,7 @@ impl Op {
                 .chain(i.keep_rule.as_deref().map(Op::refs).unwrap_or_default())
                 .collect(),
             Op::Grow(g) => vec![g.of.clone()],
+            Op::BufferLines(b) => vec![b.lines.clone()],
             Op::ExtendToFrame(e) => vec![e.of.clone(), e.within.clone()],
             Op::Where(w) => vec![w.of.clone()],
             Op::Rings(r) => vec![r.of.clone()],
@@ -352,6 +362,7 @@ impl Op {
             (Op::Intersect(a), Op::Intersect(b)) => a.base == b.base && a.keep == b.keep,
             (Op::FillHoles(a), Op::FillHoles(b)) => a == b,
             (Op::Grow(a), Op::Grow(b)) => a.of == b.of,
+            (Op::BufferLines(a), Op::BufferLines(b)) => a.lines == b.lines,
             (Op::Rings(a), Op::Rings(b)) => a.of == b.of,
             (Op::Lines(a), Op::Lines(b)) => a == b,
             (Op::Segments(a), Op::Segments(b)) => a == b,
@@ -886,7 +897,7 @@ fn parse_op(raw: RawOp, section: Section) -> Result<Op, GrammarError> {
     let target = match key.as_str() {
         "osm_select" | "tiles_select" | "tools_where" => Section::Features,
         "tools_polygons" | "tools_union" | "tools_difference" | "tools_intersect" | "tools_fill_holes"
-        | "tools_grow" | "tools_extend_to_frame" | "engine_frame" => Section::Areas,
+        | "tools_grow" | "tools_buffer_lines" | "tools_extend_to_frame" | "engine_frame" => Section::Areas,
         "tools_rings" | "tools_lines" | "tools_segments" | "tools_dedupe" | "tools_merge" | "tools_join"
         | "tools_clip" | "tools_terrain" | "tools_burin" => Section::Lines,
         "tools_fill" => Section::Fills,
@@ -973,6 +984,16 @@ fn parse_op(raw: RawOp, section: Section) -> Result<Op, GrammarError> {
             }
             let raw: Raw = json(&value, "tools_grow")?;
             Op::Grow(Grow { of: refname(&raw.of)?, by: raw.by })
+        }
+        "tools_buffer_lines" => {
+            #[derive(Deserialize)]
+            #[serde(deny_unknown_fields)]
+            struct Raw {
+                lines: String,
+                by: Mm,
+            }
+            let raw: Raw = json(&value, "tools_buffer_lines")?;
+            Op::BufferLines(BufferLines { lines: refname(&raw.lines)?, by: raw.by })
         }
         "tools_extend_to_frame" => {
             #[derive(Deserialize)]
@@ -1478,6 +1499,7 @@ pub fn op_to_json(op: &Op) -> Value {
             ("tools_burin", Value::Object(body))
         }
         Op::Grow(g) => ("tools_grow", json!({ "of": g.of.to_string(), "by": g.by })),
+        Op::BufferLines(b) => ("tools_buffer_lines", json!({ "lines": b.lines.to_string(), "by": b.by })),
         Op::Frame => ("engine_frame", json!({})),
         Op::ExtendToFrame(e) => (
             "tools_extend_to_frame",

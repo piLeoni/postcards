@@ -29,6 +29,8 @@ const water = areas.union(areas.polygons(wet), ocean)
 // Trails in the parks only. The tiles tag a park trail and a sidewalk or a
 // crosswalk alike (`footway`), so they are told apart by where they run.
 const parkTrails = lines.clip(lines.of(paths), parks)
+// Knock dots out of the park fill — white paths, no ink stroke on top.
+const trailClear = areas.buffer(parkTrails, "0.22mm")
 
 const parkRing = lines.rings(parks)
 const bldgRing = lines.rings(buildings)
@@ -49,7 +51,6 @@ const wetDraws = [
 ]
 const road = [
   draw({ id: "roads_out", from: roads.outlines, stroke: "solid" }),
-  draw({ id: "park_trail", from: parkTrails, stroke: "solid" }),
   draw({ id: "roads_center", from: roads.centerlines, stroke: { style: "dash", dash: "0.3mm", gap: "0.35mm" } }),
   draw({ id: "roads_seam", from: roads.seams, stroke: "solid" }),
 ]
@@ -60,6 +61,7 @@ const building = [
 
 // Each mask hides exactly the groups it lists: water over the parks, roads
 // over both, buildings over everything.
+compose.mask({ name: "trail_clear", from: trailClear, occludes: ["park_fill"] })
 compose.mask({ name: "wet_cover", from: water, occludes: [...park] })
-compose.mask({ name: "roads_cover", from: roads.area, occludes: [...park, ...wetDraws, road[1]] })
+compose.mask({ name: "roads_cover", from: roads.area, occludes: [...park, ...wetDraws] })
 compose.mask({ name: "bldg_cover", from: buildings, occludes: [...park, ...wetDraws, ...road] })

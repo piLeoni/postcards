@@ -125,6 +125,7 @@ mix: OSM's `width` and `lanes` give real widths, which the tiles lack.
 | `areas.intersect(base, keep)` | the part of `base` inside `keep` |
 | `areas.fillHoles(a)` | holes closed (yards in blocks, lakes in parks) |
 | `areas.grow(a, by)` | grown by a length; negative shrinks |
+| `areas.buffer(lines, by)` | a strip around the lines (`by` is half-width, flat caps), merged |
 | `areas.extendToFrame(of, within)` | close the thin gaps (up to `gapMm`, default 1 mm) between `of` and the edges of `within` |
 | `engine.frame()` | the paper's rectangle |
 | `engine.ocean()` | shorthand: `ocean` tiles, clipped to the frame, grown, then `extendToFrame` |
