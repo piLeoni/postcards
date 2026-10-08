@@ -363,67 +363,84 @@
         seams: out("seams"),
       });
     },
-    // Names written on the map in a single-stroke font, placed so that none
-    // covers another: along the roads (bent with them where they curve),
-    // level inside areas, larger the more the feature matters.
+    // Names written on the map, placed so that none covers another: along
+    // the roads (bent with them where they curve), level inside areas, larger
+    // the more the feature matters. Geometry only: `lines` are the letters'
+    // strokes, `area` what they cover, for fills.fill, masks and the rest.
     labels(options = {}) {
       object(options, "modules.labels options");
-      const { from, size, minSize, padding, spacing, curved, upper, keys, font, buffer, bufferStep, keepCenterline, rules, ...rest } = options;
-      const extra = Object.keys(rest);
-      if (extra.length) fail(`modules.labels: unknown option ${extra[0]} (from, size, minSize, padding, spacing, curved, upper, keys, font, buffer, bufferStep, keepCenterline, rules)`);
+      const { from, keys, rules, ...rest } = options;
       const sets = Array.isArray(from) ? from : [from];
       if (!sets.length) fail("modules.labels: from needs at least one feature set");
-      const op = { from: sets.map((f, i) => need(f, Features, sets.length > 1 ? `modules.labels from (input ${i + 1})` : "modules.labels from")) };
-      if (size !== undefined) op.size = size;
-      if (minSize !== undefined) op.min_size = minSize;
-      if (padding !== undefined) op.padding = padding;
-      if (spacing !== undefined) op.spacing = spacing;
-      if (curved !== undefined) op.curved = !!curved;
-      if (upper !== undefined) op.upper = !!upper;
+      const op = {
+        from: sets.map((f, i) => need(f, Features, sets.length > 1 ? `modules.labels from (input ${i + 1})` : "modules.labels from")),
+        ...labelLook(rest, "modules.labels", "option", ["from", "keys", "rules"]),
+      };
       if (keys !== undefined) {
         const ks = Array.isArray(keys) ? keys : [keys];
         if (!ks.length || !ks.every((k) => typeof k === "string")) fail(`modules.labels: keys is a tag or a list of tags, got ${describe(keys)}`);
         op.keys = ks;
       }
-      if (font !== undefined) op.font = labelFont(font, "modules.labels font");
-      if (buffer !== undefined) {
-        if (typeof buffer !== "number" || !Number.isInteger(buffer) || buffer < 0) {
-          fail(`modules.labels: buffer is a non-negative integer, got ${describe(buffer)}`);
-        }
-        if (buffer > 0) op.buffer = buffer;
-      }
-      if (bufferStep !== undefined) op.buffer_step = bufferStep;
-      if (keepCenterline !== undefined) op.keep_centerline = !!keepCenterline;
       if (rules !== undefined) {
         if (!Array.isArray(rules) || !rules.length) fail(`modules.labels: rules is a non-empty list, got ${describe(rules)}`);
+        const seen = new Set();
         op.rules = rules.map((rule, i) => {
-          object(rule, `modules.labels rules[${i}]`);
-          const { tags, font: rf, size: rs, minSize, padding: rp, spacing: rsp, curved: rc, upper: ru, buffer: rb, bufferStep: rbs, keepCenterline: rkl, ...rrest } = rule;
-          if (Object.keys(rrest).length) fail(`modules.labels rules[${i}]: unknown key ${Object.keys(rrest)[0]}`);
-          object(tags, `modules.labels rules[${i}].tags`);
-          if (!Object.keys(tags).length) fail(`modules.labels rules[${i}].tags needs at least one tag`);
-          const entry = { tags };
-          if (rf !== undefined) entry.font = labelFont(rf, `modules.labels rules[${i}].font`);
-          if (rs !== undefined) entry.size = rs;
-          if (minSize !== undefined) entry.min_size = minSize;
-          if (rp !== undefined) entry.padding = rp;
-          if (rsp !== undefined) entry.spacing = rsp;
-          if (rc !== undefined) entry.curved = !!rc;
-          if (ru !== undefined) entry.upper = !!ru;
-          if (rb !== undefined) {
-            if (typeof rb !== "number" || !Number.isInteger(rb) || rb < 0) {
-              fail(`modules.labels rules[${i}]: buffer is a non-negative integer, got ${describe(rb)}`);
+          const where = `modules.labels rules[${i}]`;
+          const { tags, id, ...look } = object(rule, where);
+          object(tags, `${where}.tags`);
+          if (!Object.keys(tags).length) fail(`${where}.tags needs at least one tag`);
+          const entry = { tags, ...labelLook(look, where, "key", ["tags", "id"]) };
+          if (id !== undefined) {
+            if (typeof id !== "string" || !/^[_a-zA-Z][_a-zA-Z0-9]*$/.test(id)) {
+              fail(`${where}: id is a name (letters, digits, underscore), got ${describe(id)}`);
             }
-            if (rb > 0) entry.buffer = rb;
+            if (seen.has(id)) fail(`modules.labels: duplicate rule id ${id}`);
+            seen.add(id);
+            entry.id = id;
           }
-          if (rbs !== undefined) entry.buffer_step = rbs;
-          if (rkl !== undefined) entry.keep_centerline = !!rkl;
           return entry;
         });
       }
-      return Object.freeze({ lines: make(Lines, "lines", { tools_labels: op }) });
+      const ref = dl.node("lines", { tools_labels: op });
+      let area = null;
+      const pick = (rule) => (rule ? { of: ref, rule } : ref);
+      const bucket = (id) => {
+        const p = pick(id);
+        let lines = null;
+        let bucketArea = null;
+        return Object.freeze({
+          get lines() { return lines || (lines = make(Lines, "lines", { tools_label_lines: p })); },
+          get area() { return bucketArea || (bucketArea = make(Area, "areas", { tools_label_area: p })); },
+        });
+      };
+      const out = {
+        lines: new Lines(ref),
+        get area() { return area || (area = make(Area, "areas", { tools_label_area: pick() })); },
+      };
+      for (const rule of op.rules || []) {
+        if (rule.id) out[rule.id] = bucket(rule.id);
+      }
+      return Object.freeze(out);
     },
   };
+
+  // What a label looks like, as `modules.labels` and each of its rules write
+  // it, in the graph's names.
+  const LOOK = { size: "size", minSize: "min_size", padding: "padding", spacing: "spacing", curved: "curved", upper: "upper", font: "font", buffer: "buffer", bufferStep: "buffer_step", keepCenterline: "keep_centerline" };
+  function labelLook(look, where, what, others) {
+    const out = {};
+    for (const [k, v] of Object.entries(look)) {
+      if (!(k in LOOK)) fail(`${where}: unknown ${what} ${k} (${[...others, ...Object.keys(LOOK)].join(", ")})`);
+      if (v === undefined) continue;
+      if (k === "font") out.font = labelFont(v, `${where} font`);
+      else if (k === "curved" || k === "upper" || k === "keepCenterline") out[LOOK[k]] = !!v;
+      else if (k === "buffer") {
+        if (typeof v !== "number" || !Number.isInteger(v) || v < 0) fail(`${where}: buffer is a non-negative integer, got ${describe(v)}`);
+        out.buffer = v;
+      } else out[LOOK[k]] = v;
+    }
+    return out;
+  }
 
   function drawRef(from) {
     if (!(from instanceof Lines)) fail(`draw: from expects ${wants.get(Lines)}, got ${describe(from)}`);

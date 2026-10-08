@@ -190,15 +190,28 @@ transformed (`lines.clip(roads.outlines, …)` is an error); call it once.
 
 ## `modules.labels({...})`: names
 
-`modules.labels({ from })` writes the features' names in a single-stroke
-(Hershey) font, the kind CNC engravers draw in one pass, and returns
-`{ lines }`: ordinary lines, drawn with `draw` or turned into a mask with
-`areas.buffer(labels.lines, "0.4mm")`.
+`modules.labels({ from })` writes the features' names, by default in a
+single-stroke (Hershey) font, the kind CNC engravers draw in one pass. Like
+every module it returns geometry, never ink:
+
+| Output | Kind | What |
+|---|---|---|
+| `labels.lines` | lines | the letters as pen strokes: a single-stroke font's paths, an outline font's contours, and the `buffer` outlines |
+| `labels.area` | area | what the letters cover: an outline font's glyphs with their counters open, grown to the outermost `buffer` when there is one. A single-stroke font covers nothing until it is buffered |
+
+Both are ordinary: `draw` the lines, `fills.fill({ in: labels.area })` fills
+the letters with any pattern, `compose.mask` and `areas.*` take either.
 
 ```js
 const streets = features.where(features.tiles("road_names"), { class: ["primary", "secondary", "tertiary", "minor"] })
-const labels = modules.labels({ from: [streets, features.tiles("parks")] })
-draw({ id: "labels", from: labels.lines, stroke: { style: "solid", color: "#d40000" } })
+const labels = modules.labels({
+  from: [streets, features.tiles("parks")],
+  rules: [{ id: "park", tags: { "tiles:layer": "park" }, font: { origin: "google", family: "DynaPuff" } }],
+})
+// Clear what lies under the names, fill only the park bucket's letters, then every stroke on top.
+compose.mask({ name: "label_clear", from: areas.union(labels.area, areas.buffer(labels.lines, "0.4mm")), occludes: ["parks"] })
+draw({ id: "label_fill", from: fills.fill({ in: labels.park.area, pattern: "lines", spacing: "0.3mm", angle: 45 }) })
+draw({ id: "labels", from: labels.lines, stroke: "solid" })
 ```
 
 Placement is greedy, as web maps do it: the most important names go first (a
@@ -214,7 +227,7 @@ together so no set's names cover another's.
 
 | Option | Default | What |
 |---|---|---|
-| `size` | `"2mm"` | capital height of the most important names |
+| `size` | `"2mm"` | capital height of the most important names, whatever the font |
 | `minSize` | `"1.1mm"` | capital height of the least important |
 | `padding` | `"0.5mm"` | clear space around every letter |
 | `spacing` | `"70mm"` | distance between two labels of the same name |
@@ -222,10 +235,10 @@ together so no set's names cover another's.
 | `upper` | `false` | write in capitals |
 | `keys` | `["name", "ref"]` | the tags the text is read from, the first present |
 | `font` | `"futural"` | draw.land Hershey id (`"futural"`) or `{ origin: "drawland", id }` / `{ origin: "google", family, weight?, italic? }` (Google fonts download at draw time) |
-| `buffer` | `0` | concentric buffer passes around each name (1, 2, 3…); each pass adds an outline at `bufferStep`, `2× bufferStep`, … on top of the centre stroke |
+| `buffer` | `0` | concentric outlines around each name (1, 2, 3…); each pass adds one at `bufferStep`, `2× bufferStep`, … around the letters' strokes |
 | `bufferStep` | `"0.1mm"` | half-width per buffer pass (round caps) |
-| `keepCenterline` | `true` | with `buffer` > 0, keep the centre stroke; `false` draws only the concentric outlines |
-| `rules` | — | a list of `{ tags, font?, size?, minSize?, buffer?, bufferStep?, … }`; the **first** rule whose `tags` match (same tests as `features.where`) overrides the defaults for that feature |
+| `keepCenterline` | `true` | with `buffer` > 0, keep the letters' own strokes; `false` keeps only the concentric outlines |
+| `rules` | — | a list of `{ id?, tags, font?, size?, … }`; the **first** rule whose `tags` match (same tests as `features.where`) overrides the defaults. With `id`, that rule's labels are also exposed as `labels.<id>.lines` and `labels.<id>.area` so you can ink each bucket separately (`fills.fill({ in: labels.park.area })`, …). `labels.lines` / `labels.area` still hold **every** label. |
 
 ```js
 modules.labels({

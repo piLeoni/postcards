@@ -174,8 +174,6 @@ impl Default for LabelFont {
 pub struct LabelGlyph {
     pub x: f64,
     pub advance: f64,
-    pub top: f64,
-    pub bottom: f64,
     pub strokes: Vec<Vec<(f64, f64)>>,
 }
 
@@ -185,9 +183,17 @@ pub struct LabelLayout {
     pub glyphs: Vec<LabelGlyph>,
     pub width: f64,
     pub cap_height: f64,
+    /// The line every glyph sits in, y down: the same for all of them, so
+    /// they share a baseline.
+    pub top: f64,
+    pub bottom: f64,
+    /// The strokes are closed contours that enclose the letter (an outline
+    /// font), not pen paths.
+    pub outline: bool,
 }
 
-/// Lay out `text` with a draw.land or Google font. Google needs `google_bytes` for that face.
+/// Lay out `text` with a draw.land or Google font. Google needs the TTF/OTF
+/// bytes of that face (see [`crate::google_fonts::decode_font_bytes`]).
 pub fn layout(label_font: &LabelFont, google_bytes: Option<&[u8]>, text: &str) -> Result<LabelLayout, String> {
     if let Some(id) = label_font.drawland_id() {
         return layout_drawland(id, text);
@@ -217,20 +223,16 @@ pub fn validate_label_font(label_font: &LabelFont) -> Result<(), String> {
 fn layout_drawland(id: &str, text: &str) -> Result<LabelLayout, String> {
     let f = font(id).ok_or_else(|| format!("labels: no drawland font {:?}", id))?;
     let (glyphs, width) = f.layout(text);
-    let bottom = BASELINE + 3.0;
     Ok(LabelLayout {
         glyphs: glyphs
             .into_iter()
-            .map(|(x, g)| LabelGlyph {
-                x,
-                advance: g.advance(),
-                top: CAP_TOP,
-                bottom,
-                strokes: g.strokes.clone(),
-            })
+            .map(|(x, g)| LabelGlyph { x, advance: g.advance(), strokes: g.strokes.clone() })
             .collect(),
         width,
         cap_height: CAP_HEIGHT,
+        top: CAP_TOP,
+        bottom: BASELINE + 3.0,
+        outline: false,
     })
 }
 
@@ -302,31 +304,31 @@ impl Font {
     }
 }
 
+/// A glyph's contours, each closed, y down.
 struct OutlineCollector {
     runs: Vec<Vec<(f64, f64)>>,
     run: Vec<(f64, f64)>,
-    ymin: f64,
-    ymax: f64,
 }
 
 impl OutlineCollector {
     fn new() -> OutlineCollector {
-        OutlineCollector { runs: Vec::new(), run: Vec::new(), ymin: f64::MAX, ymax: f64::MIN }
+        OutlineCollector { runs: Vec::new(), run: Vec::new() }
     }
 
     fn note(&mut self, x: f64, y: f64) {
-        self.ymin = self.ymin.min(y);
-        self.ymax = self.ymax.max(y);
-        if self.run.is_empty() || self.run.last().map(|p| p.0 != x || p.1 != y).unwrap_or(true) {
+        if self.run.last() != Some(&(x, y)) {
             self.run.push((x, y));
         }
     }
 
     fn finish_run(&mut self) {
-        if self.run.len() > 1 {
-            self.runs.push(std::mem::take(&mut self.run));
+        let mut run = std::mem::take(&mut self.run);
+        if run.len() > 2 {
+            if run.first() != run.last() {
+                run.push(run[0]);
+            }
+            self.runs.push(run);
         }
-        self.run.clear();
     }
 }
 
@@ -381,26 +383,36 @@ impl ttf_parser::OutlineBuilder for OutlineCollector {
 fn layout_google(bytes: &[u8], text: &str) -> Result<LabelLayout, String> {
     let face = ttf_parser::Face::parse(bytes, 0).map_err(|e| format!("labels: google font did not parse ({e})"))?;
     let units = face.units_per_em() as f64;
-    let asc = face.ascender() as f64;
-    let cap_height = if asc > 0.0 { asc } else { units * 0.72 };
+    let ascender = face.ascender() as f64;
+    let cap_height = face
+        .capital_height()
+        .map(f64::from)
+        .filter(|&h| h > 0.0)
+        .unwrap_or(if ascender > 0.0 { ascender * 0.75 } else { units * 0.7 });
+    let missing = face.glyph_index('?').unwrap_or(ttf_parser::GlyphId(0));
     let mut x = 0.0;
     let mut glyphs = Vec::new();
-    for c in text.chars() {
-        let c = fold(c);
-        let gid = face.glyph_index(c).unwrap_or_else(|| face.glyph_index('?').unwrap_or(ttf_parser::GlyphId(0)));
+    for c in text.chars().map(fold) {
+        let gid = face.glyph_index(c).unwrap_or(missing);
         let advance = face.glyph_hor_advance(gid).unwrap_or(0) as f64;
         let mut col = OutlineCollector::new();
-        face.outline_glyph(gid, &mut col).ok_or_else(|| format!("labels: no outline for {:?}", c))?;
+        // A space has no outline; a letter without one is drawn as `?`.
+        if face.outline_glyph(gid, &mut col).is_none() && !c.is_whitespace() {
+            col = OutlineCollector::new();
+            face.outline_glyph(missing, &mut col);
+        }
         col.finish_run();
-        let (top, bottom) = if col.ymin <= col.ymax {
-            (col.ymin, col.ymax)
-        } else {
-            (-cap_height * 0.2, cap_height * 0.8)
-        };
-        glyphs.push(LabelGlyph { x, advance, top, bottom, strokes: col.runs });
+        glyphs.push(LabelGlyph { x, advance, strokes: col.runs });
         x += advance;
     }
-    Ok(LabelLayout { glyphs, width: x, cap_height })
+    Ok(LabelLayout {
+        glyphs,
+        width: x,
+        cap_height,
+        top: -ascender.max(cap_height),
+        bottom: -(face.descender() as f64),
+        outline: true,
+    })
 }
 
 /// The plain letter under a Latin accent, so `é` is drawn as `e`.

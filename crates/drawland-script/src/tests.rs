@@ -1,5 +1,5 @@
 use super::*;
-use drawland_core::grammar::{LineBufferCap, Op, UnionRules};
+use drawland_core::grammar::{LineBufferCap, Op, Section, UnionRules};
 use drawland_core::grammar_run::{run, Inputs};
 use drawland_core::output::Output;
 use std::collections::BTreeMap;
@@ -419,6 +419,41 @@ fn labels_read_several_feature_sets_and_draw_as_lines() {
     assert_eq!(labels.style.font.drawland_id(), Some("futural"));
     let e = err("modules.labels({ from: features.tiles('parks'), colour: 'red' })");
     assert!(e.message.contains("unknown option colour"), "{e}");
+}
+
+#[test]
+fn labels_area_is_an_ordinary_area_and_the_ink_stays_outside() {
+    let g = evaluate(
+        "const names = modules.labels({\n\
+           from: features.tiles('parks'),\n\
+           rules: [{ id: 'park', tags: { class: 'park' }, font: { origin: 'google', family: 'DynaPuff' } }],\n\
+         })\n\
+         const hatch = fills.fill({ in: names.park.area, pattern: 'lines', spacing: '0.3mm', angle: 45 })\n\
+         compose.mask({ name: 'clear', from: areas.union(names.area, areas.buffer(names.lines, '0.4mm')), occludes: [] })\n\
+         draw({ id: 'fill', from: hatch })\n\
+         draw({ id: 'edge', from: lines.rings(names.park.area) })\n\
+         draw({ id: 'park_lines', from: names.park.lines })\n\
+         draw({ id: 'labels', from: names.lines })\n",
+    )
+    .unwrap();
+    let labels = g.defs(Section::Lines).iter().find(|d| matches!(d.op, Op::Labels(_))).expect("a labels def");
+    let areas: Vec<_> = g.defs(Section::Areas).iter().filter_map(|d| match &d.op {
+        Op::LabelArea(p) => Some((d.name.clone(), p.rule.clone())),
+        _ => None,
+    }).collect();
+    assert_eq!(areas.len(), 2, "union area and park bucket");
+    assert!(areas.iter().any(|(_, rule)| rule.is_none()));
+    assert!(areas.iter().any(|(_, rule)| rule.as_deref() == Some("park")));
+    let lines: Vec<_> = g.defs(Section::Lines).iter().filter_map(|d| match &d.op {
+        Op::LabelLines(p) if p.rule.as_deref() == Some("park") => Some(d.name.clone()),
+        _ => None,
+    }).collect();
+    assert_eq!(lines.len(), 1);
+    let back = drawland_core::grammar::Grammar::from_json(&g.to_json().to_string()).unwrap();
+    assert_eq!(back.to_json(), g.to_json());
+
+    let e = err("modules.labels({ from: features.tiles('parks'), rules: [{ tags: { class: 'park' }, fill: { pattern: 'lines' } }] })");
+    assert!(e.message.contains("unknown key fill"), "{e}");
 }
 
 /// The names `drawland.d.ts` declares inside `declare const <object>: { … }`

@@ -74,17 +74,16 @@ const labels = modules.labels({
   from: [streetNames, features.tiles("parks")],
   rules: [
     {
+      id: "park",
       tags: { "tiles:layer": "park" },
       size: "2.5mm",
       minSize: "2.2mm",
-      buffer: 2,
-      bufferStep: "0.1mm",
-      keepCenterline: false,
-      font: { origin: "google", family: "Roboto Slab", weight: 700 },
+      font: { origin: "google", family: "DynaPuff" },
     },
-    { tags: { class: ["motorway", "trunk", "primary"] }, buffer: 1, bufferStep: "0.08mm" },
+    { id: "major", tags: { class: ["motorway", "trunk", "primary"] }, buffer: 1, bufferStep: "0.08mm" },
   ],
 })
-const labelClear = areas.buffer(labels.lines, "0.45mm")
+const labelClear = areas.union(labels.area, areas.buffer(labels.lines, "0.45mm"))
 compose.mask({ name: "label_clear", from: labelClear, occludes: [...park, ...wetDraws, ...road, ...building] })
+draw({ id: "label_fill", from: fills.fill({ in: labels.park.area, pattern: "lines", spacing: "0.3mm", angle: 45 }) })
 draw({ id: "labels", from: labels.lines, stroke: "solid" })

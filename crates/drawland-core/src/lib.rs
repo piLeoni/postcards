@@ -4,6 +4,7 @@ pub mod board;
 pub mod budget;
 pub mod fill;
 pub mod geom;
+pub mod google_fonts;
 pub mod grammar;
 pub mod grammar_run;
 pub mod labels;

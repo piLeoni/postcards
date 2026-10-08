@@ -252,8 +252,17 @@ pub struct ClipLines {
     pub invert: bool,
 }
 
-/// `tools_labels`: the names of `from`, written in a single-stroke font and
-/// placed so that none covers another.
+/// Read strokes or the covered area from a `$lines` labels def, optionally
+/// one rule bucket (`rule: "park"` matches `modules.labels` `rules[].id`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct LabelPick {
+    pub of: Name,
+    pub rule: Option<String>,
+}
+
+/// `tools_labels`: the names of `from`, placed so that none covers another,
+/// as the pen strokes of their letters. What the letters cover is read from
+/// it by `tools_label_area` / `tools_label_lines`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Labels {
     /// Placed together, so no set's labels cover another's.
@@ -288,6 +297,8 @@ pub enum Op {
     FillHoles(Name),
     Grow(Grow),
     BufferLines(BufferLines),
+    /// What the letters of a `$lines` labels def cover.
+    LabelArea(LabelPick),
     /// The output rectangle.
     Frame,
     ExtendToFrame(ExtendToFrame),
@@ -306,6 +317,8 @@ pub enum Op {
     Burin(Burin),
     /// Names on the map, as pen strokes.
     Labels(Labels),
+    /// Strokes from a labels def, or one of its rule buckets.
+    LabelLines(LabelPick),
 
     // ---- fills (lines, produced by penfill) -------------------------------
     Fill(Fill),
@@ -333,10 +346,20 @@ impl Op {
             | Op::FillHoles(_)
             | Op::Grow(_)
             | Op::BufferLines(_)
+            | Op::LabelArea(_)
             | Op::Frame
             | Op::ExtendToFrame(_) => Section::Areas,
-            Op::Rings(_) | Op::Lines(_) | Op::Segments(_) | Op::Dedupe(_) | Op::Merge(_) | Op::Join(_)
-            | Op::ClipLines(_) | Op::Terrain(_) | Op::Burin(_) | Op::Labels(_) => Section::Lines,
+            Op::Rings(_)
+            | Op::Lines(_)
+            | Op::Segments(_)
+            | Op::Dedupe(_)
+            | Op::Merge(_)
+            | Op::Join(_)
+            | Op::ClipLines(_)
+            | Op::Terrain(_)
+            | Op::Burin(_)
+            | Op::Labels(_)
+            | Op::LabelLines(_) => Section::Lines,
             Op::Fill(_) => Section::Fills,
             // A module is called from $areas: its headline output is an area,
             // and the rest are reached by output name (`roads.outlines`).
@@ -371,6 +394,7 @@ impl Op {
             Op::Terrain(t) => t.in_area.iter().cloned().collect(),
             Op::Burin(b) => b.in_area.iter().cloned().collect(),
             Op::Labels(l) => l.from.clone(),
+            Op::LabelLines(p) | Op::LabelArea(p) => vec![p.of.clone()],
             Op::Fill(f) => std::iter::once(f.in_area.clone()).chain(f.content.iter().cloned()).collect(),
         }
     }
@@ -384,6 +408,8 @@ impl Op {
             (Op::Difference(a), Op::Difference(b)) => a.base == b.base && a.cut.len() == b.cut.len(),
             (Op::Intersect(a), Op::Intersect(b)) => a.base == b.base && a.keep == b.keep,
             (Op::FillHoles(a), Op::FillHoles(b)) => a == b,
+            (Op::LabelArea(a), Op::LabelArea(b)) => a == b,
+            (Op::LabelLines(a), Op::LabelLines(b)) => a == b,
             (Op::Grow(a), Op::Grow(b)) => a.of == b.of,
             (Op::BufferLines(a), Op::BufferLines(b)) => a.lines == b.lines && a.by == b.by && a.cap == b.cap,
             (Op::Rings(a), Op::Rings(b)) => a.of == b.of,
@@ -920,9 +946,11 @@ fn parse_op(raw: RawOp, section: Section) -> Result<Op, GrammarError> {
     let target = match key.as_str() {
         "osm_select" | "tiles_select" | "tools_where" => Section::Features,
         "tools_polygons" | "tools_union" | "tools_difference" | "tools_intersect" | "tools_fill_holes"
-        | "tools_grow" | "tools_buffer_lines" | "tools_extend_to_frame" | "engine_frame" => Section::Areas,
+        | "tools_grow" | "tools_buffer_lines" | "tools_label_area" | "tools_extend_to_frame" | "engine_frame" => {
+            Section::Areas
+        }
         "tools_rings" | "tools_lines" | "tools_segments" | "tools_dedupe" | "tools_merge" | "tools_join"
-        | "tools_clip" | "tools_terrain" | "tools_burin" | "tools_labels" => Section::Lines,
+        | "tools_clip" | "tools_terrain" | "tools_burin" | "tools_labels" | "tools_label_lines" => Section::Lines,
         "tools_fill" => Section::Fills,
         other => {
             if let Some(rest) = other.strip_prefix("module_") {
@@ -998,6 +1026,8 @@ fn parse_op(raw: RawOp, section: Section) -> Result<Op, GrammarError> {
             })
         }
         "tools_fill_holes" => Op::FillHoles(name_ref(&value, "tools_fill_holes")?),
+        "tools_label_area" => Op::LabelArea(parse_label_pick(&value, "tools_label_area")?),
+        "tools_label_lines" => Op::LabelLines(parse_label_pick(&value, "tools_label_lines")?),
         "tools_grow" => {
             #[derive(Deserialize)]
             #[serde(deny_unknown_fields)]
@@ -1222,6 +1252,42 @@ fn cut_rules(items: &[String], what: &str) -> Result<(Vec<Name>, Option<Box<Op>>
 fn name_ref(value: &Value, op: &str) -> Result<Name, GrammarError> {
     let s: String = json(value, op)?;
     refname(&s)
+}
+
+fn parse_label_pick(value: &Value, op: &str) -> Result<LabelPick, GrammarError> {
+    match value {
+        Value::String(s) => {
+            let of = refname(s)?;
+            if of.section != Section::Lines {
+                return Err(GrammarError::Invalid(format!("{op} reads {of}, but labels live under $lines")));
+            }
+            Ok(LabelPick { of, rule: None })
+        }
+        _ => {
+            #[derive(Deserialize)]
+            #[serde(deny_unknown_fields)]
+            struct Raw {
+                of: String,
+                #[serde(default)]
+                rule: Option<String>,
+            }
+            let raw: Raw = json(value, op)?;
+            let of = refname(&raw.of)?;
+            if of.section != Section::Lines {
+                return Err(GrammarError::Invalid(format!("{op}.of is {of}, but labels live under $lines")));
+            }
+            Ok(LabelPick { of, rule: raw.rule })
+        }
+    }
+}
+
+fn label_pick_json(pick: &LabelPick) -> Value {
+    if pick.rule.is_none() {
+        Value::String(pick.of.to_string())
+    } else {
+        use serde_json::json;
+        json!({ "of": pick.of.to_string(), "rule": pick.rule })
+    }
 }
 
 /// `tools_union`: a list of references, or one reference with `list: false`.
@@ -1459,6 +1525,8 @@ pub fn op_to_json(op: &Op) -> Value {
             json!({ "base": i.base.to_string(), "keep": i.keep.as_ref().map(Name::to_string) }),
         ),
         Op::FillHoles(n) => ("tools_fill_holes", Value::String(n.to_string())),
+        Op::LabelArea(p) => ("tools_label_area", label_pick_json(p)),
+        Op::LabelLines(p) => ("tools_label_lines", label_pick_json(p)),
         Op::Terrain(t) => {
             let mut body = serde_json::Map::new();
             if let Some(a) = &t.in_area {
@@ -1656,6 +1724,27 @@ impl Grammar {
 // Validation
 // ---------------------------------------------------------------------------
 
+fn validate_label_pick(g: &Grammar, def: &Def, pick: &LabelPick) -> Result<(), GrammarError> {
+    let labels = g.find(&pick.of).ok_or_else(|| {
+        GrammarError::Invalid(format!("{} reads {}, which is not defined", def.label(), pick.of))
+    })?;
+    if !matches!(&labels.op, Op::Labels(_)) {
+        return Err(GrammarError::Invalid(format!("{} reads {}, which is not a labels def", def.label(), pick.of)));
+    }
+    if let Some(rule) = &pick.rule {
+        let Op::Labels(l) = &labels.op else { unreachable!() };
+        if !l.style.rule_ids().iter().any(|id| id == rule) {
+            return Err(GrammarError::Invalid(format!(
+                "{}: rule {:?} is not a labels.rules[].id on {}",
+                def.label(),
+                rule,
+                pick.of
+            )));
+        }
+    }
+    Ok(())
+}
+
 /// Every reference defined in the right section, draw ids unique, order and
 /// masks naming draw ids, no loops.
 pub fn validate(g: &Grammar) -> Result<(), GrammarError> {
@@ -1669,6 +1758,9 @@ pub fn validate(g: &Grammar) -> Result<(), GrammarError> {
                     r.section
                 )));
             }
+        }
+        if let Op::LabelArea(pick) | Op::LabelLines(pick) = &def.op {
+            validate_label_pick(g, def, pick)?;
         }
     }
     // A draw must point at line output: $lines, $fills, or a module output.
@@ -1967,5 +2059,19 @@ compose:
         bad["$areas"]["garden"]["tools_polygons"] = Value::String("$features.nope".into());
         let err = Grammar::from_json(&bad.to_string()).unwrap_err().to_string();
         assert!(err.contains("line 12 column 5"), "{err}");
+    }
+
+    #[test]
+    fn label_area_accepts_a_rule_bucket_object() {
+        let text = r#"{
+          "output": { "width": "100mm", "height": "50mm" },
+          "$features": { "p": { "tiles_select": ["parks"] } },
+          "$lines": { "names": { "tools_labels": { "from": ["$features.p"], "rules": [{ "id": "park", "tags": { "class": "park" } }] } } },
+          "$areas": { "park": { "tools_label_area": { "of": "$lines.names", "rule": "park" } } }
+        }"#;
+        let g = Grammar::from_json(text).unwrap();
+        let def = g.defs(Section::Areas).iter().find(|d| d.name == "park").unwrap();
+        let Op::LabelArea(pick) = &def.op else { panic!("label area") };
+        assert_eq!(pick.rule.as_deref(), Some("park"));
     }
 }

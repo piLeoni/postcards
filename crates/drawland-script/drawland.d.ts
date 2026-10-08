@@ -380,10 +380,11 @@ declare const modules: {
   /** Roads with their widths, crossings and bridges; from OSM `highway` unless given features. Call once. */
   roads(options?: { from?: Features }): Roads
   /**
-   * Names written on the map in a single-stroke (Hershey) font, placed so
-   * that none covers another: along each road, bent with it where it curves,
-   * and level inside areas. Larger the more the feature matters (a road's
-   * class, an area's size); the most important are placed first.
+   * Names written on the map, in a single-stroke (Hershey) font or an outline
+   * font, placed so that none covers another: along each road, bent with it
+   * where it curves, and level inside areas. Larger the more the feature
+   * matters (a road's class, an area's size); the most important are placed
+   * first.
    */
   labels(options: LabelOptions): Labels
 }
@@ -408,13 +409,13 @@ interface LabelOptions {
   /** Draw.land Hershey font or a Google outline font. Default `"futural"`. */
   font?: LabelFont
   /**
-   * Concentric buffer passes around each placed name (0 = centre stroke only).
+   * Concentric outlines around each placed name (0 = the letters' strokes only).
    * Each pass adds an outline at `bufferStep`, `2× bufferStep`, … Default `0`.
    */
   buffer?: number
   /** Half-width per buffer pass. Default `"0.1mm"`. */
   bufferStep?: Length
-  /** With `buffer` > 0, keep the centre stroke. Default `true`; `false` = outlines only. */
+  /** With `buffer` > 0, keep the letters' own strokes. Default `true`; `false` = outlines only. */
   keepCenterline?: boolean
   /**
    * Overrides for features that match `tags` (same syntax as `features.where`).
@@ -425,6 +426,11 @@ interface LabelOptions {
 
 /** One style override inside `modules.labels({ rules: [...] })`. */
 interface LabelRule {
+  /**
+   * When set, labels placed under this rule are also exposed as
+   * `labels.<id>.lines` and `labels.<id>.area` for separate ink afterward.
+   */
+  id?: string
   /** Tag tests, e.g. `{ class: ["motorway", "primary"] }` or `{ "tiles:layer": "park" }`. */
   tags: Tags
   font?: LabelFont
@@ -460,11 +466,20 @@ interface GoogleFont {
   italic?: boolean
 }
 
-/** What the labels module publishes. */
-interface Labels {
-  /** The letters, as pen strokes. */
+/** Strokes and covered area for one `rules[].id` bucket. */
+interface LabelBucket {
   readonly lines: Lines
+  readonly area: Area
 }
+
+/**
+ * What the labels module publishes. Each `rules[].id` adds a property with the
+ * same name (`labels.park`, …) whose value is a `LabelBucket`.
+ */
+type Labels = {
+  readonly lines: Lines
+  readonly area: Area
+} & Record<string, LabelBucket>
 
 /** Put lines on paper; returns the group id. Later draws go on top. */
 declare function draw(options: DrawOptions): string

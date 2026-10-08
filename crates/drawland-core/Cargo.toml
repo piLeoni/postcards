@@ -17,6 +17,7 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 rayon = { workspace = true }
 ttf-parser = { workspace = true }
+wuff = { workspace = true, features = ["brotli", "z"] }
 
 [dev-dependencies]
 serde-saphyr = { workspace = true }

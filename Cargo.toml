@@ -32,6 +32,7 @@ ureq = { version = "3", features = ["json"] }
 sha1_smol = "1"
 approx = "0.5"
 ttf-parser = { version = "0.25", features = ["std"] }
+wuff = { version = "0.2.9", features = ["brotli", "z"] }
 
 [profile.release]
 lto = "thin"

@@ -1,5 +1,4 @@
-//! Labels: names written on the map in a single-stroke font, placed so that
-//! none covers another.
+//! Labels: names written on the map, placed so that none covers another.
 //!
 //! Placement is greedy, as web maps do it: every named feature is a candidate,
 //! ranked by importance (a road's class, an area's size), and the most
@@ -13,24 +12,22 @@
 //! the curve where it is not (and the turns are gentle enough to read). A long
 //! road is labelled again every `spacing`. An area is labelled level on the
 //! page, inside it.
+//!
+//! What comes out is geometry, never ink: the pen strokes of the letters, and
+//! the shape they cover. A single-stroke font covers nothing until it is
+//! buffered; an outline font covers its glyphs, counters left open.
 
 use crate::geom::{self, Lines};
-use crate::osm::{Feature, Tags};
+use crate::osm::Feature;
 use crate::select::{self, TagTest};
-use crate::text::{self, LabelFont, LabelGlyph, LabelLayout, CAP_HEIGHT, CAP_TOP, BASELINE};
+use crate::text::{self, LabelFont, LabelGlyph, LabelLayout};
 use crate::units::Mm;
 use geo::{Area, Centroid, Contains, Coord, InteriorPoint, LineString, MultiPolygon, Point, Polygon};
-use serde::de::Error as DeError;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use serde_json::Value;
 use std::collections::{BTreeMap, HashMap};
 
-/// TTF bytes keyed by [`text::google_font_key`].
+/// Font file bytes (TTF, OTF or WOFF2) keyed by [`text::google_font_key`].
 pub type GoogleFonts = BTreeMap<String, Vec<u8>>;
-
-fn default_keep_centerline() -> bool {
-    true
-}
 
 /// How labels look and how close they may come. Every field has a default.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -52,233 +49,14 @@ pub struct Style {
     pub upper: bool,
     /// The tags the text is read from, the first one present.
     pub keys: Vec<String>,
-    /// Concentric buffer passes drawn around each placed name (0 = single stroke only).
+    /// Concentric outlines drawn around each placed name (0 = the strokes only).
     pub buffer: u32,
     /// Half-width added per buffer pass, round caps.
     pub buffer_step: Mm,
-    /// When `buffer` > 0, keep the centre stroke as well as the outlines.
-    #[serde(default = "default_keep_centerline", rename = "keep_centerline")]
+    /// When `buffer` > 0, keep the letters' own strokes as well as the outlines.
     pub keep_centerline: bool,
-    /// The first rule whose `tags` match wins; its fields override the defaults above.
-    #[serde(default, deserialize_with = "deserialize_rules")]
+    /// The first rule whose `tags` match wins; its fields override the ones above.
     pub rules: Vec<LabelRule>,
-}
-
-/// One user-defined override: same tag syntax as `features.where`.
-#[derive(Debug, Clone, PartialEq)]
-pub struct LabelRule {
-    pub tags: Vec<(String, TagTest)>,
-    pub font: Option<text::LabelFont>,
-    pub size: Option<Mm>,
-    pub min_size: Option<Mm>,
-    pub padding: Option<Mm>,
-    pub spacing: Option<Mm>,
-    pub curved: Option<bool>,
-    pub upper: Option<bool>,
-    pub buffer: Option<u32>,
-    pub buffer_step: Option<Mm>,
-    pub keep_centerline: Option<bool>,
-}
-
-#[derive(Deserialize)]
-struct LabelRuleIn {
-    tags: serde_json::Map<String, Value>,
-    font: Option<text::LabelFont>,
-    size: Option<Mm>,
-    min_size: Option<Mm>,
-    padding: Option<Mm>,
-    spacing: Option<Mm>,
-    curved: Option<bool>,
-    upper: Option<bool>,
-    buffer: Option<u32>,
-    buffer_step: Option<Mm>,
-    keep_centerline: Option<bool>,
-}
-
-impl LabelRule {
-    fn from_in(raw: LabelRuleIn) -> Result<LabelRule, String> {
-        Ok(LabelRule {
-            tags: select::parse_tag_tests(raw.tags)?,
-            font: raw.font,
-            size: raw.size,
-            min_size: raw.min_size,
-            padding: raw.padding,
-            spacing: raw.spacing,
-            curved: raw.curved,
-            upper: raw.upper,
-            buffer: raw.buffer,
-            buffer_step: raw.buffer_step,
-            keep_centerline: raw.keep_centerline,
-        })
-    }
-}
-
-impl Serialize for LabelRule {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        use serde::ser::SerializeMap;
-        let mut m = serializer.serialize_map(None)?;
-        m.serialize_entry("tags", &select::tag_tests_to_map(&self.tags))?;
-        if let Some(v) = &self.font {
-            m.serialize_entry("font", v)?;
-        }
-        if let Some(v) = &self.size {
-            m.serialize_entry("size", v)?;
-        }
-        if let Some(v) = &self.min_size {
-            m.serialize_entry("min_size", v)?;
-        }
-        if let Some(v) = &self.padding {
-            m.serialize_entry("padding", v)?;
-        }
-        if let Some(v) = &self.spacing {
-            m.serialize_entry("spacing", v)?;
-        }
-        if let Some(v) = self.curved {
-            m.serialize_entry("curved", &v)?;
-        }
-        if let Some(v) = self.upper {
-            m.serialize_entry("upper", &v)?;
-        }
-        if let Some(v) = self.buffer.filter(|&n| n > 0) {
-            m.serialize_entry("buffer", &v)?;
-        }
-        if let Some(v) = &self.buffer_step {
-            m.serialize_entry("buffer_step", v)?;
-        }
-        if self.keep_centerline == Some(false) {
-            m.serialize_entry("keep_centerline", &false)?;
-        }
-        m.end()
-    }
-}
-
-fn deserialize_rules<'de, D: Deserializer<'de>>(d: D) -> Result<Vec<LabelRule>, D::Error> {
-    let raw = Vec::<LabelRuleIn>::deserialize(d)?;
-    raw.into_iter()
-        .map(LabelRule::from_in)
-        .collect::<Result<_, _>>()
-        .map_err(D::Error::custom)
-}
-
-/// Resolved look for one feature after defaults and the first matching rule.
-#[derive(Debug, Clone)]
-struct EffectiveStyle {
-    font: LabelFont,
-    size: Mm,
-    min_size: Mm,
-    padding: Mm,
-    spacing: Mm,
-    curved: bool,
-    upper: bool,
-    buffer: u32,
-    buffer_step: Mm,
-    keep_centerline: bool,
-}
-
-impl Style {
-    fn for_tags(&self, tags: &Tags) -> Result<EffectiveStyle, String> {
-        let stub = Feature {
-            element: crate::osm::Element::Tile,
-            id: 0,
-            tags: tags.clone(),
-            geometry: geo::Geometry::Point(Point::new(0.0, 0.0)),
-        };
-        self.for_feature(&stub)
-    }
-
-    fn for_feature(&self, f: &Feature) -> Result<EffectiveStyle, String> {
-        let mut eff = EffectiveStyle {
-            font: self.font.clone(),
-            size: self.size,
-            min_size: self.min_size,
-            padding: self.padding,
-            spacing: self.spacing,
-            curved: self.curved,
-            upper: self.upper,
-            buffer: self.buffer,
-            buffer_step: self.buffer_step,
-            keep_centerline: self.keep_centerline,
-        };
-        for rule in &self.rules {
-            if select::passes(&rule.tags, f) {
-                if let Some(font) = &rule.font {
-                    eff.font = font.clone();
-                }
-                if let Some(size) = rule.size {
-                    eff.size = size;
-                }
-                if let Some(min_size) = rule.min_size {
-                    eff.min_size = min_size;
-                }
-                if let Some(padding) = rule.padding {
-                    eff.padding = padding;
-                }
-                if let Some(spacing) = rule.spacing {
-                    eff.spacing = spacing;
-                }
-                if let Some(curved) = rule.curved {
-                    eff.curved = curved;
-                }
-                if let Some(upper) = rule.upper {
-                    eff.upper = upper;
-                }
-                if let Some(buffer) = rule.buffer {
-                    eff.buffer = buffer;
-                }
-                if let Some(buffer_step) = rule.buffer_step {
-                    eff.buffer_step = buffer_step;
-                }
-                if let Some(keep_centerline) = rule.keep_centerline {
-                    eff.keep_centerline = keep_centerline;
-                }
-                break;
-            }
-        }
-        text::validate_label_font(&eff.font)?;
-        Ok(eff)
-    }
-}
-
-/// Every draw.land font named in `style` must be built in; Google fonts load at run time.
-pub fn validate_style(style: &Style) -> Result<(), String> {
-    text::validate_label_font(&style.font)?;
-    for rule in &style.rules {
-        if let Some(font) = &rule.font {
-            text::validate_label_font(font)?;
-        }
-    }
-    Ok(())
-}
-
-/// Cache keys for Google fonts referenced by this style (`Roboto:400`, …).
-pub fn google_font_keys(style: &Style) -> Vec<String> {
-    let mut keys = Vec::new();
-    if let Some(k) = style.font.google_key() {
-        keys.push(k);
-    }
-    for rule in &style.rules {
-        if let Some(font) = &rule.font {
-            if let Some(k) = font.google_key() {
-                keys.push(k);
-            }
-        }
-    }
-    keys.sort();
-    keys.dedup();
-    keys
-}
-
-/// Every Google font key any `tools_labels` def in the grammar needs.
-pub fn google_font_keys_in_grammar(grammar: &crate::grammar::Grammar) -> Vec<String> {
-    let mut keys = Vec::new();
-    for def in grammar.all_defs() {
-        if let crate::grammar::Op::Labels(l) = &def.op {
-            keys.extend(google_font_keys(&l.style));
-        }
-    }
-    keys.sort();
-    keys.dedup();
-    keys
 }
 
 impl Default for Style {
@@ -300,18 +78,226 @@ impl Default for Style {
     }
 }
 
-/// The centre stroke plus `passes` concentric outlines (each pass buffers all strokes by one more step).
-fn stroke_with_buffers(strokes: &Lines, passes: u32, step: Mm, keep_center: bool) -> Lines {
-    if passes == 0 || step.0 <= 0.0 {
-        return strokes.clone();
+/// One user-defined override, for the features whose tags pass `tags` (the
+/// tests of `features.where`). Unset fields keep the style's.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LabelRule {
+    /// When set, labels placed under this rule also land in `labels.<id>` in
+    /// the profile (their own `lines` and `area` handles).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    #[serde(serialize_with = "tags_out", deserialize_with = "tags_in")]
+    pub tags: Vec<(String, TagTest)>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub font: Option<LabelFont>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size: Option<Mm>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min_size: Option<Mm>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub padding: Option<Mm>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spacing: Option<Mm>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub curved: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub upper: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub buffer: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub buffer_step: Option<Mm>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub keep_centerline: Option<bool>,
+}
+
+fn tags_in<'de, D: Deserializer<'de>>(d: D) -> Result<Vec<(String, TagTest)>, D::Error> {
+    let map = serde_json::Map::deserialize(d)?;
+    select::parse_tag_tests(map).map_err(|e| serde::de::Error::custom(format!("rule tags: {e}")))
+}
+
+fn tags_out<S: Serializer>(tags: &[(String, TagTest)], s: S) -> Result<S::Ok, S::Error> {
+    select::tag_tests_to_map(tags).serialize(s)
+}
+
+/// How one feature's label looks: the style, overridden by the first rule
+/// its tags pass.
+#[derive(Debug, Clone)]
+struct Look {
+    font: LabelFont,
+    size: Mm,
+    min_size: Mm,
+    padding: Mm,
+    spacing: Mm,
+    curved: bool,
+    upper: bool,
+    buffer: u32,
+    buffer_step: Mm,
+    keep_centerline: bool,
+}
+
+impl Style {
+    /// The resolved look and, when the matching rule has an `id`, that bucket name.
+    fn look(&self, f: &Feature) -> (Look, Option<String>) {
+        let none = LabelRule::default();
+        let r = self.rules.iter().find(|r| select::passes(&r.tags, f)).unwrap_or(&none);
+        let look = Look {
+            font: r.font.clone().unwrap_or_else(|| self.font.clone()),
+            size: r.size.unwrap_or(self.size),
+            min_size: r.min_size.unwrap_or(self.min_size),
+            padding: r.padding.unwrap_or(self.padding),
+            spacing: r.spacing.unwrap_or(self.spacing),
+            curved: r.curved.unwrap_or(self.curved),
+            upper: r.upper.unwrap_or(self.upper),
+            buffer: r.buffer.unwrap_or(self.buffer),
+            buffer_step: r.buffer_step.unwrap_or(self.buffer_step),
+            keep_centerline: r.keep_centerline.unwrap_or(self.keep_centerline),
+        };
+        let bucket = if self.rules.iter().any(|rule| select::passes(&rule.tags, f)) {
+            r.id.clone()
+        } else {
+            None
+        };
+        (look, bucket)
     }
-    let mut out = if keep_center { strokes.clone() } else { Lines::new() };
+
+    /// Every distinct `id` on a rule, in order.
+    pub fn rule_ids(&self) -> Vec<String> {
+        let mut out = Vec::new();
+        for r in &self.rules {
+            if let Some(id) = &r.id {
+                if !out.iter().any(|x| x == id) {
+                    out.push(id.clone());
+                }
+            }
+        }
+        out
+    }
+
+    /// The style's font and every rule's.
+    fn fonts(&self) -> impl Iterator<Item = &LabelFont> {
+        std::iter::once(&self.font).chain(self.rules.iter().filter_map(|r| r.font.as_ref()))
+    }
+}
+
+/// Every draw.land font named in `style` must be built in; Google fonts load at run time.
+pub fn validate_style(style: &Style) -> Result<(), String> {
+    style.fonts().try_for_each(text::validate_label_font)?;
+    let mut seen = std::collections::BTreeSet::new();
+    for r in &style.rules {
+        if let Some(id) = &r.id {
+            if id.is_empty() {
+                return Err("labels: rule id is a non-empty name".into());
+            }
+            if !id.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') || id.starts_with(|c: char| c.is_ascii_digit()) {
+                return Err(format!("labels: rule id {:?} is not a name (letters, digits, underscore)", id));
+            }
+            if !seen.insert(id.clone()) {
+                return Err(format!("labels: duplicate rule id {:?}", id));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Every Google font key any `tools_labels` def in the grammar needs (`Roboto:400`, …).
+pub fn google_font_keys_in_grammar(grammar: &crate::grammar::Grammar) -> Vec<String> {
+    let mut keys: Vec<String> = grammar
+        .all_defs()
+        .filter_map(|def| match &def.op {
+            crate::grammar::Op::Labels(l) => Some(&l.style),
+            _ => None,
+        })
+        .flat_map(|style| style.fonts().filter_map(LabelFont::google_key).collect::<Vec<_>>())
+        .collect();
+    keys.sort();
+    keys.dedup();
+    keys
+}
+
+/// The labels as placed: the pen strokes of their letters, and what each
+/// label covers.
+#[derive(Debug, Clone, Default)]
+struct Bucket {
+    lines: Lines,
+    shapes: Vec<MultiPolygon<f64>>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct Placed {
+    /// Every label's strokes together.
+    pub lines: Lines,
+    /// One shape per label, all buckets combined.
+    pub shapes: Vec<MultiPolygon<f64>>,
+    /// Labels whose matching rule had an `id`.
+    pub buckets: BTreeMap<String, Bucket>,
+}
+
+impl Placed {
+    /// What every label covers together.
+    pub fn area(&self) -> MultiPolygon<f64> {
+        geom::union_multi(&self.shapes)
+    }
+
+    pub fn lines_for(&self, rule: Option<&str>) -> Lines {
+        match rule {
+            None => self.lines.clone(),
+            Some(id) => self.buckets.get(id).map(|b| b.lines.clone()).unwrap_or_default(),
+        }
+    }
+
+    pub fn area_for(&self, rule: Option<&str>) -> MultiPolygon<f64> {
+        match rule {
+            None => self.area(),
+            Some(id) => self
+                .buckets
+                .get(id)
+                .map(|b| geom::union_multi(&b.shapes))
+                .unwrap_or_else(geom::empty),
+        }
+    }
+}
+
+/// The filled shape of an outline glyph from its closed contours. Fonts fill
+/// by the non-zero rule: a contour wound the other way from the glyph's
+/// largest one is a counter. Taken largest first, so a counter is cut from
+/// the letter around it and an island inside a counter is put back.
+fn glyph_shape(contours: Lines) -> MultiPolygon<f64> {
+    let mut parts: Vec<(f64, MultiPolygon<f64>)> = contours
+        .into_iter()
+        .filter(|c| c.0.len() >= 4)
+        .map(|c| {
+            let p = Polygon::new(c, vec![]);
+            (p.signed_area(), geom::make_valid(&p))
+        })
+        .filter(|(a, _)| *a != 0.0)
+        .collect();
+    parts.sort_by(|a, b| b.0.abs().total_cmp(&a.0.abs()));
+    let Some(lead) = parts.first().map(|(a, _)| a.signum()) else { return geom::empty() };
+    parts.into_iter().fold(geom::empty(), |shape, (a, p)| {
+        if a.signum() == lead {
+            geom::union_multi([&shape, &p])
+        } else {
+            geom::difference(&shape, &p)
+        }
+    })
+}
+
+/// `strokes` with `passes` concentric outlines around them (each pass buffers
+/// them all by one more step), and the area inside the outermost one.
+fn buffered(strokes: Lines, passes: u32, step: Mm, keep_strokes: bool) -> (Lines, MultiPolygon<f64>) {
+    if passes == 0 || step.0 <= 0.0 {
+        return (strokes, geom::empty());
+    }
+    let mut out = if keep_strokes { strokes.clone() } else { Lines::new() };
+    let mut outer = geom::empty();
     for pass in 1..=passes {
         let radius = pass as f64 * step.0;
         let parts: Vec<MultiPolygon<f64>> = strokes.iter().map(|l| geom::buffer_line_round(l, radius)).collect();
-        out.extend(geom::rings(&geom::union_multi(&parts)));
+        outer = geom::union_multi(&parts);
+        out.extend(geom::rings(&outer));
     }
-    out
+    (out, outer)
 }
 
 /// How much a road matters, 0 to 1, by its OpenMapTiles class or OSM `highway`.
@@ -343,7 +329,9 @@ struct Candidate {
     /// Length or the square root of the area, mm: the tie-break, larger first.
     extent: f64,
     shape: Shape,
-    style: EffectiveStyle,
+    look: Look,
+    /// The matching rule's `id`, when it has one.
+    rule: Option<String>,
 }
 
 /// A glyph's footprint: four corners, in order.
@@ -477,9 +465,11 @@ fn lerp(a: Coord<f64>, b: Coord<f64>, t: f64) -> Coord<f64> {
     Coord { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t }
 }
 
-/// One glyph set down: font-unit point `(x, y)` (x from the glyph's left
-/// edge) goes to `origin + x·k·u + (y - mid)·k·v`, `v` the text's downward.
+/// One glyph of a layout set down: font-unit point `(x, y)` (x from the
+/// glyph's left edge) goes to `origin + x·k·u + (y - mid)·k·v`, `v` the text's
+/// downward and `mid` the middle of the layout's line.
 struct Pose {
+    glyph: usize,
     origin: Coord<f64>,
     u: Coord<f64>,
     k: f64,
@@ -490,112 +480,130 @@ impl Pose {
         Coord { x: -self.u.y, y: self.u.x }
     }
 
-    fn map(&self, g: &LabelGlyph, (x, y): (f64, f64)) -> Coord<f64> {
+    fn map(&self, layout: &LabelLayout, (x, y): (f64, f64)) -> Coord<f64> {
         let v = self.v();
-        let mid = (g.top + g.bottom) / 2.0;
+        let mid = (layout.top + layout.bottom) / 2.0;
         let (a, b) = (x * self.k, (y - mid) * self.k);
         Coord { x: self.origin.x + a * self.u.x + b * v.x, y: self.origin.y + a * self.u.y + b * v.y }
     }
 
-    fn quad(&self, g: &LabelGlyph, pad: f64) -> Quad {
+    fn quad(&self, layout: &LabelLayout, pad: f64) -> Quad {
         let p = pad / self.k;
-        let (x0, x1, y0, y1) = (-p, g.advance + p, g.top - p, g.bottom + p);
+        let advance = layout.glyphs[self.glyph].advance;
+        let (x0, x1, y0, y1) = (-p, advance + p, layout.top - p, layout.bottom + p);
         Quad([
-            self.map(g, (x0, y0)),
-            self.map(g, (x1, y0)),
-            self.map(g, (x1, y1)),
-            self.map(g, (x0, y1)),
+            self.map(layout, (x0, y0)),
+            self.map(layout, (x1, y0)),
+            self.map(layout, (x1, y1)),
+            self.map(layout, (x0, y1)),
         ])
     }
 
-    fn strokes(&self, g: &LabelGlyph, out: &mut Lines) {
-        for s in &g.strokes {
-            out.push(LineString::from(s.iter().map(|&p| self.map(g, p)).collect::<Vec<_>>()));
-        }
+    fn strokes(&self, layout: &LabelLayout) -> Lines {
+        layout.glyphs[self.glyph]
+            .strokes
+            .iter()
+            .map(|s| LineString::from(s.iter().map(|&p| self.map(layout, p)).collect::<Vec<_>>()))
+            .collect()
     }
 }
 
-/// The labels of `features` (output millimetres), as pen strokes.
-pub fn place(features: &[Feature], frame: &MultiPolygon<f64>, style: &Style, google_fonts: &GoogleFonts) -> Result<Lines, String> {
+/// The labels of `features` (output millimetres).
+pub fn place(features: &[Feature], frame: &MultiPolygon<f64>, style: &Style, google_fonts: &GoogleFonts) -> Result<Placed, String> {
     validate_style(style)?;
+    // Each font file decoded once, not once per label.
+    let mut faces: HashMap<String, Vec<u8>> = HashMap::new();
+    for key in style.fonts().filter_map(LabelFont::google_key) {
+        if let Some(bytes) = google_fonts.get(&key) {
+            faces.insert(key, crate::google_fonts::decode_font_bytes(bytes)?);
+        }
+    }
     let page = frame.unsigned_area().max(1.0);
     let mut candidates = Vec::new();
     // Roads come in pieces; one chain per name and class, so a street is one
     // candidate however the data cut it.
-    let mut roads: BTreeMap<(String, String), (f64, Lines, Tags)> = BTreeMap::new();
+    let mut roads: BTreeMap<(String, String), (f64, Lines, Look, Option<String>)> = BTreeMap::new();
     for f in features {
         let Some(raw) = style.keys.iter().find_map(|k| f.tag(k)).map(str::trim).filter(|s| !s.is_empty()) else {
             continue;
         };
-        let eff = style.for_feature(f)?;
-        let name = if eff.upper { raw.to_uppercase() } else { raw.to_string() };
+        let (look, rule) = style.look(f);
+        let name = if look.upper { raw.to_uppercase() } else { raw.to_string() };
         let polys = geom::polygons(&f.geometry);
         if let Some(poly) = polys.into_iter().max_by(|a, b| a.unsigned_area().total_cmp(&b.unsigned_area())) {
             let area = poly.unsigned_area();
             let rank = (0.25 + (area / page).sqrt()).min(1.0);
-            candidates.push(Candidate {
-                text: name,
-                rank,
-                extent: area.sqrt(),
-                shape: Shape::Area(poly),
-                style: eff,
-            });
+            candidates.push(Candidate { text: name, rank, extent: area.sqrt(), shape: Shape::Area(poly), look, rule });
         } else {
             let class = f.tag("class").or_else(|| f.tag("highway")).unwrap_or("").to_string();
-            let entry = roads.entry((name, class)).or_insert((road_rank(f), Vec::new(), f.tags.clone()));
+            let entry = roads.entry((name, class)).or_insert_with(|| (road_rank(f), Vec::new(), look, rule));
             entry.1.extend(geom::lines_of(&f.geometry));
         }
     }
-    for ((name, _), (rank, lines, tags)) in roads {
-        let eff = style.for_tags(&tags)?;
+    for ((name, _), (rank, lines, look, rule)) in roads {
         for chain in geom::linemerge(&lines) {
             let pts: Vec<Coord<f64>> = chain.0;
             if pts.len() < 2 {
                 continue;
             }
             let extent = Path::new(pts.clone()).length();
-            candidates.push(Candidate { text: name.clone(), rank, extent, shape: Shape::Road(pts), style: eff.clone() });
+            candidates.push(Candidate {
+                text: name.clone(),
+                rank,
+                extent,
+                shape: Shape::Road(pts),
+                look: look.clone(),
+                rule: rule.clone(),
+            });
         }
     }
     candidates.sort_by(|a, b| b.rank.total_cmp(&a.rank).then(b.extent.total_cmp(&a.extent)));
 
-    let max_cap = candidates
-        .iter()
-        .map(|c| c.style.size.0.max(c.style.min_size.0))
-        .fold(style.size.0, f64::max);
+    let max_cap = candidates.iter().map(|c| c.look.size.0.max(c.look.min_size.0)).fold(style.size.0, f64::max);
     let mut taken = Taken::new(max_cap * 4.0);
     let mut named: HashMap<String, Vec<Coord<f64>>> = HashMap::new();
-    let mut out = Lines::new();
+    let mut out = Placed::default();
     let inside = |q: &Quad| q.0.iter().all(|c| frame.contains(&Point::from(*c)));
     for c in &candidates {
-        let eff = &c.style;
-        let google_bytes = eff
-            .font
-            .google_key()
-            .and_then(|k| google_fonts.get(&k))
-            .map(|b| b.as_slice());
-        let layout = text::layout(&eff.font, google_bytes, &c.text)?;
-        let (big, small) = (eff.size.0.max(0.1), eff.min_size.0.max(0.1));
+        let look = &c.look;
+        let bytes = look.font.google_key().and_then(|k| faces.get(&k)).map(Vec::as_slice);
+        let layout = text::layout(&look.font, bytes, &c.text)?;
+        let (big, small) = (look.size.0.max(0.1), look.min_size.0.max(0.1));
         let size = small + (big - small) * c.rank.clamp(0.0, 1.0);
         let k = size / layout.cap_height;
-        let glyphs = &layout.glyphs;
         let width = layout.width * k;
-        let clear = |poses: &[(Pose, &LabelGlyph)], taken: &Taken| {
-            poses.iter().all(|(p, g)| {
-                let q = p.quad(g, eff.padding.0);
-                inside(&p.quad(g, 0.0)) && !taken.hits(&q)
-            })
+        let clear = |poses: &[Pose], taken: &Taken| {
+            poses.iter().all(|p| inside(&p.quad(&layout, 0.0)) && !taken.hits(&p.quad(&layout, look.padding.0)))
         };
         let far = |at: Coord<f64>, named: &HashMap<String, Vec<Coord<f64>>>| {
-            named.get(&c.text).is_none_or(|seen| seen.iter().all(|&s| dist(s, at) >= eff.spacing.0))
+            named.get(&c.text).is_none_or(|seen| seen.iter().all(|&s| dist(s, at) >= look.spacing.0))
         };
-        let keep = |poses: Vec<(Pose, &LabelGlyph)>, at: Coord<f64>, taken: &mut Taken, out: &mut Lines, named: &mut HashMap<String, Vec<Coord<f64>>>| {
-            let mut chunk = Lines::new();
-            for (p, g) in &poses {
-                taken.add(p.quad(g, eff.padding.0));
-                p.strokes(g, &mut chunk);
+        let bucket = c.rule.clone();
+        let keep = |poses: Vec<Pose>, at: Coord<f64>, taken: &mut Taken, out: &mut Placed, named: &mut HashMap<String, Vec<Coord<f64>>>| {
+            let mut strokes = Lines::new();
+            let mut glyphs = Vec::new();
+            for p in &poses {
+                taken.add(p.quad(&layout, look.padding.0));
+                let s = p.strokes(&layout);
+                if layout.outline {
+                    glyphs.push(glyph_shape(s.clone()));
+                }
+                strokes.extend(s);
             }
-            out.extend(stroke_with_buffers(&chunk, eff.buffer, eff.buffer_step, eff.keep_centerline));
+            let (lines, outer) = buffered(strokes, look.buffer, look.buffer_step, look.keep_centerline);
+            out.lines.extend(lines.clone());
+            glyphs.push(outer);
+            let shape = geom::union_multi(&glyphs);
+            if !shape.0.is_empty() {
+                out.shapes.push(shape.clone());
+            }
+            if let Some(id) = &bucket {
+                let b = out.buckets.entry(id.clone()).or_default();
+                b.lines.extend(lines);
+                if !shape.0.is_empty() {
+                    b.shapes.push(shape);
+                }
+            }
             named.entry(c.text.clone()).or_default().push(at);
         };
         match &c.shape {
@@ -611,7 +619,7 @@ pub fn place(features: &[Feature], frame: &MultiPolygon<f64>, style: &Style, goo
                 let tries = ((hi - lo) / step).ceil() as i64;
                 let mut placed: Vec<f64> = Vec::new();
                 // Every straight stretch first; bent text only where none is left.
-                let passes: &[bool] = if eff.curved { &[false, true] } else { &[false] };
+                let passes: &[bool] = if look.curved { &[false, true] } else { &[false] };
                 for &bend in passes {
                     for i in 0..=2 * tries {
                         let off = ((i + 1) / 2) as f64 * step * if i % 2 == 1 { 1.0 } else { -1.0 };
@@ -619,14 +627,14 @@ pub fn place(features: &[Feature], frame: &MultiPolygon<f64>, style: &Style, goo
                         if s < lo - 1e-9 || s > hi + 1e-9 {
                             continue;
                         }
-                        if placed.iter().any(|&p| (p - s).abs() < eff.spacing.0.max(width + size)) {
+                        if placed.iter().any(|&p| (p - s).abs() < look.spacing.0.max(width + size)) {
                             continue;
                         }
                         let at = path.point(s);
                         if !far(at, &named) {
                             continue;
                         }
-                        let Some(poses) = along(&path, s, width, size, k, &glyphs, bend) else { continue };
+                        let Some(poses) = along(&path, s, width, size, k, &layout.glyphs, bend) else { continue };
                         if clear(&poses, &taken) {
                             keep(poses, at, &mut taken, &mut out, &mut named);
                             placed.push(s);
@@ -635,15 +643,19 @@ pub fn place(features: &[Feature], frame: &MultiPolygon<f64>, style: &Style, goo
                 }
             }
             Shape::Area(poly) => {
-                let fits = |poses: &[(Pose, &LabelGlyph)]| poses.iter().all(|(p, g)| poly.contains(&p.quad(g, 0.0).polygon()));
+                let fits = |poses: &[Pose]| poses.iter().all(|p| poly.contains(&p.quad(&layout, 0.0).polygon()));
                 for at in area_spots(poly, width, size) {
                     if !far(at, &named) {
                         continue;
                     }
                     let start = Coord { x: at.x - width / 2.0, y: at.y };
-                    let poses: Vec<(Pose, &LabelGlyph)> = glyphs
-                        .iter()
-                        .map(|g| (Pose { origin: Coord { x: start.x + g.x * k, y: start.y }, u: Coord { x: 1.0, y: 0.0 }, k }, g))
+                    let poses: Vec<Pose> = (0..layout.glyphs.len())
+                        .map(|i| Pose {
+                            glyph: i,
+                            origin: Coord { x: start.x + layout.glyphs[i].x * k, y: start.y },
+                            u: Coord { x: 1.0, y: 0.0 },
+                            k,
+                        })
                         .collect();
                     if fits(&poses) && clear(&poses, &taken) {
                         keep(poses, at, &mut taken, &mut out, &mut named);
@@ -658,15 +670,7 @@ pub fn place(features: &[Feature], frame: &MultiPolygon<f64>, style: &Style, goo
 
 /// The glyphs of a label centred at arc length `s` on `path`, or `None` where
 /// the road turns too sharply under it to be read.
-fn along<'g>(
-    path: &Path,
-    s: f64,
-    width: f64,
-    size: f64,
-    k: f64,
-    glyphs: &'g [LabelGlyph],
-    curved: bool,
-) -> Option<Vec<(Pose, &'g LabelGlyph)>> {
+fn along(path: &Path, s: f64, width: f64, size: f64, k: f64, glyphs: &[LabelGlyph], curved: bool) -> Option<Vec<Pose>> {
     let (s0, s1) = (s - width / 2.0, s + width / 2.0);
     let (p0, p1) = (path.point(s0), path.point(s1));
     let d = sub(p1, p0);
@@ -678,7 +682,8 @@ fn along<'g>(
         return Some(
             glyphs
                 .iter()
-                .map(|g| (Pose { origin: Coord { x: a.x + g.x * k * u.x, y: a.y + g.x * k * u.y }, u, k }, g))
+                .enumerate()
+                .map(|(glyph, g)| Pose { glyph, origin: Coord { x: a.x + g.x * k * u.x, y: a.y + g.x * k * u.y }, u, k })
                 .collect(),
         );
     }
@@ -688,7 +693,7 @@ fn along<'g>(
     let mut poses = Vec::with_capacity(glyphs.len());
     let mut last: Option<Coord<f64>> = None;
     let mut turned = 0.0;
-    for g in glyphs {
+    for (glyph, g) in glyphs.iter().enumerate() {
         let half = g.advance * k / 2.0;
         let mid = (g.x * k) + half;
         let sign = if flip { -1.0 } else { 1.0 };
@@ -704,7 +709,7 @@ fn along<'g>(
         }
         last = Some(u);
         let c = path.point(at);
-        poses.push((Pose { origin: Coord { x: c.x - half * u.x, y: c.y - half * u.y }, u, k }, g));
+        poses.push(Pose { glyph, origin: Coord { x: c.x - half * u.x, y: c.y - half * u.y }, u, k });
     }
     (turned <= 120f64.to_radians()).then_some(poses)
 }
@@ -745,6 +750,18 @@ mod tests {
         }
     }
 
+    fn park(name: &str) -> Feature {
+        Feature {
+            element: Element::Tile,
+            id: 0,
+            tags: [("name", name), ("tiles:layer", "park")]
+                .into_iter()
+                .map(|(k, v)| (k.into(), v.into()))
+                .collect(),
+            geometry: Geometry::Polygon(geo::Rect::new((10.0, 10.0), (90.0, 90.0)).to_polygon()),
+        }
+    }
+
     fn frame() -> MultiPolygon<f64> {
         MultiPolygon::new(vec![geo::Rect::new((0.0, 0.0), (100.0, 100.0)).to_polygon()])
     }
@@ -753,7 +770,7 @@ mod tests {
     fn crossing_roads_do_not_overlap() {
         let a = road("Fulton Street", "primary", &[(0.0, 50.0), (100.0, 50.0)]);
         let b = road("Great Avenue", "minor", &[(50.0, 0.0), (50.0, 100.0)]);
-        let out = place(&[a, b], &frame(), &Style::default(), &GoogleFonts::new()).unwrap();
+        let out = place(&[a, b], &frame(), &Style::default(), &GoogleFonts::new()).unwrap().lines;
         assert!(!out.is_empty());
         // The primary is placed first, on its middle; the avenue is pushed off
         // the crossing.
@@ -765,7 +782,7 @@ mod tests {
     fn text_reads_left_to_right() {
         let a = road("AB", "primary", &[(90.0, 50.0), (10.0, 50.0)]);
         let style = Style { font: LabelFont::drawland("futural"), ..Style::default() };
-        let out = place(&[a], &frame(), &style, &GoogleFonts::new()).unwrap();
+        let out = place(&[a], &frame(), &style, &GoogleFonts::new()).unwrap().lines;
         // The first stroke drawn is the `A`, left of the `B`.
         let first = out[0].0[0].x;
         let last = out.last().unwrap().0[0].x;
@@ -775,6 +792,82 @@ mod tests {
     #[test]
     fn a_short_road_goes_unlabelled() {
         let a = road("A very long street name", "minor", &[(10.0, 10.0), (14.0, 10.0)]);
-        assert!(place(&[a], &frame(), &Style::default(), &GoogleFonts::new()).unwrap().is_empty());
+        assert!(place(&[a], &frame(), &Style::default(), &GoogleFonts::new()).unwrap().lines.is_empty());
+    }
+
+    #[test]
+    fn rule_ids_split_lines_and_area() {
+        let style: Style = serde_json::from_value(serde_json::json!({
+            "rules": [{ "id": "park", "tags": { "tiles:layer": "park" }, "size": "8mm", "min_size": "8mm" }],
+        }))
+        .unwrap();
+        let placed = place(&[park("Lake")], &frame(), &style, &GoogleFonts::new()).unwrap();
+        let bucket = placed.buckets.get("park").expect("park bucket");
+        assert!(!bucket.lines.is_empty());
+        assert_eq!(placed.lines.len(), bucket.lines.len());
+    }
+
+    #[test]
+    fn a_single_stroke_label_covers_something_only_when_buffered() {
+        let plain = place(&[park("Lake")], &frame(), &Style::default(), &GoogleFonts::new()).unwrap();
+        assert!(!plain.lines.is_empty());
+        assert!(plain.area().0.is_empty());
+
+        let style = Style { buffer: 2, keep_centerline: false, ..Style::default() };
+        let thick = place(&[park("Lake")], &frame(), &style, &GoogleFonts::new()).unwrap();
+        let area = thick.area();
+        assert!(!area.0.is_empty());
+        // Every outline lies on or inside the outermost one.
+        let grown = geom::buffer(&area, 1e-6);
+        assert!(thick.lines.iter().flat_map(|l| l.0.iter()).all(|c| grown.contains(&Point::from(*c))));
+    }
+
+    #[test]
+    fn rules_override_the_style_and_reject_unknown_keys() {
+        let style: Style = serde_json::from_value(serde_json::json!({
+            "size": "2mm",
+            "rules": [{ "tags": { "class": ["primary"] }, "size": "3mm", "buffer": 1 }],
+        }))
+        .unwrap();
+        let back: Style = serde_json::from_value(serde_json::to_value(&style).unwrap()).unwrap();
+        assert_eq!(back, style);
+        let (look, bucket) = style.look(&road("A", "primary", &[(0.0, 0.0), (1.0, 0.0)]));
+        assert_eq!((look.size, look.buffer), (Mm(3.0), 1));
+        assert!(bucket.is_none());
+        let (look, _) = style.look(&road("A", "minor", &[(0.0, 0.0), (1.0, 0.0)]));
+        assert_eq!((look.size, look.buffer), (Mm(2.0), 0));
+        let e = serde_json::from_value::<Style>(serde_json::json!({
+            "rules": [{ "tags": { "class": "park" }, "fill": { "pattern": "lines" } }],
+        }));
+        assert!(e.is_err());
+    }
+
+    /// A TrueType face from the system, for the outline tests; they are
+    /// skipped where there is none.
+    fn system_face() -> Option<(LabelFont, GoogleFonts)> {
+        let bytes = ["/System/Library/Fonts/Supplemental/Arial.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"]
+            .iter()
+            .find_map(|p| std::fs::read(p).ok())?;
+        let font: LabelFont = serde_json::from_value(serde_json::json!({ "origin": "google", "family": "Test" })).unwrap();
+        let fonts = GoogleFonts::from([(font.google_key().unwrap(), bytes)]);
+        Some((font, fonts))
+    }
+
+    #[test]
+    fn an_outline_font_covers_its_glyphs_with_the_counters_open() {
+        let Some((font, fonts)) = system_face() else { return };
+        let style = Style { font, size: Mm(6.0), min_size: Mm(6.0), ..Style::default() };
+        let placed = place(&[park("OPg")], &frame(), &style, &fonts).unwrap();
+        assert!(!placed.lines.is_empty(), "the contours are drawn");
+        let area = placed.area();
+        // `O`, `P` and `g` each keep their counter.
+        assert_eq!(area.0.len(), 3);
+        assert!(area.0.iter().all(|p| p.interiors().len() == 1));
+        // One baseline: the `g` hangs below the capitals, whose bottoms line up.
+        let bottom = |p: &Polygon<f64>| p.exterior().0.iter().map(|c| c.y).fold(f64::MIN, f64::max);
+        let mut polys = area.0.clone();
+        polys.sort_by(|a, b| a.centroid().unwrap().x().total_cmp(&b.centroid().unwrap().x()));
+        assert!((bottom(&polys[0]) - bottom(&polys[1])).abs() < 0.2);
+        assert!(bottom(&polys[2]) > bottom(&polys[0]) + 0.5);
     }
 }

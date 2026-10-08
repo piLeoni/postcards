@@ -48,6 +48,8 @@ enum Value {
     Features(Vec<Feature>),
     Area(MultiPolygon<f64>),
     Lines(Lines),
+    /// `tools_labels`: the letters' strokes, read as lines, and what they cover.
+    Labels(crate::labels::Placed),
     /// `module_roads` output, carrying all of them at once.
     Module { area: MultiPolygon<f64>, outlines: Lines, details: Lines, trails: Lines, centerlines: Lines, seams: Lines },
 }
@@ -62,7 +64,7 @@ impl Value {
 
     fn lines(&self, def: &Name) -> Result<&Lines, RunError> {
         match self {
-            Value::Lines(l) => Ok(l),
+            Value::Lines(l) | Value::Labels(crate::labels::Placed { lines: l, .. }) => Ok(l),
             _ => Err(RunError::Plan(format!("{def} is not a line set"))),
         }
     }
@@ -284,6 +286,21 @@ fn evaluate(
     Ok(done)
 }
 
+fn label_placed<'a>(done: &'a BTreeMap<Name, Value>, of: &Name) -> Result<&'a crate::labels::Placed, String> {
+    match done.get(of) {
+        Some(Value::Labels(placed)) => Ok(placed),
+        _ => Err(format!("{of} is not a labels def")),
+    }
+}
+
+fn label_pick(done: &BTreeMap<Name, Value>, pick: &crate::grammar::LabelPick) -> Result<MultiPolygon<f64>, String> {
+    Ok(label_placed(done, &pick.of)?.area_for(pick.rule.as_deref()))
+}
+
+fn label_lines(done: &BTreeMap<Name, Value>, pick: &crate::grammar::LabelPick) -> Result<Lines, String> {
+    Ok(label_placed(done, &pick.of)?.lines_for(pick.rule.as_deref()))
+}
+
 fn eval_op(
     op: &Op,
     done: &BTreeMap<Name, Value>,
@@ -336,6 +353,8 @@ fn eval_op(
             Value::Area(geom::intersection(&base, &keep))
         }
         Op::FillHoles(n) => Value::Area(geom::fill_holes(&area(n)?)),
+        Op::LabelArea(p) => Value::Area(label_pick(done, p)?),
+        Op::LabelLines(p) => Value::Lines(label_lines(done, p)?),
         Op::Grow(g) => Value::Area(geom::buffer(&area(&g.of)?, g.by.0)),
         Op::BufferLines(b) => {
             let ls = lines(&b.lines)?;
@@ -409,7 +428,7 @@ fn eval_op(
             for n in &l.from {
                 named.extend(feats(n)?);
             }
-            Value::Lines(crate::labels::place(&named, &engine.output, &l.style, engine.google_fonts)?)
+            Value::Labels(crate::labels::place(&named, &engine.output, &l.style, engine.google_fonts)?)
         }
         Op::Fill(_) => return Err("tools_fill is evaluated in the fill pass".into()),
         Op::Module(m) => match &m.from {
@@ -883,6 +902,47 @@ mod tests {
             &output(),
             Inputs { features: vec![], tiles: vec![], sources: &BTreeMap::new(), terrain: None, memory_budget: None, google_fonts: BTreeMap::new() },
         )
+    }
+
+    #[test]
+    fn an_outline_label_is_filled_through_its_area() {
+        // A system TrueType face stands in for the downloaded one; skipped
+        // where there is none.
+        let Some(bytes) = ["/System/Library/Fonts/Supplemental/Arial.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"]
+            .iter()
+            .find_map(|p| std::fs::read(p).ok())
+        else {
+            return;
+        };
+        let grammar = from_yaml(
+            "output: { width: 100mm, height: 50mm }\n\
+             $features:\n  parks: { osm_select: { leisure: park } }\n\
+             $lines:\n  names: { tools_labels: { from: $features.parks, size: 5mm, min_size: 5mm, font: { origin: google, family: Arial } } }\n\
+             $areas:\n  letters: { tools_label_area: $lines.names }\n\
+             $fills:\n  ink: { tools_fill: { in: $areas.letters, pattern: lines, spacing: 0.3mm, angle: 45 } }\n\
+             draw:\n  - { id: fill, from: $fills.ink }\n  - { id: labels, from: $lines.names }\n",
+        )
+        .expect("profile loads");
+        let ring = vec![(-0.01, -0.005), (0.01, -0.005), (0.01, 0.005), (-0.01, 0.005), (-0.01, -0.005)];
+        let park = Feature {
+            element: crate::osm::Element::Way,
+            id: 1,
+            tags: [("leisure", "park"), ("name", "Golden Gate Park")].into_iter().map(|(k, v)| (k.into(), v.into())).collect(),
+            geometry: geo::Geometry::Polygon(geo::Polygon::new(geo::LineString::from(ring), vec![])),
+        };
+        let fonts = BTreeMap::from([("Arial:400".to_string(), bytes)]);
+        let out = run(
+            &grammar,
+            &output(),
+            Inputs { features: vec![park], tiles: vec![], sources: &BTreeMap::new(), terrain: None, memory_budget: None, google_fonts: fonts },
+        )
+        .unwrap();
+        let count = |id: &str| out.groups.iter().find(|(g, _)| g == id).map_or(0, |(_, n)| *n);
+        assert!(count("labels") > 0, "the letters are drawn");
+        assert!(count("fill") > 0, "the letters are filled");
+
+        let bad = "output: { width: 100mm, height: 50mm }\n$areas:\n  f: { engine_frame: {} }\n  x: { tools_label_area: $areas.f }\n";
+        assert!(from_yaml(bad).is_err(), "tools_label_area reads a labels def only");
     }
 
     #[test]

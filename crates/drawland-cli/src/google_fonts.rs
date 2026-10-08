@@ -1,8 +1,11 @@
-//! Download TTF bytes for Google Fonts (for labels with `origin: "google"`).
+//! Download font bytes for Google Fonts (for labels with `origin: "google"`).
 
+use drawland_core::google_fonts::pick_url_from_css;
 use drawland_core::text::parse_google_font_key;
 
-const CSS_UA: &str = "Mozilla/5.0 (compatible; MSIE 10.0; Windows NT 6.1; Truetype)";
+/// Same user-agent Google Fonts uses to serve `woff2` with a `/* latin */` face.
+const CSS_UA: &str =
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 
 pub fn fetch(key: &str) -> Result<Vec<u8>, String> {
     let (family, weight, italic) = parse_google_font_key(key).ok_or_else(|| format!("bad google font key {:?}", key))?;
@@ -17,13 +20,8 @@ pub fn fetch(key: &str) -> Result<Vec<u8>, String> {
         .into_body()
         .read_to_string()
         .map_err(|e| format!("google fonts css: {e}"))?;
-    let ttf = css
-        .lines()
-        .filter_map(|l| l.trim().strip_prefix("src: url("))
-        .find_map(|rest| rest.split(')').next())
-        .filter(|u| u.ends_with(".ttf"))
-        .ok_or_else(|| format!("google fonts: no TTF in stylesheet for {:?}", family))?;
-    ureq::get(ttf)
+    let url = pick_url_from_css(&css).ok_or_else(|| format!("google fonts: no font URL in stylesheet for {:?}", family))?;
+    ureq::get(&url)
         .call()
         .map_err(|e| format!("google font {:?}: {e}", family))?
         .into_body()
