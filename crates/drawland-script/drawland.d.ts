@@ -37,7 +37,7 @@ interface Tags {
 /** A terramask preset, or a rule `layer:class,class` on the OpenMapTiles layers (`landcover:park,garden`). */
 type TilePreset =
   | "water" | "ocean" | "lakes" | "rivers" | "land" | "forest" | "glacier" | "wetland" | "sand" | "rock"
-  | "grass" | "farmland" | "parks" | "urban" | "buildings" | "roads" | "paths" | "rail"
+  | "grass" | "farmland" | "parks" | "urban" | "buildings" | "roads" | "paths" | "road_names" | "rail"
   | `${string}:${string}`
 
 /** A penfill pattern. */
@@ -378,6 +378,40 @@ interface BurinBuilder {
 declare const modules: {
   /** Roads with their widths, crossings and bridges; from OSM `highway` unless given features. Call once. */
   roads(options?: { from?: Features }): Roads
+  /**
+   * Names written on the map in a single-stroke (Hershey) font, placed so
+   * that none covers another: along each road, bent with it where it curves,
+   * and level inside areas. Larger the more the feature matters (a road's
+   * class, an area's size); the most important are placed first.
+   */
+  labels(options: LabelOptions): Labels
+}
+
+interface LabelOptions {
+  /** The named features, `features.tiles("road_names")`, or several sets placed together. */
+  from: Features | Features[]
+  /** Capital height of the most important labels. Default `"2mm"`. */
+  size?: Length
+  /** Capital height of the least important. Default `"1.1mm"`. */
+  minSize?: Length
+  /** Clear space kept around every letter. Default `"0.5mm"`. */
+  padding?: Length
+  /** Distance between two labels of the same name. Default `"70mm"`. */
+  spacing?: Length
+  /** Bend text along curving roads; `false` labels straight stretches only. Default `true`. */
+  curved?: boolean
+  /** Write the names in capitals. */
+  upper?: boolean
+  /** The tags the text is read from, the first present. Default `["name", "ref"]`. */
+  keys?: string | string[]
+  /** A built-in single-stroke font. Default `"futural"`. */
+  font?: "futural"
+}
+
+/** What the labels module publishes. */
+interface Labels {
+  /** The letters, as pen strokes. */
+  readonly lines: Lines
 }
 
 /** Put lines on paper; returns the group id. Later draws go on top. */

@@ -241,6 +241,15 @@ pub struct ClipLines {
     pub invert: bool,
 }
 
+/// `tools_labels`: the names of `from`, written in a single-stroke font and
+/// placed so that none covers another.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Labels {
+    /// Placed together, so no set's labels cover another's.
+    pub from: Vec<Name>,
+    pub style: crate::labels::Style,
+}
+
 /// A penfill run. `per: feature` runs one pattern per polygon instead of one
 /// on the union. `content` fills the area with lines made elsewhere (burin's,
 /// or any `$lines`), cut to it, instead of a pattern.
@@ -284,6 +293,8 @@ pub enum Op {
     Terrain(Terrain),
     /// A whole burin document, drawn from the elevation.
     Burin(Burin),
+    /// Names on the map, as pen strokes.
+    Labels(Labels),
 
     // ---- fills (lines, produced by penfill) -------------------------------
     Fill(Fill),
@@ -314,7 +325,7 @@ impl Op {
             | Op::Frame
             | Op::ExtendToFrame(_) => Section::Areas,
             Op::Rings(_) | Op::Lines(_) | Op::Segments(_) | Op::Dedupe(_) | Op::Merge(_) | Op::Join(_)
-            | Op::ClipLines(_) | Op::Terrain(_) | Op::Burin(_) => Section::Lines,
+            | Op::ClipLines(_) | Op::Terrain(_) | Op::Burin(_) | Op::Labels(_) => Section::Lines,
             Op::Fill(_) => Section::Fills,
             // A module is called from $areas: its headline output is an area,
             // and the rest are reached by output name (`roads.outlines`).
@@ -348,6 +359,7 @@ impl Op {
             Op::ClipLines(c) => vec![c.lines.clone(), c.within.clone()],
             Op::Terrain(t) => t.in_area.iter().cloned().collect(),
             Op::Burin(b) => b.in_area.iter().cloned().collect(),
+            Op::Labels(l) => l.from.clone(),
             Op::Fill(f) => std::iter::once(f.in_area.clone()).chain(f.content.iter().cloned()).collect(),
         }
     }
@@ -899,7 +911,7 @@ fn parse_op(raw: RawOp, section: Section) -> Result<Op, GrammarError> {
         "tools_polygons" | "tools_union" | "tools_difference" | "tools_intersect" | "tools_fill_holes"
         | "tools_grow" | "tools_buffer_lines" | "tools_extend_to_frame" | "engine_frame" => Section::Areas,
         "tools_rings" | "tools_lines" | "tools_segments" | "tools_dedupe" | "tools_merge" | "tools_join"
-        | "tools_clip" | "tools_terrain" | "tools_burin" => Section::Lines,
+        | "tools_clip" | "tools_terrain" | "tools_burin" | "tools_labels" => Section::Lines,
         "tools_fill" => Section::Fills,
         other => {
             if let Some(rest) = other.strip_prefix("module_") {
@@ -1085,6 +1097,32 @@ fn parse_op(raw: RawOp, section: Section) -> Result<Op, GrammarError> {
                 in_area: raw.in_area.as_deref().map(refname).transpose()?,
                 layer: raw.layer,
             })
+        }
+        "tools_labels" => {
+            let mut body = match value {
+                Value::Object(m) => m,
+                _ => return Err(GrammarError::Invalid("tools_labels takes { from, ...style }".into())),
+            };
+            let from: Vec<Name> = match body.remove("from") {
+                Some(Value::String(s)) => vec![refname(&s)?],
+                Some(Value::Array(items)) if !items.is_empty() => items
+                    .iter()
+                    .map(|v| v.as_str().ok_or_else(|| not_a_reference(v.to_string())).and_then(refname))
+                    .collect::<Result<_, _>>()?,
+                _ => return Err(GrammarError::Invalid("tools_labels needs from: $features.x or a list of them".into())),
+            };
+            if let Some(f) = from.iter().find(|f| f.section != Section::Features) {
+                return Err(GrammarError::Invalid(format!("tools_labels.from has {f}, but it reads $features sets")));
+            }
+            let style: crate::labels::Style = json(&Value::Object(body), "tools_labels")?;
+            if crate::text::font(&style.font).is_none() {
+                return Err(GrammarError::Invalid(format!(
+                    "tools_labels: no font {:?} (built in: {})",
+                    style.font,
+                    crate::text::FONTS.join(", ")
+                )));
+            }
+            Op::Labels(Labels { from, style })
         }
         "tools_rings" => match &value {
             Value::String(s) => Op::Rings(Rings { of: refname(s)?, exterior_only: false }),
@@ -1497,6 +1535,11 @@ pub fn op_to_json(op: &Op) -> Value {
                 body.insert("layer".into(), Value::String(l.clone()));
             }
             ("tools_burin", Value::Object(body))
+        }
+        Op::Labels(l) => {
+            let mut body = serde_json::to_value(&l.style).unwrap_or_else(|_| json!({}));
+            body["from"] = refs_json(&l.from);
+            ("tools_labels", body)
         }
         Op::Grow(g) => ("tools_grow", json!({ "of": g.of.to_string(), "by": g.by })),
         Op::BufferLines(b) => ("tools_buffer_lines", json!({ "lines": b.lines.to_string(), "by": b.by })),

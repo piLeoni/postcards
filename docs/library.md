@@ -94,7 +94,7 @@ page then shows the output as read-only ("output computed by the script").
   drops features another tag selected; `underground: true` keeps tunnels and
   `layer < 0`.
 - `features.tiles(...items)`: features from OpenFreeMap's vector tiles, read
-  by terramask. An item is a preset (`buildings`, `roads`, `paths`, `rail`,
+  by terramask. An item is a preset (`buildings`, `roads`, `paths`, `road_names`, `rail`,
   `water`, `lakes`, `rivers`, `ocean`, `land`, `forest`, `grass`, `parks`,
   `farmland`, `wetland`, `sand`, `rock`, `glacier`, `urban`) or a rule
   `layer:class,class` on the OpenMapTiles layers, where a name is a class or a
@@ -187,6 +187,41 @@ features.tiles("roads", "paths") })`. It returns:
 The widths come from OSM's `width` or `lanes` (3 m a lane); tile roads have
 neither, so their class decides. The module's lines can be drawn, not
 transformed (`lines.clip(roads.outlines, …)` is an error); call it once.
+
+## `modules.labels({...})`: names
+
+`modules.labels({ from })` writes the features' names in a single-stroke
+(Hershey) font, the kind CNC engravers draw in one pass, and returns
+`{ lines }`: ordinary lines, drawn with `draw` or turned into a mask with
+`areas.buffer(labels.lines, "0.4mm")`.
+
+```js
+const streets = features.where(features.tiles("road_names"), { class: ["primary", "secondary", "tertiary", "minor"] })
+const labels = modules.labels({ from: [streets, features.tiles("parks")] })
+draw({ id: "labels", from: labels.lines, stroke: { style: "solid", color: "#d40000" } })
+```
+
+Placement is greedy, as web maps do it: the most important names go first (a
+road by its class, an area by its size), and a name is kept only where every
+letter, with `padding` around it, is clear of those already kept and inside
+the paper. A road's name runs along its centre line and reads left to right;
+straight stretches are tried first, and where none is left the text bends
+with the road, unless the turns are too sharp to read. A long road is named
+again every `spacing`. An area's name sits level on the page, inside it.
+`road_names` is the tiles' `transportation_name` layer: the street centre
+lines with their `name` and `ref`. `from` takes one set or a list, placed
+together so no set's names cover another's.
+
+| Option | Default | What |
+|---|---|---|
+| `size` | `"2mm"` | capital height of the most important names |
+| `minSize` | `"1.1mm"` | capital height of the least important |
+| `padding` | `"0.5mm"` | clear space around every letter |
+| `spacing` | `"70mm"` | distance between two labels of the same name |
+| `curved` | `true` | bend text along curving roads |
+| `upper` | `false` | write in capitals |
+| `keys` | `["name", "ref"]` | the tags the text is read from, the first present |
+| `font` | `"futural"` | the built-in font |
 
 ## `draw({...})`: ink
 

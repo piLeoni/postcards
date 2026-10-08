@@ -65,3 +65,10 @@ compose.mask({ name: "trail_clear", from: trailClear, occludes: ["park_fill"] })
 compose.mask({ name: "wet_cover", from: water, occludes: [...park] })
 compose.mask({ name: "roads_cover", from: roads.area, occludes: [...park, ...wetDraws] })
 compose.mask({ name: "bldg_cover", from: buildings, occludes: [...park, ...wetDraws, ...road] })
+
+// Street and park names, on top of everything, in red.
+const streetNames = features.where(features.tiles("road_names"), {
+  class: ["motorway", "trunk", "primary", "secondary", "tertiary", "minor"],
+})
+const labels = modules.labels({ from: [streetNames, features.tiles("parks")] })
+draw({ id: "labels", from: labels.lines, stroke: { style: "solid", color: "#d40000" } })

@@ -394,6 +394,13 @@ fn eval_op(
                 None => geom::clip_lines(&drawn, &engine.output, false),
             })
         }
+        Op::Labels(l) => {
+            let mut named = Vec::new();
+            for n in &l.from {
+                named.extend(feats(n)?);
+            }
+            Value::Lines(crate::labels::place(&named, &engine.output, &l.style)?)
+        }
         Op::Fill(_) => return Err("tools_fill is evaluated in the fill pass".into()),
         Op::Module(m) => match &m.from {
             Some(from) => eval_module(&m.name, &feats(from)?, engine.of)?,

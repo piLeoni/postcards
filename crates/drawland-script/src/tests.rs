@@ -341,6 +341,29 @@ fn where_bands_features_and_ink_works_out_the_strokes() {
     assert_eq!(e.at.map(|a| a.0), Some(2));
 }
 
+#[test]
+fn labels_read_several_feature_sets_and_draw_as_lines() {
+    let g = evaluate(
+        "const streets = features.tiles('road_names')\n\
+         const parks = features.tiles('parks')\n\
+         const names = modules.labels({ from: [streets, parks], size: '2.2mm', upper: true })\n\
+         draw({ id: 'labels', from: names.lines, stroke: { style: 'solid', color: '#d40000' } })\n\
+         draw({ id: 'halo', from: lines.rings(areas.buffer(names.lines, '0.4mm')) })\n",
+    )
+    .unwrap();
+    let labels = g.defs(Section::Lines).iter().find_map(|d| match &d.op {
+        Op::Labels(l) => Some(l),
+        _ => None,
+    });
+    let labels = labels.expect("a labels def");
+    assert_eq!(labels.from.len(), 2);
+    assert_eq!(labels.style.size.0, 2.2);
+    assert!(labels.style.upper);
+    assert_eq!(labels.style.font, "futural");
+    let e = err("modules.labels({ from: features.tiles('parks'), colour: 'red' })");
+    assert!(e.message.contains("unknown option colour"), "{e}");
+}
+
 /// The names `drawland.d.ts` declares inside `declare const <object>: { … }`
 /// or as `declare function`.
 fn declared() -> Vec<String> {

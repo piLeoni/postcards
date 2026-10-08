@@ -328,6 +328,31 @@
         seams: out("seams"),
       });
     },
+    // Names written on the map in a single-stroke font, placed so that none
+    // covers another: along the roads (bent with them where they curve),
+    // level inside areas, larger the more the feature matters.
+    labels(options = {}) {
+      object(options, "modules.labels options");
+      const { from, size, minSize, padding, spacing, curved, upper, keys, font, ...rest } = options;
+      const extra = Object.keys(rest);
+      if (extra.length) fail(`modules.labels: unknown option ${extra[0]} (from, size, minSize, padding, spacing, curved, upper, keys, font)`);
+      const sets = Array.isArray(from) ? from : [from];
+      if (!sets.length) fail("modules.labels: from needs at least one feature set");
+      const op = { from: sets.map((f, i) => need(f, Features, sets.length > 1 ? `modules.labels from (input ${i + 1})` : "modules.labels from")) };
+      if (size !== undefined) op.size = size;
+      if (minSize !== undefined) op.min_size = minSize;
+      if (padding !== undefined) op.padding = padding;
+      if (spacing !== undefined) op.spacing = spacing;
+      if (curved !== undefined) op.curved = !!curved;
+      if (upper !== undefined) op.upper = !!upper;
+      if (keys !== undefined) {
+        const ks = Array.isArray(keys) ? keys : [keys];
+        if (!ks.length || !ks.every((k) => typeof k === "string")) fail(`modules.labels: keys is a tag or a list of tags, got ${describe(keys)}`);
+        op.keys = ks;
+      }
+      if (font !== undefined) op.font = String(font);
+      return Object.freeze({ lines: make(Lines, "lines", { tools_labels: op }) });
+    },
   };
 
   function drawRef(from) {
