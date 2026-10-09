@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useAtom } from 'jotai'
-import { AttributionControl, MapLibreMap, setWorkerUrl } from 'maplibre-gl'
+import { MapLibreMap, setWorkerUrl } from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 // A worker, not a script: Vite serves the pre-bundled `maplibre-gl` from
 // `node_modules/.vite/deps`, where MapLibre's own `import.meta.url` probe
@@ -20,10 +20,6 @@ setWorkerUrl(workerUrl)
 
 /** The basemap: OpenFreeMap's Positron, the same OpenStreetMap data the output is drawn from. */
 const STYLE = 'https://tiles.openfreemap.org/styles/positron'
-/** The style carries no attribution of its own; the ODbL needs this one shown. */
-const CREDIT =
-  '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> contributors · ' +
-  '<a href="https://openfreemap.org" target="_blank" rel="noreferrer">OpenFreeMap</a>'
 
 /**
  * Positron is a warm, green-grey style and paints its labels and roads darker
@@ -296,6 +292,28 @@ const PUSH = 6
 const PUSH_MAX = 1500
 /** What floats over the map: the output, its menu, the buttons in the corner. */
 const RAISED = 'shadow-[0_2px_8px_rgba(0,0,0,0.18)]'
+
+/** ODbL credit for the basemap; same chip as the map tags, links on hover. */
+function MapCredit() {
+  return (
+    <span
+      className={`group pointer-events-auto inline-flex items-center gap-[0.75ch] bg-white/90 px-1.5 py-0.5 font-mono text-[10px] whitespace-nowrap select-none hover:bg-black hover:text-white ${RAISED}`}
+      title="Map data attribution"
+    >
+      <span aria-hidden className="w-[1.5ch] text-center">i</span>
+      <span className="hidden group-hover:inline">
+        ©{' '}
+        <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer" className="group-hover:underline">
+          OpenStreetMap
+        </a>{' '}
+        contributors ·{' '}
+        <a href="https://openfreemap.org" target="_blank" rel="noreferrer" className="group-hover:underline">
+          OpenFreeMap
+        </a>
+      </span>
+    </span>
+  )
+}
 
 /** The marks on the map tags, the same plain glyphs the transform menu wears. */
 const ICONS = {
@@ -692,8 +710,6 @@ export default function MapView({
       attributionControl: false,
     })
     mapRef.current = map
-    // Bottom left: the output's tags wait in the bottom right corner and would cover it.
-    map.addControl(new AttributionControl({ compact: true, customAttribution: CREDIT }), 'bottom-left')
     // The bearing belongs to the output: only `rotate` turns the map.
     map.touchZoomRotate.disableRotation()
     map.keyboard.disableRotation()
@@ -1102,8 +1118,10 @@ export default function MapView({
           <LoadCard load={load} onMin={onLoadMin && (() => onLoadMin(true))} />
         </div>
       )}
-      {/* Bottom right, above attribution: tile grid (CAD-style layer) and the
-          folded progress report. Basemap styles can join this row later. */}
+      {/* Bottom left: basemap credit (ODbL). Bottom right: tiles and progress. */}
+      <div className="absolute z-30 pointer-events-none" style={{ left: EDGE, bottom: EDGE }}>
+        <MapCredit />
+      </div>
       <div
         className="absolute z-30 flex flex-col items-end gap-1.5"
         style={{ right: EDGE, bottom: EDGE }}

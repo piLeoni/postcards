@@ -11,6 +11,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "wasm": "bash build-wasm.sh",
+    "deploy": "bash deploy.sh",
     "test": "node --test 'src/lib/*.test.js'"
   },
   "dependencies": {

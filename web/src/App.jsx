@@ -8,11 +8,13 @@ import { loadGoogleFontsForGraph } from './lib/googleFonts'
 import { docAtom } from './lib/store'
 import { outputComment, outputUnit, setOutputComment, setOutputKeys } from './lib/doc'
 import { compile, literalOutputInfo } from './lib/graph'
-import { inlineShare, sharedScript } from './lib/share'
+import { inlineShare, readFragment, sharedScript } from './lib/share'
 import { terrainPair } from './components/controls'
 
 /** Whether the page opened on a self-contained share, read before anything strips the fragment. */
 const OPENED_INLINE = Boolean(inlineShare())
+/** Whether the URL carried a share (`#js=`, `#py=`, or `#s=`) when the app loaded. */
+const OPENED_SHARE = Boolean(readFragment(typeof location !== 'undefined' ? location.hash : ''))
 
 /** The project on GitHub: the header and the sidebar both point here. */
 export const REPO = 'https://github.com/piLeoni/postcards'
@@ -141,6 +143,8 @@ export default function App() {
   // once it compiles, the map goes to its output. The self-contained form is
   // the document from the first render; a short link sets this when it lands.
   const fitSharedRef = useRef(OPENED_INLINE)
+  // A share link should render the drawing without asking for Run.
+  const autoDrawSharedRef = useRef(OPENED_SHARE)
   const docRef = useRef(doc)
   docRef.current = doc
   const outputRef = useRef(output)
@@ -163,6 +167,7 @@ export default function App() {
         const o = outputRef.current
         if (o) mapApiRef.current?.fit?.(o.lng, o.lat, o.bearing)
         else fitSharedRef.current = true
+        autoDrawSharedRef.current = true
         return
       }
       fitSharedRef.current = true
@@ -491,6 +496,12 @@ export default function App() {
     afterApplyRef.current = null
     draw()
   }, [compiledDoc, output, draw])
+
+  useEffect(() => {
+    if (!autoDrawSharedRef.current || !output || compiledDoc !== doc) return
+    autoDrawSharedRef.current = false
+    draw()
+  }, [compiledDoc, output, draw, doc])
 
   const placeMap = useCallback(({ lat, lng, bearing }) => {
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) return
