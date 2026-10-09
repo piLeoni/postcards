@@ -143,10 +143,10 @@ impl Board {
                     r.note = note.into();
                 }
             }
-            Event::End { id, ok, note } => {
-                if let Some(r) = self.row_mut(id).filter(|r| r.state == State::Run) {
+            Event::End { id, ok, note, secs } => {
+                if let Some(r) = self.row_mut_running(id) {
                     r.state = if ok { State::Ok } else { State::Fail };
-                    r.secs = now - r.t0;
+                    r.secs = secs.unwrap_or_else(|| now - r.t0);
                     if ok && r.total > 0 {
                         r.done = r.total;
                     }
@@ -175,6 +175,10 @@ impl Board {
 
     fn row_mut(&mut self, id: &str) -> Option<&mut Row> {
         self.rows.iter_mut().find(|r| r.id == id)
+    }
+
+    fn row_mut_running(&mut self, id: &str) -> Option<&mut Row> {
+        self.rows.iter_mut().rev().find(|r| r.id == id && r.state == State::Run)
     }
 
     fn has_children(&self, i: usize) -> bool {
@@ -367,7 +371,7 @@ mod tests {
         let mut b = Board::new();
         b.apply(begin("download", None, "download", 0, ""), 0.0);
         b.apply(begin("try-a", Some("download"), "OSM from a", 0, "bytes"), 0.0);
-        b.apply(Event::End { id: "try-a", ok: false, note: "504 gateway timeout" }, 1.0);
+        b.apply(Event::End { id: "try-a", ok: false, note: "504 gateway timeout", secs: None }, 1.0);
         b.apply(begin("try-b", Some("download"), "OSM from b", 0, "bytes"), 1.0);
         b.apply(Event::Step { id: "try-b", done: 1_500_000, note: "" }, 2.0);
         let running = b.layout(2.0);
@@ -378,10 +382,10 @@ mod tests {
         assert!(text[2].starts_with("  └ OSM from b"), "no spinner under a running title: {}", text[2]);
         assert!(text[2].contains('█') && text[2].contains("1.5 MB · 1.0 s"));
 
-        b.apply(Event::End { id: "try-b", ok: true, note: "" }, 3.0);
+        b.apply(Event::End { id: "try-b", ok: true, note: "", secs: None }, 3.0);
         b.apply(begin("fill", Some("download"), "fill", 1, "pieces"), 3.0);
-        b.apply(Event::End { id: "fill", ok: true, note: "8 lines" }, 3.5);
-        b.apply(Event::End { id: "download", ok: true, note: "" }, 3.5);
+        b.apply(Event::End { id: "fill", ok: true, note: "8 lines", secs: None }, 3.5);
+        b.apply(Event::End { id: "download", ok: true, note: "", secs: None }, 3.5);
         b.apply(Event::Log { level: Level::Warn, text: "a busy · trying b" }, 3.5);
         let done = b.layout(4.0);
         let text: Vec<String> = done.tree.iter().map(plain).collect();

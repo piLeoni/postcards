@@ -330,8 +330,8 @@ export function injectStyleAtPlace(current, preset) {
 
 /**
  * The script with its literal title and output blanked, lines kept: two
- * scripts with the same shape build the same graph, its script lines
- * included. The key the page caches graphs under.
+ * scripts that differ only in title or output literals share the same shape
+ * (for style injection and editor helpers).
  */
 export function shapeOf(text) {
   const parsed = program(text)

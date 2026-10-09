@@ -607,6 +607,7 @@ fn run_fill(def: &Def, spec: &crate::grammar::Fill, fills: &Fills, sink: &mut Gr
         task.set_total(1);
         fill::fill_into(area, &spec.spec, fills.sources, sink).map_err(failed)?;
     }
+    sink.flush();
     task.tick();
     task.ok(&format!("{} lines", thousands((sink.fed - start) as u64)));
     fills.task.tick();
@@ -621,33 +622,52 @@ fn run_solid_fill(
     mask: &MultiPolygon<f64>,
     layout: &mut crate::sheets::Layout,
     out: &mut crate::sheets::Out<'_>,
+    under_hatch: bool,
 ) -> Result<(), RunError> {
     if spec.content.is_some() {
         return Err(RunError::Plan(format!("{}: solid fill cannot use content", def.reference())));
     }
     let name = def.reference();
-    let task = fills.task.child(&format!("fill:{name}"), &name.to_string(), 0, "pieces");
+    let task_id = if under_hatch {
+        format!("fill:{name}:under")
+    } else {
+        format!("fill:{name}")
+    };
+    let task = fills.task.child(&task_id, &name.to_string(), 0, "pieces");
     let area = fills
         .values
         .get(&spec.in_area)
         .ok_or_else(|| RunError::Plan(format!("{name}: missing input {}", spec.in_area)))?
         .area(&spec.in_area)?;
+    let mut paint = |painted: &MultiPolygon<f64>| {
+        if under_hatch {
+            let bg = crate::profile::StrokeSpec {
+                color: spec.spec.background.clone(),
+                ..Default::default()
+            };
+            layout.fill_under(&crate::svg::fill_color(Some(&bg)), painted, out);
+        } else {
+            layout.solids(painted, out);
+        }
+    };
     if spec.per_feature {
         task.set_total(area.0.len() as u64);
         for p in &area.0 {
             let piece = MultiPolygon::new(vec![p.clone()]);
             let painted = fill::solid_regions(&piece, mask);
-            layout.solids(&painted, out);
+            paint(&painted);
             task.tick();
         }
     } else {
         task.set_total(1);
         let painted = fill::solid_regions(area, mask);
-        layout.solids(&painted, out);
+        paint(&painted);
         task.tick();
     }
     task.ok("solid");
-    fills.task.tick();
+    if !under_hatch {
+        fills.task.tick();
+    }
     Ok(())
 }
 
@@ -785,21 +805,28 @@ fn compose(
     // 4. Each group made, masked and written. A mask cuts exactly the groups
     // it lists, wherever they sit in the order: the order is only the
     // sequence the groups are drawn in.
+    // Groups mostly share their masks, and a union over the whole card is
+    // the slow part of a group: one union per set of masks.
+    let mut unions: BTreeMap<Vec<&str>, MultiPolygon<f64>> = BTreeMap::new();
     let occlude_task = task.child("compose:occlude", "occlusion", order.len() as u64, "groups");
     for id in &order {
         occlude_task.tick();
         let Some((what, stroke)) = drawn.remove(id) else { continue };
-        let mut above = geom::empty();
-        for (name, mask) in &grammar.compose.masks {
-            if !mask.occludes.iter().any(|o| &o.0 == id) {
-                continue;
-            }
-            let Some(area) = masks_by_id.get(name) else { continue };
-            above = geom::union_multi([&above, area]);
-        }
-        above = match clip_for(grammar, id) {
+        let above = match clip_for(grammar, id) {
             Clip::None => geom::empty(),
-            Clip::Auto => above,
+            Clip::Auto => {
+                let names: Vec<&str> = grammar
+                    .compose
+                    .masks
+                    .iter()
+                    .filter(|(name, mask)| mask.occludes.iter().any(|o| &o.0 == id) && masks_by_id.contains_key(name.as_str()))
+                    .map(|(name, _)| name.as_str())
+                    .collect();
+                unions
+                    .entry(names)
+                    .or_insert_with_key(|names| geom::union_multi(names.iter().map(|n| &masks_by_id[*n])))
+                    .clone()
+            }
             Clip::Areas(names) => {
                 let parts: Vec<MultiPolygon<f64>> = names
                     .iter()
@@ -815,7 +842,15 @@ fn compose(
         match what {
             Drawing::Fill(def, spec) if fill::is_solid(&spec.spec) => {
                 layout.begin_fill(id, stroke);
-                run_solid_fill(def, spec, fills, &above, layout, out)?;
+                run_solid_fill(def, spec, fills, &above, layout, out, false)?;
+                layout.end();
+            }
+            Drawing::Fill(def, spec) if spec.spec.background.is_some() => {
+                layout.begin_with_style(id, stroke);
+                run_solid_fill(def, spec, fills, &above, layout, out, true)?;
+                let mut sink = GroupSink { stroke, mask: &above, pending: Vec::new(), points: 0, fed: 0, layout, out };
+                run_fill(def, spec, fills, &mut sink)?;
+                sink.flush();
                 layout.end();
             }
             other => {
@@ -1041,7 +1076,16 @@ mod tests {
         let yaml = "$areas:\n  a: { engine_frame: {} }\n$fills:\n  bg: { tools_fill: { in: $areas.a, pattern: solid } }\ndraw:\n  - { id: bg, from: $fills.bg, stroke: { color: \"#aabbcc\" } }\n";
         let out = run_yaml(yaml).unwrap();
         assert!(out.svg.contains("fill:#aabbcc"));
+        assert!(out.svg.contains("fill=\"#aabbcc\""));
         assert!(out.svg.contains("<path"));
+    }
+
+    #[test]
+    fn patterned_fill_can_paint_a_background_under_the_hatch() {
+        let yaml = "$areas:\n  a: { engine_frame: {} }\n$fills:\n  hatch: { tools_fill: { in: $areas.a, pattern: lines, spacing: 1mm, background: \"#ddeeff\" } }\ndraw:\n  - { id: hatch, from: $fills.hatch, stroke: solid }\n";
+        let out = run_yaml(yaml).unwrap();
+        assert!(out.svg.contains("fill:#ddeeff"), "{}", out.svg);
+        assert!(out.groups.iter().any(|(g, n)| g == "hatch" && *n > 0));
     }
 
     #[test]

@@ -15,6 +15,7 @@ export class Task {
     this.emit = emit
     this.id = id
     this.done = 0
+    this.started = performance.now()
   }
 
   child(id, label, total = 0, unit = '') {
@@ -39,10 +40,10 @@ export class Task {
   }
 
   ok(note = '') {
-    this.emit({ kind: 'end', id: this.id, ok: true, note })
+    this.emit({ kind: 'end', id: this.id, ok: true, note, secs: (performance.now() - this.started) / 1000 })
   }
 
   fail(note = '') {
-    this.emit({ kind: 'end', id: this.id, ok: false, note })
+    this.emit({ kind: 'end', id: this.id, ok: false, note, secs: (performance.now() - this.started) / 1000 })
   }
 }

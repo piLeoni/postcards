@@ -30,9 +30,17 @@ pub enum FillError {
 }
 
 pub const GENERATORS: &[&str] = &[
-    "rectilinear", "zigzag", "lines", "grid", "triangles", "honeycomb", "dots", "waves", "wave_grid",
-    "scales", "sunburst", "spiral", "concentric", "hilbert", "stipple", "grass", "gravel", "scribble",
-    "truchet", "marble", "wood", "cracks", "terrazzo", "chess", "pat", "none", "solid",
+    "amphibolite", "arena", "beds", "bentonite", "brackets", "breccia", "breccia-blobs", "canopy", "chalky-soil",
+    "chess", "clay-soil", "coal", "coarse-stone", "compacted-soil", "concentric", "conglomerate",
+    "conglomerate-flat", "coquina", "cracked-earth", "cracks", "dacite", "debris-soil", "diabase", "diatom",
+    "diorite", "dots", "drift", "dry-cracked-soil", "erosion-lines", "feldspar", "ferrous", "fill", "fine-gravel",
+    "fluid-grass", "gabbro", "gneiss", "grainy-soil", "granite", "granite-x", "grass", "gravel", "gravel-clipped",
+    "gravelly-soil", "grid", "hilbert", "honeycomb", "hornblende", "laminae", "lava", "layered-soil", "lily-pads",
+    "lines", "loose-soil", "marble", "masonry", "mixed-rocks", "mulch", "mulched-soil", "none", "ophitic",
+    "organic-topsoil", "pat", "pebble-scatter", "pebbled-soil", "pebbles", "rectilinear", "sandy-soil", "scales",
+    "scribble", "shards", "silty-soil", "solid", "spiral", "sprouts", "stipple", "stipple-edge", "stipple-noise",
+    "stone-cluster", "sunburst", "terrazzo", "triangles", "truchet", "wave-grid", "wave_grid", "waves", "wood",
+    "zigzag",
 ];
 
 /// Flat colour fill (SVG `fill`, no pen strokes). Colour comes from the draw
@@ -253,7 +261,10 @@ fn run_generator_into(region: &Region, generator: &str, spec: &FillSpec, sink: &
             pat::fill_pat(r, &pattern, o.mm("scale")?.unwrap_or(s), a, at)
         }
         "none" | "solid" => vec![],
-        other => return Err(FillError::UnknownGenerator(other.into())),
+        other => match crate::fill_extra::run(other, r, s, a, seed, at) {
+            Some(whole) => whole,
+            None => return Err(FillError::UnknownGenerator(other.into())),
+        },
     };
     sink.batch(whole);
     Ok(())

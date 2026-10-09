@@ -379,7 +379,7 @@ impl Job {
             return Ok(());
         }
         let progress = JsProgress(on_event);
-        let task = Task::begin(&progress, "terrain", Some("download"), "terrain", 0, "");
+        let task = Task::begin(&progress, "read-terrain", Some("download"), "read terrain", 0, "");
         let bounds = drawland_core::terrain::bounds_of(&self.doc.output);
         let width = drawland_core::terrain::WIDTH_PX;
         let grid = terramask::Grid::with_width(bounds, width);
@@ -550,7 +550,10 @@ impl JsBoard {
             "begin" => Event::Begin { id: &id, parent: parent.as_deref(), label: &label, total: num("total"), unit: &unit },
             "total" => Event::Total { id: &id, total: num("total") },
             "step" => Event::Step { id: &id, done: num("done"), note: &note },
-            "end" => Event::End { id: &id, ok: get("ok").is_truthy(), note: &note },
+            "end" => {
+                let secs = get("secs").as_f64().filter(|s| s.is_finite() && *s >= 0.0);
+                Event::End { id: &id, ok: get("ok").is_truthy(), note: &note, secs }
+            }
             "log" => Event::Log { level, text: &log },
             _ => return,
         };
@@ -633,11 +636,14 @@ impl Progress for JsProgress {
                 set("done", num(done));
                 set("note", note.into());
             }
-            Event::End { id, ok, note } => {
+            Event::End { id, ok, note, secs } => {
                 set("kind", "end".into());
                 set("id", id.into());
                 set("ok", ok.into());
                 set("note", note.into());
+                if let Some(s) = secs {
+                    set("secs", JsValue::from_f64(s));
+                }
             }
             Event::Log { level, text } => {
                 set("kind", "log".into());

@@ -227,15 +227,21 @@ struct Bucket {
 pub struct Placed {
     /// Every label's strokes together.
     pub lines: Lines,
-    /// One shape per label, all buckets combined.
+    /// One filled silhouette per label (counters open) for hatch inside letters.
     pub shapes: Vec<MultiPolygon<f64>>,
+    /// Solid footprint per label for masking fills below: the silhouette with
+    /// counters closed, so the hole follows the letters rather than a box.
+    pub mask: Vec<MultiPolygon<f64>>,
     /// Labels whose matching rule had an `id`.
     pub buckets: BTreeMap<String, Bucket>,
 }
 
 impl Placed {
-    /// What every label covers together.
+    /// What every label covers together when subtracting ink below it.
     pub fn area(&self) -> MultiPolygon<f64> {
+        if !self.mask.is_empty() {
+            return geom::union_multi(&self.mask);
+        }
         geom::union_multi(&self.shapes)
     }
 
@@ -598,15 +604,23 @@ pub fn place(features: &[Feature], frame: &MultiPolygon<f64>, style: &Style, goo
             let (lines, outer) = buffered(strokes, look.buffer, look.buffer_step, look.keep_centerline);
             out.lines.extend(lines.clone());
             glyphs.push(outer);
-            let shape = geom::union_multi(&glyphs);
-            if !shape.0.is_empty() {
-                out.shapes.push(shape.clone());
+            let silhouette = geom::union_multi(&glyphs);
+            let mask = if layout.outline {
+                geom::fill_holes(&silhouette)
+            } else {
+                silhouette.clone()
+            };
+            if !silhouette.0.is_empty() {
+                out.shapes.push(silhouette.clone());
+            }
+            if !mask.0.is_empty() {
+                out.mask.push(mask);
             }
             if let Some(id) = &bucket {
                 let b = out.buckets.entry(id.clone()).or_default();
                 b.lines.extend(lines);
-                if !shape.0.is_empty() {
-                    b.shapes.push(shape);
+                if !silhouette.0.is_empty() {
+                    b.shapes.push(silhouette);
                 }
             }
             named.entry(c.text.clone()).or_default().push(at);
@@ -935,12 +949,17 @@ mod tests {
         let style = Style { font, size: Mm(6.0), min_size: Mm(6.0), ..Style::default() };
         let placed = place(&[park("OPg")], &frame(), &style, &fonts).unwrap();
         assert!(!placed.lines.is_empty(), "the contours are drawn");
-        let area = placed.area();
-        assert_eq!(area.0.len(), 3);
-        assert!(area.0.iter().all(|p| p.interiors().len() == 1));
+        let ink = geom::union_multi(&placed.shapes);
+        assert_eq!(ink.0.len(), 3);
+        assert!(ink.0.iter().all(|p| p.interiors().len() == 1));
+        // Mask below labels is each letter, solid: counters closed, no box.
+        let mask = placed.area();
+        assert_eq!(mask.0.len(), 3);
+        assert!(mask.0.iter().all(|p| p.interiors().is_empty()));
+        assert!((mask.unsigned_area() - geom::fill_holes(&ink).unsigned_area()).abs() < 1e-6);
         // One baseline: the `g` hangs below the capitals, whose bottoms line up.
         let bottom = |p: &Polygon<f64>| p.exterior().0.iter().map(|c| c.y).fold(f64::MIN, f64::max);
-        let mut polys = area.0.clone();
+        let mut polys = ink.0.clone();
         polys.sort_by(|a, b| a.centroid().unwrap().x().total_cmp(&b.centroid().unwrap().x()));
         assert!((bottom(&polys[0]) - bottom(&polys[1])).abs() < 0.2);
         assert!(bottom(&polys[2]) > bottom(&polys[0]) + 0.5);

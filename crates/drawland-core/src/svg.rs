@@ -5,8 +5,10 @@ use crate::geom::Lines;
 use geo::{LineString, MultiPolygon};
 use std::fmt::Write;
 
-/// Set on the root and inherited, so a group's own `style` wins over it.
-const DEFAULT_STYLE: &str = "\nsvg {\n  fill: none;\n  stroke: black;\n  stroke-width: 0.1;\n}\n";
+/// Default ink for open strokes. Do not set `fill: none` on `svg` itself: filled
+/// polygons live in nested groups (`solid`, `background`) and must inherit fill
+/// when the page shows the SVG as a rasterized `<img>`.
+const DEFAULT_STYLE: &str = "\nsvg {\n  stroke: black;\n  stroke-width: 0.1;\n  stroke-linecap: round;\n  stroke-linejoin: round;\n}\npolyline, line {\n  fill: none;\n}\n";
 
 /// Shortest decimal for `v` at 0.1 µm resolution.
 fn num(out: &mut String, v: f64) {
@@ -71,7 +73,10 @@ pub fn group_open_with_style(s: &mut String, id: &str, stroke_spec: Option<&crat
         if let Some(cap) = &spec.cap {
             style_attrs.push_str(&format!("stroke-linecap:{};", cap));
         }
-        
+        if let Some(join) = &spec.join {
+            style_attrs.push_str(&format!("stroke-linejoin:{};", join));
+        }
+
         if !style_attrs.is_empty() {
             let _ = write!(s, "\n<g id=\"{id}\" style=\"{style_attrs}\">");
         } else {
@@ -103,7 +108,7 @@ pub fn fill_color(stroke_spec: Option<&crate::profile::StrokeSpec>) -> String {
         .to_string()
 }
 
-fn path_ring(s: &mut String, ring: &LineString<f64>) {
+fn path_ring(s: &mut String, ring: &LineString<f64>, fill: Option<&str>) {
     let pts = &ring.0;
     if pts.len() < 4 {
         return;
@@ -125,15 +130,25 @@ fn path_ring(s: &mut String, ring: &LineString<f64>) {
         s.push(' ');
         num(s, c.y);
     }
-    s.push_str(" Z\" />");
+    s.push_str(" Z\"");
+    if let Some(color) = fill {
+        let _ = write!(s, " fill=\"{color}\"");
+    }
+    s.push_str(" />");
 }
 
 /// One multipolygon as filled paths (exterior and holes per polygon).
 pub fn multipolygon(s: &mut String, mp: &MultiPolygon<f64>) {
+    multipolygon_filled(s, mp, None);
+}
+
+/// Like [`multipolygon`], with an explicit `fill` on each path (needed when the
+/// SVG is shown as a rasterized `<img>` and group `fill` does not inherit).
+pub fn multipolygon_filled(s: &mut String, mp: &MultiPolygon<f64>, fill: Option<&str>) {
     for poly in &mp.0 {
-        path_ring(s, poly.exterior());
+        path_ring(s, poly.exterior(), fill);
         for hole in poly.interiors() {
-            path_ring(s, hole);
+            path_ring(s, hole, fill);
         }
     }
 }

@@ -116,6 +116,9 @@ pub struct FillSpec {
     pub inset: Option<Mm>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mark: Option<Mm>,
+    /// Flat colour painted under a hatch (SVG polygon fill, not pen strokes).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub background: Option<String>,
     /// Generator-specific options (`lattice`, `line_width`, `name`, …).
     #[serde(flatten)]
     pub options: BTreeMap<String, Value>,
@@ -139,6 +142,7 @@ impl FillSpec {
             seed: over.seed.or(self.seed),
             inset: over.inset.or(self.inset),
             mark: over.mark.or(self.mark),
+            background: over.background.clone().or_else(|| self.background.clone()),
             options,
         }
     }
@@ -173,7 +177,7 @@ pub enum StrokeStyle {
 }
 
 /// `solid`, `dash`, `dotted`, `none`, or a mapping `{ style, dash, gap, mark }`.
-/// Also supports `color`, `width` (in mm), and `cap` for SVG output.
+/// Also supports `color`, `width` (in mm), `cap`, and `join` for SVG output.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct StrokeSpec {
     pub style: Option<StrokeStyle>,
@@ -186,6 +190,8 @@ pub struct StrokeSpec {
     pub width: Option<Mm>,
     /// Stroke line cap: round, square, butt
     pub cap: Option<String>,
+    /// Stroke line join: round, miter, bevel
+    pub join: Option<String>,
 }
 
 
@@ -208,6 +214,8 @@ impl<'de> Deserialize<'de> for StrokeSpec {
             width: Option<Mm>,
             #[serde(default)]
             cap: Option<String>,
+            #[serde(default)]
+            join: Option<String>,
         }
         #[derive(Deserialize)]
         #[serde(untagged)]
@@ -225,6 +233,7 @@ impl<'de> Deserialize<'de> for StrokeSpec {
                 color: f.color,
                 width: f.width,
                 cap: f.cap,
+                join: f.join,
             },
         })
     }
@@ -234,7 +243,7 @@ impl Serialize for StrokeSpec {
     fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
         use serde::ser::SerializeMap;
         if self.style.is_some() && self.dash.is_none() && self.gap.is_none() && self.mark.is_none() 
-            && self.color.is_none() && self.width.is_none() && self.cap.is_none() {
+            && self.color.is_none() && self.width.is_none() && self.cap.is_none() && self.join.is_none() {
             return self.style.unwrap().serialize(s);
         }
         let mut map = s.serialize_map(None)?;
@@ -254,6 +263,9 @@ impl Serialize for StrokeSpec {
         }
         if let Some(cap) = &self.cap {
             map.serialize_entry("cap", cap)?;
+        }
+        if let Some(join) = &self.join {
+            map.serialize_entry("join", join)?;
         }
         map.end()
     }
@@ -302,6 +314,7 @@ impl StrokeSpec {
             color: over.color.clone().or_else(|| self.color.clone()),
             width: over.width.or(self.width),
             cap: over.cap.clone().or_else(|| self.cap.clone()),
+            join: over.join.clone().or_else(|| self.join.clone()),
         }
     }
 }

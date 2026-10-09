@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 
 /**
  * The draw's progress, as a card laid over the map: the lines the engine's
@@ -8,6 +8,7 @@ import { useEffect, useState } from 'react'
  */
 export default function LoadCard({ load, onMin }) {
   const [now, setNow] = useState(() => performance.now())
+  const scrollRef = useRef(null)
   const running = load.board.running()
   useEffect(() => {
     if (!running) return undefined
@@ -20,6 +21,13 @@ export default function LoadCard({ load, onMin }) {
 
   const { tree, logs } = load.board.layout(now)
   const lines = [...tree, ...logs]
+
+  useLayoutEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    el.scrollTop = el.scrollHeight
+  }, [lines.length, running, now])
+
   return (
     <div
       className="pointer-events-auto w-full max-w-[48rem] bg-white p-[2ch] text-[11px] leading-snug text-black"
@@ -46,7 +54,7 @@ export default function LoadCard({ load, onMin }) {
           </span>
         )}
       </div>
-      <div className="max-h-[70vh] overflow-hidden">
+      <div ref={scrollRef} className="editor-scroll max-h-[70vh] overflow-y-auto overflow-x-hidden">
         {lines.map((runs, i) => (
           <div key={i} className="overflow-hidden text-ellipsis whitespace-pre">
             {runs.map((r, j) => (

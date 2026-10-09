@@ -1,11 +1,7 @@
 /**
- * The profiles this app ships: the scripts in `src/presets`, each with the
- * graph it builds, pre-run by `cargo run --example check_web_presets -- --write`
- * into `graphs.json`. With the graph at hand, drawing a preset does not need
- * the script interpreter; editing the script does.
- *
- * `examples/check_web_presets.rs` fails when a preset stops running or its
- * graph is stale; `examples/wasm_render.rs` renders one without a browser.
+ * The profiles this app ships: the scripts in `src/presets`. Each also carries
+ * the graph from `graphs.json` (built by `check_web_presets --write`) for CI
+ * and `wasm_render` only — the browser always re-runs the script in WASM.
  */
 import graphs from '../presets/graphs.json'
 import full from '../presets/full.js?raw'

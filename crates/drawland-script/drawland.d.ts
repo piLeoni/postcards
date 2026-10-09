@@ -42,9 +42,17 @@ type TilePreset =
 
 /** A penfill pattern. */
 type Pattern =
-  | "rectilinear" | "zigzag" | "lines" | "grid" | "triangles" | "honeycomb" | "dots" | "waves" | "wave_grid"
-  | "scales" | "sunburst" | "spiral" | "concentric" | "hilbert" | "stipple" | "grass" | "gravel" | "scribble"
-  | "truchet" | "marble" | "wood" | "cracks" | "terrazzo" | "chess" | "pat" | "none" | "solid"
+  | "amphibolite" | "arena" | "beds" | "bentonite" | "brackets" | "breccia" | "breccia-blobs" | "canopy" | "chalky-soil"
+  | "chess" | "clay-soil" | "coal" | "coarse-stone" | "compacted-soil" | "concentric" | "conglomerate"
+  | "conglomerate-flat" | "coquina" | "cracked-earth" | "cracks" | "dacite" | "debris-soil" | "diabase" | "diatom"
+  | "diorite" | "dots" | "drift" | "dry-cracked-soil" | "erosion-lines" | "feldspar" | "ferrous" | "fill" | "fine-gravel"
+  | "fluid-grass" | "gabbro" | "gneiss" | "grainy-soil" | "granite" | "granite-x" | "grass" | "gravel" | "gravel-clipped"
+  | "gravelly-soil" | "grid" | "hilbert" | "honeycomb" | "hornblende" | "laminae" | "lava" | "layered-soil" | "lily-pads"
+  | "lines" | "loose-soil" | "marble" | "masonry" | "mixed-rocks" | "mulch" | "mulched-soil" | "none" | "ophitic"
+  | "organic-topsoil" | "pat" | "pebble-scatter" | "pebbled-soil" | "pebbles" | "rectilinear" | "sandy-soil" | "scales"
+  | "scribble" | "shards" | "silty-soil" | "solid" | "spiral" | "sprouts" | "stipple" | "stipple-edge" | "stipple-noise"
+  | "stone-cluster" | "sunburst" | "terrazzo" | "triangles" | "truchet" | "wave-grid" | "wave_grid" | "waves" | "wood"
+  | "zigzag"
 
 /** A built-in hatch for `pattern: "pat"`. */
 type PatName =
@@ -90,12 +98,14 @@ interface FillOptions {
   scale?: Length
   /** An SVG drawn into the area instead of a pattern. */
   source?: { file: string; size?: string; position?: string; repeat?: string }
+  /** Screen-style flat colour under the hatch (SVG fill, not pen ink). */
+  background?: string
 }
 
 /** `solid`, `dash`, `dotted`, `none`, or an object: the dashes' sizes and the ink (`color`, `width` in mm, `cap`). */
 type Stroke =
   | "solid" | "dash" | "dotted" | "none"
-  | { style?: "solid" | "dash" | "dotted" | "none"; dash?: Length; gap?: Length; mark?: Length; color?: string; width?: Length; cap?: "round" | "square" | "butt" }
+  | { style?: "solid" | "dash" | "dotted" | "none"; dash?: Length; gap?: Length; mark?: Length; color?: string; width?: Length; cap?: "round" | "square" | "butt"; join?: "round" | "miter" | "bevel" }
 
 interface DrawOptions {
   /** The SVG group's id; a plotter can give each group its own pen. */

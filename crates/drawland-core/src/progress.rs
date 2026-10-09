@@ -13,6 +13,32 @@
 
 use std::sync::atomic::{AtomicU64, Ordering};
 
+/// Elapsed time on `End`. `std::time::Instant` is not available on WASM.
+struct TaskTimer {
+    #[cfg(not(target_family = "wasm"))]
+    started: std::time::Instant,
+}
+
+impl TaskTimer {
+    fn now() -> Self {
+        Self {
+            #[cfg(not(target_family = "wasm"))]
+            started: std::time::Instant::now(),
+        }
+    }
+
+    fn elapsed_secs(&self) -> Option<f64> {
+        #[cfg(not(target_family = "wasm"))]
+        {
+            Some(self.started.elapsed().as_secs_f64())
+        }
+        #[cfg(target_family = "wasm")]
+        {
+            None
+        }
+    }
+}
+
 /// A display was asked for resident memory: the bytes this process holds, or
 /// 0 when the platform cannot say (the browser, where WASM memory is the
 /// page's business, reaches none of this).
@@ -72,8 +98,9 @@ pub enum Event<'a> {
     Total { id: &'a str, total: u64 },
     /// `done` of its total so far, and what it is doing now.
     Step { id: &'a str, done: u64, note: &'a str },
-    /// Finished, well or not, with a word on how.
-    End { id: &'a str, ok: bool, note: &'a str },
+    /// Finished, well or not, with a word on how. `secs` is how long the task
+    /// ran, when the emitter knows (the engine and the page's download tasks).
+    End { id: &'a str, ok: bool, note: &'a str, secs: Option<f64> },
     Log { level: Level, text: &'a str },
 }
 
@@ -99,6 +126,7 @@ pub struct Task<'p> {
     total: AtomicU64,
     done: AtomicU64,
     ended: std::sync::atomic::AtomicBool,
+    started: TaskTimer,
 }
 
 impl<'p> Task<'p> {
@@ -110,6 +138,7 @@ impl<'p> Task<'p> {
             total: AtomicU64::new(total),
             done: AtomicU64::new(0),
             ended: Default::default(),
+            started: TaskTimer::now(),
         }
     }
 
@@ -163,7 +192,8 @@ impl<'p> Task<'p> {
 
     fn end(&self, ok: bool, note: &str) {
         if !self.ended.swap(true, Ordering::Relaxed) {
-            self.progress.event(Event::End { id: &self.id, ok, note });
+            let secs = self.started.elapsed_secs();
+            self.progress.event(Event::End { id: &self.id, ok, note, secs });
         }
     }
 }

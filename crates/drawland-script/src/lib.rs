@@ -272,7 +272,7 @@ fn native_draw(_: &JsValue, args: &[JsValue], ctx: &mut Context) -> JsResult<JsV
         None => None,
         Some(s) => Some(
             serde_json::from_value::<StrokeSpec>(s.clone())
-                .map_err(|e| fail(ctx, format!("draw: stroke {s}: {e}; write solid, dash, dotted, none or {{ style, dash, gap, mark, color, width, cap }}")))?,
+                .map_err(|e| fail(ctx, format!("draw: stroke {s}: {e}; write solid, dash, dotted, none or {{ style, dash, gap, mark, color, width, cap, join }}")))?,
         ),
     };
     let id = spec.get("id").and_then(Value::as_str).map(str::to_string);

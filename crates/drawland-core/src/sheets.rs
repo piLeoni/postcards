@@ -111,6 +111,8 @@ pub struct Layout {
     /// The text not yet handed out: the whole output first, then each sheet's.
     parts: Vec<String>,
     groups: Vec<(String, usize)>,
+    /// Colour for [`multipolygon_filled`] while a [`begin_fill`] group is open.
+    fill_paint: Option<String>,
 }
 
 /// Bytes of SVG text a part holds before handing them out.
@@ -125,7 +127,7 @@ impl Layout {
             let um = |v: f64| (v * 1000.0).round() / 1000.0;
             parts.extend(sheets.iter().map(|s| svg::header(um(s.at[2] - s.at[0]), um(s.at[3] - s.at[1]))));
         }
-        Layout { sheets, cropped, parts, groups: Vec::new() }
+        Layout { sheets, cropped, parts, groups: Vec::new(), fill_paint: None }
     }
 
     fn cut(&self) -> bool {
@@ -148,6 +150,7 @@ impl Layout {
     /// Start a flat-fill group; colour from the draw entry's stroke.
     pub fn begin_fill(&mut self, id: &str, stroke_spec: Option<&crate::profile::StrokeSpec>) {
         let color = svg::fill_color(stroke_spec);
+        self.fill_paint = Some(color.clone());
         for p in &mut self.parts {
             svg::group_open_fill(p, id, &color);
         }
@@ -156,6 +159,25 @@ impl Layout {
 
     /// Filled polygons for the group begun last.
     pub fn solids(&mut self, mp: &MultiPolygon<f64>, out: &mut Out) {
+        self.write_solids(mp, out, true, None);
+    }
+
+    /// Flat fill inside the current stroke group (does not start a counted group).
+    pub fn fill_under(&mut self, color: &str, mp: &MultiPolygon<f64>, out: &mut Out) {
+        if mp.0.is_empty() {
+            return;
+        }
+        for p in &mut self.parts {
+            svg::group_open_fill(p, "", color);
+        }
+        self.write_solids(mp, out, false, Some(color));
+        for p in &mut self.parts {
+            svg::group_close(p);
+        }
+    }
+
+    fn write_solids(&mut self, mp: &MultiPolygon<f64>, out: &mut Out, count: bool, fill: Option<&str>) {
+        let fill = fill.or(self.fill_paint.as_deref());
         if mp.0.is_empty() {
             return;
         }
@@ -169,10 +191,12 @@ impl Layout {
             mp.clone()
         };
         let paths = whole.0.len();
-        if let Some(g) = self.groups.last_mut() {
-            g.1 += paths;
+        if count {
+            if let Some(g) = self.groups.last_mut() {
+                g.1 += paths;
+            }
         }
-        svg::multipolygon(&mut self.parts[0], &whole);
+        svg::multipolygon_filled(&mut self.parts[0], &whole, fill);
         if self.cut() {
             for (k, s) in self.sheets.iter().enumerate() {
                 let piece = geom::intersection(mp, &rect_mp(s.inner));
@@ -203,7 +227,7 @@ impl Layout {
                         })
                         .collect(),
                 );
-                svg::multipolygon(&mut self.parts[k + 1], &moved);
+                svg::multipolygon_filled(&mut self.parts[k + 1], &moved, fill);
             }
         }
         for (k, p) in self.parts.iter_mut().enumerate() {
@@ -250,6 +274,7 @@ impl Layout {
         for p in &mut self.parts {
             svg::group_close(p);
         }
+        self.fill_paint = None;
     }
 
     /// Close every part and hand out what is left: the strokes each group

@@ -311,7 +311,7 @@ export default function App() {
         else if (tileState) tileState.state[msg.i] = msg.state
         tilesChanged()
       } else if (msg.type === 'event') {
-        board.apply(msg.e, performance.now())
+        board.apply(msg.e, msg.e.at ?? performance.now())
         changed()
         if (msg.e.kind === 'begin' && msg.e.id === 'draw') {
           setStatus({ phase: 'working', detail: 'Drawing…' })
