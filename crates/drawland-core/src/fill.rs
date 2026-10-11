@@ -250,25 +250,21 @@ fn run_generator_into(region: &Region, generator: &str, spec: &FillSpec, sink: &
         "scribble" => scribble::fill_scribble(r, s, a, seed),
         "truchet" => truchet::fill_truchet(r, s, a, seed, at),
         "isoline-blobs" => {
-            let dense = matches!(o.options.get("dense"), Some(Value::Bool(true)));
-            let level_count = match o.options.get("levels") {
-                Some(Value::Number(n)) => n.as_u64().unwrap_or(8).clamp(1, 32) as usize,
-                _ => 8,
-            };
             let warp = match o.options.get("warp") {
-                Some(Value::Number(n)) => n.as_f64().unwrap_or(0.35),
-                _ => 0.35,
+                Some(Value::Number(n)) => n.as_f64().unwrap_or(0.45),
+                _ => 0.45,
             };
-            let params = penfill::IsolineBlobParams {
+            let threshold = match o.options.get("threshold") {
+                Some(Value::Number(n)) => n.as_f64().unwrap_or(0.25),
+                _ => 0.25,
+            };
+            let params = penfill::IsolineFieldParams {
                 seed,
-                sites: penfill::SiteSource::Generate {
-                    min_spacing: s,
-                    dense,
-                },
-                contour_spacing: o.mm("contour")?.unwrap_or(s * 0.35),
-                level_count,
-                blob_radius: o.mm("blob_radius")?.unwrap_or(s * 0.85),
+                source: penfill::FieldSource::Noise,
+                feature_size: s,
+                contour_spacing: o.mm("contour")?.unwrap_or(s * 0.045),
                 warp,
+                threshold,
             };
             penfill::fill_isoline_blobs_with_coverage(r, &params).strokes
         }

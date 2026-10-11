@@ -1,6 +1,6 @@
 # Isoline blob fills (design)
 
-**Status:** MVP in penfill (`fill_isoline_blobs_with_coverage`); draw.land generator `isoline-blobs` (strokes only). Coverage → `$areas` + compose not wired yet.  
+**Status:** MVP in penfill (`fill_isoline_blobs_with_coverage`), built on one continuous scalar field (not independent per-site blobs — see below). draw.land generator `isoline-blobs` (strokes only). Coverage → `$areas` + compose not wired yet.  
 **Target look:** reference drawings (nested contour “cells” on paper; sparse scattered masses or dense all-over texture).  
 **Split:** penfill generates **strokes + coverage polygons**; draw.land clips to the host area and applies **compose masks** to other layers.
 
@@ -12,13 +12,17 @@ This is **not** a symbolic tree icon, a regular hatch, or a single vein texture.
 
 ### Scattered (primary reference)
 
-![Scattered isoline blobs](img/isoline-blob-fills/reference-scattered.png)
+| Reference | Generated (`fill_isoline_blobs_with_coverage`, defaults) |
+| --- | --- |
+| ![Scattered reference](img/isoline-blob-fills/reference-scattered.png) | ![Scattered generated](img/isoline-blob-fills/example-generated.png) |
 
-Few separate organic clusters; empty paper between them. Each cluster is a stack of **closed** loops following one irregular silhouette; inner loops shrink toward a ridge or centre.
+Few separate organic clusters; empty paper between them. Each cluster is a stack of **closed** loops following one irregular silhouette; inner loops shrink toward a ridge or centre. Neighbouring clusters **fuse** into one lobed silhouette instead of stamping over each other — see "One field, not one blob per site" below.
 
-### Dense (second reference — add when available)
+### Dense (same field, lower threshold)
 
-Place as `img/isoline-blob-fills/reference-dense.png` (or `.jpg`) and embed below. Same line language, but clusters tile the region, overlap, and **line spacing** reads as shadow (tighter = darker).
+![Dense generated](img/isoline-blob-fills/example-generated-dense.png)
+
+Same generator, lower `threshold` (more of the field counts as "ink"): clusters grow until they tile the region edge-to-edge and fuse into fewer, larger connected masses — no separate dense code path needed.
 
 Two variants of the same language:
 
@@ -52,63 +56,69 @@ Today penfill returns only strokes; draw.land `$fills` are only `Lines`. Masking
 | Term | Meaning |
 | --- | --- |
 | **Host region** | The map polygon (with holes) the fill is drawn in — park, cloud mask, etc. |
-| **Blob** | One connected mass of nested isolines; may overlap neighbours in dense mode. |
-| **Site** | Point that seeds a blob’s local height field (procedural scatter or user/OSM points). |
-| **Strokes** | All isoline polylines (open or closed), clipped to the host. |
-| **Coverage** | Union of blob **outer envelopes** (see below), used only for occlusion — not every inner ring. |
+| **Field** | One scalar function `h(p)` over the whole host, sampled once. |
+| **Cluster** | A connected component of `{ p : h(p) ≥ threshold }` — reads as one organic mass; may include several noise peaks that fused. |
+| **Site** | Optional known position (real tree, placed cloud seed) that raises the field locally, instead of (or alongside) ambient noise. |
+| **Strokes** | All isoline polylines, clipped to the host. |
+| **Coverage** | Closed loops of the **lowest** (`threshold`) isoline only — the cluster silhouettes — used for occlusion, not every nested ring. |
 
-**Coverage vs strokes:** Masks should follow the **silhouette** of each blob (the outermost meaningful loop or an explicit envelope polygon), not every interior contour. Otherwise a `compose.mask` would punch hairline slits.
+**Coverage vs strokes:** masks follow the threshold contour's silhouette, not every interior ring, or a `compose.mask` would punch hairline slits instead of clean holes.
 
-## Generation model (proposed)
+## Generation model (implemented)
 
-### Per-blob scalar field
+### One field, not one blob per site
 
-At site `c`, build a smooth height `h(p)` on the plane, e.g.:
+The first implementation built an **independent height field per site** (a dome around each point) and **unioned their outlines** for coverage. Visually this produced isolated stamped shapes that only ever *overlaid* each other at the edges — never read as one continuous mass, and didn't match the reference art's fused, amoeboid clusters.
 
-- Radial falloff from `c` (defines blob size).
-- Plus low-frequency noise (shape).
-- Optional domain warp (wobble).
-- Optional **light bias:** tilt the field or bias level spacing so contours crowd on the “dark” side (parameter: light direction + strength).
+The fix: build **one scalar field over the whole region** and slice it with many isolines in a single pass (`field::fill_isolines`, the same primitive `marble`/`wood` use, just with far more levels). Marching squares naturally **merges** contours wherever two nearby basins overlap above the threshold — exactly the cartographic contour-map behaviour ("two hills whose slopes meet become one ring at the saddle"). No explicit union step, no per-site clipping, no discrete "blob" objects at all: fusing is a property of slicing one field, not a step applied afterward.
 
-Extract **multiple isolines** at levels `h = h₁, h₂, …` using marching squares (penfill already has `field::fill_isolines` for arbitrary `h`). Clip each polyline to **host ∩ blob support** (or clip only to host if blobs are allowed to merge visually).
+```rust
+h(p) = fbm(warp(p) / feature_size)        // ambient texture, roughly [-1, 1]
+     + Σ sites: weight · exp(-|p - site|² / radius²)   // optional known positions
+```
 
-Parameters exposed to profiles (names TBD):
+- `warp(p)` offsets `p` by a second, independent noise field before sampling — this is the "jitter": it bends the isolines' grid-aligned curvature into the hand-drawn wobble in the reference, without touching cluster placement.
+- With no sites, clusters appear wherever the ambient noise happens to peak, spaced roughly `feature_size` mm apart (the **scattered** reference).
+- `threshold` is the only density/connectivity knob: lower it and more of the field counts as "ink," so basins merge into fewer, larger connected masses (the **dense** reference) — same field, no second code path.
+- `contour_spacing` sets the mm gap between consecutive rings; internally converted to a step in field units via the field's known slope (`≈ 1 / feature_size`).
 
-- `spacing` — typical contour interval in mm (may vary with light).
-- `levels` or `depth` — how many nested loops per blob.
-- `blob_radius` / `size` — spatial extent of one mass.
-- `jitter` / `warp` — edge wobble.
-- `density` — site count or global tightness of level spacing.
-- `seed` — reproducibility.
+### Custom sites instead of (or with) noise
 
-### Scattered vs dense mode
+`FieldSource`:
 
-- **Scattered:** Poisson (or similar) sites with minimum separation; only blobs whose support intersects the host are drawn. Matches sparse reference.
-- **Dense:** more sites, smaller min distance, or continuous field over the whole host with many level sets. Overlap handled by **z-order** (later blobs on top) and/or **coverage union** for masks.
+- `Noise` — pure procedural, as above.
+- `Sites(Vec<FieldSite>)` — only the given positions raise the field; flat everywhere else. For real tree/feature positions where random placement would be wrong.
+- `NoiseAndSites(Vec<FieldSite>)` — placed sites plus ambient texture, so known positions still read as the same organic material as a procedural patch.
 
-### Custom sites
+Two sites close enough that their bumps overlap above `threshold` fuse into one silhouette automatically — this is covered by a unit test (`two_close_sites_fuse_into_one_loop`) precisely because it was the behaviour the first attempt got wrong.
 
-Penfill API receives `Vec<(x, y)>` in output mm (draw.land converts feature centroids). Sites outside the host are skipped. Optional per-site radius override.
+### Light / shading (not yet implemented)
 
-Optional later: custom **footprint** artwork per site; isolines still generated in that footprint’s bounds.
+Not built in the MVP. The natural extension is biasing `threshold` (or `level_step`) by `dot(∇h, light_dir)` so contours crowd on one side — left as a follow-up once the base texture is approved.
 
-## Penfill deliverable
+## Penfill deliverable (implemented)
 
 ```rust
 pub struct FillWithCoverage {
     pub strokes: Strokes,
     pub coverage: Region, // multipolygon + holes
 }
+
+pub enum FieldSource { Noise, Sites(Vec<FieldSite>), NoiseAndSites(Vec<FieldSite>) }
+
+pub struct IsolineFieldParams {
+    pub seed: u64,
+    pub source: FieldSource,
+    pub feature_size: f64,     // mm; ambient noise wavelength / cluster spacing
+    pub contour_spacing: f64,  // mm between nested rings
+    pub warp: f64,             // domain-warp strength (jitter)
+    pub threshold: f64,        // field height where ink begins; lower = more fused/denser
+}
 ```
 
-- **strokes:** all isolines (and any deliberate centre marks if we add them later), each clipped to the host region.
-- **coverage:** union of per-blob envelope polygons, clipped to host by default.
+`fill_isoline_blobs_with_coverage(region, &params) -> FillWithCoverage` in `penfill::isoline_blobs`. `coverage` comes from a second, single-level `fill_isolines` call at `threshold`, keeping only closed loops.
 
-Envelope per blob: outer isoline at the lowest level, or an explicit offset of the support where `h` exceeds a threshold — pick one rule and test against reference art.
-
-Streaming: strokes via existing `Sink`; coverage accumulated once at end (small).
-
-Public name TBD (`fill_isoline_blobs`, `fill_nested_contours`, …).
+Streaming not yet implemented (whole-field sampling up front); candidate for later if a host area makes this fill's memory a concern.
 
 ## draw.land deliverable
 
@@ -159,12 +169,12 @@ Z-order: list `forest` after `ground_dots` in `compose.order`; mask removes hidd
 
 ## Phases
 
-1. **Penfill prototype** — fixed grid of sites + per-blob isolines; gallery SVG beside reference art.
-2. **Coverage union** — stable mask polygon; unit tests `coverage ⊆ host`, strokes ⊆ host.
-3. **draw.land wire-up** — pattern id, coverage area def, one preset on a single park polygon.
-4. **Particles from features** — centroids in mm.
-5. **Dense mode + light** — spacing bias; draw-order for overlap.
-6. **Streaming + budget** — WASM memory guard.
+1. ~~Penfill prototype~~ — done: single-field isolines, visually matched against reference art (`example-generated.png`).
+2. ~~Coverage~~ — done: threshold-isoline silhouettes; unit-tested for fuse/stay-separate behaviour and host containment.
+3. **draw.land wire-up** — done for strokes (`pattern: "isoline-blobs"`); coverage not yet exposed as `$areas` for `compose.mask`.
+4. **Particles from features** — `FieldSource::Sites`/`NoiseAndSites` exist in penfill; draw.land does not yet resolve `$features` centroids into them.
+5. **Light bias** — not implemented.
+6. **Streaming + budget** — not implemented; whole-field sampling today.
 
 ## Tests
 
