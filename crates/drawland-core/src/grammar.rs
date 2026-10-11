@@ -209,6 +209,8 @@ pub struct Burin {
     pub atlas: serde_json::Value,
     /// The area the drawing is kept to, or `None` for the whole output.
     pub in_area: Option<Name>,
+    /// Regions batches name in `within` / `outside`, by name, in output mm.
+    pub regions: std::collections::BTreeMap<String, Name>,
     /// What to call the layer; `burin` without one.
     pub layer: Option<String>,
 }
@@ -392,7 +394,12 @@ impl Op {
             Op::Rings(r) => vec![r.of.clone()],
             Op::ClipLines(c) => vec![c.lines.clone(), c.within.clone()],
             Op::Terrain(t) => t.in_area.iter().cloned().collect(),
-            Op::Burin(b) => b.in_area.iter().cloned().collect(),
+            Op::Burin(b) => b
+                .in_area
+                .iter()
+                .cloned()
+                .chain(b.regions.values().cloned())
+                .collect(),
             Op::Labels(l) => l.from.clone(),
             Op::LabelLines(p) | Op::LabelArea(p) => vec![p.of.clone()],
             Op::Fill(f) => std::iter::once(f.in_area.clone()).chain(f.content.iter().cloned()).collect(),
@@ -1123,9 +1130,24 @@ fn parse_op(raw: RawOp, section: Section) -> Result<Op, GrammarError> {
                 #[serde(default)]
                 in_area: Option<String>,
                 #[serde(default)]
+                regions: std::collections::BTreeMap<String, String>,
+                #[serde(default)]
                 layer: Option<String>,
             }
             let raw: Raw = json(&value, "tools_burin")?;
+            let regions = raw
+                .regions
+                .into_iter()
+                .map(|(name, r)| {
+                    let n = refname(&r)?;
+                    if n.section != Section::Areas {
+                        return Err(GrammarError::Invalid(format!(
+                            "tools_burin.regions.{name} must be an area, not {n}"
+                        )));
+                    }
+                    Ok((name, n))
+                })
+                .collect::<Result<_, _>>()?;
             let atlas = match raw.atlas {
                 Value::String(text) => {
                     serde_json::from_str(&text).map_err(|e| GrammarError::Invalid(format!("tools_burin atlas: {e}")))?
@@ -1138,6 +1160,7 @@ fn parse_op(raw: RawOp, section: Section) -> Result<Op, GrammarError> {
             Op::Burin(Burin {
                 atlas,
                 in_area: raw.in_area.as_deref().map(refname).transpose()?,
+                regions,
                 layer: raw.layer,
             })
         }
@@ -1569,6 +1592,17 @@ pub fn op_to_json(op: &Op) -> Value {
             body.insert("atlas".into(), b.atlas.clone());
             if let Some(a) = &b.in_area {
                 body.insert("in_area".into(), Value::String(a.to_string()));
+            }
+            if !b.regions.is_empty() {
+                body.insert(
+                    "regions".into(),
+                    Value::Object(
+                        b.regions
+                            .iter()
+                            .map(|(k, v)| (k.clone(), Value::String(v.to_string())))
+                            .collect(),
+                    ),
+                );
             }
             if let Some(l) = &b.layer {
                 body.insert("layer".into(), Value::String(l.clone()));

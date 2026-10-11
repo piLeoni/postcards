@@ -415,9 +415,16 @@ fn eval_op(
             })
         }
         Op::Burin(b) => {
+            use burin_map_core::Region;
             let grid = engine.terrain.ok_or("tools_burin needs the elevation, which was not read")?;
-            let drawing = crate::terrain::draw_burin(grid, b)?;
-            let drawn = crate::terrain::lines(&drawing, &grid.placed(engine.projector));
+            let placed = grid.placed(engine.projector);
+            let regions: Vec<(&str, Region)> = b
+                .regions
+                .iter()
+                .map(|(name, a)| Ok((name.as_str(), crate::terrain::region_from_area(&area(a)?, &placed))))
+                .collect::<Result<_, String>>()?;
+            let drawing = crate::terrain::draw_burin(grid, b, &regions)?;
+            let drawn = crate::terrain::lines(&drawing, &placed);
             Value::Lines(match &b.in_area {
                 Some(n) => geom::clip_lines(&drawn, &area(n)?, false),
                 None => geom::clip_lines(&drawn, &engine.output, false),

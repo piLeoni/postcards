@@ -2,11 +2,11 @@ title("City grain")
 output({
   width: "6in",
   height: "4in",
-  scale: "1:10000",
+  scale: "1:10000",   // terrain 0.947 × 0.631 mi
   bearing: -4,
   projection: "webmercator",
-  lat: 37.7805838,
-  lng: -122.509662,
+  lat: 45.4497625,
+  lng: 9.2122571,
   tileZoom: 14,
 })
 
@@ -32,13 +32,13 @@ const pierPads = areas.buffer(piers, "0.25mm")
 // rather than bare ground.
 const landuse = areas.polygons(
   features.tiles(
-    /** @type {TilePreset} */ (
+    /** @type {TilePreset} */(
       "landuse:residential,commercial,industrial,retail,garages,railway,bus_station,quarry,military,cemetery,school,university,kindergarten,college,library,hospital,stadium,pitch,playground,track,theme_park,zoo,dam,parking"
     ),
   ),
 )
-// Grown pad: hides burin under the city; `urban_ring` draws its edge.
-const urban = areas.grow(areas.union(landuse, buildings, roads.area), "10mm")
+// Built-up footprint: ground burin eases out over `mask_reach_m` before it.
+const urban = areas.union(landuse, buildings, roads.area)
 // `modules.roads` is carriageways only; rail is separate but uses the same masks
 // and is clipped out of building footprints like road centerlines.
 const railways = lines.clip(lines.of(features.tiles("rail")), buildings, { invert: true })
@@ -88,14 +88,8 @@ for (const kind of [...NATURE].reverse()) {
   covered = covered ? areas.union(covered, kind.area) : kind.area
 }
 const nature = covered
+const openGround = areas.difference(frame, water, nature)
 
-// Urban dash only against open burin ground and “wild” nature — not water, not parks/gardens.
-const parkLike = areas.union(
-  ...NATURE.filter((k) => ["protected", "park", "garden", "golf", "flowerbed"].includes(k.id)).map((k) => k.area),
-)
-const openGround = areas.difference(frame, water, nature, urban)
-const wildBesideUrban = areas.union(openGround, areas.difference(nature, parkLike))
-const urbanRing = lines.clip(lines.rings(urban), areas.grow(wildBesideUrban, "0.25mm"))
 const piersOnWater = areas.intersect(pierPads, water)
 const ferryRoutes = lines.clip(lines.of(features.tiles("transportation:ferry")), water)
 const ferryCorridor = areas.intersect(areas.buffer(ferryRoutes, "0.35mm"), water)
@@ -107,20 +101,47 @@ const reliefArea = areas.difference(
 )
 
 // ── Terrain ────────────────────────────────────────────────────────────────
-const terrain = (style, area) => burin.terrain((b) => b.batch({ angle: 0, style }), { in: area })
-const groundBurin = terrain(
-  { sun_exag: 2, dash_light: 0.48, dash_dark: 0.88, space_light: 0.9, space_dark: 0.72, input_light_floor: 0.14 },
-  areas.difference(frame, water, nature, urban),
+const groundBurin = burin.terrain(
+  (b) =>
+    b.batch({
+      angle: 0,
+      outside: "urban",
+      // Land mask, same idea as engraved-sea's `water_*` at the coast (`presets/engraved-sea.js`).
+      mask_start_m: 0,
+      mask_reach_m: 100,
+      mask_fade: 0.2,
+      mask_fray_m: 40,
+      style: {
+        dash_light: 0.1,
+        dash_dark: 1,
+        mod_jitter: 1,
+        mod_flat: 0.5,
+        dash_cutoff: 0.05
+      },
+    }),
+  { in: openGround, regions: { urban } },
 )
-// const natureBurin = terrain(
-//   // { sun_exag: 2, dash_light: 0.45, dash_dark: 0.85, space_light: 2, space_dark: 0.72, input_light_floor: 0.15 },
-//   { sun_exag: 2, dash_light: 0, dash_dark: 0.85, space_light: 5, space_dark: 1.2, input_light_floor: 0, angle:90 },
-//   reliefArea,
-// )
-
 const natureBurin = burin.terrain(
-  (b) => b.batch({ angle: 90, style: { sun_exag: 2, dash_light: 0, dash_dark: 0.85, space_light: 5, space_dark: 1.2, input_light_floor: 0 } }),
-  { in: reliefArea },
+  (b) =>
+    b.batch({
+      // angle: 90,
+      within: "relief",
+      outside: "urban",
+      mask_start_m: 0,
+      mask_reach_m: 100,
+      mask_fade: 0.2,
+      mask_fray_m: 40,
+      style: {
+        space_light: 12,
+        space_dark: 10,
+        dash_light: 0.1,
+        dash_dark: 1,
+        mod_jitter: 1,
+        mod_flat: 0.5,
+        dash_cutoff: 0.05
+      },
+    }),
+  { in: reliefArea, regions: { relief: reliefArea, urban } },
 )
 
 
@@ -146,9 +167,6 @@ const waterDraws = [
   // White strip on waves, then a dashed centreline — comment either draw or `ferry_on_water` to try one alone.
   draw({ id: "ferry", from: ferryRoutes, stroke: penStroke({ style: "dash", dash: "0.45mm", gap: "0.4mm" }) }),
 ]
-const urbanDraws = [
-  draw({ id: "urban_ring", from: urbanRing, stroke: penStroke({ style: "dash", dash: "0.5mm", gap: "0.4mm" }) }),
-]
 const railDraws = [
   draw({
     id: "rail",
@@ -170,7 +188,7 @@ const buildingDraws = [
   draw({ id: "bldg_ring", from: lines.rings(buildings), stroke: penStroke({ style: "solid" }) }),
 ]
 
-const underRoads = [...ground, ...natureDraws, ...urbanDraws, ...waterDraws, ...railDraws]
+const underRoads = [...ground, ...natureDraws, ...waterDraws, ...railDraws]
 compose.mask({ name: "trail_clear", from: trailClear, occludes: ["nat_terrain", ...natureFills] })
 compose.mask({ name: "wet_cover", from: water, occludes: [...ground, ...natureDraws] })
 compose.mask({ name: "pier_on_water", from: piersOnWater, occludes: ["water_fill"] })
@@ -187,14 +205,47 @@ const labels = modules.labels({
     features.tiles("poi:attraction,museum,monument,castle,theme_park,viewpoint"),
   ],
   rules: [
-    { id: "park", tags: { "tiles:layer": "park" }, size: "3.5mm", minSize: "2.2mm", font: { origin: "google", family: "Roboto", weight:700 } },
+    { id: "park", tags: { "tiles:layer": "park" }, size: "3.5mm", minSize: "2.2mm", font: { origin: "google", family: "Roboto", weight: 700 } },
     { id: "place", tags: { "tiles:layer": "place" }, size: "2.6mm", minSize: "2.1mm" },
     { id: "poi", tags: { "tiles:layer": "poi" }, size: "2mm", minSize: "1.6mm" },
     { id: "major", tags: { class: ["motorway", "trunk", "primary"] }, buffer: 1, bufferStep: "0.25mm", keepCenterline: false },
     { id: "street", tags: { "tiles:layer": "transportation_name" } },
   ],
 })
-const labelClear = areas.union(labels.area, areas.buffer(labels.lines, "0.5mm"))
+const labelClear = areas.union(labels.area, areas.buffer(labels.lines, "0.85mm"))
 compose.mask({ name: "label_clear", from: labelClear, occludes: [...underRoads, ...roadDraws, ...buildingDraws] })
 
 draw({ id: "labels", from: labels.lines, stroke: penStroke({ style: "solid" }) })
+
+// ── Layer order, bottom first ──────────────────────────────────────────────
+// Masks still cut only the groups they list, wherever those sit here.
+compose.order(
+  "labels",
+  "bldg_ring",
+  "bldg_fill",
+  "roads_seam",
+  "roads_center",
+  "roads_out",
+  "rail",
+  "ferry",
+  "piers",
+  "dock_ring",
+  "water_fill",
+  "water_ring",
+  "nat_ring",
+  "nat_terrain",
+  "nat_fill_garden",
+  "nat_fill_flowerbed",
+  "nat_fill_grass",
+  "nat_fill_golf",
+  "nat_fill_scrub",
+  "nat_fill_wood",
+  "nat_fill_bare_rock",
+  "nat_fill_sand",
+  "nat_fill_wetland",
+  "nat_fill_ice",
+  "nat_fill_farmland",
+  "nat_fill_park",
+  "nat_fill_protected",
+  "ground_burin",
+)

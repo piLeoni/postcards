@@ -15,7 +15,7 @@ use crate::grammar::Terrain as Spec;
 use crate::output::Output;
 use burin_map_core::atlas::Atlas;
 use burin_map_core::script;
-use burin_map_core::Drawing;
+use burin_map_core::{Drawing, Region, Ring, Surface};
 use geo::{BoundingRect, Coord, LineString, MultiPolygon, Polygon};
 
 /// The elevation grid burin draws on, and the transform back to millimetres.
@@ -134,7 +134,7 @@ pub fn atlas_of(spec: &Spec) -> Result<Atlas, String> {
 
 /// Draw `spec` over the whole of `grid`.
 pub fn draw(grid: &Grid, spec: &Spec) -> Result<Drawing, String> {
-    Ok(run(&atlas_of(spec)?, grid))
+    run(&atlas_of(spec)?, grid, &[])
 }
 
 /// Draw a whole burin document (`spec.atlas`: the JSON `burin.json()` writes)
@@ -142,12 +142,42 @@ pub fn draw(grid: &Grid, spec: &Spec) -> Result<Drawing, String> {
 /// language inside the profile, so whatever burin grows is available here
 /// unchanged. Where it goes is the profile's: clip it, fill an area with it,
 /// mask it, like any other lines.
-pub fn draw_burin(grid: &Grid, spec: &crate::grammar::Burin) -> Result<Drawing, String> {
-    Ok(run(&script::atlas_from(&spec.atlas)?, grid))
+///
+/// `regions` maps each name batches may use in `within` / `outside` to an area
+/// in output millimetres, rasterised onto the elevation grid.
+pub fn draw_burin(grid: &Grid, spec: &crate::grammar::Burin, regions: &[(&str, Region)]) -> Result<Drawing, String> {
+    run(&script::atlas_from(&spec.atlas)?, grid, regions)
 }
 
-fn run(atlas: &Atlas, grid: &Grid) -> Drawing {
-    atlas.draw(&grid.elev, grid.width, grid.height, grid.px_m as f32)
+fn run(atlas: &Atlas, grid: &Grid, regions: &[(&str, Region)]) -> Result<Drawing, String> {
+    let surface = Surface::new(&grid.elev, grid.width, grid.height, grid.px_m as f32).regions(regions);
+    atlas.draw(&surface, None)
+}
+
+/// An output area as burin regions on the elevation grid.
+pub fn region_from_area(area: &MultiPolygon<f64>, at: &Placed) -> Region {
+    let mut rings = Vec::new();
+    for poly in &area.0 {
+        if poly.exterior().coords().count() >= 4 {
+            rings.push(ring_from_line(poly.exterior(), true, at));
+        }
+        for hole in poly.interiors() {
+            if hole.coords().count() >= 4 {
+                rings.push(ring_from_line(hole, false, at));
+            }
+        }
+    }
+    Region::Rings(rings)
+}
+
+fn ring_from_line(ls: &LineString<f64>, exterior: bool, at: &Placed) -> Ring {
+    Ring {
+        exterior,
+        points: ls
+            .coords()
+            .map(|c| [(c.x - at.x0) / at.kx, (c.y - at.y0) / at.ky])
+            .collect(),
+    }
 }
 
 /// A drawing's dashes as draw.land lines, in output millimetres. Fills come

@@ -319,6 +319,17 @@ declare const fills: {  /** The area filled with a pattern: lines, ready to draw
   fill(options: FillOptions): Lines
 }
 
+/** Where a burin document is clipped, and the regions its batches name. */
+type BurinTerrainOptions = {
+  /** Clip the drawing to this area (a hard edge after the mask). */
+  in?: Area
+  /**
+   * Polygons batches name in `within` / `outside`, by name — the same
+   * `mask_*` easing as burin-map's engraved sea at the coast.
+   */
+  regions?: Record<string, Area>
+}
+
 /**
  * A burin document, built by burin's own language inside this profile. The
  * callback is a real function and runs in the same interpreter, so it is
@@ -342,9 +353,9 @@ declare const burin: {
    * other layers, draw it first and mask it like any other group; to fill a
    * shape with it, `fills.fill({ in: shape, content: natural })`.
    */
-  terrain(build: (burin: BurinBuilder) => void, options?: { in?: Area }): Lines
+  terrain(build: (burin: BurinBuilder) => void, options?: BurinTerrainOptions): Lines
   /** The same: a burin document, whatever it draws. */
-  script(build: (burin: BurinBuilder) => void, options?: { in?: Area }): Lines
+  script(build: (burin: BurinBuilder) => void, options?: BurinTerrainOptions): Lines
 }
 
 /** The `burin` object a burin document sees, the same one as at burin's own front ends. */

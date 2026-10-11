@@ -324,10 +324,18 @@
         fail(`burin.terrain expects a function: burin.terrain((b) => { … }), got ${describe(build)}`);
       }
       object(options, "burin.terrain options");
-      const { in: area } = options;
+      const { in: area, regions } = options;
       const op = { tools_burin: { atlas: dl.burin(build) } };
       // `in` clips the drawing to an area, like `lines.terrain`.
       if (area !== undefined) op.tools_burin.in_area = need(area, Area, "burin.terrain in");
+      if (regions !== undefined) {
+        object(regions, "burin.terrain regions");
+        const named = {};
+        for (const [name, reg] of Object.entries(regions)) {
+          named[name] = need(reg, Area, `burin.terrain regions.${name}`);
+        }
+        op.tools_burin.regions = named;
+      }
       return make(Lines, "lines", op);
     },
   };
