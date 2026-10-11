@@ -36,3 +36,5 @@ Lengths in profiles parse to mm (`"0.5mm"`, `"6in"`, etc.). Internal geometry is
 ## Dependencies
 
 Pattern behaviour changes belong in **penfill** when general; draw.land only wires specs and regions.
+
+Planned **isoline blob** fills (nested contour texture + coverage polygons for masks) are specified in [isoline-blob-fills.md](isoline-blob-fills.md).

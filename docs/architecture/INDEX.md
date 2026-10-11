@@ -22,6 +22,7 @@ See [pipeline.md](pipeline.md).
 | Map data & CLI I/O | [cli-data.md](cli-data.md) | `drawland-cli/`, `osm.rs`, `tiles.rs`, `osm_cache.rs` |
 | Web & WASM | [web.md](web.md) | `web/`, `drawland-wasm/`, `drawland-script-wasm/` |
 | Fills & strokes | [fills-compose.md](fills-compose.md) | `fill.rs`, `profile.rs`, `svg.rs`, penfill |
+| Isoline blob fills (design) | [isoline-blob-fills.md](isoline-blob-fills.md) | penfill (new generator), `fill.rs`, compose masks |
 | Terrain (burin) | [terrain-burin.md](terrain-burin.md) | `terrain.rs`, `burin.*` in profiles |
 | Labels & text | [labels.md](labels.md) | `labels.rs`, `text.rs`, `google_fonts.rs` |
 | Decisions | [decisions.md](decisions.md) | Rationale that spans crates |
