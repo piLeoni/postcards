@@ -35,7 +35,7 @@ pub const GENERATORS: &[&str] = &[
     "conglomerate-flat", "coquina", "cracked-earth", "cracks", "dacite", "debris-soil", "diabase", "diatom",
     "diorite", "dots", "drift", "dry-cracked-soil", "erosion-lines", "feldspar", "ferrous", "fill", "fine-gravel",
     "fluid-grass", "gabbro", "gneiss", "grainy-soil", "granite", "granite-x", "grass", "gravel", "gravel-clipped",
-    "gravelly-soil", "grid", "hilbert", "honeycomb", "hornblende", "isoline-blobs", "laminae", "lava", "layered-soil", "lily-pads",
+    "gravelly-soil", "grid", "hilbert", "honeycomb", "hornblende", "isoline-blobs", "isoline-stack", "laminae", "lava", "layered-soil", "lily-pads",
     "lines", "loose-soil", "marble", "masonry", "mixed-rocks", "mulch", "mulched-soil", "none", "ophitic",
     "organic-topsoil", "pat", "pebble-scatter", "pebbled-soil", "pebbles", "rectilinear", "sandy-soil", "scales",
     "scribble", "shards", "silty-soil", "solid", "spiral", "sprouts", "stipple", "stipple-edge", "stipple-noise",
@@ -120,6 +120,14 @@ impl Opts<'_> {
             Some(Value::Number(n)) => Ok(n.as_f64()),
             Some(Value::String(s)) => parse_length_mm(s).map(Some).map_err(|e| self.bad(key, e)),
             Some(_) => Err(self.bad(key, "expected a length")),
+        }
+    }
+
+    fn num(&self, key: &str) -> Result<Option<f64>, FillError> {
+        match self.options.get(key) {
+            None | Some(Value::Null) => Ok(None),
+            Some(Value::Number(n)) => Ok(n.as_f64()),
+            Some(_) => Err(self.bad(key, "expected a number")),
         }
     }
 
@@ -250,23 +258,35 @@ fn run_generator_into(region: &Region, generator: &str, spec: &FillSpec, sink: &
         "scribble" => scribble::fill_scribble(r, s, a, seed),
         "truchet" => truchet::fill_truchet(r, s, a, seed, at),
         "isoline-blobs" => {
-            let warp = match o.options.get("warp") {
-                Some(Value::Number(n)) => n.as_f64().unwrap_or(0.45),
-                _ => 0.45,
-            };
-            let threshold = match o.options.get("threshold") {
-                Some(Value::Number(n)) => n.as_f64().unwrap_or(0.25),
-                _ => 0.25,
-            };
             let params = penfill::IsolineFieldParams {
                 seed,
                 source: penfill::FieldSource::Noise,
                 feature_size: s,
                 contour_spacing: o.mm("contour")?.unwrap_or(s * 0.045),
-                warp,
-                threshold,
+                warp: o.num("warp")?.unwrap_or(0.45),
+                threshold: o.num("threshold")?.unwrap_or(0.25),
             };
             penfill::fill_isoline_blobs_with_coverage(r, &params).strokes
+        }
+        "isoline-stack" => {
+            use penfill::isoline_stack::{fill_isoline_stack, CrownSource, EdgeMode, IsolineStackParams};
+            let edge = match o.str("edge")?.unwrap_or("clip") {
+                "clip" => EdgeMode::Clip,
+                "inside" => EdgeMode::Inside,
+                "overflow" => EdgeMode::Overflow(o.mm("overflow")?.unwrap_or(s * 0.4)),
+                other => return Err(o.bad("edge", format!("{other:?}: use clip, inside or overflow"))),
+            };
+            let params = IsolineStackParams {
+                seed,
+                crowns: CrownSource::Generate,
+                crown: s,
+                bubble: o.mm("bubble")?.unwrap_or(s * 0.3),
+                coverage: o.num("coverage")?.unwrap_or(0.6),
+                slices: o.num("slices")?.map_or(14, |n| n.clamp(1.0, 64.0) as usize),
+                jitter: o.num("jitter")?.unwrap_or(0.8),
+                edge,
+            };
+            fill_isoline_stack(r, &params)
         }
         "marble" => textures::fill_marble(r, s, a, seed, at),
         "wood" => textures::fill_wood(r, s, a, seed, at),
@@ -419,6 +439,23 @@ mod tests {
         spec.options.insert("anchor".into(), "local".into());
         spec.options.insert("shift".into(), serde_json::json!([0.2, 0.1]));
         assert!(validate(&spec, &Sources::new()).is_ok());
+    }
+
+    #[test]
+    fn isoline_stack_edge_modes() {
+        let sq = MultiPolygon::new(vec![polygon![(x: 0.0, y: 0.0), (x: 40.0, y: 0.0), (x: 40.0, y: 40.0), (x: 0.0, y: 40.0)]]);
+        let run = |edge: &str| {
+            let mut spec = FillSpec { generator: Some("isoline-stack".into()), ..FillSpec::spacing(5.0) };
+            spec.options.insert("edge".into(), edge.into());
+            spec.options.insert("coverage".into(), serde_json::json!(1.0));
+            fill(&sq, &spec, &Sources::new()).unwrap()
+        };
+        let out_of = |lines: &Lines| lines.iter().flat_map(|l| l.0.iter()).filter(|c| c.x < 0.0 || c.y < 0.0 || c.x > 40.0 || c.y > 40.0).count();
+        assert_eq!(out_of(&run("inside")), 0);
+        assert!(out_of(&run("overflow")) > 0, "overflow stays in");
+        let mut bad = FillSpec { generator: Some("isoline-stack".into()), ..FillSpec::spacing(5.0) };
+        bad.options.insert("edge".into(), "bleed".into());
+        assert!(matches!(validate(&bad, &Sources::new()), Err(FillError::BadOption { .. })));
     }
 
     #[test]

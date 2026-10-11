@@ -47,7 +47,7 @@ type Pattern =
   | "conglomerate-flat" | "coquina" | "cracked-earth" | "cracks" | "dacite" | "debris-soil" | "diabase" | "diatom"
   | "diorite" | "dots" | "drift" | "dry-cracked-soil" | "erosion-lines" | "feldspar" | "ferrous" | "fill" | "fine-gravel"
   | "fluid-grass" | "gabbro" | "gneiss" | "grainy-soil" | "granite" | "granite-x" | "grass" | "gravel" | "gravel-clipped"
-  | "gravelly-soil" | "grid" | "hilbert" | "honeycomb" | "hornblende" | "isoline-blobs" | "laminae" | "lava" | "layered-soil" | "lily-pads"
+  | "gravelly-soil" | "grid" | "hilbert" | "honeycomb" | "hornblende" | "isoline-blobs" | "isoline-stack" | "laminae" | "lava" | "layered-soil" | "lily-pads"
   | "lines" | "loose-soil" | "marble" | "masonry" | "mixed-rocks" | "mulch" | "mulched-soil" | "none" | "ophitic"
   | "organic-topsoil" | "pat" | "pebble-scatter" | "pebbled-soil" | "pebbles" | "rectilinear" | "sandy-soil" | "scales"
   | "scribble" | "shards" | "silty-soil" | "solid" | "spiral" | "sprouts" | "stipple" | "stipple-edge" | "stipple-noise"

@@ -1,6 +1,6 @@
 # Isoline blob fills (design)
 
-**Status:** MVP in penfill (`fill_isoline_blobs_with_coverage`), built on one continuous scalar field (not independent per-site blobs — see below). draw.land generator `isoline-blobs` (strokes only). Coverage → `$areas` + compose not wired yet.  
+**Status:** two generators. `isoline-blobs`: flat contours of one continuous 2D field. `isoline-stack`: 3D stacked slices with overhang and boundary modes (see below). Both strokes only; coverage → `$areas` + compose not wired yet.  
 **Target look:** reference drawings (nested contour “cells” on paper; sparse scattered masses or dense all-over texture).  
 **Split:** penfill generates **strokes + coverage polygons**; draw.land clips to the host area and applies **compose masks** to other layers.
 
@@ -39,6 +39,32 @@ Shared traits to reproduce in vector:
 - **Layered overlap (dense mode):** draw order + optional mask, not SVG transparency.
 
 Compare implementation output to these files, not to built-in gallery patterns.
+
+## Stacked slices: `isoline-stack` (3D, overhang, boundary-aware)
+
+The flat field (`isoline-blobs`) can only nest, so every ring sits inside the one below it and nothing ever overhangs. Vegetation needs upper layers that are wider than what's under them and hide it. `isoline-stack` builds each crown from spheres at different heights (they melt into one bubbly surface), cuts the volume into horizontal slices, and draws the top slice first. Each lower slice is drawn only where no higher slice covers it. Implementation notes: penfill [isoline-blob-fills.md](../../../penfill/docs/architecture/isoline-blob-fills.md).
+
+| `edge: "clip"` | `edge: "inside"` | `edge: "overflow"` |
+| --- | --- | --- |
+| ![clip](img/isoline-blob-fills/stack-clip.png) | ![inside](img/isoline-blob-fills/stack-inside.png) | ![overflow](img/isoline-blob-fills/stack-overflow.png) |
+| ignores the border; cut there | every outline closes inside the border; nothing cut | crowns line the border and bulge up to `overflow` mm past it, closing there |
+
+`coverage: 1` (here with `edge: "inside"`):
+
+![dense](img/isoline-blob-fills/stack-dense.png)
+
+Profile options (`spacing` = crown size):
+
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `edge` | `"clip"` | `clip`, `inside`, `overflow` |
+| `overflow` | `spacing × 0.4` | how far past the border `overflow` may reach |
+| `bubble` | `spacing × 0.3` | sphere size: smaller is lumpier |
+| `coverage` | `0.6` | share of the area under canopy (0–1) |
+| `slices` | `14` | horizontal cuts: more is more rings |
+| `jitter` | `0.8` | outline wobble |
+
+Fill output is not clipped again in `fill.rs`, so `overflow` ink reaches past the area as drawn.
 
 ## Problem
 
@@ -173,7 +199,8 @@ Z-order: list `forest` after `ground_dots` in `compose.order`; mask removes hidd
 2. ~~Coverage~~ — done: threshold-isoline silhouettes; unit-tested for fuse/stay-separate behaviour and host containment.
 3. **draw.land wire-up** — done for strokes (`pattern: "isoline-blobs"`); coverage not yet exposed as `$areas` for `compose.mask`.
 4. **Particles from features** — `FieldSource::Sites`/`NoiseAndSites` exist in penfill; draw.land does not yet resolve `$features` centroids into them.
-5. **Light bias** — not implemented.
+5. **Light bias** — not implemented. In the stacked model this is natural: shift each slice's outline by a light direction, or drop rings on the lit side.
+5b. ~~Overhang and boundary modes~~ — done: `isoline-stack`.
 6. **Streaming + budget** — not implemented; whole-field sampling today.
 
 ## Tests
