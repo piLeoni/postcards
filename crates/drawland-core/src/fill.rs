@@ -35,7 +35,7 @@ pub const GENERATORS: &[&str] = &[
     "conglomerate-flat", "coquina", "cracked-earth", "cracks", "dacite", "debris-soil", "diabase", "diatom",
     "diorite", "dots", "drift", "dry-cracked-soil", "erosion-lines", "feldspar", "ferrous", "fill", "fine-gravel",
     "fluid-grass", "gabbro", "gneiss", "grainy-soil", "granite", "granite-x", "grass", "gravel", "gravel-clipped",
-    "gravelly-soil", "grid", "hilbert", "honeycomb", "hornblende", "laminae", "lava", "layered-soil", "lily-pads",
+    "gravelly-soil", "grid", "hilbert", "honeycomb", "hornblende", "isoline-blobs", "laminae", "lava", "layered-soil", "lily-pads",
     "lines", "loose-soil", "marble", "masonry", "mixed-rocks", "mulch", "mulched-soil", "none", "ophitic",
     "organic-topsoil", "pat", "pebble-scatter", "pebbled-soil", "pebbles", "rectilinear", "sandy-soil", "scales",
     "scribble", "shards", "silty-soil", "solid", "spiral", "sprouts", "stipple", "stipple-edge", "stipple-noise",
@@ -249,6 +249,29 @@ fn run_generator_into(region: &Region, generator: &str, spec: &FillSpec, sink: &
         "gravel" => gravel::fill_gravel(r, s, seed),
         "scribble" => scribble::fill_scribble(r, s, a, seed),
         "truchet" => truchet::fill_truchet(r, s, a, seed, at),
+        "isoline-blobs" => {
+            let dense = matches!(o.options.get("dense"), Some(Value::Bool(true)));
+            let level_count = match o.options.get("levels") {
+                Some(Value::Number(n)) => n.as_u64().unwrap_or(8).clamp(1, 32) as usize,
+                _ => 8,
+            };
+            let warp = match o.options.get("warp") {
+                Some(Value::Number(n)) => n.as_f64().unwrap_or(0.35),
+                _ => 0.35,
+            };
+            let params = penfill::IsolineBlobParams {
+                seed,
+                sites: penfill::SiteSource::Generate {
+                    min_spacing: s,
+                    dense,
+                },
+                contour_spacing: o.mm("contour")?.unwrap_or(s * 0.35),
+                level_count,
+                blob_radius: o.mm("blob_radius")?.unwrap_or(s * 0.85),
+                warp,
+            };
+            penfill::fill_isoline_blobs_with_coverage(r, &params).strokes
+        }
         "marble" => textures::fill_marble(r, s, a, seed, at),
         "wood" => textures::fill_wood(r, s, a, seed, at),
         "cracks" => textures::fill_cracks(r, s, seed),

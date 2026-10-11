@@ -1,6 +1,6 @@
 # Isoline blob fills (design)
 
-**Status:** design — not implemented  
+**Status:** MVP in penfill (`fill_isoline_blobs_with_coverage`); draw.land generator `isoline-blobs` (strokes only). Coverage → `$areas` + compose not wired yet.  
 **Target look:** reference drawings (nested contour “cells” on paper; sparse scattered masses or dense all-over texture).  
 **Split:** penfill generates **strokes + coverage polygons**; draw.land clips to the host area and applies **compose masks** to other layers.
 
