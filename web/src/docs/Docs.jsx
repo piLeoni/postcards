@@ -647,11 +647,12 @@ const gardens = fills.fill({ in: parks, content: lines.terrain({ style: { line_s
         <C>modules.roads(&#123; from &#125;)</C> builds the road network with real widths, crossings and
         bridges, from OSM's <C>highway</C> features or from tile roads. Call it once.
       </P>
-      <Code>{`const roads = modules.roads({ from: features.tiles("roads", "paths") })
+      <Code>{`const roads = modules.roads({ from: features.tiles("roads", "paths", "rail") })
 
 draw({ id: "roads", from: roads.outlines })                          // the carriageway's edge
 draw({ id: "center", from: roads.centerlines, stroke: "dash" })
 draw({ id: "trails", from: roads.trails })
+draw({ id: "rail", from: roads.rails, stroke: "dotted" })
 compose.mask({ from: roads.area, occludes: ["park", "water"] })       // the strip they cover`}</Code>
       <div className="thin my-[1lh] max-w-[80ch] overflow-x-auto">
         <table className="w-full border-collapse">
@@ -663,12 +664,13 @@ compose.mask({ from: roads.area, occludes: ["park", "water"] })       // the str
             </tr>
           </thead>
           <tbody>
-            <Row a="roads.area" b="area" c="the carriageway and the strip each trail covers: the mask" />
+            <Row a="roads.area" b="area" c="the carriageway and the strip each trail and railway covers: the mask" />
             <Row a="roads.outlines" b="lines" c="the carriageway's edge" />
             <Row a="roads.centerlines" b="lines" c="a centre line down each road 6 m wide or more" />
             <Row a="roads.details" b="lines" c="the centre lines already dashed, and the seams" />
             <Row a="roads.trails" b="lines" c="footways, paths, tracks, steps, cycleways" />
             <Row a="roads.seams" b="lines" c="where a bridge deck crosses the road below" />
+            <Row a="roads.rails" b="lines" c="railways, trams and metro above ground, when the features include rail" />
           </tbody>
         </table>
       </div>

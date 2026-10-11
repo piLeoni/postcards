@@ -5,8 +5,8 @@ output({
   scale: "1:10000",   // terrain 0.947 × 0.631 mi
   bearing: -4,
   projection: "webmercator",
-  lat: 45.4497625,
-  lng: 9.2122571,
+  lat: 37.7864972,
+  lng: -122.4850441,
   tileZoom: 14,
 })
 
@@ -17,7 +17,7 @@ const PEN = "0.2mm"
 
 // ── Base geometry ──────────────────────────────────────────────────────────
 const frame = engine.frame()
-const roads = modules.roads({ from: features.tiles("roads") })
+const roads = modules.roads({ from: features.tiles("roads", "paths", "rail") })
 const buildings = areas.polygons(features.tiles("buildings"))
 const ocean = areas.extendToFrame(
   areas.grow(areas.intersect(areas.polygons(features.tiles("ocean")), frame), "0.35mm"),
@@ -39,10 +39,6 @@ const landuse = areas.polygons(
 )
 // Built-up footprint: ground burin eases out over `mask_reach_m` before it.
 const urban = areas.union(landuse, buildings, roads.area)
-// `modules.roads` is carriageways only; rail is separate but uses the same masks
-// and is clipped out of building footprints like road centerlines.
-const railways = lines.clip(lines.of(features.tiles("rail")), buildings, { invert: true })
-
 // ── Nature ─────────────────────────────────────────────────────────────────
 // Bottom to top: where kinds overlap the upper one wins. `parks` and
 // `landcover:park` outline whole parks, woods and beaches included, so they
@@ -68,9 +64,9 @@ const NATURE = [
   { id: "wetland", tiles: ["wetland"], relief: false, fill: DOTS },
   { id: "sand", tiles: ["sand", "landcover:sand/beach"], relief: false, fill: { ...DOTS, pattern: "stipple-edge" } },
   { id: "bare_rock", tiles: ["landcover:rock/bare_rock"], relief: true, fill: DOTS },
-  { id: "wood", tiles: ["forest", "landuse:forest"], relief: true, fill: { ...DOTS, pattern: "granite" } },
+  { id: "wood", tiles: ["forest", "landuse:forest"], relief: true, fill: { ...DOTS, pattern: "canopy", spacing: 0.5} },
   { id: "scrub", tiles: ["landcover:grass/scrub"], relief: true, fill: DOTS },
-  { id: "golf", tiles: ["landcover:grass/golf_course"], relief: true, fill: { ...DOTS, spacing: "1mm" } },
+  { id: "golf", tiles: ["landcover:grass/golf_course"], relief: true, fill: { ...DOTS } },
   { id: "grass", tiles: ["landcover:grass/grass"], relief: false, fill: { ...DOTS, spacing: "0.60mm" } },
   { id: "flowerbed", tiles: ["landcover:grass/flowerbed"], relief: true, fill: DOTS },
   { id: "garden", tiles: ["landcover:garden"], relief: false, fill: { ...DOTS, spacing: "0.60mm" } },
@@ -145,8 +141,10 @@ const natureBurin = burin.terrain(
 )
 
 
-// Trails inside nature only: the tiles tag park trails and sidewalks alike.
-const trailClear = areas.buffer(lines.clip(lines.of(features.tiles("paths")), nature), "0.22mm")
+// Trails inside nature: the tiles tag park trails and sidewalks alike.
+// One geometry drives both the white corridor and the dotted centreline.
+const trailLines = lines.clip(lines.of(features.tiles("paths")), nature)
+const trailClear = areas.buffer(trailLines, "0.45mm")
 
 // ── Draw, bottom to top ────────────────────────────────────────────────────
 const penStroke = (stroke) => ({ ...stroke, width: PEN, cap: "round" })
@@ -159,6 +157,13 @@ const natureDraws = [
   ...natureFills,
   draw({ id: "nat_ring", from: lines.rings(nature), stroke: penStroke({ style: "dash", dash: "0.45mm", gap: "0.4mm" }) }),
 ]
+const pathDraws = [
+  draw({
+    id: "garden_paths",
+    from: trailLines,
+    stroke: penStroke({ style: "dotted", mark: "0.35mm", gap: "0.5mm" }),
+  }),
+]
 const waterDraws = [
   draw({ id: "water_ring", from: lines.rings(water), stroke: penStroke({ style: "solid" }) }),
   draw({ id: "water_fill", from: fills.fill({ in: water, pattern: "waves", spacing: "0.75mm" }), stroke: penStroke({ style: "solid" }) }),
@@ -167,14 +172,8 @@ const waterDraws = [
   // White strip on waves, then a dashed centreline — comment either draw or `ferry_on_water` to try one alone.
   draw({ id: "ferry", from: ferryRoutes, stroke: penStroke({ style: "dash", dash: "0.45mm", gap: "0.4mm" }) }),
 ]
-const railDraws = [
-  draw({
-    id: "rail",
-    from: railways,
-    stroke: penStroke({ style: "dotted", mark: "0.15mm", gap: "0.45mm" }),
-  }),
-]
 const roadDraws = [
+  draw({ id: "rail", from: roads.rails, stroke: penStroke({ style: "dash", dash: "1.4mm", gap: "1.1mm" }) }),
   draw({ id: "roads_out", from: roads.outlines, stroke: penStroke({ style: "solid" }) }),
   draw({ id: "roads_center", from: roads.centerlines, stroke: penStroke({ style: "dash", dash: "0.3mm", gap: "0.35mm" }) }),
   draw({ id: "roads_seam", from: roads.seams, stroke: penStroke({ style: "solid" }) }),
@@ -182,13 +181,13 @@ const roadDraws = [
 const buildingDraws = [
   draw({
     id: "bldg_fill",
-    from: fills.fill({ in: buildings, per: "feature", pattern: "zigzag", spacing: "0.5mm", angle: 45 }),
+    from: fills.fill({ in: buildings, per: "feature", pattern: "lines", spacing: "0.5mm", angle: 45 }),
     stroke: penStroke({ style: "solid" }),
   }),
   draw({ id: "bldg_ring", from: lines.rings(buildings), stroke: penStroke({ style: "solid" }) }),
 ]
 
-const underRoads = [...ground, ...natureDraws, ...waterDraws, ...railDraws]
+const underRoads = [...ground, ...natureDraws, ...waterDraws]
 compose.mask({ name: "trail_clear", from: trailClear, occludes: ["nat_terrain", ...natureFills] })
 compose.mask({ name: "wet_cover", from: water, occludes: [...ground, ...natureDraws] })
 compose.mask({ name: "pier_on_water", from: piersOnWater, occludes: ["water_fill"] })
@@ -208,12 +207,12 @@ const labels = modules.labels({
     { id: "park", tags: { "tiles:layer": "park" }, size: "3.5mm", minSize: "2.2mm", font: { origin: "google", family: "Roboto", weight: 700 } },
     { id: "place", tags: { "tiles:layer": "place" }, size: "2.6mm", minSize: "2.1mm" },
     { id: "poi", tags: { "tiles:layer": "poi" }, size: "2mm", minSize: "1.6mm" },
-    { id: "major", tags: { class: ["motorway", "trunk", "primary"] }, buffer: 1, bufferStep: "0.25mm", keepCenterline: false },
+    { id: "major", tags: { class: ["motorway", "trunk", "primary"] }, buffer: 1, bufferStep: "0.2mm", keepCenterline: false },
     { id: "street", tags: { "tiles:layer": "transportation_name" } },
   ],
 })
 const labelClear = areas.union(labels.area, areas.buffer(labels.lines, "0.85mm"))
-compose.mask({ name: "label_clear", from: labelClear, occludes: [...underRoads, ...roadDraws, ...buildingDraws] })
+compose.mask({ name: "label_clear", from: labelClear, occludes: [...underRoads, ...roadDraws, ...buildingDraws, ...pathDraws] })
 
 draw({ id: "labels", from: labels.lines, stroke: penStroke({ style: "solid" }) })
 
@@ -248,4 +247,5 @@ compose.order(
   "nat_fill_park",
   "nat_fill_protected",
   "ground_burin",
+  "garden_paths",
 )

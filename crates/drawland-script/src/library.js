@@ -369,6 +369,7 @@
         trails: out("trails"),
         centerlines: out("centerlines"),
         seams: out("seams"),
+        rails: out("rails"),
       });
     },
     // Names written on the map, placed so that none covers another: along

@@ -147,7 +147,7 @@ type Warp = { fisheye: number } | { twirl: number } | { wave: { amplitude: Lengt
 
 /** What the roads module publishes. */
 interface Roads {
-  /** Every road's surface: a mask for what roads cover. */
+  /** Every road's surface, and the strip each trail and railway covers: a mask for what roads cover. */
   readonly area: Area
   /** The roads' edges. */
   readonly outlines: Lines
@@ -159,6 +159,12 @@ interface Roads {
   readonly centerlines: Lines
   /** Where a bridge's edges meet the roads under it. */
   readonly seams: Lines
+  /**
+   * Railways, as single lines: only when the features include them,
+   * `modules.roads({ from: features.tiles("roads", "rail") })`. Their track
+   * bed is part of `area`, so whatever `area` masks keeps clear of them.
+   */
+  readonly rails: Lines
 }
 
 /** Map data to build from. */

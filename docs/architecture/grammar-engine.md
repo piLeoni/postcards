@@ -33,7 +33,7 @@ Script positions are stored as `at: [line, column]` for error reporting.
 Waves over the dependency DAG. Each def yields a `Value`:
 
 - `Features`, `Area`, `Lines`, `Labels` (strokes + coverage from `labels.rs`)
-- `Module` — roads bundle: `area`, `outlines`, `details`, `trails`, `centerlines`, `seams`
+- `Module` — roads bundle: `area`, `outlines`, `details`, `trails`, `centerlines`, `seams`, `rails` (`themes/roads.rs`; trails and rails are single lines whose strip joins `area`, present only when the input features include them)
 
 Fills run when their input areas are known. Terrain/burin defs produce lines like any other line set.
 

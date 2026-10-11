@@ -62,6 +62,9 @@ const CENTERLINE_MIN_WIDTH_M: f64 = 6.0;
 /// Ground width a trail cuts out of what is below it. A trail is one pen
 /// line, so it hides about as much as the line covers, whatever its tags say.
 const TRAIL_WIDTH_M: f64 = 1.0;
+/// Ground width a railway cuts out of what is below it: the track bed, so
+/// a fill or hatching under it keeps clear of the line.
+const RAIL_WIDTH_M: f64 = 5.0;
 const CENTERLINE_DASH_MM: f64 = 0.3;
 const CENTERLINE_GAP_MM: f64 = 0.35;
 
@@ -198,6 +201,20 @@ fn is_trail(f: &Feature) -> bool {
     matches!(highway(f), Some("footway" | "path" | "steps" | "track" | "bridleway" | "cycleway"))
 }
 
+/// Railways drawn as one line: an OSM `railway` that carries trains, or a
+/// tile `transportation` way of class `rail` or `transit`.
+fn is_rail(f: &Feature) -> bool {
+    match f.element {
+        Element::Tile => {
+            f.tag(LAYER_TAG) == Some("transportation") && matches!(f.tag("class"), Some("rail" | "transit"))
+        }
+        _ => matches!(
+            f.tag("railway"),
+            Some("rail" | "light_rail" | "tram" | "subway" | "narrow_gauge" | "monorail" | "funicular" | "preserved")
+        ),
+    }
+}
+
 fn truthy(v: Option<&str>) -> bool {
     v.is_some_and(|t| !matches!(t.trim().to_ascii_lowercase().as_str(), "" | "no" | "false" | "0"))
 }
@@ -268,18 +285,25 @@ pub struct Roads {
     pub parts: LayerParts,
     pub centerlines: Lines,
     pub seams: Lines,
+    /// Railways as single lines, when the features include any; their track
+    /// bed is part of the mask.
+    pub rails: Lines,
 }
 
 pub(crate) fn build(ctx: &Context) -> Roads {
     let feats: Vec<(&Feature, i64)> = ctx
         .features
         .iter()
-        .filter(|f| highway(f).is_some() && !matches!(f.tag("footway"), Some("crossing" | "sidewalk")) && !f.is_point())
+        .filter(|f| {
+            (is_rail(f) || highway(f).is_some())
+                && !matches!(f.tag("footway"), Some("crossing" | "sidewalk"))
+                && !f.is_point()
+        })
         .map(|f| (f, road_layer(f)))
         .filter(|(f, l)| *l >= 0 && !below_ground(f, &["layer"]))
         .collect();
     if feats.is_empty() {
-        return Roads { parts: LayerParts::default(), centerlines: vec![], seams: vec![] };
+        return Roads { parts: LayerParts::default(), centerlines: vec![], seams: vec![], rails: vec![] };
     }
 
     let scale_ratio = 1.0 / (ctx.output.scale / 1000.0) * BUFFER_FUDGE;
@@ -289,6 +313,10 @@ pub(crate) fn build(ctx: &Context) -> Roads {
     // are drawn across whatever they span.
     let mut ground_trails: Lines = Vec::new();
     let mut raised_trails: Lines = Vec::new();
+    // Railways likewise: cut by the carriageway at a level crossing, drawn
+    // across it on a bridge.
+    let mut ground_rails: Lines = Vec::new();
+    let mut raised_rails: Lines = Vec::new();
     // Keyed by (layer, radius as 1e-4 mm steps), in first-seen order.
     let mut key_order: Vec<(i64, i64)> = Vec::new();
     let mut lines_by_key: HashMap<(i64, i64), Lines> = HashMap::new();
@@ -298,6 +326,11 @@ pub(crate) fn build(ctx: &Context) -> Roads {
 
     for (f, lyr) in &feats {
         match &f.geometry {
+            Geometry::LineString(_) | Geometry::MultiLineString(_) if is_rail(f) => {
+                let parts = geom::lines_of(&f.geometry).into_iter().filter(|p| geom::line_length(p) > 0.0);
+                if *lyr >= 1 { raised_rails.extend(parts) } else { ground_rails.extend(parts) }
+            }
+            Geometry::Polygon(_) | Geometry::MultiPolygon(_) if is_rail(f) => {}
             Geometry::LineString(_) | Geometry::MultiLineString(_) if is_trail(f) => {
                 let parts = geom::lines_of(&f.geometry).into_iter().filter(|p| geom::line_length(p) > 0.0);
                 if *lyr >= 1 { raised_trails.extend(parts) } else { ground_trails.extend(parts) }
@@ -428,9 +461,15 @@ pub(crate) fn build(ctx: &Context) -> Roads {
     let trail_radius = TRAIL_WIDTH_M / 2.0 * scale_ratio;
     let mut covered: Vec<MultiPolygon<f64>> =
         ground_trails.iter().chain(&raised_trails).map(|t| geom::buffer_line_flat(t, trail_radius)).collect();
+    let ground_rails = geom::linemerge(&ground_rails);
+    let raised_rails = geom::linemerge(&raised_rails);
+    let rail_radius = RAIL_WIDTH_M / 2.0 * scale_ratio;
+    covered.extend(ground_rails.iter().chain(&raised_rails).map(|r| geom::buffer_line_flat(r, rail_radius)));
     covered.push(carriageway.clone());
     let mut trails = geom::clip_lines(&ground_trails, &carriageway, true);
     trails.extend(raised_trails);
+    let mut rails = geom::clip_lines(&ground_rails, &carriageway, true);
+    rails.extend(raised_rails);
 
     let parts = LayerParts {
         outlines: fill::stroke(geom::rings(&carriageway), &StrokeSpec::default()),
@@ -439,7 +478,7 @@ pub(crate) fn build(ctx: &Context) -> Roads {
         filling: vec![],
         mask: merge(&covered),
     };
-    Roads { parts, centerlines, seams: all_seams }
+    Roads { parts, centerlines, seams: all_seams, rails }
 }
 
 #[cfg(test)]
@@ -521,6 +560,58 @@ mod tests {
         assert_eq!(geom::rings(&parts.mask).len(), 3, "residential, service and the track's strip");
         assert!(parts.mask.contains(&Point::new(25.0, 10.0)));
         assert!(parts.outlines.iter().all(|l| l.0.iter().all(|c| c.y > 15.0)), "the track has no outline");
+    }
+
+    #[test]
+    fn railways_are_one_line_with_a_track_bed() {
+        use crate::output::Output;
+        use crate::profile::{OutputSpec, ProjectionMode};
+        use crate::units::{Mm, Scale};
+        use geo::{line_string, Contains};
+
+        let tile = |tags: &[(&str, &str)]| Feature {
+            element: Element::Tile,
+            ..feature(&[&[(LAYER_TAG, "transportation")], tags].concat())
+        };
+        assert!(is_rail(&tile(&[("class", "rail"), ("subclass", "rail")])));
+        assert!(is_rail(&tile(&[("class", "transit"), ("subclass", "light_rail")])));
+        assert!(is_rail(&feature(&[("railway", "tram")])));
+        assert!(!is_rail(&feature(&[("railway", "platform")])));
+        assert!(!is_rail(&tile(&[("class", "minor")])));
+
+        let map = OutputSpec {
+            address: None,
+            lat: None,
+            lng: None,
+            width: Mm(100.0),
+            height: Mm(50.0),
+            scale: Scale(10000.0),
+            bearing: 0.0,
+            projection: ProjectionMode::default(),
+            warp: Default::default(),
+            padding: Default::default(),
+            slices: Default::default(),
+            tile_zoom: None,
+        };
+        let output = Output::new(&map, (0.0, 0.0));
+        let line = |tags: &[(&str, &str)], from: (f64, f64), to: (f64, f64)| Feature {
+            geometry: Geometry::LineString(line_string![(x: from.0, y: from.1), (x: to.0, y: to.1)]),
+            ..feature(tags)
+        };
+        // A railway crossing a residential street at grade, and one in a tunnel.
+        let features = vec![
+            line(&[("highway", "residential")], (10.0, 30.0), (40.0, 30.0)),
+            line(&[("railway", "rail")], (25.0, 10.0), (25.0, 45.0)),
+            line(&[("railway", "subway"), ("tunnel", "yes")], (60.0, 10.0), (60.0, 45.0)),
+        ];
+        let roads = build(&Context { output: &output, features: &features });
+
+        assert!(!roads.rails.is_empty());
+        assert!(roads.rails.iter().all(|l| l.0.iter().all(|c| c.x == 25.0)), "the subway stays underground");
+        assert!(roads.rails.iter().all(|l| l.0.iter().all(|c| (c.y - 30.0).abs() > 0.1)), "cut at the crossing");
+        assert!(roads.parts.mask.contains(&Point::new(25.2, 15.0)), "the track bed masks");
+        assert!(!roads.parts.mask.contains(&Point::new(60.0, 15.0)));
+        assert!(roads.parts.trails.is_empty() && roads.parts.outlines.iter().all(|l| l.0.iter().all(|c| c.x != 25.0)));
     }
 
     #[test]

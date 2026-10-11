@@ -51,7 +51,15 @@ enum Value {
     /// `tools_labels`: the letters' strokes, read as lines, and what they cover.
     Labels(crate::labels::Placed),
     /// `module_roads` output, carrying all of them at once.
-    Module { area: MultiPolygon<f64>, outlines: Lines, details: Lines, trails: Lines, centerlines: Lines, seams: Lines },
+    Module {
+        area: MultiPolygon<f64>,
+        outlines: Lines,
+        details: Lines,
+        trails: Lines,
+        centerlines: Lines,
+        seams: Lines,
+        rails: Lines,
+    },
 }
 
 impl Value {
@@ -460,6 +468,7 @@ fn eval_module(module: &str, features: &[Feature], output: &Output) -> Result<Va
                 trails: parts.trails,
                 centerlines: roads.centerlines,
                 seams: roads.seams,
+                rails: roads.rails,
             })
         }
         other => Err(format!("module_{other} is not known")),
@@ -477,7 +486,7 @@ fn module_lines<'a>(
     group: &str,
     masks_by_id: &mut BTreeMap<String, MultiPolygon<f64>>,
 ) -> Result<Option<&'a Lines>, RunError> {
-    let Value::Module { area, outlines, details, trails, centerlines, seams } = value else {
+    let Value::Module { area, outlines, details, trails, centerlines, seams, rails } = value else {
         return Err(RunError::Plan(format!("module_{module} did not produce module outputs")));
     };
     Ok(match name {
@@ -490,9 +499,10 @@ fn module_lines<'a>(
         "trails" => Some(trails),
         "centerlines" => Some(centerlines),
         "seams" => Some(seams),
+        "rails" => Some(rails),
         other => {
             return Err(RunError::Plan(format!(
-                "module {module}: unknown output {other:?} (area, outlines, details, trails, centerlines, seams)"
+                "module {module}: unknown output {other:?} (area, outlines, details, trails, centerlines, seams, rails)"
             )))
         }
     })
