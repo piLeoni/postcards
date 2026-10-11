@@ -61,7 +61,8 @@ description (the web editor autocompletes and type-checks against it).
 | `web/` | The web page: map, editor, presets |
 | `configs/` | Profiles |
 | `data/` | Address lists |
-| `docs/plan.md` | The Rust rewrite: decisions, status, next phases |
+| `docs/architecture/` | Architecture index for contributors and coding agents (`AGENTS.md`) |
+| `docs/plan.md` | The Rust rewrite: decisions, status, next phases (not in tree yet) |
 | `reference/python/` | The former Python pipeline, kept to read, not run |
 
 ## Tests
