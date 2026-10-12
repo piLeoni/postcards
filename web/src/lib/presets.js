@@ -16,10 +16,14 @@ import inkByRiver from '../presets/ink-by-river.js?raw'
 import inkByElevation from '../presets/ink-by-elevation.js?raw'
 import flatColor from '../presets/flat-color.js?raw'
 import cityGrain from '../presets/city-grain.js?raw'
+import cityGrainFoliageIsoline from '../presets/city-grain-foliage-isoline.js?raw'
+import cityGrainFoliageGrowth from '../presets/city-grain-foliage-growth.js?raw'
 import { titleOf } from './doc'
 
 export const PRESETS = [
   { id: 'city-grain', hint: 'same drawing as Everything · vector tiles — use inject here to try it elsewhere', doc: cityGrain },
+  { id: 'city-grain-foliage-isoline', hint: '3D canopy: isoline-stack crowns, lit from one side', doc: cityGrainFoliageIsoline },
+  { id: 'city-grain-foliage-growth', hint: 'dendritic veins over the wood: the growth pattern', doc: cityGrainFoliageGrowth },
   { id: 'flat-color', hint: 'solid fills for water, parks and buildings (screen-style)', doc: flatColor },
   { id: 'full', hint: 'roads, trails, parks, water, buildings; all from OpenFreeMap', doc: full },
   { id: 'mixed', hint: 'the same output; only the roads asked of Overpass', doc: mixed },
