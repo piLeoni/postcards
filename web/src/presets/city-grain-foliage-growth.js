@@ -16,8 +16,9 @@ const PEN = "0.2mm"
 // city-grain-foliage-isoline.js) sit side by side without one overwriting
 // the other's tuning. `growth`: dendritic branches grown toward a field of
 // attractor points (space colonization) instead of a 3D canopy — reads as
-// veins/roots/undergrowth rather than a solid overhanging crown. The wood
-// gets no dots or burin of its own, so the branches are its only texture.
+// veins/roots/undergrowth rather than a solid overhanging crown. Each tree
+// grows in its own round cell; `fills.cover(FOLIAGE)` masks the wood's dots
+// and burin under the cells, and the gaps between trees keep them.
 //
 // Bottom to top: bare ground (burin), nature (one pattern per kind, burin
 // only where the kind has relief), water, roads, buildings, labels.
@@ -71,8 +72,7 @@ const NATURE = [
   { id: "wetland", tiles: ["wetland"], relief: false, fill: DOTS },
   { id: "sand", tiles: ["sand", "landcover:sand/beach"], relief: false, fill: { ...DOTS, pattern: "stipple-edge" } },
   { id: "bare_rock", tiles: ["landcover:rock/bare_rock"], relief: true, fill: DOTS },
-  // Wood: no dots or terrain burin, the growth below is its only texture.
-  { id: "wood", tiles: ["forest", "landuse:forest"], relief: false, fill: { pattern: "none" } },
+  { id: "wood", tiles: ["forest", "landuse:forest"], relief: true, fill: DOTS },
   { id: "scrub", tiles: ["landcover:grass/scrub"], relief: true, fill: DOTS },
   { id: "golf", tiles: ["landcover:grass/golf_course"], relief: true, fill: { ...DOTS } },
   { id: "grass", tiles: ["landcover:grass/grass"], relief: false, fill: { ...DOTS, spacing: "0.60mm" } },
@@ -169,9 +169,11 @@ const FOLIAGE = {
   pattern: "growth",
   spacing: "0.8mm", // twig spacing: dense, evenly packed basins
   seed: 7,
-  root_spacing: "12mm", // one basin per root, white seams between them
+  root_spacing: "6mm", // one basin per root, white seams between them
   line_width: PEN, // trunk passes sit side by side, one pen apart
-  trunk: 1, // one extra pass a side: at map scale more turns trunks into blots
+  coverage: 0.8, // how far each tree reaches towards its neighbours
+  variation: 0.99, // some crowns bigger, some smaller
+  trunk: 0, // one line weight throughout
 }
 const woodFoliage = draw({
   id: "nat_fill_wood_foliage",
@@ -215,6 +217,11 @@ const buildingDraws = [
 ]
 
 const underRoads = [...ground, ...natureDraws, ...waterDraws]
+compose.mask({
+  name: "wood_foliage",
+  from: fills.cover(FOLIAGE),
+  occludes: ["nat_terrain", "nat_fill_wood"],
+})
 compose.mask({ name: "trail_clear", from: trailClear, occludes: ["nat_terrain", ...natureFills, "nat_fill_wood_foliage"] })
 compose.mask({ name: "wet_cover", from: water, occludes: [...ground, ...natureDraws] })
 compose.mask({ name: "pier_on_water", from: piersOnWater, occludes: ["water_fill"] })

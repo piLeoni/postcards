@@ -174,11 +174,9 @@ const FOLIAGE = {
   coverage: 0.8,
   bubble: "1.2mm",
   slices: 12,
-  jitter: 0.8,
+  jitter: 1.3,
   light: 0.8,
-  light_angle: 125, // upper-left, roughly matching the bearing's sun
-  light_elevation: 35,
-  hatch: "0.45mm", // shadow-side hatch, about two pen widths apart
+  light_angle: 225, // from the top left, as on the burin maps
 }
 const woodFoliage = draw({
   id: "nat_fill_wood_foliage",

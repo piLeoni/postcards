@@ -252,30 +252,7 @@ fn run_generator_into(region: &Region, generator: &str, spec: &FillSpec, sink: &
         "gravel" => gravel::fill_gravel(r, s, seed),
         "scribble" => scribble::fill_scribble(r, s, a, seed),
         "truchet" => truchet::fill_truchet(r, s, a, seed, at),
-        "isoline-blobs" | "isoline-stack" => covering(r, spec, true)?.strokes,
-        "growth" => {
-            use penfill::growth::{fill_growth, GrowthParams, RootSource};
-            // `spacing` is the gap between twigs; attractors sit ~2.5× closer.
-            let a = s * 0.4;
-            let roots = match o.num("roots")? {
-                Some(n) => RootSource::Generate(n.max(0.0) as usize),
-                None => RootSource::Every(o.mm("root_spacing")?.unwrap_or(s * 12.0)),
-            };
-            let params = GrowthParams {
-                seed,
-                roots,
-                spacing: a,
-                step: o.mm("step")?.unwrap_or(a * 0.4),
-                reach: o.mm("reach")?.unwrap_or(a * 8.0),
-                kill: o.mm("kill")?.unwrap_or(a),
-                jitter: o.num("jitter")?.unwrap_or(0.1),
-                max_steps: o.num("max_steps")?.map_or(20_000, |n| n.max(0.0) as usize),
-                pen: o.mm("line_width")?.unwrap_or(0.15),
-                max_passes: o.num("trunk")?.map_or(3, |n| n.max(0.0) as usize),
-                ..GrowthParams::default()
-            };
-            fill_growth(r, &params)
-        }
+        "isoline-blobs" | "isoline-stack" | "growth" => covering(r, spec, true)?.strokes,
         "marble" => textures::fill_marble(r, s, a, seed, at),
         "wood" => textures::fill_wood(r, s, a, seed, at),
         "cracks" => textures::fill_cracks(r, s, seed),
@@ -300,7 +277,7 @@ fn run_generator_into(region: &Region, generator: &str, spec: &FillSpec, sink: &
 /// Generators that know what they cover, which may be less (clearings) or
 /// more (overflow) than the area they are given.
 fn covers(generator: &str) -> bool {
-    matches!(generator, "isoline-blobs" | "isoline-stack")
+    matches!(generator, "isoline-blobs" | "isoline-stack" | "growth")
 }
 
 thread_local! {
@@ -347,6 +324,31 @@ fn covering(r: &Region, spec: &FillSpec, take: bool) -> Result<penfill::FillWith
             };
             penfill::fill_isoline_blobs_with_coverage(r, &params)
         }
+        "growth" => {
+            use penfill::growth::{fill_growth_with_coverage, GrowthParams, RootSource};
+            // `spacing` is the gap between twigs; attractors sit ~2.5× closer.
+            let a = s * 0.4;
+            let roots = match o.num("roots")? {
+                Some(n) => RootSource::Generate(n.max(0.0) as usize),
+                None => RootSource::Every(o.mm("root_spacing")?.unwrap_or(s * 12.0)),
+            };
+            let params = GrowthParams {
+                seed,
+                roots,
+                spacing: a,
+                step: o.mm("step")?.unwrap_or(a * 0.4),
+                reach: o.mm("reach")?.unwrap_or(a * 8.0),
+                kill: o.mm("kill")?.unwrap_or(a),
+                jitter: o.num("jitter")?.unwrap_or(0.1),
+                max_steps: o.num("max_steps")?.map_or(20_000, |n| n.max(0.0) as usize),
+                pen: o.mm("line_width")?.unwrap_or(0.15),
+                max_passes: o.num("trunk")?.map_or(3, |n| n.max(0.0) as usize),
+                coverage: o.num("coverage")?.unwrap_or(1.0),
+                variation: o.num("variation")?.unwrap_or(GrowthParams::default().variation),
+                ..GrowthParams::default()
+            };
+            fill_growth_with_coverage(r, &params)
+        }
         "isoline-stack" => {
             use penfill::isoline_stack::{fill_isoline_stack_with_coverage, CrownSource, EdgeMode, IsolineStackParams};
             let edge = match o.str("edge")?.unwrap_or("clip") {
@@ -360,7 +362,7 @@ fn covering(r: &Region, spec: &FillSpec, take: bool) -> Result<penfill::FillWith
                     from_deg: o.num("light_angle")?.unwrap_or(0.0),
                     strength,
                     elevation_deg: o.num("light_elevation")?.unwrap_or(35.0),
-                    hatch: o.mm("hatch")?.unwrap_or(0.4),
+                    hatch: o.mm("hatch")?.unwrap_or(0.0),
                 }),
                 None => None,
             };

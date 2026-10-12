@@ -165,7 +165,7 @@ const FOLIAGE = {
   slices: 12,
   jitter: 0.8,
   light: 0.8,
-  light_angle: 125, // upper-left, roughly matching the bearing's sun
+  light_angle: 225, // from the top left, as on the burin maps
 }
 const woodFoliage = draw({
   id: "nat_fill_wood_foliage",

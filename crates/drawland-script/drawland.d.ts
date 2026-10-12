@@ -141,6 +141,8 @@ interface FillOptions {
   roots?: number
   /** `growth`: roots this far apart, each draining its own basin. Default ~12× `spacing`. */
   root_spacing?: Length
+  /** `growth`: how much trees differ in size (0–1): uneven root spacing, big crowns next to saplings. Default 0.35. */
+  variation?: number
   /** `growth`: most pen passes on a trunk; thick near the roots, hairline at the twigs. Default 3. */
   trunk?: number
   /** `growth`: how far a branch advances per step, in mm. Default ~0.16× `spacing`. */
