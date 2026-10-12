@@ -177,6 +177,8 @@ const FOLIAGE = {
   jitter: 0.8,
   light: 0.8,
   light_angle: 125, // upper-left, roughly matching the bearing's sun
+  light_elevation: 35,
+  hatch: "0.45mm", // shadow-side hatch, about two pen widths apart
 }
 const woodFoliage = draw({
   id: "nat_fill_wood_foliage",

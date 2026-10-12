@@ -255,16 +255,24 @@ fn run_generator_into(region: &Region, generator: &str, spec: &FillSpec, sink: &
         "isoline-blobs" | "isoline-stack" => covering(r, spec, true)?.strokes,
         "growth" => {
             use penfill::growth::{fill_growth, GrowthParams, RootSource};
-            let roots = o.num("roots")?.map_or(RootSource::Generate(5), |n| RootSource::Generate(n.max(0.0) as usize));
+            // `spacing` is the gap between twigs; attractors sit ~2.5× closer.
+            let a = s * 0.4;
+            let roots = match o.num("roots")? {
+                Some(n) => RootSource::Generate(n.max(0.0) as usize),
+                None => RootSource::Every(o.mm("root_spacing")?.unwrap_or(s * 12.0)),
+            };
             let params = GrowthParams {
                 seed,
                 roots,
-                spacing: s,
-                step: o.mm("step")?.unwrap_or(s * 0.4),
-                reach: o.mm("reach")?.unwrap_or(s * 2.0),
-                kill: o.mm("kill")?.unwrap_or(s * 0.35),
-                jitter: o.num("jitter")?.unwrap_or(0.15),
+                spacing: a,
+                step: o.mm("step")?.unwrap_or(a * 0.4),
+                reach: o.mm("reach")?.unwrap_or(a * 8.0),
+                kill: o.mm("kill")?.unwrap_or(a),
+                jitter: o.num("jitter")?.unwrap_or(0.1),
                 max_steps: o.num("max_steps")?.map_or(20_000, |n| n.max(0.0) as usize),
+                pen: o.mm("line_width")?.unwrap_or(0.15),
+                max_passes: o.num("trunk")?.map_or(3, |n| n.max(0.0) as usize),
+                ..GrowthParams::default()
             };
             fill_growth(r, &params)
         }
@@ -348,7 +356,12 @@ fn covering(r: &Region, spec: &FillSpec, take: bool) -> Result<penfill::FillWith
                 other => return Err(o.bad("edge", format!("{other:?}: use clip, inside or overflow"))),
             };
             let light = match o.num("light")?.filter(|s| *s > 0.0) {
-                Some(strength) => Some(penfill::isoline_stack::Light { from_deg: o.num("light_angle")?.unwrap_or(0.0), strength }),
+                Some(strength) => Some(penfill::isoline_stack::Light {
+                    from_deg: o.num("light_angle")?.unwrap_or(0.0),
+                    strength,
+                    elevation_deg: o.num("light_elevation")?.unwrap_or(35.0),
+                    hatch: o.mm("hatch")?.unwrap_or(0.4),
+                }),
                 None => None,
             };
             let params = IsolineStackParams {

@@ -16,10 +16,8 @@ const PEN = "0.2mm"
 // city-grain-foliage-isoline.js) sit side by side without one overwriting
 // the other's tuning. `growth`: dendritic branches grown toward a field of
 // attractor points (space colonization) instead of a 3D canopy — reads as
-// veins/roots/undergrowth over the wood rather than a solid overhanging
-// crown, so it is layered *over* the ground burin and plain dots instead of
-// masking them out (`growth` does not report a canopy footprint the way
-// `isoline-stack` does, so there is nothing for `fills.cover` to mask with).
+// veins/roots/undergrowth rather than a solid overhanging crown. The wood
+// gets no dots or burin of its own, so the branches are its only texture.
 //
 // Bottom to top: bare ground (burin), nature (one pattern per kind, burin
 // only where the kind has relief), water, roads, buildings, labels.
@@ -73,7 +71,8 @@ const NATURE = [
   { id: "wetland", tiles: ["wetland"], relief: false, fill: DOTS },
   { id: "sand", tiles: ["sand", "landcover:sand/beach"], relief: false, fill: { ...DOTS, pattern: "stipple-edge" } },
   { id: "bare_rock", tiles: ["landcover:rock/bare_rock"], relief: true, fill: DOTS },
-  { id: "wood", tiles: ["forest", "landuse:forest"], relief: true, fill: DOTS },
+  // Wood: no dots or terrain burin, the growth below is its only texture.
+  { id: "wood", tiles: ["forest", "landuse:forest"], relief: false, fill: { pattern: "none" } },
   { id: "scrub", tiles: ["landcover:grass/scrub"], relief: true, fill: DOTS },
   { id: "golf", tiles: ["landcover:grass/golf_course"], relief: true, fill: { ...DOTS } },
   { id: "grass", tiles: ["landcover:grass/grass"], relief: false, fill: { ...DOTS, spacing: "0.60mm" } },
@@ -162,20 +161,17 @@ const natureFills = NATURE.map((k) =>
   draw({ id: `nat_fill_${k.id}`, from: fills.fill({ in: k.visible, ...k.fill }), stroke: penStroke({ style: "solid" }) }),
 )
 const wood = NATURE.find((k) => k.id === "wood")
-// Dendritic veins over the whole wood, not just its uncovered dots: more
-// roots than the demo default so a 0.9×0.6 mi forest doesn't read as empty,
-// a short reach/kill pair (relative to spacing) for a fine, twiggy branch.
+// Dendritic veins filling the wood: twigs `spacing` apart drain into trunks
+// that thicken by whole pen widths towards each root.
 /** @type {FillOptions} */
 const FOLIAGE = {
   in: wood.visible,
   pattern: "growth",
-  spacing: "2.2mm",
+  spacing: "0.8mm", // twig spacing: dense, evenly packed basins
   seed: 7,
-  roots: 14,
-  step: "0.9mm",
-  reach: "4mm",
-  kill: "0.7mm",
-  jitter: 0.25,
+  root_spacing: "12mm", // one basin per root, white seams between them
+  line_width: PEN, // trunk passes sit side by side, one pen apart
+  trunk: 1, // one extra pass a side: at map scale more turns trunks into blots
 }
 const woodFoliage = draw({
   id: "nat_fill_wood_foliage",

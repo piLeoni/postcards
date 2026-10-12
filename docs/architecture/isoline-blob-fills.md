@@ -63,8 +63,10 @@ Profile options (`spacing` = crown size):
 | `coverage` | `0.6` | share of the area under canopy (0–1) |
 | `slices` | `14` | horizontal cuts: more is more rings |
 | `jitter` | `0.8` | outline wobble |
-| `light` | off | 0–1: a sun from `light_angle`; crowns swell and climb in its shadow, thin where lit |
+| `light` | off | 0–1: a sun from `light_angle`; crowns swell and climb in its shadow, thin where lit, and the shadow side is hatched |
 | `light_angle` | `0` | degrees the light comes *from* (0 = +x, 90 = +y) |
+| `light_elevation` | `35` | sun height in degrees; lower casts longer shadows |
+| `hatch` | `0.4mm` | shading hatch spacing; `0` keeps only the sphere bias |
 
 Fill output is not clipped again in `fill.rs`, so `overflow` ink reaches past the area as drawn.
 
@@ -120,9 +122,9 @@ h(p) = fbm(warp(p) / feature_size)        // ambient texture, roughly [-1, 1]
 
 Two sites close enough that their bumps overlap above `threshold` fuse into one silhouette automatically — this is covered by a unit test (`two_close_sites_fuse_into_one_loop`) precisely because it was the behaviour the first attempt got wrong.
 
-### Light / shading (not yet implemented)
+### Light / shading
 
-Not built in the MVP. The natural extension is biasing `threshold` (or `level_step`) by `dot(∇h, light_dir)` so contours crowd on one side — left as a follow-up once the base texture is approved.
+Implemented for `isoline-stack` only (see penfill's `docs/architecture/isoline-blob-fills.md`, "Light"): a lit heightfield of the stack's top surface drives shadow-side hatching and breaks outlines on the brightest edges. `isoline-blobs` still has none.
 
 ## Penfill deliverable (implemented)
 

@@ -86,9 +86,9 @@ interface FillOptions {
   centre?: [Length, Length]
   /** `dots`: a square or a hexagonal lattice. */
   lattice?: "square" | "hexagonal"
-  /** `honeycomb`: double the walls this far apart. */
+  /** `honeycomb`: double the walls this far apart. `growth`: the pen width, so trunk passes sit side by side. Default 0.15 for `growth`. */
   line_width?: Length
-  /** `terrazzo`: the hatch inside the stones. */
+  /** `terrazzo`: the hatch inside the stones. `isoline-stack` with `light`: shading hatch spacing in mm, `0` for none. Default 0.4. */
   hatch?: Length
   /** `chess`: the size of a square. */
   cell?: Length
@@ -114,16 +114,18 @@ interface FillOptions {
   bubble?: Length
   /** `isoline-stack`: horizontal slices through the stack; more rings. Default 14. */
   slices?: number
-  /** `isoline-stack`: outline wobble (0–1+). `growth`: steering wobble (0–1ish). Default 0.8 for `isoline-stack`, 0.15 for `growth`. */
+  /** `isoline-stack`: outline wobble (0–1+). `growth`: steering wobble (0–1ish). Default 0.8 for `isoline-stack`, 0.1 for `growth`. */
   jitter?: number
   /**
-   * `isoline-stack`: a sun from one direction (0–1, off by default). Crowns
-   * swell and climb on the far side from `light_angle`, thin on the near
-   * side, so the stack reads as lit without changing stroke colour or width.
+   * `isoline-stack`: a sun from one direction (0–1, off by default). The
+   * stack's top surface is lit with cast shadows; the shadow side is hatched
+   * (crossed where darkest) and outlines break where the sun hits full on.
    */
   light?: number
   /** `isoline-stack` with `light`: degrees the light comes *from* (0 = +x, 90 = +y). Default 0. */
   light_angle?: number
+  /** `isoline-stack` with `light`: sun height in degrees; lower casts longer shadows. Default 35. */
+  light_elevation?: number
   /** `isoline-blobs`: distance between contour lines in mm. Default ~0.045× `spacing`. */
   contour?: Length
   /** `isoline-blobs`: domain warp of the field (0–1). Default 0.45. */
@@ -132,15 +134,20 @@ interface FillOptions {
   threshold?: number
   /**
    * `growth`: dendritic branches grown toward a field of attractor points
-   * (space colonization) — river deltas, veins, cracks, roots, lichen. How
-   * many roots it grows from. Default 5.
+   * (space colonization) — river deltas, veins, cracks, roots, lichen;
+   * `spacing` is the gap between neighbouring twigs. How many roots it
+   * grows from. Default: one per `root_spacing`.
    */
   roots?: number
-  /** `growth`: how far a branch advances per step, in mm. Default ~0.4× `spacing`. */
+  /** `growth`: roots this far apart, each draining its own basin. Default ~12× `spacing`. */
+  root_spacing?: Length
+  /** `growth`: most pen passes on a trunk; thick near the roots, hairline at the twigs. Default 3. */
+  trunk?: number
+  /** `growth`: how far a branch advances per step, in mm. Default ~0.16× `spacing`. */
   step?: Length
-  /** `growth`: an attractor beyond this from every branch tip pulls nothing. Default ~2× `spacing`. */
+  /** `growth`: an attractor beyond this from every branch tip pulls nothing. Default ~3.2× `spacing`. */
   reach?: Length
-  /** `growth`: an attractor this close to a tip is consumed, in mm. Default ~0.35× `spacing`. */
+  /** `growth`: an attractor this close to a tip is consumed, in mm. Default ~0.4× `spacing`. */
   kill?: Length
   /** `growth`: a hard cap on growth steps, so a pathological shape cannot hang. Default 20000. */
   max_steps?: number
