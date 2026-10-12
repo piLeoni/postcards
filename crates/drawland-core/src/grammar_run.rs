@@ -199,6 +199,7 @@ pub fn run_into(grammar: &Grammar, output: &Output, inputs: Inputs, draw: &Task,
     };
     project.ok("");
 
+    crate::fill::clear_cover_cache();
     let values = evaluate(grammar, &Found { osm: &features, tiles: &tiles }, &engine, draw)?;
     probe(draw, "areas+lines");
 
@@ -361,6 +362,7 @@ fn eval_op(
             Value::Area(geom::intersection(&base, &keep))
         }
         Op::FillHoles(n) => Value::Area(geom::fill_holes(&area(n)?)),
+        Op::FillCover(f) => Value::Area(crate::fill::cover(&area(&f.in_area)?, &f.spec).map_err(|e| e.to_string())?),
         Op::LabelArea(p) => Value::Area(label_pick(done, p)?),
         Op::LabelLines(p) => Value::Lines(label_lines(done, p)?),
         Op::Grow(g) => Value::Area(geom::buffer(&area(&g.of)?, g.by.0)),

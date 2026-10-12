@@ -627,6 +627,7 @@ dependencies = [
  "geo",
  "geographiclib-rs",
  "i_overlay 4.5.2",
+ "js-sys",
  "penfill",
  "proj4rs",
  "rayon",

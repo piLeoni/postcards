@@ -20,6 +20,9 @@ rayon = { workspace = true }
 ttf-parser = { workspace = true }
 wuff = { workspace = true, features = ["brotli", "z"] }
 
+[target.'cfg(target_family = "wasm")'.dependencies]
+js-sys = "0.3"
+
 [dev-dependencies]
 serde-saphyr = { workspace = true }
 approx = { workspace = true }

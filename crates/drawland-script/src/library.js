@@ -353,6 +353,15 @@
       if (content !== undefined) op.content = need(content, Lines, "fills.fill content");
       return make(Lines, "fills", { tools_fill: op });
     },
+    // What a fill with the same options covers on paper: the area itself for
+    // most patterns; for isoline-blobs / isoline-stack their footprint, so a
+    // mask hides only what lies under the foliage.
+    cover(spec) {
+      object(spec, "fills.cover");
+      const { in: area, per, content, ...rest } = spec;
+      if (per !== undefined || content !== undefined) fail("fills.cover: takes a pattern, not per or content");
+      return make(Area, "areas", { tools_fill_cover: { in: need(area, Area, "fills.cover in"), ...rest } });
+    },
   };
 
   const modules = {

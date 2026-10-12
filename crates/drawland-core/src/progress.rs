@@ -13,10 +13,12 @@
 
 use std::sync::atomic::{AtomicU64, Ordering};
 
-/// Elapsed time on `End`. `std::time::Instant` is not available on WASM.
+/// Elapsed time on `End`.
 struct TaskTimer {
     #[cfg(not(target_family = "wasm"))]
     started: std::time::Instant,
+    #[cfg(target_family = "wasm")]
+    started_ms: f64,
 }
 
 impl TaskTimer {
@@ -24,6 +26,8 @@ impl TaskTimer {
         Self {
             #[cfg(not(target_family = "wasm"))]
             started: std::time::Instant::now(),
+            #[cfg(target_family = "wasm")]
+            started_ms: js_sys::Date::now(),
         }
     }
 
@@ -34,7 +38,7 @@ impl TaskTimer {
         }
         #[cfg(target_family = "wasm")]
         {
-            None
+            Some((js_sys::Date::now() - self.started_ms) / 1000.0)
         }
     }
 }

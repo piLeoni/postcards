@@ -37,4 +37,4 @@ Lengths in profiles parse to mm (`"0.5mm"`, `"6in"`, etc.). Internal geometry is
 
 Pattern behaviour changes belong in **penfill** when general; draw.land only wires specs and regions.
 
-Planned **isoline blob** fills (nested contour texture + coverage polygons for masks) are specified in [isoline-blob-fills.md](isoline-blob-fills.md).
+**Isoline** fills (`isoline-blobs`, `isoline-stack`) also publish what they cover: `fills.cover(options)` is a `$areas` def (`tools_fill_cover`, `fill::cover`) to mask other groups with, sharing one generator run with the matching `fills.fill`. See [isoline-blob-fills.md](isoline-blob-fills.md).

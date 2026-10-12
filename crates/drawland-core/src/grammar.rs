@@ -301,6 +301,9 @@ pub enum Op {
     BufferLines(BufferLines),
     /// What the letters of a `$lines` labels def cover.
     LabelArea(LabelPick),
+    /// What a fill covers on paper (its clearings left out, its overflow
+    /// in), to mask other layers with.
+    FillCover(Fill),
     /// The output rectangle.
     Frame,
     ExtendToFrame(ExtendToFrame),
@@ -349,6 +352,7 @@ impl Op {
             | Op::Grow(_)
             | Op::BufferLines(_)
             | Op::LabelArea(_)
+            | Op::FillCover(_)
             | Op::Frame
             | Op::ExtendToFrame(_) => Section::Areas,
             Op::Rings(_)
@@ -402,7 +406,9 @@ impl Op {
                 .collect(),
             Op::Labels(l) => l.from.clone(),
             Op::LabelLines(p) | Op::LabelArea(p) => vec![p.of.clone()],
-            Op::Fill(f) => std::iter::once(f.in_area.clone()).chain(f.content.iter().cloned()).collect(),
+            Op::Fill(f) | Op::FillCover(f) => {
+                std::iter::once(f.in_area.clone()).chain(f.content.iter().cloned()).collect()
+            }
         }
     }
 
@@ -953,7 +959,7 @@ fn parse_op(raw: RawOp, section: Section) -> Result<Op, GrammarError> {
     let target = match key.as_str() {
         "osm_select" | "tiles_select" | "tools_where" => Section::Features,
         "tools_polygons" | "tools_union" | "tools_difference" | "tools_intersect" | "tools_fill_holes"
-        | "tools_grow" | "tools_buffer_lines" | "tools_label_area" | "tools_extend_to_frame" | "engine_frame" => {
+        | "tools_fill_cover" | "tools_grow" | "tools_buffer_lines" | "tools_label_area" | "tools_extend_to_frame" | "engine_frame" => {
             Section::Areas
         }
         "tools_rings" | "tools_lines" | "tools_segments" | "tools_dedupe" | "tools_merge" | "tools_join"
@@ -1215,7 +1221,7 @@ fn parse_op(raw: RawOp, section: Section) -> Result<Op, GrammarError> {
             let raw: Raw = json(&value, "tools_clip")?;
             Op::ClipLines(ClipLines { lines: refname(&raw.lines)?, within: refname(&raw.within)?, invert: raw.invert })
         }
-        "tools_fill" => {
+        "tools_fill" | "tools_fill_cover" => {
             // The v3 toolkit writes `pattern:` (dots, waves, zigzag…), the spec
             // calls it `generator:`; one rename and the rest is FillSpec.
             #[derive(Deserialize)]
@@ -1231,7 +1237,7 @@ fn parse_op(raw: RawOp, section: Section) -> Result<Op, GrammarError> {
                 #[serde(flatten)]
                 spec: FillSpec,
             }
-            let mut raw: Raw = json(&value, "tools_fill")?;
+            let mut raw: Raw = json(&value, &key)?;
             if let Some(pattern) = raw.pattern.take() {
                 if raw.spec.generator.is_none() {
                     raw.spec.generator = Some(pattern);
@@ -1250,7 +1256,14 @@ fn parse_op(raw: RawOp, section: Section) -> Result<Op, GrammarError> {
             if content.as_ref().is_some_and(|c| c.section != Section::Lines) {
                 return Err(GrammarError::Invalid("tools_fill: content must be $lines".into()));
             }
-            Op::Fill(Fill { in_area: refname(&raw.in_area)?, per_feature, content, spec: raw.spec })
+            let fill = Fill { in_area: refname(&raw.in_area)?, per_feature, content, spec: raw.spec };
+            if key == "tools_fill" {
+                Op::Fill(fill)
+            } else if fill.per_feature || fill.content.is_some() {
+                return Err(GrammarError::Invalid("tools_fill_cover takes a pattern, not per or content".into()));
+            } else {
+                Op::FillCover(fill)
+            }
         }
         _ => unreachable!("keys are matched above"),
     };
@@ -1654,6 +1667,11 @@ pub fn op_to_json(op: &Op) -> Value {
                 body["content"] = Value::String(c.to_string());
             }
             ("tools_fill", body)
+        }
+        Op::FillCover(f) => {
+            let mut body = serde_json::to_value(&f.spec).unwrap_or_else(|_| json!({}));
+            body["in"] = Value::String(f.in_area.to_string());
+            ("tools_fill_cover", body)
         }
         Op::Module(m) => {
             let key = format!("module_{}", m.name);

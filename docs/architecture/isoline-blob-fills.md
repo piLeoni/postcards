@@ -1,6 +1,6 @@
 # Isoline blob fills (design)
 
-**Status:** two generators. `isoline-blobs`: flat contours of one continuous 2D field. `isoline-stack`: 3D stacked slices with overhang and boundary modes (see below). Both strokes only; coverage → `$areas` + compose not wired yet.  
+**Status:** two generators. `isoline-blobs`: flat contours of one continuous 2D field. `isoline-stack`: 3D stacked slices with overhang and boundary modes (see below). Footprints reach compose masks through `fills.cover` (below).  
 **Target look:** reference drawings (nested contour “cells” on paper; sparse scattered masses or dense all-over texture).  
 **Split:** penfill generates **strokes + coverage polygons**; draw.land clips to the host area and applies **compose masks** to other layers.
 
@@ -156,48 +156,23 @@ Streaming not yet implemented (whole-field sampling up front); candidate for lat
 | Clip strokes to host | penfill (invariant) |
 | Punch holes in other groups | `compose.mask({ from: $areas.*, occludes })` |
 
-### Graph shape (sketch)
+### Coverage as an area (`fills.cover`)
 
-Avoid running the generator twice:
-
-- **Option A:** one `tools_fill` def caches `{ lines, coverage }`; companion `tools_fill_coverage` reads cache, or fill pass registers both `$fills.x` and `$areas.x_coverage`.
-- **Option B:** explicit second def with shared params (document dedup).
-
-Profile sketch:
+`fills.cover(options)` (`library.js`) writes `tools_fill_cover` under `$areas` (`Op::FillCover` in `grammar.rs`, same body as `tools_fill` minus `per`/`content`). `grammar_run` evaluates it with `fill::cover`: the generator's footprint for `isoline-blobs` / `isoline-stack`, the area itself for every other pattern. Pass the **same options object** to `fills.fill` and `fills.cover`: `fill::covering` keeps the cover's run in a thread-local cache keyed by spec + region, and the fill pass takes it from there, so the pattern runs once.
 
 ```js
-// sites from OSM
-const trees = features.select({ natural: "tree" })
-
-$fills:
-  forest_isolines:
-    tools_fill:
-      in: $areas.woodland
-      pattern: isoline-blobs   // name TBD
-      particles: { from: trees, at: centroid }
-      spacing: 0.4mm
-      // ...
-
-$areas:
-  forest_cover: { tools_fill_coverage: { from: $fills.forest_isolines } }
-
-compose.mask({
-  name: "forest_over_dots",
-  from: $areas.forest_cover,
-  occludes: ["ground_dots"],
-})
-
-draw({ id: "ground_dots", from: $fills.dots })
-draw({ id: "forest", from: $fills.forest_isolines })
+const FOLIAGE = { in: wood.visible, pattern: "isoline-stack", spacing: "4mm", edge: "inside", coverage: 0.8 }
+draw({ id: "wood_foliage", from: fills.fill(FOLIAGE) })
+compose.mask({ name: "foliage", from: fills.cover(FOLIAGE), occludes: ["wood_dots", "terrain"] })
 ```
 
-Z-order: list `forest` after `ground_dots` in `compose.order`; mask removes hidden ink from dots where coverage sits.
+Masking with the host area instead of the cover erases the ground in the clearings too. `web/src/presets/city-grain.js` does it this way: wood is dotted, and the foliage on top erases dots and burin only under the crowns.
 
 ## Phases
 
 1. ~~Penfill prototype~~ — done: single-field isolines, visually matched against reference art (`example-generated.png`).
 2. ~~Coverage~~ — done: threshold-isoline silhouettes; unit-tested for fuse/stay-separate behaviour and host containment.
-3. **draw.land wire-up** — done for strokes (`pattern: "isoline-blobs"`); coverage not yet exposed as `$areas` for `compose.mask`.
+3. ~~draw.land wire-up~~ — done: both patterns, and coverage as `$areas` via `fills.cover`.
 4. **Particles from features** — `FieldSource::Sites`/`NoiseAndSites` exist in penfill; draw.land does not yet resolve `$features` centroids into them.
 5. **Light bias** — not implemented. In the stacked model this is natural: shift each slice's outline by a light direction, or drop rings on the lit side.
 5b. ~~Overhang and boundary modes~~ — done: `isoline-stack`.

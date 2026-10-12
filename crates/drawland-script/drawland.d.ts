@@ -100,6 +100,28 @@ interface FillOptions {
   source?: { file: string; size?: string; position?: string; repeat?: string }
   /** Screen-style flat colour under the hatch (SVG fill, not pen ink). */
   background?: string
+  /** `isoline-stack`: `clip` cuts at the border; `inside` closes inside it; `overflow` bulges past. Default `clip`. */
+  edge?: "clip" | "inside" | "overflow"
+  /** `isoline-stack` with `edge: "overflow"`: how far past the border, in mm. Default ~0.4× `spacing`. */
+  overflow?: Length
+  /**
+   * `isoline-stack` / `isoline-blobs`: how patchy the crowns are (0–1), not
+   * “this fraction of the polygon’s area”. Low values leave more clearings;
+   * `1` fills everywhere the generator allows. Default 0.6.
+   */
+  coverage?: number
+  /** `isoline-stack`: typical bubble radius in mm; smaller is lumpier. Default ~0.3× `spacing`. */
+  bubble?: Length
+  /** `isoline-stack`: horizontal slices through the stack; more rings. Default 14. */
+  slices?: number
+  /** `isoline-stack`: outline wobble (0–1+). Default 0.8. */
+  jitter?: number
+  /** `isoline-blobs`: distance between contour lines in mm. Default ~0.045× `spacing`. */
+  contour?: Length
+  /** `isoline-blobs`: domain warp of the field (0–1). Default 0.45. */
+  warp?: number
+  /** `isoline-blobs`: field level for patches and coverage (0–1). Default 0.25. */
+  threshold?: number
 }
 
 /** `solid`, `dash`, `dotted`, `none`, or an object: the dashes' sizes and the ink (`color`, `width` in mm, `cap`). */
@@ -323,6 +345,13 @@ type ContoursOptions = Omit<TerrainOptions, "draw" | "where"> & {
 /** Patterns inside areas, by penfill. */
 declare const fills: {  /** The area filled with a pattern: lines, ready to draw. */
   fill(options: FillOptions): Lines
+  /**
+   * What `fill(options)` covers on paper, to mask other layers with. The area
+   * itself for most patterns; for `isoline-blobs` and `isoline-stack` their
+   * footprint (clearings left out, `edge: "overflow"` spill included). The
+   * same options run the pattern once for both.
+   */
+  cover(options: FillOptions): Area
 }
 
 /** Where a burin document is clipped, and the regions its batches name. */

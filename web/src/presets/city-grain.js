@@ -64,7 +64,7 @@ const NATURE = [
   { id: "wetland", tiles: ["wetland"], relief: false, fill: DOTS },
   { id: "sand", tiles: ["sand", "landcover:sand/beach"], relief: false, fill: { ...DOTS, pattern: "stipple-edge" } },
   { id: "bare_rock", tiles: ["landcover:rock/bare_rock"], relief: true, fill: DOTS },
-  { id: "wood", tiles: ["forest", "landuse:forest"], relief: true, fill: { ...DOTS, pattern: "canopy", spacing: 0.5} },
+  { id: "wood", tiles: ["forest", "landuse:forest"], relief: true, fill: DOTS },
   { id: "scrub", tiles: ["landcover:grass/scrub"], relief: true, fill: DOTS },
   { id: "golf", tiles: ["landcover:grass/golf_course"], relief: true, fill: { ...DOTS } },
   { id: "grass", tiles: ["landcover:grass/grass"], relief: false, fill: { ...DOTS, spacing: "0.60mm" } },
@@ -152,9 +152,28 @@ const ground = [draw({ id: "ground_burin", from: groundBurin, stroke: penStroke(
 const natureFills = NATURE.map((k) =>
   draw({ id: `nat_fill_${k.id}`, from: fills.fill({ in: k.visible, ...k.fill }), stroke: penStroke({ style: "solid" }) }),
 )
+const wood = NATURE.find((k) => k.id === "wood")
+/** @type {FillOptions} */
+const FOLIAGE = {
+  in: wood.visible,
+  pattern: "isoline-stack",
+  spacing: "4mm",
+  seed: 7,
+  edge: "inside",
+  coverage: 0.8,
+  bubble: "1.2mm",
+  slices: 12,
+  jitter: 0.8,
+}
+const woodFoliage = draw({
+  id: "nat_fill_wood_foliage",
+  from: fills.fill(FOLIAGE),
+  stroke: penStroke({ style: "solid" }),
+})
 const natureDraws = [
   draw({ id: "nat_terrain", from: natureBurin, stroke: penStroke({ style: "solid" }) }),
   ...natureFills,
+  woodFoliage,
   draw({ id: "nat_ring", from: lines.rings(nature), stroke: penStroke({ style: "dash", dash: "0.45mm", gap: "0.4mm" }) }),
 ]
 const pathDraws = [
@@ -188,7 +207,12 @@ const buildingDraws = [
 ]
 
 const underRoads = [...ground, ...natureDraws, ...waterDraws]
-compose.mask({ name: "trail_clear", from: trailClear, occludes: ["nat_terrain", ...natureFills] })
+compose.mask({ name: "trail_clear", from: trailClear, occludes: ["nat_terrain", ...natureFills, "nat_fill_wood_foliage"] })
+compose.mask({
+  name: "wood_foliage",
+  from: fills.cover(FOLIAGE),
+  occludes: ["nat_terrain", "nat_fill_wood"],
+})
 compose.mask({ name: "wet_cover", from: water, occludes: [...ground, ...natureDraws] })
 compose.mask({ name: "pier_on_water", from: piersOnWater, occludes: ["water_fill"] })
 compose.mask({ name: "ferry_on_water", from: ferryCorridor, occludes: ["water_fill"] })
@@ -238,6 +262,7 @@ compose.order(
   "nat_fill_grass",
   "nat_fill_golf",
   "nat_fill_scrub",
+  "nat_fill_wood_foliage",
   "nat_fill_wood",
   "nat_fill_bare_rock",
   "nat_fill_sand",

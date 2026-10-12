@@ -213,13 +213,8 @@ fn run_generator_into(region: &Region, generator: &str, spec: &FillSpec, sink: &
     let seed = spec.seed.unwrap_or(0);
     // Waves sit under their own outline, with a hair of clearance.
     let inset = spec.inset.map(|m| m.0).or((generator == "waves").then_some(0.1));
-    let shrunk;
-    let r = if !insets_natively(generator) && inset.is_some_and(|i| i > 0.0) {
-        shrunk = region.inset(inset.unwrap());
-        &shrunk
-    } else {
-        region
-    };
+    let shrunk = prepared(region, spec);
+    let r = &shrunk;
     let mark = |default: f64| spec.mark.map_or(default, |m| m.0);
     let at = anchor(&o)?;
     // The generators that stream hand their rows to `sink` themselves; the
@@ -257,37 +252,7 @@ fn run_generator_into(region: &Region, generator: &str, spec: &FillSpec, sink: &
         "gravel" => gravel::fill_gravel(r, s, seed),
         "scribble" => scribble::fill_scribble(r, s, a, seed),
         "truchet" => truchet::fill_truchet(r, s, a, seed, at),
-        "isoline-blobs" => {
-            let params = penfill::IsolineFieldParams {
-                seed,
-                source: penfill::FieldSource::Noise,
-                feature_size: s,
-                contour_spacing: o.mm("contour")?.unwrap_or(s * 0.045),
-                warp: o.num("warp")?.unwrap_or(0.45),
-                threshold: o.num("threshold")?.unwrap_or(0.25),
-            };
-            penfill::fill_isoline_blobs_with_coverage(r, &params).strokes
-        }
-        "isoline-stack" => {
-            use penfill::isoline_stack::{fill_isoline_stack, CrownSource, EdgeMode, IsolineStackParams};
-            let edge = match o.str("edge")?.unwrap_or("clip") {
-                "clip" => EdgeMode::Clip,
-                "inside" => EdgeMode::Inside,
-                "overflow" => EdgeMode::Overflow(o.mm("overflow")?.unwrap_or(s * 0.4)),
-                other => return Err(o.bad("edge", format!("{other:?}: use clip, inside or overflow"))),
-            };
-            let params = IsolineStackParams {
-                seed,
-                crowns: CrownSource::Generate,
-                crown: s,
-                bubble: o.mm("bubble")?.unwrap_or(s * 0.3),
-                coverage: o.num("coverage")?.unwrap_or(0.6),
-                slices: o.num("slices")?.map_or(14, |n| n.clamp(1.0, 64.0) as usize),
-                jitter: o.num("jitter")?.unwrap_or(0.8),
-                edge,
-            };
-            fill_isoline_stack(r, &params)
-        }
+        "isoline-blobs" | "isoline-stack" => covering(r, spec, true)?.strokes,
         "marble" => textures::fill_marble(r, s, a, seed, at),
         "wood" => textures::fill_wood(r, s, a, seed, at),
         "cracks" => textures::fill_cracks(r, s, seed),
@@ -307,6 +272,146 @@ fn run_generator_into(region: &Region, generator: &str, spec: &FillSpec, sink: &
     };
     sink.batch(whole);
     Ok(())
+}
+
+/// Generators that know what they cover, which may be less (clearings) or
+/// more (overflow) than the area they are given.
+fn covers(generator: &str) -> bool {
+    matches!(generator, "isoline-blobs" | "isoline-stack")
+}
+
+thread_local! {
+    /// Runs made for a [`cover`], kept until the fill pass draws them, so a
+    /// footprint and its lines are one run, not two.
+    static COVERED: std::cell::RefCell<std::collections::HashMap<u64, penfill::FillWithCoverage>> =
+        Default::default();
+}
+
+fn run_key(region: &Region, spec: &FillSpec) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    serde_json::to_string(spec).unwrap_or_default().hash(&mut h);
+    for ring in region.all_rings_mm() {
+        ring.len().hash(&mut h);
+        for (x, y) in ring {
+            x.to_bits().hash(&mut h);
+            y.to_bits().hash(&mut h);
+        }
+    }
+    h.finish()
+}
+
+/// A covering generator's lines and footprint on `r`. `take` hands over a
+/// run a cover kept; otherwise the run is kept for the fill that follows.
+fn covering(r: &Region, spec: &FillSpec, take: bool) -> Result<penfill::FillWithCoverage, FillError> {
+    let key = run_key(r, spec);
+    if let Some(kept) = COVERED.with(|c| if take { c.borrow_mut().remove(&key) } else { c.borrow().get(&key).cloned() }) {
+        return Ok(kept);
+    }
+    let generator = spec.generator.as_deref().unwrap_or_default();
+    let o = Opts { generator, options: &spec.options };
+    let s = spec.spacing.map_or(0.5, |m| m.0);
+    let seed = spec.seed.unwrap_or(0);
+    let run = match generator {
+        "isoline-blobs" => {
+            let params = penfill::IsolineFieldParams {
+                seed,
+                source: penfill::FieldSource::Noise,
+                feature_size: s,
+                contour_spacing: o.mm("contour")?.unwrap_or(s * 0.045),
+                warp: o.num("warp")?.unwrap_or(0.45),
+                threshold: o.num("threshold")?.unwrap_or(0.25),
+            };
+            penfill::fill_isoline_blobs_with_coverage(r, &params)
+        }
+        "isoline-stack" => {
+            use penfill::isoline_stack::{fill_isoline_stack_with_coverage, CrownSource, EdgeMode, IsolineStackParams};
+            let edge = match o.str("edge")?.unwrap_or("clip") {
+                "clip" => EdgeMode::Clip,
+                "inside" => EdgeMode::Inside,
+                "overflow" => EdgeMode::Overflow(o.mm("overflow")?.unwrap_or(s * 0.4)),
+                other => return Err(o.bad("edge", format!("{other:?}: use clip, inside or overflow"))),
+            };
+            let params = IsolineStackParams {
+                seed,
+                crowns: CrownSource::Generate,
+                crown: s,
+                bubble: o.mm("bubble")?.unwrap_or(s * 0.3),
+                coverage: o.num("coverage")?.unwrap_or(0.6),
+                slices: o.num("slices")?.map_or(14, |n| n.clamp(1.0, 64.0) as usize),
+                jitter: o.num("jitter")?.unwrap_or(0.8),
+                edge,
+            };
+            fill_isoline_stack_with_coverage(r, &params)
+        }
+        other => unreachable!("{other} does not report coverage"),
+    };
+    if !take && !r.is_empty() {
+        COVERED.with(|c| c.borrow_mut().insert(key, run.clone()));
+    }
+    Ok(run)
+}
+
+/// Drop cached isoline runs from the last draw (call at the start of each map).
+pub fn clear_cover_cache() {
+    COVERED.with(|c| c.borrow_mut().clear());
+}
+
+/// One OSM forest polygon per region for covering fills: one huge bounding
+/// box over every patch is what made `fills.cover` take tens of seconds.
+fn work_regions(mp: &MultiPolygon<f64>, spec: &FillSpec) -> Vec<Region> {
+    if !spec.generator.as_deref().is_some_and(covers) || mp.0.len() <= 1 {
+        return regions(mp);
+    }
+    mp.0
+        .iter()
+        .filter(|p| p.exterior().0.len() >= 4)
+        .map(|p| {
+            let polys: Vec<Vec<Vec<(f64, f64)>>> = vec![std::iter::once(p.exterior())
+                .chain(p.interiors())
+                .map(|ring| ring.0.iter().map(|c| (c.x, c.y)).collect())
+                .collect()];
+            Region::from_polygons(&polys)
+        })
+        .filter(|r| !r.is_empty())
+        .collect()
+}
+
+/// What a fill of `region` covers on paper: for most patterns the area
+/// itself; for those that leave clearings or spill over, their footprint.
+/// What `fills.cover` masks other layers with.
+pub fn cover(region: &MultiPolygon<f64>, spec: &FillSpec) -> Result<MultiPolygon<f64>, FillError> {
+    if spec.source.is_some() || !spec.generator.as_deref().is_some_and(covers) {
+        return Ok(region.clone());
+    }
+    let mut parts = Vec::new();
+    for r in work_regions(region, spec) {
+        let r = prepared(&r, spec);
+        for part in covering(&r, spec, false)?.coverage.parts() {
+            let mut rings = part.all_rings_mm().into_iter().map(|ring| {
+                let mut cs: Vec<Coord<f64>> = ring.into_iter().map(|(x, y)| Coord { x, y }).collect();
+                if cs.first() != cs.last() {
+                    cs.push(cs[0]);
+                }
+                LineString::new(cs)
+            });
+            if let Some(outer) = rings.next() {
+                parts.push(MultiPolygon(vec![Polygon::new(outer, rings.collect())]));
+            }
+        }
+    }
+    Ok(geom::union_multi(&parts))
+}
+
+/// `region` shrunk by the spec's `inset`, for generators that don't take
+/// one themselves.
+fn prepared(region: &Region, spec: &FillSpec) -> Region {
+    let generator = spec.generator.as_deref().unwrap_or_default();
+    let inset = spec.inset.map(|m| m.0).or((generator == "waves").then_some(0.1));
+    match inset {
+        Some(i) if !insets_natively(generator) && i > 0.0 => region.inset(i),
+        _ => region.clone(),
+    }
 }
 
 fn run_source(region: &Region, spec: &FillSpec, sources: &Sources) -> Result<penfill::Strokes, FillError> {
@@ -361,7 +466,7 @@ pub fn fill(region: &MultiPolygon<f64>, spec: &FillSpec, sources: &Sources) -> R
 /// [`fill`], handing the strokes to `sink` as they are made instead of
 /// keeping them.
 pub fn fill_into(region: &MultiPolygon<f64>, spec: &FillSpec, sources: &Sources, sink: &mut dyn penfill::Sink) -> Result<(), FillError> {
-    for r in regions(region) {
+    for r in work_regions(region, spec) {
         match (&spec.source, spec.generator.as_deref()) {
             (Some(_), _) => sink.batch(run_source(&r, spec, sources)?),
             (None, Some(g)) => run_generator_into(&r, g, spec, sink)?,
@@ -439,6 +544,21 @@ mod tests {
         spec.options.insert("anchor".into(), "local".into());
         spec.options.insert("shift".into(), serde_json::json!([0.2, 0.1]));
         assert!(validate(&spec, &Sources::new()).is_ok());
+    }
+
+    #[test]
+    fn cover_is_the_footprint_and_its_run_feeds_the_fill() {
+        use geo::Area;
+        let sq = MultiPolygon::new(vec![polygon![(x: 0.0, y: 0.0), (x: 60.0, y: 0.0), (x: 60.0, y: 60.0), (x: 0.0, y: 60.0)]]);
+        let mut spec = FillSpec { generator: Some("isoline-stack".into()), ..FillSpec::spacing(5.0) };
+        spec.options.insert("coverage".into(), serde_json::json!(0.4));
+        let fresh = fill(&sq, &spec, &Sources::new()).unwrap();
+        let footprint = cover(&sq, &spec).unwrap();
+        let a = footprint.unsigned_area();
+        assert!(a > 0.0 && a < 0.95 * 3600.0, "clearings stay out of the footprint: {a}");
+        assert_eq!(fill(&sq, &spec, &Sources::new()).unwrap(), fresh);
+        let dots = FillSpec { generator: Some("dots".into()), ..FillSpec::spacing(1.0) };
+        assert_eq!(cover(&sq, &dots).unwrap(), sq);
     }
 
     #[test]
