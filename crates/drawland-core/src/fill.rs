@@ -35,7 +35,7 @@ pub const GENERATORS: &[&str] = &[
     "conglomerate-flat", "coquina", "cracked-earth", "cracks", "dacite", "debris-soil", "diabase", "diatom",
     "diorite", "dots", "drift", "dry-cracked-soil", "erosion-lines", "feldspar", "ferrous", "fill", "fine-gravel",
     "fluid-grass", "gabbro", "gneiss", "grainy-soil", "granite", "granite-x", "grass", "gravel", "gravel-clipped",
-    "gravelly-soil", "grid", "hilbert", "honeycomb", "hornblende", "isoline-blobs", "isoline-stack", "laminae", "lava", "layered-soil", "lily-pads",
+    "gravelly-soil", "grid", "growth", "hilbert", "honeycomb", "hornblende", "isoline-blobs", "isoline-stack", "laminae", "lava", "layered-soil", "lily-pads",
     "lines", "loose-soil", "marble", "masonry", "mixed-rocks", "mulch", "mulched-soil", "none", "ophitic",
     "organic-topsoil", "pat", "pebble-scatter", "pebbled-soil", "pebbles", "rectilinear", "sandy-soil", "scales",
     "scribble", "shards", "silty-soil", "solid", "spiral", "sprouts", "stipple", "stipple-edge", "stipple-noise",
@@ -253,6 +253,21 @@ fn run_generator_into(region: &Region, generator: &str, spec: &FillSpec, sink: &
         "scribble" => scribble::fill_scribble(r, s, a, seed),
         "truchet" => truchet::fill_truchet(r, s, a, seed, at),
         "isoline-blobs" | "isoline-stack" => covering(r, spec, true)?.strokes,
+        "growth" => {
+            use penfill::growth::{fill_growth, GrowthParams, RootSource};
+            let roots = o.num("roots")?.map_or(RootSource::Generate(5), |n| RootSource::Generate(n.max(0.0) as usize));
+            let params = GrowthParams {
+                seed,
+                roots,
+                spacing: s,
+                step: o.mm("step")?.unwrap_or(s * 0.4),
+                reach: o.mm("reach")?.unwrap_or(s * 2.0),
+                kill: o.mm("kill")?.unwrap_or(s * 0.35),
+                jitter: o.num("jitter")?.unwrap_or(0.15),
+                max_steps: o.num("max_steps")?.map_or(20_000, |n| n.max(0.0) as usize),
+            };
+            fill_growth(r, &params)
+        }
         "marble" => textures::fill_marble(r, s, a, seed, at),
         "wood" => textures::fill_wood(r, s, a, seed, at),
         "cracks" => textures::fill_cracks(r, s, seed),
@@ -581,6 +596,19 @@ mod tests {
         let mut bad = FillSpec { generator: Some("isoline-stack".into()), ..FillSpec::spacing(5.0) };
         bad.options.insert("edge".into(), "bleed".into());
         assert!(matches!(validate(&bad, &Sources::new()), Err(FillError::BadOption { .. })));
+    }
+
+    #[test]
+    fn growth_branches_inside_the_region() {
+        let sq = MultiPolygon::new(vec![polygon![(x: 0.0, y: 0.0), (x: 60.0, y: 0.0), (x: 60.0, y: 60.0), (x: 0.0, y: 60.0)]]);
+        let spec = FillSpec { generator: Some("growth".into()), seed: Some(3), ..FillSpec::spacing(3.0) };
+        let lines = fill(&sq, &spec, &Sources::new()).unwrap();
+        assert!(lines.len() > 20, "only {} segments", lines.len());
+        for l in &lines {
+            for c in &l.0 {
+                assert!(c.x >= 0.0 && c.x <= 60.0 && c.y >= 0.0 && c.y <= 60.0, "{c:?} outside");
+            }
+        }
     }
 
     #[test]

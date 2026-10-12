@@ -47,7 +47,7 @@ type Pattern =
   | "conglomerate-flat" | "coquina" | "cracked-earth" | "cracks" | "dacite" | "debris-soil" | "diabase" | "diatom"
   | "diorite" | "dots" | "drift" | "dry-cracked-soil" | "erosion-lines" | "feldspar" | "ferrous" | "fill" | "fine-gravel"
   | "fluid-grass" | "gabbro" | "gneiss" | "grainy-soil" | "granite" | "granite-x" | "grass" | "gravel" | "gravel-clipped"
-  | "gravelly-soil" | "grid" | "hilbert" | "honeycomb" | "hornblende" | "isoline-blobs" | "isoline-stack" | "laminae" | "lava" | "layered-soil" | "lily-pads"
+  | "gravelly-soil" | "grid" | "growth" | "hilbert" | "honeycomb" | "hornblende" | "isoline-blobs" | "isoline-stack" | "laminae" | "lava" | "layered-soil" | "lily-pads"
   | "lines" | "loose-soil" | "marble" | "masonry" | "mixed-rocks" | "mulch" | "mulched-soil" | "none" | "ophitic"
   | "organic-topsoil" | "pat" | "pebble-scatter" | "pebbled-soil" | "pebbles" | "rectilinear" | "sandy-soil" | "scales"
   | "scribble" | "shards" | "silty-soil" | "solid" | "spiral" | "sprouts" | "stipple" | "stipple-edge" | "stipple-noise"
@@ -114,7 +114,7 @@ interface FillOptions {
   bubble?: Length
   /** `isoline-stack`: horizontal slices through the stack; more rings. Default 14. */
   slices?: number
-  /** `isoline-stack`: outline wobble (0–1+). Default 0.8. */
+  /** `isoline-stack`: outline wobble (0–1+). `growth`: steering wobble (0–1ish). Default 0.8 for `isoline-stack`, 0.15 for `growth`. */
   jitter?: number
   /**
    * `isoline-stack`: a sun from one direction (0–1, off by default). Crowns
@@ -130,6 +130,20 @@ interface FillOptions {
   warp?: number
   /** `isoline-blobs`: field level for patches and coverage (0–1). Default 0.25. */
   threshold?: number
+  /**
+   * `growth`: dendritic branches grown toward a field of attractor points
+   * (space colonization) — river deltas, veins, cracks, roots, lichen. How
+   * many roots it grows from. Default 5.
+   */
+  roots?: number
+  /** `growth`: how far a branch advances per step, in mm. Default ~0.4× `spacing`. */
+  step?: Length
+  /** `growth`: an attractor beyond this from every branch tip pulls nothing. Default ~2× `spacing`. */
+  reach?: Length
+  /** `growth`: an attractor this close to a tip is consumed, in mm. Default ~0.35× `spacing`. */
+  kill?: Length
+  /** `growth`: a hard cap on growth steps, so a pathological shape cannot hang. Default 20000. */
+  max_steps?: number
 }
 
 /** `solid`, `dash`, `dotted`, `none`, or an object: the dashes' sizes and the ink (`color`, `width` in mm, `cap`). */
