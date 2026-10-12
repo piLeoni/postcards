@@ -332,6 +332,10 @@ fn covering(r: &Region, spec: &FillSpec, take: bool) -> Result<penfill::FillWith
                 "overflow" => EdgeMode::Overflow(o.mm("overflow")?.unwrap_or(s * 0.4)),
                 other => return Err(o.bad("edge", format!("{other:?}: use clip, inside or overflow"))),
             };
+            let light = match o.num("light")?.filter(|s| *s > 0.0) {
+                Some(strength) => Some(penfill::isoline_stack::Light { from_deg: o.num("light_angle")?.unwrap_or(0.0), strength }),
+                None => None,
+            };
             let params = IsolineStackParams {
                 seed,
                 crowns: CrownSource::Generate,
@@ -341,6 +345,7 @@ fn covering(r: &Region, spec: &FillSpec, take: bool) -> Result<penfill::FillWith
                 slices: o.num("slices")?.map_or(14, |n| n.clamp(1.0, 64.0) as usize),
                 jitter: o.num("jitter")?.unwrap_or(0.8),
                 edge,
+                light,
             };
             fill_isoline_stack_with_coverage(r, &params)
         }

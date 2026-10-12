@@ -116,6 +116,14 @@ interface FillOptions {
   slices?: number
   /** `isoline-stack`: outline wobble (0–1+). Default 0.8. */
   jitter?: number
+  /**
+   * `isoline-stack`: a sun from one direction (0–1, off by default). Crowns
+   * swell and climb on the far side from `light_angle`, thin on the near
+   * side, so the stack reads as lit without changing stroke colour or width.
+   */
+  light?: number
+  /** `isoline-stack` with `light`: degrees the light comes *from* (0 = +x, 90 = +y). Default 0. */
+  light_angle?: number
   /** `isoline-blobs`: distance between contour lines in mm. Default ~0.045× `spacing`. */
   contour?: Length
   /** `isoline-blobs`: domain warp of the field (0–1). Default 0.45. */

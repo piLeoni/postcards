@@ -63,6 +63,8 @@ Profile options (`spacing` = crown size):
 | `coverage` | `0.6` | share of the area under canopy (0–1) |
 | `slices` | `14` | horizontal cuts: more is more rings |
 | `jitter` | `0.8` | outline wobble |
+| `light` | off | 0–1: a sun from `light_angle`; crowns swell and climb in its shadow, thin where lit |
+| `light_angle` | `0` | degrees the light comes *from* (0 = +x, 90 = +y) |
 
 Fill output is not clipped again in `fill.rs`, so `overflow` ink reaches past the area as drawn.
 
@@ -174,7 +176,7 @@ Masking with the host area instead of the cover erases the ground in the clearin
 2. ~~Coverage~~ — done: threshold-isoline silhouettes; unit-tested for fuse/stay-separate behaviour and host containment.
 3. ~~draw.land wire-up~~ — done: both patterns, and coverage as `$areas` via `fills.cover`.
 4. **Particles from features** — `FieldSource::Sites`/`NoiseAndSites` exist in penfill; draw.land does not yet resolve `$features` centroids into them.
-5. **Light bias** — not implemented. In the stacked model this is natural: shift each slice's outline by a light direction, or drop rings on the lit side.
+5. ~~Light bias~~ — done for `isoline-stack` (`light`/`light_angle`); `isoline-blobs`'s flat field still has none.
 5b. ~~Overhang and boundary modes~~ — done: `isoline-stack`.
 6. **Streaming + budget** — not implemented; whole-field sampling today.
 
