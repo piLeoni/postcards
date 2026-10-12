@@ -26,6 +26,31 @@ pub fn polygons(g: &Geometry<f64>) -> Vec<Polygon<f64>> {
     }
 }
 
+/// Point parts of any geometry (lines and polygons ignored).
+pub fn points_of(g: &Geometry<f64>) -> Vec<Coord<f64>> {
+    match g {
+        Geometry::Point(p) => vec![p.0],
+        Geometry::MultiPoint(mp) => mp.0.iter().map(|p| p.0).collect(),
+        Geometry::GeometryCollection(gc) => gc.0.iter().flat_map(points_of).collect(),
+        _ => vec![],
+    }
+}
+
+/// A round polygon of `radius` mm around `at`.
+pub fn disc(at: Coord<f64>, radius: f64) -> MultiPolygon<f64> {
+    if radius <= 0.0 {
+        return empty();
+    }
+    const SIDES: usize = 24;
+    let ring: Vec<Coord<f64>> = (0..=SIDES)
+        .map(|i| {
+            let t = std::f64::consts::TAU * (i % SIDES) as f64 / SIDES as f64;
+            Coord { x: at.x + radius * t.cos(), y: at.y + radius * t.sin() }
+        })
+        .collect();
+    MultiPolygon::new(vec![Polygon::new(LineString::new(ring), vec![])])
+}
+
 /// Line parts of any geometry: linestrings as they are, polygon rings as
 /// closed lines.
 pub fn lines_of(g: &Geometry<f64>) -> Lines {

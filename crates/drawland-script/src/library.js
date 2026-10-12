@@ -179,6 +179,12 @@
       if (typeof by !== "number" && typeof by !== "string") fail(`areas.grow: by is a length like "0.5mm", got ${describe(by)}`);
       return make(Area, "areas", { tools_grow: { of: need(of, Area, "areas.grow"), by } });
     },
+    // A disc of radius `by` around every point feature (mapped trees),
+    // merged into one area; lines and polygons in `of` are ignored.
+    around(of, by) {
+      if (typeof by !== "number" && typeof by !== "string") fail(`areas.around: by is a length like "2mm", got ${describe(by)}`);
+      return make(Area, "areas", { tools_around: { of: need(of, Features, "areas.around"), by } });
+    },
     /**
      * Half-width buffer around lines, merged into one area. Joins are always
      * round; `options.cap` is `"round"` (default) or `"flat"` (butt caps).

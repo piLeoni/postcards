@@ -135,6 +135,14 @@ pub struct Grow {
     pub by: Mm,
 }
 
+/// A disc of radius `by` around every point of a feature set (mapped trees),
+/// merged into one area. Lines and polygons in the set are ignored.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Around {
+    pub of: Name,
+    pub by: Mm,
+}
+
 /// How `tools_buffer_lines` ends each stroke.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -298,6 +306,7 @@ pub enum Op {
     Intersect(Intersect),
     FillHoles(Name),
     Grow(Grow),
+    Around(Around),
     BufferLines(BufferLines),
     /// What the letters of a `$lines` labels def cover.
     LabelArea(LabelPick),
@@ -350,6 +359,7 @@ impl Op {
             | Op::Intersect(_)
             | Op::FillHoles(_)
             | Op::Grow(_)
+            | Op::Around(_)
             | Op::BufferLines(_)
             | Op::LabelArea(_)
             | Op::FillCover(_)
@@ -392,6 +402,7 @@ impl Op {
                 .chain(i.keep_rule.as_deref().map(Op::refs).unwrap_or_default())
                 .collect(),
             Op::Grow(g) => vec![g.of.clone()],
+            Op::Around(a) => vec![a.of.clone()],
             Op::BufferLines(b) => vec![b.lines.clone()],
             Op::ExtendToFrame(e) => vec![e.of.clone(), e.within.clone()],
             Op::Where(w) => vec![w.of.clone()],
@@ -424,6 +435,7 @@ impl Op {
             (Op::LabelArea(a), Op::LabelArea(b)) => a == b,
             (Op::LabelLines(a), Op::LabelLines(b)) => a == b,
             (Op::Grow(a), Op::Grow(b)) => a.of == b.of,
+            (Op::Around(a), Op::Around(b)) => a == b,
             (Op::BufferLines(a), Op::BufferLines(b)) => a.lines == b.lines && a.by == b.by && a.cap == b.cap,
             (Op::Rings(a), Op::Rings(b)) => a.of == b.of,
             (Op::Lines(a), Op::Lines(b)) => a == b,
@@ -959,7 +971,7 @@ fn parse_op(raw: RawOp, section: Section) -> Result<Op, GrammarError> {
     let target = match key.as_str() {
         "osm_select" | "tiles_select" | "tools_where" => Section::Features,
         "tools_polygons" | "tools_union" | "tools_difference" | "tools_intersect" | "tools_fill_holes"
-        | "tools_fill_cover" | "tools_grow" | "tools_buffer_lines" | "tools_label_area" | "tools_extend_to_frame" | "engine_frame" => {
+        | "tools_fill_cover" | "tools_grow" | "tools_around" | "tools_buffer_lines" | "tools_label_area" | "tools_extend_to_frame" | "engine_frame" => {
             Section::Areas
         }
         "tools_rings" | "tools_lines" | "tools_segments" | "tools_dedupe" | "tools_merge" | "tools_join"
@@ -1050,6 +1062,20 @@ fn parse_op(raw: RawOp, section: Section) -> Result<Op, GrammarError> {
             }
             let raw: Raw = json(&value, "tools_grow")?;
             Op::Grow(Grow { of: refname(&raw.of)?, by: raw.by })
+        }
+        "tools_around" => {
+            #[derive(Deserialize)]
+            #[serde(deny_unknown_fields)]
+            struct Raw {
+                of: String,
+                by: Mm,
+            }
+            let raw: Raw = json(&value, "tools_around")?;
+            let of = refname(&raw.of)?;
+            if of.section != Section::Features {
+                return Err(GrammarError::Invalid("tools_around: of must be $features".into()));
+            }
+            Op::Around(Around { of, by: raw.by })
         }
         "tools_buffer_lines" => {
             #[derive(Deserialize)]
@@ -1628,6 +1654,7 @@ pub fn op_to_json(op: &Op) -> Value {
             ("tools_labels", body)
         }
         Op::Grow(g) => ("tools_grow", json!({ "of": g.of.to_string(), "by": g.by })),
+        Op::Around(a) => ("tools_around", json!({ "of": a.of.to_string(), "by": a.by })),
         Op::BufferLines(b) => {
             let mut body = serde_json::Map::from_iter([
                 ("lines".into(), Value::String(b.lines.to_string())),

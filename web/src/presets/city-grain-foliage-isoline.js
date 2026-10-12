@@ -160,33 +160,57 @@ const natureFills = NATURE.map((k) =>
 )
 const wood = NATURE.find((k) => k.id === "wood")
 // 3D canopy: metaball crowns cut into slices (overhang), lit from one side.
-// `edge: "inside"` closes every outline before the wood's own border instead
-// of cutting at it, `coverage` leaves clearings, and `fills.cover(FOLIAGE)`
-// below reports the canopy's real footprint (not the whole wood polygon) so
-// the ground burin only hides where a crown actually stands.
+// Where OSM maps a tree, it gets its own crown in a small disc around it
+// (overlapping discs merge into a grove), bulging a little past the disc
+// (`edge: "overflow"`). The rest of the wood gets generated crowns that
+// close before its border (`edge: "inside"`), with clearings (`coverage`).
+// `fills.cover(...)` below reports each canopy's real footprint so the dots
+// and the ground burin only hide where a crown actually stands.
+/** @type {Omit<FillOptions, "in">} */
+const SHADE = { pattern: "isoline-stack", seed: 7, slices: 12, jitter: 1.3, light: 0.8, light_angle: 225 } // light from the top left, as on the burin maps
+const trees = features.osm({ natural: "tree" })
+// Mapped crowns on any dry land (campus quads, park edges, …), not only
+// inside the forest polygon. Inside wood we still punch discs out of the
+// generated canopy so a tree is not drawn twice.
+const land = areas.difference(frame, water)
+const treeDiscsMapped = areas.intersect(areas.around(trees, "1.4mm"), land)
+const treeDiscsInWood = areas.intersect(treeDiscsMapped, wood.visible)
 /** @type {FillOptions} */
 const FOLIAGE = {
-  in: wood.visible,
-  pattern: "isoline-stack",
+  ...SHADE,
+  in: areas.difference(wood.visible, treeDiscsInWood),
   spacing: "4mm",
-  seed: 7,
   edge: "inside",
   coverage: 0.8,
   bubble: "1.2mm",
-  slices: 12,
-  jitter: 1.3,
-  light: 0.8,
-  light_angle: 225, // from the top left, as on the burin maps
+}
+/** @type {FillOptions} */
+const MAPPED_TREES = {
+  ...SHADE,
+  in: treeDiscsMapped,
+  spacing: "1.4mm",
+  edge: "overflow",
+  overflow: "0.4mm",
+  coverage: 1,
+  bubble: "0.5mm",
 }
 const woodFoliage = draw({
   id: "nat_fill_wood_foliage",
   from: fills.fill(FOLIAGE),
   stroke: penStroke({ style: "solid" }),
 })
+const woodTrees = draw({
+  id: "nat_fill_wood_trees",
+  from: fills.fill(MAPPED_TREES),
+  stroke: penStroke({ style: "solid" }),
+})
+// Seen from above, crowns sit over roads, paths and water but under buildings
+// and labels. Strokes never hide each other by order; only masks cut ink, so
+// see the `canopy_over`, `bldg_cover` and `label_clear` masks below.
+const canopyDraws = [woodFoliage, woodTrees]
 const natureDraws = [
   draw({ id: "nat_terrain", from: natureBurin, stroke: penStroke({ style: "solid" }) }),
   ...natureFills,
-  woodFoliage,
   draw({ id: "nat_ring", from: lines.rings(nature), stroke: penStroke({ style: "dash", dash: "0.45mm", gap: "0.4mm" }) }),
 ]
 const pathDraws = [
@@ -220,17 +244,17 @@ const buildingDraws = [
 ]
 
 const underRoads = [...ground, ...natureDraws, ...waterDraws]
-compose.mask({ name: "trail_clear", from: trailClear, occludes: ["nat_terrain", ...natureFills, "nat_fill_wood_foliage"] })
-compose.mask({
-  name: "wood_foliage",
-  from: fills.cover(FOLIAGE),
-  occludes: ["nat_terrain", "nat_fill_wood"],
-})
-compose.mask({ name: "wet_cover", from: water, occludes: [...ground, ...natureDraws] })
+compose.mask({ name: "trail_clear", from: trailClear, occludes: ["nat_terrain", ...natureFills] })
+// The canopy's footprint cuts everything under it (ground, nature, paths,
+// water, roads); mapped crowns also cut the generated ones they overlap.
+const canopy = areas.union(fills.cover(FOLIAGE), fills.cover(MAPPED_TREES))
+compose.mask({ name: "canopy_over", from: canopy, occludes: [...underRoads, ...pathDraws, ...roadDraws] })
+compose.mask({ name: "mapped_over_wood", from: fills.cover(MAPPED_TREES), occludes: ["nat_fill_wood_foliage"] })
+compose.mask({ name: "wet_cover", from: water, occludes: [...ground, ...natureDraws, ...pathDraws] })
 compose.mask({ name: "pier_on_water", from: piersOnWater, occludes: ["water_fill"] })
 compose.mask({ name: "ferry_on_water", from: ferryCorridor, occludes: ["water_fill"] })
 compose.mask({ name: "roads_cover", from: roads.area, occludes: underRoads })
-compose.mask({ name: "bldg_cover", from: buildings, occludes: [...underRoads, ...roadDraws] })
+compose.mask({ name: "bldg_cover", from: buildings, occludes: [...underRoads, ...roadDraws, ...canopyDraws] })
 
 // ── Labels ─────────────────────────────────────────────────────────────────
 const labels = modules.labels({
@@ -249,41 +273,47 @@ const labels = modules.labels({
   ],
 })
 const labelClear = areas.union(labels.area, areas.buffer(labels.lines, "0.85mm"))
-compose.mask({ name: "label_clear", from: labelClear, occludes: [...underRoads, ...roadDraws, ...buildingDraws, ...pathDraws] })
+compose.mask({
+  name: "label_clear",
+  from: labelClear,
+  occludes: [...underRoads, ...roadDraws, ...buildingDraws, ...pathDraws, ...canopyDraws],
+})
 
 draw({ id: "labels", from: labels.lines, stroke: penStroke({ style: "solid" }) })
 
 // ── Layer order, bottom first ──────────────────────────────────────────────
-// Masks still cut only the groups they list, wherever those sit here.
+// Only the sequence groups are written in (and plotted); it hides nothing.
+// What sits on top of what is decided by the masks above.
 compose.order(
-  "labels",
-  "bldg_ring",
-  "bldg_fill",
-  "roads_seam",
-  "roads_center",
-  "roads_out",
-  "rail",
-  "ferry",
-  "piers",
+  "ground_burin",
+  "nat_fill_protected",
+  "nat_fill_park",
+  "nat_fill_farmland",
+  "nat_fill_ice",
+  "nat_fill_wetland",
+  "nat_fill_sand",
+  "nat_fill_bare_rock",
+  "nat_fill_wood",
+  "nat_fill_scrub",
+  "nat_fill_golf",
+  "nat_fill_grass",
+  "nat_fill_flowerbed",
+  "nat_fill_garden",
+  "nat_terrain",
+  "nat_ring",
+  "garden_paths",
   "dock_ring",
+  "piers",
+  "ferry",
   "water_fill",
   "water_ring",
-  "nat_ring",
-  "nat_terrain",
-  "nat_fill_garden",
-  "nat_fill_flowerbed",
-  "nat_fill_grass",
-  "nat_fill_golf",
-  "nat_fill_scrub",
+  "rail",
+  "roads_out",
+  "roads_center",
+  "roads_seam",
   "nat_fill_wood_foliage",
-  "nat_fill_wood",
-  "nat_fill_bare_rock",
-  "nat_fill_sand",
-  "nat_fill_wetland",
-  "nat_fill_ice",
-  "nat_fill_farmland",
-  "nat_fill_park",
-  "nat_fill_protected",
-  "ground_burin",
-  "garden_paths",
+  "nat_fill_wood_trees",
+  "bldg_fill",
+  "bldg_ring",
+  "labels",
 )

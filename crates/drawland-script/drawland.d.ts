@@ -264,6 +264,8 @@ declare const areas: {
   fillHoles(of: Area): Area
   /** Grown by a length; a negative one shrinks it. */
   grow(of: Area, by: Length): Area
+  /** A disc of radius `by` around every point feature (mapped trees), merged; lines and polygons are ignored. */
+  around(of: Features, by: Length): Area
   /** A strip around lines: `by` is the half-width (flat caps), merged into one area. */
   /** Half-width strip around the lines, merged. Joins are round; default cap is round. */
   buffer(of: Lines, by: Length, options?: { cap?: "round" | "flat" }): Area

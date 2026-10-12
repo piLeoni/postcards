@@ -366,6 +366,14 @@ fn eval_op(
         Op::LabelArea(p) => Value::Area(label_pick(done, p)?),
         Op::LabelLines(p) => Value::Lines(label_lines(done, p)?),
         Op::Grow(g) => Value::Area(geom::buffer(&area(&g.of)?, g.by.0)),
+        Op::Around(a) => {
+            let discs: Vec<MultiPolygon<f64>> = feats(&a.of)?
+                .iter()
+                .flat_map(|f| geom::points_of(&f.geometry))
+                .map(|c| geom::disc(c, a.by.0))
+                .collect();
+            Value::Area(geom::union_multi(&discs))
+        }
         Op::BufferLines(b) => {
             let ls = lines(&b.lines)?;
             let radius = b.by.0;
