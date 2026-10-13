@@ -16,8 +16,8 @@ import { lengthText, MM_PER, sig3 } from '../lib/frame'
 /** A field fills its grid cell; the columns decide the width, the host the type size. */
 const FIELD = 'h-auto w-full min-w-0 border border-black bg-white px-1 text-right font-mono text-[length:inherit] leading-[1.6]'
 
-/** Pixels dragged per step of a label. */
-const PX_PER_STEP = 4
+/** Pixels dragged per step of a label (scale scrub and transform tag). */
+export const PX_PER_STEP = 4
 
 /**
  * Dragging sideways to step `value` through `model`: one step every `px`
@@ -318,6 +318,9 @@ export const tileZoomModel = {
   },
   nudge: (v, n, shift) => ({ z: clampZoom((v?.z ?? TILE_ZOOM_MAX) + n * (shift ? 10 : 1)) }),
 }
+
+/** Pixels dragged per degree when scrubbing bearing (rotate label and map tag). */
+export const PX_PER_DEG = 2.5
 
 /** The Shift step of a bearing, in degrees. */
 export const SNAP_DEG = 15

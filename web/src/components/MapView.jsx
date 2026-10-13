@@ -13,7 +13,7 @@ import { mapViewAtom } from '../lib/store'
 import OutputControls from './OutputControls'
 import SearchModal from './SearchModal'
 import ShareModal from './ShareModal'
-import { norm, terrainPair } from './controls'
+import { angleModel, MAX_SCALE, MIN_SCALE, norm, PX_PER_DEG, PX_PER_STEP, scaleModel, terrainPair } from './controls'
 import LoadCard from './LoadCard'
 
 setWorkerUrl(workerUrl)
@@ -246,7 +246,7 @@ const TILE_LABEL_MIN_ZOOM = 11
 const tileLabelLayout = {
   'text-field': ['get', 'label'],
   'text-size': 10,
-  'text-font': ['Open Sans Regular', 'Arial Unicode MS Regular'],
+  'text-font': ['Noto Sans Regular'],
   'text-anchor': 'top-left',
   'text-offset': [0.4, 0.2],
   'text-justify': 'left',
@@ -279,6 +279,8 @@ const EDGE = 8
 const FIT_AIR = 2 * FIT_PAD
 /** The transform menu's opacity while one of its drags has the output under it. */
 const MENU_FADE = 0.2
+/** Drag farther than this on the transform tag to move; a shorter press toggles the menu. */
+const TRANSFORM_DRAG_PX = 4
 /** Pixels the output keeps from the map's edges while it is moved. */
 const KEEP = 16
 /** The band along the map's edges where the pointer moving the output pans the map, px. */
@@ -890,7 +892,7 @@ export default function MapView({
    * release. A step that returns `again: true` is run the next frame too, the
    * pointer still or not.
    */
-  const follow = (e, step, write) => {
+  const follow = (e, step, write, cursorEl) => {
     e.preventDefault()
     e.stopPropagation()
     const map = mapRef.current
@@ -940,7 +942,9 @@ export default function MapView({
       to.done = true
       write(to)
     }
-    document.body.style.cursor = getComputedStyle(e.currentTarget).cursor
+    const el = cursorEl instanceof Element ? cursorEl : e.currentTarget
+    const grab = el instanceof Element ? getComputedStyle(el).cursor : ''
+    document.body.style.cursor = grab && grab !== 'auto' ? grab : 'grabbing'
     window.addEventListener('pointermove', move)
     window.addEventListener('pointerup', up)
   }
@@ -953,7 +957,7 @@ export default function MapView({
    * an edge may stay out there, and is held in once it comes in; one bigger
    * than the map is held covering it.
    */
-  const startDrag = (e) => {
+  const startDrag = (e, cursorEl) => {
     const map = mapRef.current
     const from = outputRef.current
     const b0 = map && from ? outputBox(map, from) : null
@@ -1003,7 +1007,77 @@ export default function MapView({
         return { lat: next.lat, lng: next.lng, again }
       },
       (to) => onMoveOutput?.({ lat: to.lat, lng: to.lng }),
+      cursorEl,
     )
+  }
+
+  const scaleKey = (v) => `1:${Math.round(Math.min(MAX_SCALE, Math.max(MIN_SCALE, v)))}`
+
+  /** Turn the map under the output; always whole degrees (menu ↻ still uses Shift for 15°). */
+  const startRotate = (e, cursorEl) => {
+    const from = outputRef.current
+    if (!from) return
+    const start = norm(from.bearing ?? 0)
+    follow(
+      e,
+      (map, from, dx) => {
+        const n = Math.round(dx / PX_PER_DEG) * -1
+        const bearing = angleModel.nudge(start, n, false)
+        wantBearingRef.current = bearing
+        map.easeTo({ bearing, around: [from.lng, from.lat], duration: 0 })
+        return { bearing }
+      },
+      (to) => onOutputKeys?.({ bearing: to.bearing }),
+      cursorEl,
+    )
+  }
+
+  /** Change scale with the paper size fixed (⤡ terrain mode in the menu); Shift steps 20%. */
+  const startScale = (e, cursorEl) => {
+    const from = outputRef.current
+    if (!from) return
+    const start = from.scale
+    follow(
+      e,
+      (_map, _from, dx, _dy, ev) => {
+        const n = Math.round(dx / PX_PER_STEP)
+        const scale = scaleModel.nudge(start, n, ev.shiftKey)
+        return { scale }
+      },
+      (to) => onOutputKeys?.({ scale: scaleKey(to.scale) }),
+      cursorEl,
+    )
+  }
+
+  /** Click toggles the menu; drag moves, Shift+drag rotates, Alt+drag scales. */
+  const onTransformPointerDown = (e) => {
+    if (e.button !== 0) return
+    e.preventDefault()
+    e.stopPropagation()
+    const down = { x: e.clientX, y: e.clientY }
+    const handle = e.currentTarget
+    let dragging = false
+    const move = (ev) => {
+      if (dragging) return
+      if (Math.hypot(ev.clientX - down.x, ev.clientY - down.y) < TRANSFORM_DRAG_PX) return
+      dragging = true
+      cleanup()
+      if (ev.shiftKey) startRotate(e, handle)
+      else if (ev.altKey) startScale(e, handle)
+      else startDrag(e, handle)
+    }
+    const up = () => {
+      cleanup()
+      if (!dragging) setMenu((m) => !m)
+    }
+    const cleanup = () => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+      window.removeEventListener('pointercancel', up)
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+    window.addEventListener('pointercancel', up)
   }
 
   const slices = drawing?.slices?.length ?? 0
@@ -1058,11 +1132,11 @@ export default function MapView({
             </Tag>
           ) : (
             <Tag
-              title="Move, rotate and scale the output; its paper, slices and margins"
+              title="Click for the full menu. Drag to move; Shift+drag to rotate (1° steps); Alt+drag to change scale (paper size stays put)"
               aria-label="Transform the output"
               aria-expanded={menu}
               className={`cursor-pointer ${menu ? 'bg-black! text-white!' : ''}`}
-              onClick={() => setMenu((m) => !m)}
+              onPointerDown={onTransformPointerDown}
             >
               transform {menu ? '▴' : '▾'}
             </Tag>

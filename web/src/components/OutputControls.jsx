@@ -1,9 +1,6 @@
 import { useRef, useState } from 'react'
 import { lengthText } from '../lib/frame'
-import { angleModel, Choice, countModel, degreesModel, Field, lengthModel, MAX_SCALE, MIN_SCALE, Scrub, scaleModel, Section, SNAP_DEG, terrainModel, tileZoomModel } from './controls'
-
-/** Degrees the map turns per pixel a label is dragged. */
-const PX_PER_DEG = 2.5
+import { angleModel, Choice, countModel, degreesModel, Field, lengthModel, MAX_SCALE, MIN_SCALE, PX_PER_DEG, Scrub, scaleModel, Section, SNAP_DEG, terrainModel, tileZoomModel } from './controls'
 
 /** Where the scale switch is remembered: what a new scale changes, `terrain` or `paper`. */
 const SCALE_CHANGES_KEY = 'drawland.scaleChanges'
