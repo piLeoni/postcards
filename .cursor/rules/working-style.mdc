@@ -1,0 +1,12 @@
+---
+description: How to iterate on new drawing features with the user
+alwaysApply: true
+---
+
+# Working style for new features
+
+- Build the minimal viable version first: the least code that shows the idea works.
+- Verify by rendering with the CLI (`drawland map <profile.js> -o out.svg`, then `rsvg-convert` to PNG) and show the image to the user. The user judges whether it looks right.
+- Do not write large test suites or graphical comparison tests while iterating. Add tests only when the user asks or the feature is settled.
+- Do not rebuild WASM, the web app, or the Python/Node bindings while iterating. Do that once the feature is accepted.
+- Small steps; commit only when asked.

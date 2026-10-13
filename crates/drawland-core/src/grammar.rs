@@ -143,6 +143,55 @@ pub struct Around {
     pub by: Mm,
 }
 
+/// Geometry written by the profile: `points` are mm offsets from `at`, in
+/// page axes (x right, y down), turned clockwise by `rotate` degrees. `at` is
+/// a place on the ground or a point on the page.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Shape {
+    pub at: ShapeAt,
+    pub points: Vec<[f64; 2]>,
+    #[serde(default)]
+    pub rotate: f64,
+    /// Lines only: join the last point back to the first.
+    #[serde(default)]
+    pub closed: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum ShapeAt {
+    Geo { lat: f64, lng: f64 },
+    Page([PagePos; 2]),
+}
+
+/// A page coordinate: a length, or `"50%"` of the page's width (x) or height (y).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum PagePos {
+    Mm(Mm),
+    Percent(String),
+}
+
+/// A line of text written by the profile, centred on `at`; `size` is the
+/// capital height.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Text {
+    pub at: ShapeAt,
+    pub text: String,
+    pub size: Mm,
+    #[serde(default)]
+    pub font: crate::text::LabelFont,
+    #[serde(default)]
+    pub rotate: f64,
+}
+
+/// `"50%"` as a fraction, 0.5.
+pub fn percent(s: &str) -> Option<f64> {
+    s.trim().strip_suffix('%')?.trim().parse::<f64>().ok().map(|p| p / 100.0)
+}
+
 /// How `tools_buffer_lines` ends each stroke.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -307,6 +356,10 @@ pub enum Op {
     FillHoles(Name),
     Grow(Grow),
     Around(Around),
+    /// A closed shape written by the profile.
+    Shape(Shape),
+    /// What a profile's text covers.
+    TextArea(Text),
     BufferLines(BufferLines),
     /// What the letters of a `$lines` labels def cover.
     LabelArea(LabelPick),
@@ -325,6 +378,10 @@ pub enum Op {
     Merge(Name),
     Join(UnionRules),
     ClipLines(ClipLines),
+    /// A line written by the profile.
+    Path(Shape),
+    /// Text written by the profile, as pen strokes.
+    Text(Text),
     /// Pen-and-ink terrain, drawn by burin from the elevation.
     Terrain(Terrain),
     /// A whole burin document, drawn from the elevation.
@@ -360,12 +417,16 @@ impl Op {
             | Op::FillHoles(_)
             | Op::Grow(_)
             | Op::Around(_)
+            | Op::Shape(_)
+            | Op::TextArea(_)
             | Op::BufferLines(_)
             | Op::LabelArea(_)
             | Op::FillCover(_)
             | Op::Frame
             | Op::ExtendToFrame(_) => Section::Areas,
-            Op::Rings(_)
+            Op::Path(_)
+            | Op::Text(_)
+            | Op::Rings(_)
             | Op::Lines(_)
             | Op::Segments(_)
             | Op::Dedupe(_)
@@ -386,7 +447,7 @@ impl Op {
     /// The names this operation reads.
     pub fn refs(&self) -> Vec<Name> {
         match self {
-            Op::Select(_) | Op::TileSelect(_) | Op::Frame => vec![],
+            Op::Select(_) | Op::TileSelect(_) | Op::Frame | Op::Shape(_) | Op::Path(_) | Op::Text(_) | Op::TextArea(_) => vec![],
             Op::Module(m) => m.from.iter().cloned().collect(),
             Op::Polygons(n) | Op::FillHoles(n) | Op::Dedupe(n) | Op::Merge(n) | Op::Lines(n) | Op::Segments(n) => {
                 vec![n.clone()]
@@ -971,11 +1032,11 @@ fn parse_op(raw: RawOp, section: Section) -> Result<Op, GrammarError> {
     let target = match key.as_str() {
         "osm_select" | "tiles_select" | "tools_where" => Section::Features,
         "tools_polygons" | "tools_union" | "tools_difference" | "tools_intersect" | "tools_fill_holes"
-        | "tools_fill_cover" | "tools_grow" | "tools_around" | "tools_buffer_lines" | "tools_label_area" | "tools_extend_to_frame" | "engine_frame" => {
+        | "tools_fill_cover" | "tools_grow" | "tools_around" | "tools_shape" | "tools_text_area" | "tools_buffer_lines" | "tools_label_area" | "tools_extend_to_frame" | "engine_frame" => {
             Section::Areas
         }
         "tools_rings" | "tools_lines" | "tools_segments" | "tools_dedupe" | "tools_merge" | "tools_join"
-        | "tools_clip" | "tools_terrain" | "tools_burin" | "tools_labels" | "tools_label_lines" => Section::Lines,
+        | "tools_clip" | "tools_path" | "tools_text" | "tools_terrain" | "tools_burin" | "tools_labels" | "tools_label_lines" => Section::Lines,
         "tools_fill" => Section::Fills,
         other => {
             if let Some(rest) = other.strip_prefix("module_") {
@@ -1076,6 +1137,27 @@ fn parse_op(raw: RawOp, section: Section) -> Result<Op, GrammarError> {
                 return Err(GrammarError::Invalid("tools_around: of must be $features".into()));
             }
             Op::Around(Around { of, by: raw.by })
+        }
+        "tools_shape" | "tools_path" => {
+            let shape: Shape = json(&value, &key)?;
+            if let ShapeAt::Page(xy) = &shape.at {
+                for p in xy {
+                    if let PagePos::Percent(s) = p {
+                        if percent(s).is_none() {
+                            return Err(GrammarError::Invalid(format!("{key}.at: {s:?} is not a length or a percentage")));
+                        }
+                    }
+                }
+            }
+            if shape.points.len() < if key == "tools_shape" { 3 } else { 2 } {
+                return Err(GrammarError::Invalid(format!("{key}: too few points")));
+            }
+            if key == "tools_shape" { Op::Shape(shape) } else { Op::Path(shape) }
+        }
+        "tools_text" | "tools_text_area" => {
+            let text: Text = json(&value, &key)?;
+            crate::text::validate_label_font(&text.font).map_err(GrammarError::Invalid)?;
+            if key == "tools_text" { Op::Text(text) } else { Op::TextArea(text) }
         }
         "tools_buffer_lines" => {
             #[derive(Deserialize)]
@@ -1655,6 +1737,10 @@ pub fn op_to_json(op: &Op) -> Value {
         }
         Op::Grow(g) => ("tools_grow", json!({ "of": g.of.to_string(), "by": g.by })),
         Op::Around(a) => ("tools_around", json!({ "of": a.of.to_string(), "by": a.by })),
+        Op::Shape(s) => ("tools_shape", serde_json::to_value(s).unwrap_or_default()),
+        Op::Path(s) => ("tools_path", serde_json::to_value(s).unwrap_or_default()),
+        Op::Text(t) => ("tools_text", serde_json::to_value(t).unwrap_or_default()),
+        Op::TextArea(t) => ("tools_text_area", serde_json::to_value(t).unwrap_or_default()),
         Op::BufferLines(b) => {
             let mut body = serde_json::Map::from_iter([
                 ("lines".into(), Value::String(b.lines.to_string())),

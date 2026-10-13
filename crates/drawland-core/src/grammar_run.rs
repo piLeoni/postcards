@@ -25,7 +25,7 @@ use crate::grammar::{Clip, Def, Grammar, LineBufferCap, Mask, Name, Op, Section,
 use crate::osm::Feature;
 use crate::progress::{thousands, Level, Task};
 use crate::select::Selector;
-use geo::MultiPolygon;
+use geo::{Coord, LineString, MultiPolygon, Polygon};
 use rayon::prelude::*;
 use std::collections::BTreeMap;
 
@@ -249,6 +249,50 @@ struct Engine<'a> {
     google_fonts: &'a crate::labels::GoogleFonts,
 }
 
+/// A profile's shape on the page, in output mm.
+fn shape_points(s: &crate::grammar::Shape, engine: &Engine) -> Vec<Coord<f64>> {
+    use crate::grammar::{PagePos, ShapeAt};
+    let page = |p: &PagePos, size: f64| match p {
+        PagePos::Mm(m) => m.0,
+        PagePos::Percent(t) => crate::grammar::percent(t).unwrap_or(0.0) * size,
+    };
+    let (ax, ay) = match &s.at {
+        ShapeAt::Geo { lat, lng } => engine.projector.project(*lng, *lat),
+        ShapeAt::Page([x, y]) => (page(x, engine.of.width_mm), page(y, engine.of.height_mm)),
+    };
+    let (sin, cos) = s.rotate.to_radians().sin_cos();
+    s.points
+        .iter()
+        .map(|[dx, dy]| Coord { x: ax + dx * cos - dy * sin, y: ay + dx * sin + dy * cos })
+        .collect()
+}
+
+/// A profile's text on the page: the pen strokes, and the letters' silhouette.
+fn text_on_page(t: &crate::grammar::Text, engine: &Engine) -> Result<(geom::Lines, MultiPolygon<f64>), String> {
+    let bytes = t.font.google_key().map(|k| engine.google_fonts.get(&k).cloned().ok_or(format!("text: google font {k} was not loaded"))).transpose()?;
+    let bytes = bytes.map(|b| crate::google_fonts::decode_font_bytes(&b)).transpose()?;
+    let layout = crate::text::layout(&t.font, bytes.as_deref(), &t.text)?;
+    let k = t.size.0 / layout.cap_height;
+    let (cx, cy) = (layout.width / 2.0, (layout.top + layout.bottom) / 2.0);
+    let shape = crate::grammar::Shape { at: t.at.clone(), points: vec![], rotate: t.rotate, closed: false };
+    let strokes: geom::Lines = layout
+        .glyphs
+        .iter()
+        .flat_map(|g| g.strokes.iter().map(move |s| (g.x, s)))
+        .map(|(gx, s)| {
+            let s = crate::grammar::Shape { points: s.iter().map(|&(x, y)| [(gx + x - cx) * k, (y - cy) * k]).collect(), ..shape.clone() };
+            LineString::new(shape_points(&s, engine))
+        })
+        .collect();
+    if layout.outline {
+        let silhouette = crate::text::glyph_silhouette(&strokes);
+        Ok((geom::rings(&silhouette), geom::fill_holes(&silhouette)))
+    } else {
+        let parts: Vec<MultiPolygon<f64>> = strokes.iter().map(|l| geom::buffer_line_round(l, t.size.0 * 0.08)).collect();
+        Ok((strokes, geom::union_multi(&parts)))
+    }
+}
+
 /// Evaluate every non-fill def, in dependency order (waves).
 fn evaluate(
     grammar: &Grammar,
@@ -374,6 +418,11 @@ fn eval_op(
                 .collect();
             Value::Area(geom::union_multi(&discs))
         }
+        Op::Shape(s) => {
+            let ring = LineString::new(shape_points(s, engine));
+            Value::Area(geom::union_multi(&[MultiPolygon::new(vec![Polygon::new(ring, vec![])])]))
+        }
+        Op::TextArea(t) => Value::Area(text_on_page(t, engine)?.1),
         Op::BufferLines(b) => {
             let ls = lines(&b.lines)?;
             let radius = b.by.0;
@@ -395,6 +444,14 @@ fn eval_op(
         }
 
         // ---- lines ---------------------------------------------------------
+        Op::Path(s) => {
+            let mut pts = shape_points(s, engine);
+            if s.closed {
+                pts.push(pts[0]);
+            }
+            Value::Lines(vec![LineString::new(pts)])
+        }
+        Op::Text(t) => Value::Lines(text_on_page(t, engine)?.0),
         Op::Rings(r) => {
             let a = area(&r.of)?;
             Value::Lines(if r.exterior_only { geom::exterior_rings(&a) } else { geom::rings(&a) })

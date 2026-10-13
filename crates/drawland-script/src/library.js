@@ -116,6 +116,37 @@
     if (!isFinite(n)) fail(`${where} is a length in millimetres like 0.3 or "0.3mm", got ${describe(v)}`);
     return n;
   };
+  // A shape written in the profile: `at` is `[x, y]` on the page (lengths or
+  // "50%") or `{ lat, lng }` on the ground; the outline is a `circle` radius,
+  // a `rect: [w, h]`, a regular polygon `{ sides, r }`, or `points: [[dx, dy], …]`
+  // in mm from `at`. `rotate` turns it clockwise, in degrees.
+  const shapeOp = (spec, where) => {
+    object(spec, where);
+    const at = spec.at ?? ["50%", "50%"];
+    const ring = (n, r, start) =>
+      Array.from({ length: n }, (_, i) => {
+        const t = start + (2 * Math.PI * i) / n;
+        return [r * Math.cos(t), r * Math.sin(t)];
+      });
+    let points;
+    if (spec.circle != null) points = ring(64, mm(spec.circle, `${where}.circle`), 0);
+    else if (spec.sides != null) points = ring(spec.sides, mm(spec.r, `${where}.r`), -Math.PI / 2);
+    else if (spec.rect != null) {
+      const [w, h] = spec.rect.map((v, i) => mm(v, `${where}.rect[${i}]`) / 2);
+      points = [[-w, -h], [w, -h], [w, h], [-w, h]];
+    } else if (Array.isArray(spec.points)) points = spec.points;
+    else fail(`${where} needs a circle, rect, sides + r, or points`);
+    return { at, points, rotate: spec.rotate ?? 0 };
+  };
+  // A line of text centred on `at` (as for shapes); `size` is the capital
+  // height; `font` as in `modules.labels`.
+  const textOp = (spec, where) => {
+    object(spec, where);
+    if (typeof spec.text !== "string" || !spec.text) fail(`${where}.text is a string`);
+    const op = { at: spec.at ?? ["50%", "50%"], text: spec.text, size: spec.size ?? "4mm", rotate: spec.rotate ?? 0 };
+    if (spec.font != null) op.font = spec.font;
+    return op;
+  };
   const unit = (t, where) => {
     if (typeof t !== "number" || isNaN(t)) fail(`${where}: t is a number from 0 to 1, got ${describe(t)}`);
     return Math.min(1, Math.max(0, t));
@@ -185,6 +216,13 @@
       if (typeof by !== "number" && typeof by !== "string") fail(`areas.around: by is a length like "2mm", got ${describe(by)}`);
       return make(Area, "areas", { tools_around: { of: need(of, Features, "areas.around"), by } });
     },
+    shape(spec) {
+      return make(Area, "areas", { tools_shape: shapeOp(spec, "areas.shape") });
+    },
+    // What `lines.text(spec)` covers: the letters, with their counters filled.
+    text(spec) {
+      return make(Area, "areas", { tools_text_area: textOp(spec, "areas.text") });
+    },
     /**
      * Half-width buffer around lines, merged into one area. Joins are always
      * round; `options.cap` is `"round"` (default) or `"flat"` (butt caps).
@@ -234,6 +272,15 @@
     },
     of(features) {
       return make(Lines, "lines", { tools_lines: need(features, Features, "lines.of") });
+    },
+    // Same shapes as `areas.shape`, as a stroke; `points` stay open unless `closed: true`.
+    shape(spec) {
+      const op = shapeOp(spec, "lines.shape");
+      op.closed = spec.points == null || !!spec.closed;
+      return make(Lines, "lines", { tools_path: op });
+    },
+    text(spec) {
+      return make(Lines, "lines", { tools_text: textOp(spec, "lines.text") });
     },
     segments(features) {
       return make(Lines, "lines", { tools_segments: need(features, Features, "lines.segments") });

@@ -202,13 +202,14 @@ pub fn validate_style(style: &Style) -> Result<(), String> {
 
 /// Every Google font key any `tools_labels` def in the grammar needs (`Roboto:400`, …).
 pub fn google_font_keys_in_grammar(grammar: &crate::grammar::Grammar) -> Vec<String> {
+    use crate::grammar::Op;
     let mut keys: Vec<String> = grammar
         .all_defs()
-        .filter_map(|def| match &def.op {
-            crate::grammar::Op::Labels(l) => Some(&l.style),
-            _ => None,
+        .flat_map(|def| match &def.op {
+            Op::Labels(l) => l.style.fonts().filter_map(LabelFont::google_key).collect::<Vec<_>>(),
+            Op::Text(t) | Op::TextArea(t) => t.font.google_key().into_iter().collect(),
+            _ => vec![],
         })
-        .flat_map(|style| style.fonts().filter_map(LabelFont::google_key).collect::<Vec<_>>())
         .collect();
     keys.sort();
     keys.dedup();

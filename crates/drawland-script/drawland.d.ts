@@ -266,6 +266,10 @@ declare const areas: {
   grow(of: Area, by: Length): Area
   /** A disc of radius `by` around every point feature (mapped trees), merged; lines and polygons are ignored. */
   around(of: Features, by: Length): Area
+  /** A shape you write: `circle`, `rect`, regular polygon (`sides` + `r`), or `points` in mm from `at`. */
+  shape(spec: ShapeSpec): Area
+  /** What `lines.text(spec)` covers (for masks). */
+  text(spec: TextSpec): Area
   /** A strip around lines: `by` is the half-width (flat caps), merged into one area. */
   /** Half-width strip around the lines, merged. Joins are round; default cap is round. */
   buffer(of: Lines, by: Length, options?: { cap?: "round" | "flat" }): Area
@@ -317,6 +321,31 @@ declare const lines: {
    * to stack the belts, each drawn as its own layer.
    */
   contours(options?: ContoursOptions): Lines
+  /** Like `areas.shape`, as strokes; closed unless you pass `points` with `closed: false`. */
+  shape(spec: ShapeSpec & { closed?: boolean }): Lines
+  /** One line of text centred on `at`; same fonts as `modules.labels`. */
+  text(spec: TextSpec): Lines
+}
+
+/** Page mm, lengths, or `"50%"`; or `{ lat, lng }` on the ground. */
+type ShapeAt = [Length | `${number}%`, Length | `${number}%`] | { lat: number; lng: number }
+
+interface ShapeSpec {
+  at?: ShapeAt
+  circle?: Length
+  rect?: [Length, Length]
+  sides?: number
+  r?: Length
+  points?: [number, number][]
+  rotate?: number
+}
+
+interface TextSpec {
+  at?: ShapeAt
+  text: string
+  size?: Length
+  font?: LabelFont
+  rotate?: number
 }
 
 /** Burin's terrain line styles: how the streamlines are drawn, and stippled. */
