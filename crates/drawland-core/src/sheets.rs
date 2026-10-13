@@ -1,7 +1,8 @@
 //! The paper the drawing goes on: a blank `padding` inside the output's edge,
 //! and the output cut into `slices`, `columns × rows` sheets of equal size with
 //! a blank `slices.gutter` between their drawings, half on each side of a
-//! cut, like the panels of a triptych. Both crop the composed drawing;
+//! cut, like the panels of a triptych. Every sheet's `inner` rectangle crops
+//! the composed drawing (padding zero still clips to the card edge);
 //! nothing is moved or scaled.
 
 use crate::geom::{self, Lines};
@@ -121,7 +122,7 @@ pub const PIECE: usize = 1 << 20;
 impl Layout {
     pub fn new(width: f64, height: f64, padding: MmXY, slices: &Slices) -> Layout {
         let sheets = sheets(width, height, padding, slices);
-        let cropped = padding.x > 0.0 || padding.y > 0.0 || sheets.len() > 1;
+        let cropped = true;
         let mut parts = vec![svg::header(width, height)];
         if sheets.len() > 1 {
             let um = |v: f64| (v * 1000.0).round() / 1000.0;

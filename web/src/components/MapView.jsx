@@ -1021,14 +1021,14 @@ export default function MapView({
       */}
       <div
         ref={overlayRef}
-        className={`pointer-events-none absolute left-0 top-0 overflow-hidden border border-black ${RAISED} ${
+        className={`pointer-events-none absolute left-0 top-0 overflow-hidden outline outline-black ${RAISED} ${
           drawing?.svg && !tilesLive ? 'bg-white' : 'bg-white/20'
         }`}
         style={{ display: 'none', willChange: 'transform' }}
       >
         {drawing?.svg && svgUrl ? (
           <img
-            className={`block h-full w-full select-none ${tilesLive ? 'opacity-20' : ''}`}
+            className={`block h-full w-full select-none object-fill ${tilesLive ? 'opacity-20' : ''}`}
             src={svgUrl}
             alt=""
             draggable={false}

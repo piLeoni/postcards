@@ -186,7 +186,11 @@ const pathDraws = [
   }),
 ]
 const waterDraws = [
-  draw({ id: "water_ring", from: lines.rings(water), stroke: penStroke({ style: "solid" }) }),
+  draw({
+    id: "water_ring",
+    from: lines.clip(lines.rings(water), areas.grow(frame, "-0.25mm")),
+    stroke: penStroke({ style: "solid" }),
+  }),
   draw({ id: "water_fill", from: fills.fill({ in: water, pattern: "waves", spacing: "0.75mm" }), stroke: penStroke({ style: "solid" }) }),
   draw({ id: "dock_ring", from: lines.rings(docks), stroke: penStroke({ style: "solid" }) }),
   draw({ id: "piers", from: lines.rings(pierPads), stroke: penStroke({ style: "solid" }) }),
