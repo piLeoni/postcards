@@ -5,8 +5,8 @@ output({
   scale: "1:10000",   // terrain 0.947 × 0.631 mi
   bearing: -4,
   projection: "webmercator",
-  lat: 37.7864972,
-  lng: -122.4850441,
+  lat: 37.7946707,
+  lng: -122.4528951,
   tileZoom: 14,
 })
 
@@ -167,32 +167,40 @@ const wood = NATURE.find((k) => k.id === "wood")
 // `fills.cover(...)` below reports each canopy's real footprint so the dots
 // and the ground burin only hide where a crown actually stands.
 /** @type {Omit<FillOptions, "in">} */
-const SHADE = { pattern: "isoline-stack", seed: 7, slices: 12, jitter: 1.3, light: 0.8, light_angle: 225 } // light from the top left, as on the burin maps
+const SHADE = {
+  pattern: "isoline-stack",
+  seed: 7,
+  slices: 5,
+  jitter: 4,
+  light: 0.85,
+  light_angle: 225,
+} // light from the top left, as on the burin maps
 const trees = features.osm({ natural: "tree" })
 // Mapped crowns on any dry land (campus quads, park edges, …), not only
-// inside the forest polygon. Inside wood we still punch discs out of the
-// generated canopy so a tree is not drawn twice.
+// inside the forest polygon. Where a mapped tree disc touches or sits near
+// the wood, unioning it into `wood.visible` lets its crown and the forest
+// canopy share a single 3D metaball field and merge seamlessly; only trees
+// standing out in the open are drawn by `MAPPED_TREES`.
 const land = areas.difference(frame, water)
 const treeDiscsMapped = areas.intersect(areas.around(trees, "1.4mm"), land)
-const treeDiscsInWood = areas.intersect(treeDiscsMapped, wood.visible)
+const treeDiscsOpen = areas.difference(treeDiscsMapped, areas.grow(wood.visible, "1.0mm"))
 /** @type {FillOptions} */
 const FOLIAGE = {
   ...SHADE,
-  in: areas.difference(wood.visible, treeDiscsInWood),
-  spacing: "4mm",
-  edge: "inside",
-  coverage: 0.8,
-  bubble: "1.2mm",
+  in: areas.union(wood.visible, areas.difference(treeDiscsMapped, treeDiscsOpen)),
+  spacing: "2.0mm",
+  edge: "overflow",
+  coverage: 0.5,
+  bubble: "1mm",
 }
 /** @type {FillOptions} */
 const MAPPED_TREES = {
   ...SHADE,
-  in: treeDiscsMapped,
-  spacing: "1.4mm",
+  in: treeDiscsOpen,
+  spacing: "2.0mm",
   edge: "overflow",
-  overflow: "0.4mm",
-  coverage: 1,
-  bubble: "0.5mm",
+  coverage: 1.0,
+  bubble: "1mm",
 }
 const woodFoliage = draw({
   id: "nat_fill_wood_foliage",

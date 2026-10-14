@@ -52,7 +52,7 @@ fn coefficients(generator: &str) -> (f64, f64) {
         "wood" => (744.0, 750.0),
         "marble" => (11_456.0, 3801.0),
         "cracks" => (11_905.0, 11_196.0),
-        "isoline-blobs" | "isoline-stack" => (2_500.0, 1_500.0),
+        "isoline-blobs" | "isoline-stack" | "isoline-stack-hatched" => (2_500.0, 1_500.0),
         "growth" => (1_500.0, 1_800.0),
         "stipple-edge" | "stipple-noise" => (250.0, 150.0),
         // Not measured (`pat`, sources): as dense as the dense ones.

@@ -171,9 +171,9 @@ const FOLIAGE = {
   seed: 7,
   root_spacing: "6mm", // one basin per root, white seams between them
   line_width: PEN, // trunk passes sit side by side, one pen apart
-  coverage: 0.8, // how far each tree reaches towards its neighbours
+  coverage: 0.72, // how far each tree reaches towards its neighbours (leaves clearings like isoline)
   variation: 0.99, // some crowns bigger, some smaller
-  trunk: 0, // one line weight throughout
+  trunk: 0, // single line width throughout
 }
 const woodFoliage = draw({
   id: "nat_fill_wood_foliage",

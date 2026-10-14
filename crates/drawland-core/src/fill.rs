@@ -35,7 +35,7 @@ pub const GENERATORS: &[&str] = &[
     "conglomerate-flat", "coquina", "cracked-earth", "cracks", "dacite", "debris-soil", "diabase", "diatom",
     "diorite", "dots", "drift", "dry-cracked-soil", "erosion-lines", "feldspar", "ferrous", "fill", "fine-gravel",
     "fluid-grass", "gabbro", "gneiss", "grainy-soil", "granite", "granite-x", "grass", "gravel", "gravel-clipped",
-    "gravelly-soil", "grid", "growth", "hilbert", "honeycomb", "hornblende", "isoline-blobs", "isoline-stack", "laminae", "lava", "layered-soil", "lily-pads",
+    "gravelly-soil", "grid", "growth", "hilbert", "honeycomb", "hornblende", "isoline-blobs", "isoline-stack", "isoline-stack-hatched", "laminae", "lava", "layered-soil", "lily-pads",
     "lines", "loose-soil", "marble", "masonry", "mixed-rocks", "mulch", "mulched-soil", "none", "ophitic",
     "organic-topsoil", "pat", "pebble-scatter", "pebbled-soil", "pebbles", "rectilinear", "sandy-soil", "scales",
     "scribble", "shards", "silty-soil", "solid", "spiral", "sprouts", "stipple", "stipple-edge", "stipple-noise",
@@ -270,7 +270,7 @@ fn run_generator_into(region: &Region, generator: &str, spec: &FillSpec, sink: &
         "gravel" => gravel::fill_gravel(r, s, seed),
         "scribble" => scribble::fill_scribble(r, s, a, seed),
         "truchet" => truchet::fill_truchet(r, s, a, seed, at),
-        "isoline-blobs" | "isoline-stack" | "growth" => covering(r, spec, true)?.strokes,
+        "isoline-blobs" | "isoline-stack" | "isoline-stack-hatched" | "growth" => covering(r, spec, true)?.strokes,
         "marble" => textures::fill_marble(r, s, a, seed, at),
         "wood" => textures::fill_wood(r, s, a, seed, at),
         "cracks" => textures::fill_cracks(r, s, seed),
@@ -295,7 +295,7 @@ fn run_generator_into(region: &Region, generator: &str, spec: &FillSpec, sink: &
 /// Generators that know what they cover, which may be less (clearings) or
 /// more (overflow) than the area they are given.
 fn covers(generator: &str) -> bool {
-    matches!(generator, "isoline-blobs" | "isoline-stack" | "growth")
+    matches!(generator, "isoline-blobs" | "isoline-stack" | "isoline-stack-hatched" | "growth")
 }
 
 /// Runs made for a [`cover`], kept until the fill pass draws them, so a
@@ -368,31 +368,34 @@ fn covering(r: &Region, spec: &FillSpec, take: bool) -> Result<penfill::FillWith
             };
             fill_growth_with_coverage(r, &params)
         }
-        "isoline-stack" => {
+        "isoline-stack" | "isoline-stack-hatched" => {
             use penfill::isoline_stack::{fill_isoline_stack_with_coverage, CrownSource, EdgeMode, IsolineStackParams};
+            let is_hatched = generator == "isoline-stack-hatched";
             let edge = match o.str("edge")?.unwrap_or("clip") {
                 "clip" => EdgeMode::Clip,
                 "inside" => EdgeMode::Inside,
                 "overflow" => EdgeMode::Overflow(o.mm("overflow")?.unwrap_or(s * 0.4)),
                 other => return Err(o.bad("edge", format!("{other:?}: use clip, inside or overflow"))),
             };
-            let light = match o.num("light")?.filter(|s| *s > 0.0) {
+            let light_strength = o.num("light")?.or_else(|| is_hatched.then_some(0.85)).filter(|s| *s > 0.0);
+            let light = match light_strength {
                 Some(strength) => Some(penfill::isoline_stack::Light {
                     from_deg: o.num("light_angle")?.unwrap_or(0.0),
                     strength,
                     elevation_deg: o.num("light_elevation")?.unwrap_or(35.0),
-                    hatch: o.mm("hatch")?.unwrap_or(0.0),
+                    hatch: o.mm("hatch")?.unwrap_or(if is_hatched { 0.45 } else { 0.0 }),
                 }),
                 None => None,
             };
+            let default_slices = if is_hatched { 4.0 } else { 14.0 };
             let params = IsolineStackParams {
                 seed,
                 crowns: CrownSource::Generate,
                 crown: s,
                 bubble: o.mm("bubble")?.unwrap_or(s * 0.3),
                 coverage: o.num("coverage")?.unwrap_or(0.6),
-                slices: o.num("slices")?.map_or(14, |n| n.clamp(1.0, 64.0) as usize),
-                jitter: o.num("jitter")?.unwrap_or(0.8),
+                slices: o.num("slices")?.unwrap_or(default_slices).clamp(1.0, 64.0) as usize,
+                jitter: o.num("jitter")?.unwrap_or(if is_hatched { 1.8 } else { 0.8 }),
                 edge,
                 light,
             };
@@ -413,22 +416,70 @@ pub fn clear_cover_cache() {
     guard.clear();
 }
 
-/// One OSM forest polygon per region for covering fills: one huge bounding
-/// box over every patch is what made `fills.cover` take tens of seconds.
+/// Group polygons whose overflow reach can touch into the same `Region`, while
+/// keeping distant forest patches separate so one huge bounding box over the
+/// whole map does not slow down `Surface` and `Fade` grids.
 fn work_regions(mp: &MultiPolygon<f64>, spec: &FillSpec) -> Vec<Region> {
     if !spec.generator.as_deref().is_some_and(covers) || mp.0.len() <= 1 {
         return regions(mp);
     }
-    mp.0
+    let valid: Vec<&Polygon<f64>> = mp.0.iter().filter(|p| p.exterior().0.len() >= 4).collect();
+    if valid.len() <= 1 {
+        return regions(mp);
+    }
+    // How far past a polygon's border its crowns can bulge (`overflow`), plus a
+    // small margin so polygons whose overflow halos touch share one 3D field.
+    let s = spec.spacing.map(|m| m.0).unwrap_or(1.5).max(1e-3);
+    let o = Opts { generator: "fill", options: &spec.options };
+    let reach = match o.str("edge").ok().flatten() {
+        Some("overflow") => o.mm("overflow").ok().flatten().unwrap_or(s * 0.4).max(0.0) + 0.25,
+        _ => 0.0,
+    };
+    let bboxes: Vec<(f64, f64, f64, f64)> = valid
         .iter()
-        .filter(|p| p.exterior().0.len() >= 4)
         .map(|p| {
-            let polys: Vec<Vec<Vec<(f64, f64)>>> = vec![std::iter::once(p.exterior())
-                .chain(p.interiors())
-                .map(|ring| ring.0.iter().map(|c| (c.x, c.y)).collect())
-                .collect()];
-            Region::from_disjoint_polygons(&polys)
+            p.exterior().0.iter().fold(
+                (f64::INFINITY, f64::INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY),
+                |(x0, y0, x1, y1), c| (x0.min(c.x - reach), y0.min(c.y - reach), x1.max(c.x + reach), y1.max(c.y + reach)),
+            )
         })
+        .collect();
+    let n = valid.len();
+    let mut parent: Vec<usize> = (0..n).collect();
+    fn find(parent: &mut [usize], mut i: usize) -> usize {
+        while parent[i] != i {
+            parent[i] = parent[parent[i]];
+            i = parent[i];
+        }
+        i
+    }
+    if reach > 0.0 {
+        for i in 0..n {
+            let (ax0, ay0, ax1, ay1) = bboxes[i];
+            for j in (i + 1)..n {
+                let (bx0, by0, bx1, by1) = bboxes[j];
+                if ax0 <= bx1 && bx0 <= ax1 && ay0 <= by1 && by0 <= ay1 {
+                    let ri = find(&mut parent, i);
+                    let rj = find(&mut parent, j);
+                    if ri != rj {
+                        parent[ri] = rj;
+                    }
+                }
+            }
+        }
+    }
+    let mut groups: std::collections::BTreeMap<usize, Vec<Vec<Vec<(f64, f64)>>>> = std::collections::BTreeMap::new();
+    for (i, p) in valid.into_iter().enumerate() {
+        let root = find(&mut parent, i);
+        let poly: Vec<Vec<(f64, f64)>> = std::iter::once(p.exterior())
+            .chain(p.interiors())
+            .map(|ring| ring.0.iter().map(|c| (c.x, c.y)).collect())
+            .collect();
+        groups.entry(root).or_default().push(poly);
+    }
+    groups
+        .into_values()
+        .map(|polys| Region::from_disjoint_polygons(&polys))
         .filter(|r| !r.is_empty())
         .collect()
 }
