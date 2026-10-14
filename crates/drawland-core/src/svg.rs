@@ -12,9 +12,38 @@ const DEFAULT_STYLE: &str = "\nsvg {\n  stroke: black;\n  stroke-width: 0.1;\n  
 
 /// Shortest decimal for `v` at 0.1 µm resolution.
 fn num(out: &mut String, v: f64) {
-    let r = (v * 1e4).round() / 1e4;
-    let r = if r == 0.0 { 0.0 } else { r };
-    let _ = write!(out, "{r}");
+    if !v.is_finite() {
+        let _ = write!(out, "{v}");
+        return;
+    }
+    let scaled = (v * 1e4).round();
+    if scaled == 0.0 {
+        out.push('0');
+        return;
+    }
+    if scaled.abs() < (i64::MAX as f64) {
+        let mut n = scaled as i64;
+        if n < 0 {
+            out.push('-');
+            n = -n;
+        }
+        let int_part = n / 10_000;
+        let mut frac = (n % 10_000) as u32;
+        let _ = write!(out, "{int_part}");
+        if frac != 0 {
+            out.push('.');
+            let mut div = 1_000;
+            while frac != 0 {
+                let digit = frac / div;
+                out.push(char::from(b'0' + digit as u8));
+                frac %= div;
+                div /= 10;
+            }
+        }
+    } else {
+        let r = scaled / 1e4;
+        let _ = write!(out, "{r}");
+    }
 }
 
 pub fn write_svg(width_mm: f64, height_mm: f64, groups: &[(String, Lines)]) -> String {

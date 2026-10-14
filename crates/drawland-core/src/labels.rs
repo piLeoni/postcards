@@ -219,7 +219,7 @@ pub fn google_font_keys_in_grammar(grammar: &crate::grammar::Grammar) -> Vec<Str
 /// The labels as placed: the pen strokes of their letters, and what each
 /// label covers.
 #[derive(Debug, Clone, Default)]
-struct Bucket {
+pub struct Bucket {
     lines: Lines,
     shapes: Vec<MultiPolygon<f64>>,
 }
@@ -522,6 +522,10 @@ pub fn place(features: &[Feature], frame: &MultiPolygon<f64>, style: &Style, goo
             faces.insert(key, crate::google_fonts::decode_font_bytes(bytes)?);
         }
     }
+    let mut cached_faces: HashMap<String, text::CachedGoogleFont<'_>> = HashMap::new();
+    for (k, bytes) in &faces {
+        cached_faces.insert(k.clone(), text::CachedGoogleFont::parse(bytes)?);
+    }
     let page = frame.unsigned_area().max(1.0);
     let mut candidates = Vec::new();
     // Roads come in pieces; one chain per name and class, so a street is one
@@ -570,11 +574,28 @@ pub fn place(features: &[Feature], frame: &MultiPolygon<f64>, style: &Style, goo
     let mut taken = Taken::new(max_cap * 4.0);
     let mut named: HashMap<String, Vec<Coord<f64>>> = HashMap::new();
     let mut out = Placed::default();
-    let inside = |q: &Quad| q.0.iter().all(|c| frame.contains(&Point::from(*c)));
+    let frame_rect = geo::BoundingRect::bounding_rect(frame);
+    let pt_in_frame = |c: Coord<f64>| {
+        if let Some(r) = frame_rect {
+            if c.x < r.min().x || c.x > r.max().x || c.y < r.min().y || c.y > r.max().y {
+                return false;
+            }
+        }
+        frame.contains(&Point::from(c))
+    };
+    let inside = |q: &Quad| q.0.iter().all(|&c| pt_in_frame(c));
     for c in &candidates {
         let look = &c.look;
-        let bytes = look.font.google_key().and_then(|k| faces.get(&k)).map(Vec::as_slice);
-        let layout = text::layout(&look.font, bytes, &c.text)?;
+        let layout = match look.font.google_key() {
+            Some(k) => {
+                let cf = cached_faces.get_mut(&k).ok_or_else(|| {
+                    let (family, _, _) = look.font.google_spec().unwrap_or(("", 400, false));
+                    format!("labels: google font {:?} ({}) was not loaded", family, k)
+                })?;
+                cf.layout(&c.text)
+            }
+            None => text::layout(&look.font, None, &c.text)?,
+        };
         let (big, small) = (look.size.0.max(0.1), look.min_size.0.max(0.1));
         let size = small + (big - small) * c.rank.clamp(0.0, 1.0);
         let k = size / layout.cap_height;
@@ -663,7 +684,19 @@ pub fn place(features: &[Feature], frame: &MultiPolygon<f64>, style: &Style, goo
                 }
             }
             Shape::Area(poly) => {
-                let fits = |poses: &[Pose]| poses.iter().all(|p| poly.contains(&p.quad(&layout, 0.0).polygon()));
+                let poly_rect = geo::BoundingRect::bounding_rect(poly);
+                let fits = |poses: &[Pose]| {
+                    poses.iter().all(|p| {
+                        let q = p.quad(&layout, 0.0);
+                        if let Some(r) = poly_rect {
+                            let (x0, y0, x1, y1) = q.bounds();
+                            if x0 < r.min().x || x1 > r.max().x || y0 < r.min().y || y1 > r.max().y {
+                                return false;
+                            }
+                        }
+                        poly.contains(&q.polygon())
+                    })
+                };
                 for at in area_spots(poly, width, size) {
                     if !far(at, &named) {
                         continue;
@@ -676,7 +709,7 @@ pub fn place(features: &[Feature], frame: &MultiPolygon<f64>, style: &Style, goo
                 }
             }
             Shape::Pin(at) => {
-                if !frame.contains(&Point::from(*at)) || !far(*at, &named) {
+                if !pt_in_frame(*at) || !far(*at, &named) {
                     continue;
                 }
                 let poses = horizontal_label(&layout, *at, width, k);

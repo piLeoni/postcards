@@ -28,7 +28,7 @@ Interactive map + profile editor; preview and download SVG using the same engine
 3. `fetchTiles` → `job.readTiles`
 4. `fetchTerrain` → `job.readTerrain`
 5. Google fonts (prefetched or `fetchGoogleFonts`)
-6. `job.draw` — SVG streamed via callbacks; result as Blob parts
+6. `job.draw` — SVG streamed via callbacks; result as Blob parts plus an overview `ImageBitmap` (`lib/preview.js`) rendered onto an `OffscreenCanvas` in the worker; when the map settles (`moveend`), the worker re-renders the visible viewport slice from its recorded vector coordinates at native device-pixel resolution so zoomed-in views stay vector-sharp without parsing large SVG DOMs on the main thread
 
 Cancel via `AbortController`; WASM trap handling avoids leaving a borrowed `Job` (see worker comments).
 

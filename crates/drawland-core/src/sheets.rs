@@ -182,10 +182,15 @@ impl Layout {
         if mp.0.is_empty() {
             return;
         }
+        let per_sheet: Vec<MultiPolygon<f64>> = if self.cropped || self.cut() {
+            self.sheets.iter().map(|s| geom::intersection(mp, &rect_mp(s.inner))).collect()
+        } else {
+            Vec::new()
+        };
         let whole = if self.cropped {
             let mut merged = geom::empty();
-            for s in &self.sheets {
-                merged = geom::union_multi([&merged, &geom::intersection(mp, &rect_mp(s.inner))]);
+            for piece in &per_sheet {
+                merged = geom::union_multi([&merged, piece]);
             }
             merged
         } else {
@@ -199,8 +204,7 @@ impl Layout {
         }
         svg::multipolygon_filled(&mut self.parts[0], &whole, fill);
         if self.cut() {
-            for (k, s) in self.sheets.iter().enumerate() {
-                let piece = geom::intersection(mp, &rect_mp(s.inner));
+            for (k, (s, piece)) in self.sheets.iter().zip(per_sheet).enumerate() {
                 if piece.0.is_empty() {
                     continue;
                 }
@@ -241,26 +245,34 @@ impl Layout {
 
     /// Lines of the group begun last.
     pub fn lines(&mut self, lines: &[LineString<f64>], out: &mut Out) {
-        let cropped_lines;
-        let whole = if self.cropped {
-            cropped_lines = self.sheets.iter().flat_map(|s| clip(lines, s.inner)).collect::<Lines>();
-            &cropped_lines[..]
-        } else {
-            lines
-        };
-        if let Some(g) = self.groups.last_mut() {
-            g.1 += whole.len();
-        }
-        for l in whole {
-            svg::polyline(&mut self.parts[0], l);
-        }
         if self.cut() {
+            let mut total_whole = 0;
             for (k, s) in self.sheets.iter().enumerate() {
+                let sheet_lines = clip(lines, s.inner);
+                total_whole += sheet_lines.len();
                 let [x0, y0, _, _] = s.at;
-                for l in clip(whole, s.inner) {
-                    let moved = LineString::new(l.0.into_iter().map(|c| Coord { x: c.x - x0, y: c.y - y0 }).collect());
+                for l in &sheet_lines {
+                    svg::polyline(&mut self.parts[0], l);
+                    let moved = LineString::new(l.0.iter().map(|c| Coord { x: c.x - x0, y: c.y - y0 }).collect());
                     svg::polyline(&mut self.parts[k + 1], &moved);
                 }
+            }
+            if let Some(g) = self.groups.last_mut() {
+                g.1 += total_whole;
+            }
+        } else {
+            let cropped_lines;
+            let whole = if self.cropped {
+                cropped_lines = self.sheets.first().map_or_else(Vec::new, |s| clip(lines, s.inner));
+                &cropped_lines[..]
+            } else {
+                lines
+            };
+            if let Some(g) = self.groups.last_mut() {
+                g.1 += whole.len();
+            }
+            for l in whole {
+                svg::polyline(&mut self.parts[0], l);
             }
         }
         for (k, p) in self.parts.iter_mut().enumerate() {
@@ -342,7 +354,8 @@ pub fn clip(lines: &[LineString<f64>], r: Rect) -> Lines {
 }
 
 /// Liang–Barsky: the part of `a → b` inside `r`. An end already inside comes
-/// back exactly as it was, so consecutive segments join on equality.
+/// back bit-for-bit, so the next segment in the line starts where this one
+/// stopped and the run stays one polyline.
 fn clip_segment(a: Coord<f64>, b: Coord<f64>, r: Rect) -> Option<(Coord<f64>, Coord<f64>)> {
     let (dx, dy) = (b.x - a.x, b.y - a.y);
     let (mut t0, mut t1) = (0.0_f64, 1.0_f64);

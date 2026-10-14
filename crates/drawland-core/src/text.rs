@@ -382,39 +382,73 @@ impl ttf_parser::OutlineBuilder for OutlineCollector {
     }
 }
 
-fn layout_google(bytes: &[u8], text: &str) -> Result<LabelLayout, String> {
-    let face = ttf_parser::Face::parse(bytes, 0).map_err(|e| format!("labels: google font did not parse ({e})"))?;
-    let units = face.units_per_em() as f64;
-    let ascender = face.ascender() as f64;
-    let cap_height = face
-        .capital_height()
-        .map(f64::from)
-        .filter(|&h| h > 0.0)
-        .unwrap_or(if ascender > 0.0 { ascender * 0.75 } else { units * 0.7 });
-    let missing = face.glyph_index('?').unwrap_or(ttf_parser::GlyphId(0));
-    let mut x = 0.0;
-    let mut glyphs = Vec::new();
-    for c in text.chars().map(fold) {
-        let gid = face.glyph_index(c).unwrap_or(missing);
-        let advance = face.glyph_hor_advance(gid).unwrap_or(0) as f64;
-        let mut col = OutlineCollector::new();
-        // A space has no outline; a letter without one is drawn as `?`.
-        if face.outline_glyph(gid, &mut col).is_none() && !c.is_whitespace() {
-            col = OutlineCollector::new();
-            face.outline_glyph(missing, &mut col);
-        }
-        col.finish_run();
-        glyphs.push(LabelGlyph { x, advance, strokes: col.runs });
-        x += advance;
+/// Pre-parsed outline font face that caches tessellated glyph contours per character.
+pub struct CachedGoogleFont<'a> {
+    face: ttf_parser::Face<'a>,
+    cap_height: f64,
+    top: f64,
+    bottom: f64,
+    missing: ttf_parser::GlyphId,
+    glyphs: std::collections::HashMap<char, (f64, Vec<Vec<(f64, f64)>>)>,
+}
+
+impl<'a> CachedGoogleFont<'a> {
+    pub fn parse(bytes: &'a [u8]) -> Result<Self, String> {
+        let face = ttf_parser::Face::parse(bytes, 0).map_err(|e| format!("labels: google font did not parse ({e})"))?;
+        let units = face.units_per_em() as f64;
+        let ascender = face.ascender() as f64;
+        let cap_height = face
+            .capital_height()
+            .map(f64::from)
+            .filter(|&h| h > 0.0)
+            .unwrap_or(if ascender > 0.0 { ascender * 0.75 } else { units * 0.7 });
+        let missing = face.glyph_index('?').unwrap_or(ttf_parser::GlyphId(0));
+        Ok(CachedGoogleFont {
+            top: -ascender.max(cap_height),
+            bottom: -(face.descender() as f64),
+            cap_height,
+            missing,
+            face,
+            glyphs: std::collections::HashMap::new(),
+        })
     }
-    Ok(LabelLayout {
-        glyphs,
-        width: x,
-        cap_height,
-        top: -ascender.max(cap_height),
-        bottom: -(face.descender() as f64),
-        outline: true,
-    })
+
+    pub fn layout(&mut self, text: &str) -> LabelLayout {
+        let mut x = 0.0;
+        let mut glyphs = Vec::with_capacity(text.len());
+        for c in text.chars().map(fold) {
+            let (advance, strokes) = self
+                .glyphs
+                .entry(c)
+                .or_insert_with(|| {
+                    let gid = self.face.glyph_index(c).unwrap_or(self.missing);
+                    let advance = self.face.glyph_hor_advance(gid).unwrap_or(0) as f64;
+                    let mut col = OutlineCollector::new();
+                    if self.face.outline_glyph(gid, &mut col).is_none() && !c.is_whitespace() {
+                        col = OutlineCollector::new();
+                        self.face.outline_glyph(self.missing, &mut col);
+                    }
+                    col.finish_run();
+                    (advance, col.runs)
+                })
+                .clone();
+            glyphs.push(LabelGlyph { x, advance, strokes });
+            x += advance;
+        }
+        LabelLayout {
+            glyphs,
+            width: x,
+            cap_height: self.cap_height,
+            top: self.top,
+            bottom: self.bottom,
+            outline: true,
+        }
+    }
+}
+
+fn layout_google(bytes: &[u8], text: &str) -> Result<LabelLayout, String> {
+    let mut cached = CachedGoogleFont::parse(bytes)?;
+    Ok(cached.layout(text))
 }
 
 /// The filled shape of an outline glyph from its closed contours, as the font

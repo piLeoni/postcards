@@ -14,13 +14,31 @@ import { fetchOverpass } from './overpass'
 import { fetchTiles } from './tiles'
 import { fetchTerrain } from './terrain'
 import { fetchGoogleFonts } from './googleFonts'
+import { createPreviewPainter } from './preview'
 import { Task } from './progress'
 
 let current = null
+let activePainter = null
+let activeToken = 0
 
 self.onmessage = ({ data }) => {
   if (data.type === 'cancel') current?.abort()
   if (data.type === 'draw') run(data)
+  if (data.type === 'viewport') {
+    if (data.token !== activeToken || !activePainter) return
+    const bitmap = activePainter.renderViewport(data.rect)
+    if (!bitmap) return
+    self.postMessage(
+      {
+        type: 'viewport',
+        token: data.token,
+        seq: data.seq,
+        rect: data.rect,
+        bitmap,
+      },
+      [bitmap],
+    )
+  }
 }
 
 async function run({ token, graph, lat, lng, googleFonts }) {
@@ -41,10 +59,10 @@ async function run({ token, graph, lat, lng, googleFonts }) {
     try {
       // How much room there is, so a fill that cannot fit is refused with a
       // message rather than trapping in the wasm allocator. `memory.buffer`
-      // is the current size, which grows as the draw runs, so the ceiling is
-      // the import's maximum, or the browser's own limit when there is none.
+      // is an ArrayBuffer (no `.maximum`), so check `buffer.maxByteLength` or
+      // default to the wasm32 4 GB address space ceiling.
       const buf = engine.memory?.buffer
-      const cap = buf?.maximum ?? 4 * 1024 * 1024 * 1024
+      const cap = (buf?.maxByteLength && buf.maxByteLength > buf.byteLength ? buf.maxByteLength : 0) || 4 * 1024 * 1024 * 1024
       if (cap) job.memoryBudget = cap
       // Overpass only for an output that selects from it (`osm_select`).
       let bytes = 0
@@ -80,19 +98,30 @@ async function run({ token, graph, lat, lng, googleFonts }) {
       // and part k the kth slice; a Blob keeps it out of the wasm heap and
       // past the length a single JS string may have.
       const parts = []
-      const onText = (k, text) => (parts[k] ??= []).push(text)
+      const previewPainter = createPreviewPainter()
+      const onText = (k, text) => {
+        ;(parts[k] ??= []).push(text)
+        if (k === 0) previewPainter?.feed(text)
+      }
       const out = job.draw({}, emit, onText)
       if (ac.signal.aborted) return
+      const preview = previewPainter?.finish() ?? null
+      activePainter = previewPainter
+      activeToken = token
       const blob = (k) => new Blob(parts[k] ?? [], { type: 'image/svg+xml' })
-      self.postMessage({
-        type: 'done',
-        token,
-        svg: blob(0),
-        groups: out.groups,
-        slices: out.slices.map((name, i) => [name, blob(i + 1)]),
-        ms: Math.round(performance.now() - t0),
-        bytes,
-      })
+      self.postMessage(
+        {
+          type: 'done',
+          token,
+          svg: blob(0),
+          preview,
+          groups: out.groups,
+          slices: out.slices.map((name, i) => [name, blob(i + 1)]),
+          ms: Math.round(performance.now() - t0),
+          bytes,
+        },
+        preview ? [preview] : [],
+      )
       out.free()
     } catch (e) {
       trapped = e instanceof WebAssembly.RuntimeError

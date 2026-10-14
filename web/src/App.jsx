@@ -218,6 +218,8 @@ export default function App() {
   // and only paints its lines.
   const workerRef = useRef(null)
   const onWorkerRef = useRef(null)
+  const onViewportRef = useRef(null)
+  const viewportSeqRef = useRef(0)
   useEffect(() => () => workerRef.current?.terminate(), [])
 
   // The tile plan runs in a worker of its own (see `plan.worker.js`), so
@@ -297,6 +299,10 @@ export default function App() {
     }
 
     onWorkerRef.current = (msg) => {
+      if (msg.type === 'viewport') {
+        onViewportRef.current?.(msg)
+        return
+      }
       if (msg.token !== token) return
       if (msg.type === 'tiles') {
         if (msg.ids) {
@@ -322,7 +328,16 @@ export default function App() {
           }
         }
       } else if (msg.type === 'done') {
-        setDrawing({ svg: msg.svg, groups: msg.groups, slices: msg.slices ?? [], ms: msg.ms, bytes: msg.bytes, at })
+        setDrawing({
+          svg: msg.svg,
+          preview: msg.preview ?? null,
+          token,
+          groups: msg.groups,
+          slices: msg.slices ?? [],
+          ms: msg.ms,
+          bytes: msg.bytes,
+          at,
+        })
         setStatus({ phase: 'ready' })
         if (tileState) {
           setTiles({ ids: tileState.ids, state: tileState.state, live: false, at, zoom: tileState.zoom })
@@ -389,6 +404,14 @@ export default function App() {
   useEffect(() => {
     if (drawing && drawing.at !== here) setDrawing(null)
   }, [drawing, here])
+  const prevPreviewRef = useRef(null)
+  useEffect(() => {
+    const prev = prevPreviewRef.current
+    const next = drawing?.preview ?? null
+    if (prev && prev !== next) prev.close?.()
+    prevPreviewRef.current = next
+  }, [drawing])
+  useEffect(() => () => prevPreviewRef.current?.close?.(), [])
   // The tile trace belongs to where it was read; a moved output drops it.
   useEffect(() => {
     setTiles((t) => (t?.at && t.at !== here ? null : t))
@@ -508,6 +531,14 @@ export default function App() {
     mapApiRef.current?.fit?.(lng, lat, bearing)
   }, [])
 
+  const requestViewport = useCallback((token, rect, cb) => {
+    if (!workerRef.current || !token) return 0
+    const seq = ++viewportSeqRef.current
+    onViewportRef.current = cb
+    workerRef.current.postMessage({ type: 'viewport', token, seq, rect })
+    return seq
+  }, [])
+
   const tilesOnMap = compileStale ? null : tiles?.at === here ? tiles : null
   // While the output turns the old plan stays: the map turns under it, and the
   // tiles are on the same ground until the new plan says otherwise.
@@ -551,6 +582,7 @@ export default function App() {
           output={output}
           units={units}
           drawing={current}
+          onRequestViewport={requestViewport}
           apiRef={mapApiRef}
           load={load}
           loadMin={loadMin}

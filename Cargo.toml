@@ -10,7 +10,7 @@ license = "AGPL-3.0-only"
 [workspace.dependencies]
 drawland-core = { path = "crates/drawland-core" }
 drawland-script = { path = "crates/drawland-script" }
-penfill = { path = "../penfill" }
+penfill = { path = "../penfill", default-features = false }
 # Pen-and-ink terrain drawing: its own engine, its own expression trees.
 burin-map-core = { path = "../burin-map/crates/burin-map-core", version = "0.1.0" }
 # burin's JavaScript layer, mounted into draw.land's own interpreter so a
@@ -37,7 +37,8 @@ ttf-parser = { version = "0.25", features = ["std"] }
 wuff = { version = "0.2.9", features = ["brotli", "z"] }
 
 [profile.release]
-lto = "thin"
+lto = true
+codegen-units = 1
 
 [profile.dev]
 # Incremental builds are what filled target/ with tens of GB of session

@@ -8,7 +8,7 @@ license.workspace = true
 [dependencies]
 penfill = { workspace = true }
 burin-map-core = { workspace = true }
-terramask = { workspace = true }
+terramask = { workspace = true, features = ["dem"] }
 geo = { workspace = true }
 i_overlay = { workspace = true }
 geographiclib-rs = { workspace = true }

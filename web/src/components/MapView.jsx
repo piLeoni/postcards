@@ -538,6 +538,7 @@ export default function MapView({
   output,
   units,
   drawing,
+  onRequestViewport,
   apiRef,
   load,
   loadMin,
@@ -565,6 +566,16 @@ export default function MapView({
   const containerRef = useRef(null)
   const mapRef = useRef(null)
   const overlayRef = useRef(null)
+  const previewWrapRef = useRef(null)
+  const previewCanvasRef = useRef(null)
+  const detailCanvasRef = useRef(null)
+  const detailBitmapRef = useRef(null)
+  const detailTimerRef = useRef(0)
+  const lastSizeRef = useRef({ w: -1, h: -1 })
+  const drawingRef = useRef(drawing)
+  drawingRef.current = drawing
+  const requestViewportRef = useRef(onRequestViewport)
+  requestViewportRef.current = onRequestViewport
   const labelRef = useRef(null)
   const tagsRef = useRef(null)
   const awayRef = useRef(null)
@@ -618,8 +629,73 @@ export default function MapView({
     map.easeTo({ bearing: b, around: [c.lng, c.lat], duration: 0 })
   }
 
-  // The overlay's screen box, computed and applied outside React so it can be
-  // set from inside the map's render callback without a re-render per frame.
+  // When the map starts moving/zooming, hide the zoomed-in detail layer so the
+  // lightweight whole-card overview bitmap handles all 60fps frames; once the
+  // map settles (`moveend`), ask the worker to rasterize the visible slice of
+  // the vector SVG at native device-pixel resolution.
+  const hideDetail = useCallback(() => {
+    if (detailTimerRef.current) {
+      clearTimeout(detailTimerRef.current)
+      detailTimerRef.current = 0
+    }
+    if (detailCanvasRef.current) detailCanvasRef.current.style.display = 'none'
+  }, [])
+
+  const scheduleDetail = useCallback(() => {
+    if (detailTimerRef.current) clearTimeout(detailTimerRef.current)
+    detailTimerRef.current = setTimeout(() => {
+      detailTimerRef.current = 0
+      const map = mapRef.current
+      const d = drawingRef.current
+      const out = outputRef.current
+      const req = requestViewportRef.current
+      if (!map || !d?.preview || !d?.token || !out || !req) return
+      const b = outputBox(map, out)
+      if (!b || b.w < 4 || b.h < 4 || !(out.width_mm > 0 && out.height_mm > 0)) return
+      const dpr = Math.min(window.devicePixelRatio || 1, 2.5)
+      // If the overview bitmap already covers the full card at or above screen
+      // device-pixel resolution, no separate detail slice is needed.
+      if (b.w * dpr <= d.preview.width * 1.05 && b.h * dpr <= d.preview.height * 1.05) {
+        if (detailCanvasRef.current) detailCanvasRef.current.style.display = 'none'
+        return
+      }
+      const { clientWidth: W, clientHeight: H } = map.getContainer()
+      const visX0 = Math.max(0, -b.x)
+      const visY0 = Math.max(0, -b.y)
+      const visX1 = Math.min(b.w, W - b.x)
+      const visY1 = Math.min(b.h, H - b.y)
+      if (visX1 <= visX0 + 1 || visY1 <= visY0 + 1) return
+      const mmX0 = (visX0 / b.w) * out.width_mm
+      const mmY0 = (visY0 / b.h) * out.height_mm
+      const mmX1 = (visX1 / b.w) * out.width_mm
+      const mmY1 = (visY1 / b.h) * out.height_mm
+      const pxW = Math.round((visX1 - visX0) * dpr)
+      const pxH = Math.round((visY1 - visY0) * dpr)
+      let askSeq = 0
+      askSeq = req(d.token, { mmX0, mmY0, mmX1, mmY1, pxW, pxH }, (msg) => {
+        if (msg.seq !== askSeq || msg.token !== drawingRef.current?.token) {
+          msg.bitmap?.close?.()
+          return
+        }
+        detailBitmapRef.current?.close?.()
+        detailBitmapRef.current = msg.bitmap
+        const dc = detailCanvasRef.current
+        if (!dc || !msg.bitmap) return
+        dc.width = msg.bitmap.width
+        dc.height = msg.bitmap.height
+        dc.style.left = `${msg.rect.mmX0}px`
+        dc.style.top = `${msg.rect.mmY0}px`
+        dc.style.width = `${msg.rect.mmX1 - msg.rect.mmX0}px`
+        dc.style.height = `${msg.rect.mmY1 - msg.rect.mmY0}px`
+        const ctx = dc.getContext('2d')
+        if (ctx) {
+          ctx.clearRect(0, 0, msg.bitmap.width, msg.bitmap.height)
+          ctx.drawImage(msg.bitmap, 0, 0)
+        }
+        dc.style.display = ''
+      })
+    }, 120)
+  }, [])
   const place = useCallback(() => {
     const map = mapRef.current
     const el = overlayRef.current
@@ -636,9 +712,21 @@ export default function MapView({
     }
     for (const r of parts) if (r.current) r.current.style.display = ''
     el.style.display = ''
-    el.style.transform = `translate(${b.x}px, ${b.y}px)`
-    el.style.width = `${b.w}px`
-    el.style.height = `${b.h}px`
+    el.style.transform = `translate3d(${b.x}px, ${b.y}px, 0)`
+    const prev = lastSizeRef.current
+    if (Math.abs(b.w - prev.w) > 0.05 || Math.abs(b.h - prev.h) > 0.05) {
+      prev.w = b.w
+      prev.h = b.h
+      el.style.width = `${b.w}px`
+      el.style.height = `${b.h}px`
+    }
+    const wrap = previewWrapRef.current
+    const out = outputRef.current
+    if (wrap && out && out.width_mm > 0 && out.height_mm > 0) {
+      wrap.style.width = `${out.width_mm}px`
+      wrap.style.height = `${out.height_mm}px`
+      wrap.style.transform = `scale3d(${b.w / out.width_mm}, ${b.h / out.height_mm}, 1)`
+    }
     // Written here rather than by React, so a resize reads live.
     // The label over the top edge and the tags under the bottom one, flush
     // right; both outside, so the drawing is never covered, and `GAP` away.
@@ -770,7 +858,11 @@ export default function MapView({
 
     // Where the map was last left is kept, so a reload comes back to it. Runs
     // on every settled move: a pan, a zoom, the wheel, not the drag between.
-    const keep = () => setMapView({ lng: +map.getCenter().lng.toFixed(6), lat: +map.getCenter().lat.toFixed(6), zoom: +map.getZoom().toFixed(3) })
+    const keep = () => {
+      setMapView({ lng: +map.getCenter().lng.toFixed(6), lat: +map.getCenter().lat.toFixed(6), zoom: +map.getZoom().toFixed(3) })
+      scheduleDetail()
+    }
+    map.on('movestart', hideDetail)
     map.on('moveend', keep)
 
     // The map's render loop drives the overlay, so the two never disagree.
@@ -791,8 +883,12 @@ export default function MapView({
     return () => {
       resized.disconnect()
       map.off('render', place)
+      map.off('movestart', hideDetail)
       map.off('moveend', keep)
       map.off('zoomend', onZoomEnd)
+      if (detailTimerRef.current) clearTimeout(detailTimerRef.current)
+      detailBitmapRef.current?.close?.()
+      detailBitmapRef.current = null
       if (apiRef) apiRef.current = null
       map.remove()
       mapRef.current = null
@@ -801,19 +897,37 @@ export default function MapView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // The drawing is shown as an image, not inlined: inlined, every polyline is
-  // a DOM node, and a big output is millions of them to style and paint on
-  // each map frame. As an image it is rasterized once per size.
+  // The drawing is shown from the worker's raster `ImageBitmap` on a `<canvas>`
+  // when available (falling back to an `<img>` Blob URL only if OffscreenCanvas
+  // was unavailable): the main thread never parses or re-rasterizes a huge SVG
+  // DOM of hundreds of thousands of `<polyline>` elements.
   const [svgUrl, setSvgUrl] = useState(null)
   useEffect(() => {
-    if (!drawing?.svg) {
+    if (!drawing?.svg || drawing?.preview) {
       setSvgUrl(null)
       return
     }
     const url = URL.createObjectURL(drawing.svg)
     setSvgUrl(url)
     return () => URL.revokeObjectURL(url)
-  }, [drawing?.svg])
+  }, [drawing?.svg, drawing?.preview])
+
+  useEffect(() => {
+    hideDetail()
+    detailBitmapRef.current?.close?.()
+    detailBitmapRef.current = null
+    const bmp = drawing?.preview
+    const c = previewCanvasRef.current
+    if (!bmp || !c) return
+    c.width = bmp.width
+    c.height = bmp.height
+    const ctx = c.getContext('2d')
+    if (ctx) {
+      ctx.clearRect(0, 0, bmp.width, bmp.height)
+      ctx.drawImage(bmp, 0, 0)
+    }
+    scheduleDetail()
+  }, [drawing?.preview, hideDetail, scheduleDetail])
 
   // What the map draws for tiles: the live download (or its trace once done)
   // when there is one, else the grid planned from the graph — so the tiles an
@@ -1100,15 +1214,33 @@ export default function MapView({
         }`}
         style={{ display: 'none', willChange: 'transform' }}
       >
-        {drawing?.svg && svgUrl ? (
-          <img
-            className={`block h-full w-full select-none object-fill ${tilesLive ? 'opacity-20' : ''}`}
-            src={svgUrl}
-            alt=""
-            draggable={false}
-            decoding="async"
-          />
-        ) : null}
+        <div
+          ref={previewWrapRef}
+          className="relative origin-top-left"
+          style={{ willChange: 'transform' }}
+        >
+          {drawing?.preview ? (
+            <>
+              <canvas
+                ref={previewCanvasRef}
+                className={`block h-full w-full select-none ${tilesLive ? 'opacity-20' : ''}`}
+              />
+              <canvas
+                ref={detailCanvasRef}
+                className={`pointer-events-none absolute bg-white select-none ${tilesLive ? 'opacity-20' : ''}`}
+                style={{ display: 'none' }}
+              />
+            </>
+          ) : drawing?.svg && svgUrl ? (
+            <img
+              className={`block h-full w-full select-none object-fill ${tilesLive ? 'opacity-20' : ''}`}
+              src={svgUrl}
+              alt=""
+              draggable={false}
+              decoding="async"
+            />
+          ) : null}
+        </div>
         {output && <Guides output={output} />}
       </div>
 

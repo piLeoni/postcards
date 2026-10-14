@@ -187,19 +187,44 @@ pub fn clip_lines(lines: &[LineString<f64>], mask: &MultiPolygon<f64>, invert: b
     if mask.0.is_empty() {
         return if invert { lines.to_vec() } else { vec![] };
     }
-    // Lines clip independently, so batches give the same result.
-    let mut out = Vec::new();
-    let mut start = 0;
-    while start < lines.len() {
-        let mut end = start;
-        let mut points = 0;
-        while end < lines.len() && (end == start || points + lines[end].0.len() <= BATCH_POINTS) {
-            points += lines[end].0.len();
-            end += 1;
+    let Some(mb) = mask.bounding_rect() else {
+        return if invert { lines.to_vec() } else { vec![] };
+    };
+    let (mx0, my0, mx1, my1) = (mb.min().x, mb.min().y, mb.max().x, mb.max().y);
+    let overlaps_mask_bbox = |l: &LineString<f64>| -> bool {
+        let (mut lx0, mut ly0, mut lx1, mut ly1) = (f64::MAX, f64::MAX, f64::MIN, f64::MIN);
+        for c in &l.0 {
+            lx0 = lx0.min(c.x);
+            ly0 = ly0.min(c.y);
+            lx1 = lx1.max(c.x);
+            ly1 = ly1.max(c.y);
         }
-        let batch = MultiLineString::new(lines[start..end].to_vec());
+        !(lx1 < mx0 || lx0 > mx1 || ly1 < my0 || ly0 > my1)
+    };
+    let mut out = Vec::new();
+    let mut to_clip: Vec<LineString<f64>> = Vec::new();
+    let mut points = 0;
+    for l in lines {
+        if l.0.len() < 2 {
+            continue;
+        }
+        if !overlaps_mask_bbox(l) {
+            if invert && line_length(l) > 0.0 {
+                out.push(l.clone());
+            }
+            continue;
+        }
+        if !to_clip.is_empty() && points + l.0.len() > BATCH_POINTS {
+            let batch = MultiLineString::new(std::mem::take(&mut to_clip));
+            out.extend(mask.clip(&batch, invert).0.into_iter().filter(|l| l.0.len() >= 2 && line_length(l) > 0.0));
+            points = 0;
+        }
+        points += l.0.len();
+        to_clip.push(l.clone());
+    }
+    if !to_clip.is_empty() {
+        let batch = MultiLineString::new(to_clip);
         out.extend(mask.clip(&batch, invert).0.into_iter().filter(|l| l.0.len() >= 2 && line_length(l) > 0.0));
-        start = end;
     }
     out
 }

@@ -14,7 +14,6 @@ use drawland_core::output::{
     OVERPASS_MAX_SLOT_WAIT_S, OVERPASS_ROUND_PAUSE_S,
 };
 use drawland_core::osm_cache;
-use geo::MultiPolygon;
 use drawland_core::grammar::Grammar;
 use drawland_core::osm::{features_from_overpass, Feature};
 use drawland_core::tiles::{self, Tiles, TILES};
@@ -167,7 +166,8 @@ pub fn tiles_plan(graph: &str, max_zoom: u8) -> Result<JsValue, JsValue> {
     let ids = plan.as_ref().map(|t| t.tiles(max_zoom)).unwrap_or_default();
     let zoom = ids.first().map_or(max_zoom, |t| t.z);
     let (note, warn) = plan.as_ref().map(|t| t.note(max_zoom)).unwrap_or_default();
-    let arr: js_sys::Array = ids.iter().flat_map(|t| [t.z as f64, t.x as f64, t.y as f64]).map(JsValue::from_f64).collect();
+    let flat: Vec<u32> = ids.iter().flat_map(|t| [t.z as u32, t.x, t.y]).collect();
+    let arr = js_sys::Uint32Array::from(flat.as_slice());
     js_sys::Reflect::set(&o, &"ids".into(), &arr).ok();
     js_sys::Reflect::set(&o, &"zoom".into(), &JsValue::from_f64(zoom as f64)).ok();
     js_sys::Reflect::set(&o, &"note".into(), &JsValue::from_str(&note)).ok();
@@ -488,7 +488,7 @@ impl Job {
                     terrain,
                     sources: string_map(&sources),
                     memory_budget: self.memory_budget,
-                    google_fonts: self.google_fonts.clone(),
+                    google_fonts: std::mem::take(&mut self.google_fonts),
                 },
                 &draw,
                 &mut |part, text| {

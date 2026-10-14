@@ -55,21 +55,39 @@ pub type Sources = BTreeMap<String, SvgDrawing>;
 /// Polygons as penfill regions, one per nesting depth: `Region::from_polygons`
 /// subtracts every hole from every outer, which would erase an island that
 /// sits in another polygon's hole.
-fn regions(mp: &MultiPolygon<f64>) -> Vec<Region> {
+pub(crate) fn regions(mp: &MultiPolygon<f64>) -> Vec<Region> {
     let parts: Vec<&Polygon<f64>> = mp.0.iter().filter(|p| p.exterior().0.len() >= 4).collect();
     if parts.is_empty() {
         return vec![];
     }
     let depth: Vec<usize> = if parts.iter().any(|p| !p.interiors().is_empty()) {
-        use geo::Contains;
+        use geo::{BoundingRect, Contains};
+        let holes: Vec<(usize, geo::Rect<f64>, Polygon<f64>)> = parts
+            .iter()
+            .enumerate()
+            .flat_map(|(qi, q)| {
+                q.interiors().iter().filter_map(move |h| {
+                    let b = h.bounding_rect()?;
+                    Some((qi, b, Polygon::new(h.clone(), vec![])))
+                })
+            })
+            .collect();
         parts
             .iter()
-            .map(|p| {
-                let probe = geo::Point::from(p.exterior().0[0]);
-                parts
+            .enumerate()
+            .map(|(pi, p)| {
+                let c = p.exterior().0[0];
+                let probe = geo::Point::from(c);
+                holes
                     .iter()
-                    .flat_map(|q| q.interiors())
-                    .filter(|hole| Polygon::new((*hole).clone(), vec![]).contains(&probe))
+                    .filter(|(qi, b, hp)| {
+                        *qi != pi
+                            && c.x >= b.min().x
+                            && c.x <= b.max().x
+                            && c.y >= b.min().y
+                            && c.y <= b.max().y
+                            && hp.contains(&probe)
+                    })
                     .count()
             })
             .collect()
@@ -280,23 +298,21 @@ fn covers(generator: &str) -> bool {
     matches!(generator, "isoline-blobs" | "isoline-stack" | "growth")
 }
 
-thread_local! {
-    /// Runs made for a [`cover`], kept until the fill pass draws them, so a
-    /// footprint and its lines are one run, not two.
-    static COVERED: std::cell::RefCell<std::collections::HashMap<u64, penfill::FillWithCoverage>> =
-        Default::default();
-}
+/// Runs made for a [`cover`], kept until the fill pass draws them, so a
+/// footprint and its lines are one run, not two.
+static COVERED: std::sync::LazyLock<std::sync::Mutex<std::collections::HashMap<u64, penfill::FillWithCoverage>>> =
+    std::sync::LazyLock::new(Default::default);
 
 fn run_key(region: &Region, spec: &FillSpec) -> u64 {
     use std::hash::{Hash, Hasher};
     let mut h = std::collections::hash_map::DefaultHasher::new();
     serde_json::to_string(spec).unwrap_or_default().hash(&mut h);
-    for ring in region.all_rings_mm() {
-        ring.len().hash(&mut h);
+    for ring in region.iter_rings_mm() {
         for (x, y) in ring {
             x.to_bits().hash(&mut h);
             y.to_bits().hash(&mut h);
         }
+        0xff_u8.hash(&mut h);
     }
     h.finish()
 }
@@ -305,7 +321,10 @@ fn run_key(region: &Region, spec: &FillSpec) -> u64 {
 /// run a cover kept; otherwise the run is kept for the fill that follows.
 fn covering(r: &Region, spec: &FillSpec, take: bool) -> Result<penfill::FillWithCoverage, FillError> {
     let key = run_key(r, spec);
-    if let Some(kept) = COVERED.with(|c| if take { c.borrow_mut().remove(&key) } else { c.borrow().get(&key).cloned() }) {
+    if let Some(kept) = {
+        let mut guard = COVERED.lock().unwrap_or_else(|e| e.into_inner());
+        if take { guard.remove(&key) } else { guard.get(&key).cloned() }
+    } {
         return Ok(kept);
     }
     let generator = spec.generator.as_deref().unwrap_or_default();
@@ -382,14 +401,16 @@ fn covering(r: &Region, spec: &FillSpec, take: bool) -> Result<penfill::FillWith
         other => unreachable!("{other} does not report coverage"),
     };
     if !take && !r.is_empty() {
-        COVERED.with(|c| c.borrow_mut().insert(key, run.clone()));
+        let mut guard = COVERED.lock().unwrap_or_else(|e| e.into_inner());
+        guard.insert(key, run.clone());
     }
     Ok(run)
 }
 
 /// Drop cached isoline runs from the last draw (call at the start of each map).
 pub fn clear_cover_cache() {
-    COVERED.with(|c| c.borrow_mut().clear());
+    let mut guard = COVERED.lock().unwrap_or_else(|e| e.into_inner());
+    guard.clear();
 }
 
 /// One OSM forest polygon per region for covering fills: one huge bounding
@@ -406,7 +427,7 @@ fn work_regions(mp: &MultiPolygon<f64>, spec: &FillSpec) -> Vec<Region> {
                 .chain(p.interiors())
                 .map(|ring| ring.0.iter().map(|c| (c.x, c.y)).collect())
                 .collect()];
-            Region::from_polygons(&polys)
+            Region::from_disjoint_polygons(&polys)
         })
         .filter(|r| !r.is_empty())
         .collect()
@@ -416,25 +437,32 @@ fn work_regions(mp: &MultiPolygon<f64>, spec: &FillSpec) -> Vec<Region> {
 /// itself; for those that leave clearings or spill over, their footprint.
 /// What `fills.cover` masks other layers with.
 pub fn cover(region: &MultiPolygon<f64>, spec: &FillSpec) -> Result<MultiPolygon<f64>, FillError> {
+    use rayon::prelude::*;
     if spec.source.is_some() || !spec.generator.as_deref().is_some_and(covers) {
         return Ok(region.clone());
     }
-    let mut parts = Vec::new();
-    for r in work_regions(region, spec) {
-        let r = prepared(&r, spec);
-        for part in covering(&r, spec, false)?.coverage.parts() {
-            let mut rings = part.all_rings_mm().into_iter().map(|ring| {
-                let mut cs: Vec<Coord<f64>> = ring.into_iter().map(|(x, y)| Coord { x, y }).collect();
-                if cs.first() != cs.last() {
-                    cs.push(cs[0]);
+    let w_regions = work_regions(region, spec);
+    let per_region: Result<Vec<Vec<MultiPolygon<f64>>>, FillError> = w_regions
+        .par_iter()
+        .map(|r| {
+            let r = prepared(r, spec);
+            let mut local_parts = Vec::new();
+            for part in covering(&r, spec, false)?.coverage.parts() {
+                let mut rings = part.iter_rings_mm().map(|ring| {
+                    let mut cs: Vec<Coord<f64>> = ring.map(|(x, y)| Coord { x, y }).collect();
+                    if cs.first() != cs.last() {
+                        cs.push(cs[0]);
+                    }
+                    LineString::new(cs)
+                });
+                if let Some(outer) = rings.next() {
+                    local_parts.push(MultiPolygon(vec![Polygon::new(outer, rings.collect())]));
                 }
-                LineString::new(cs)
-            });
-            if let Some(outer) = rings.next() {
-                parts.push(MultiPolygon(vec![Polygon::new(outer, rings.collect())]));
             }
-        }
-    }
+            Ok(local_parts)
+        })
+        .collect();
+    let parts: Vec<MultiPolygon<f64>> = per_region?.into_iter().flatten().collect();
     Ok(geom::union_multi(&parts))
 }
 
@@ -489,6 +517,28 @@ pub fn validate(spec: &FillSpec, sources: &Sources) -> Result<(), FillError> {
     }
     let empty = Region::default();
     run_generator(&empty, generator, spec).map(|_| ())
+}
+
+/// Fill a single polygon directly without wrapping in a temporary `MultiPolygon`.
+pub fn fill_polygon(poly: &Polygon<f64>, spec: &FillSpec, sources: &Sources) -> Result<Lines, FillError> {
+    if poly.exterior().0.len() < 4 {
+        return Ok(vec![]);
+    }
+    let polys: Vec<Vec<Vec<(f64, f64)>>> = vec![std::iter::once(poly.exterior())
+        .chain(poly.interiors())
+        .map(|ring| ring.0.iter().map(|c| (c.x, c.y)).collect())
+        .collect()];
+    let r = Region::from_polygons(&polys);
+    if r.is_empty() {
+        return Ok(vec![]);
+    }
+    let mut out = Vec::new();
+    match (&spec.source, spec.generator.as_deref()) {
+        (Some(_), _) => out.extend(run_source(&r, spec, sources)?),
+        (None, Some(g)) => run_generator_into(&r, g, spec, &mut out)?,
+        (None, None) => return Err(FillError::Nothing),
+    }
+    Ok(to_lines(out))
 }
 
 /// Fill `region` (output mm) as `spec` says.

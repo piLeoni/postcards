@@ -134,6 +134,14 @@ fn probe(draw: &Task, what: &str) {
     }
 }
 
+struct CoverCacheGuard;
+
+impl Drop for CoverCacheGuard {
+    fn drop(&mut self) {
+        crate::fill::clear_cover_cache();
+    }
+}
+
 
 /// [`run`], with every step a task under `draw`: projecting, the defs, each
 /// fill, composing, writing.
@@ -189,17 +197,32 @@ pub fn run_into(grammar: &Grammar, output: &Output, inputs: Inputs, draw: &Task,
     let features = projected(inputs.features);
     let tiles = projected(inputs.tiles);
     probe(draw, "projected");
-    let frame = MultiPolygon::new(vec![output.query_polygon()]);
+    let frame = MultiPolygon::new(vec![Polygon::new(
+        LineString::new(vec![
+            Coord { x: 0.0, y: 0.0 },
+            Coord { x: w, y: 0.0 },
+            Coord { x: w, y: h },
+            Coord { x: 0.0, y: h },
+            Coord { x: 0.0, y: 0.0 },
+        ]),
+        vec![],
+    )]);
+    let mut decompressed_fonts: BTreeMap<String, Vec<u8>> = BTreeMap::new();
+    for (k, raw) in &inputs.google_fonts {
+        let decoded = crate::google_fonts::decode_font_bytes(raw).map_err(RunError::Plan)?;
+        decompressed_fonts.insert(k.clone(), decoded);
+    }
     let engine = Engine {
         of: output,
-        output: warp.bend_area(w, h, &projector.project_geometry(&frame)),
+        output: warp.bend_area(w, h, &frame),
         terrain: inputs.terrain.as_ref(),
         projector: &projector,
-        google_fonts: &inputs.google_fonts,
+        google_fonts: &decompressed_fonts,
     };
     project.ok("");
 
     crate::fill::clear_cover_cache();
+    let _cover_guard = CoverCacheGuard;
     let values = evaluate(grammar, &Found { osm: &features, tiles: &tiles }, &engine, draw)?;
     probe(draw, "areas+lines");
 
@@ -269,9 +292,17 @@ fn shape_points(s: &crate::grammar::Shape, engine: &Engine) -> Vec<Coord<f64>> {
 
 /// A profile's text on the page: the pen strokes, and the letters' silhouette.
 fn text_on_page(t: &crate::grammar::Text, engine: &Engine) -> Result<(geom::Lines, MultiPolygon<f64>), String> {
-    let bytes = t.font.google_key().map(|k| engine.google_fonts.get(&k).cloned().ok_or(format!("text: google font {k} was not loaded"))).transpose()?;
-    let bytes = bytes.map(|b| crate::google_fonts::decode_font_bytes(&b)).transpose()?;
-    let layout = crate::text::layout(&t.font, bytes.as_deref(), &t.text)?;
+    let bytes = match t.font.google_key() {
+        Some(k) => Some(
+            engine
+                .google_fonts
+                .get(&k)
+                .map(Vec::as_slice)
+                .ok_or_else(|| format!("text: google font {k} was not loaded"))?,
+        ),
+        None => None,
+    };
+    let layout = crate::text::layout(&t.font, bytes, &t.text)?;
     let k = t.size.0 / layout.cap_height;
     let (cx, cy) = (layout.width / 2.0, (layout.top + layout.bottom) / 2.0);
     let shape = crate::grammar::Shape { at: t.at.clone(), points: vec![], rotate: t.rotate, closed: false };
@@ -324,7 +355,9 @@ fn evaluate(
             return Err(RunError::Plan(format!("defs depend on each other: {}", stuck.join(", "))));
         }
         // Deterministic order: the profile's own order, within a wave.
-        for name in ready {
+        // When a wave has multiple independent defs, evaluate them in parallel.
+        if ready.len() == 1 {
+            let name = ready.into_iter().next().unwrap();
             let def = grammar.find(&name).expect("ready names come from the grammar");
             task.step(done.len() as u64, &name.to_string());
             let value = eval_op(&def.op, &done, features, engine).map_err(|e| {
@@ -333,6 +366,30 @@ fn evaluate(
             })?;
             done.insert(name.clone(), value);
             pending.retain(|n| n != &name);
+        } else {
+            let base_done = done.len() as u64;
+            task.step(base_done, &ready[0].to_string());
+            let evaluated: Vec<(Name, Result<Value, (String, String)>)> = ready
+                .par_iter()
+                .map(|name| {
+                    let def = grammar.find(name).expect("ready names come from the grammar");
+                    let res = eval_op(&def.op, &done, features, engine)
+                        .map_err(|e| (e, def.label()));
+                    (name.clone(), res)
+                })
+                .collect();
+            for (name, res) in evaluated {
+                match res {
+                    Ok(value) => {
+                        done.insert(name, value);
+                    }
+                    Err((e, label)) => {
+                        task.log(Level::Error, &format!("{name}: {e}"));
+                        return Err(RunError::Plan(format!("{label}: {e}")));
+                    }
+                }
+            }
+            pending.retain(|n| !done.contains_key(n));
         }
     }
     task.ok("");
@@ -354,23 +411,22 @@ fn label_lines(done: &BTreeMap<Name, Value>, pick: &crate::grammar::LabelPick) -
     Ok(label_placed(done, &pick.of)?.lines_for(pick.rule.as_deref()))
 }
 
-fn eval_op(
+fn eval_op<'a>(
     op: &Op,
-    done: &BTreeMap<Name, Value>,
+    done: &'a BTreeMap<Name, Value>,
     features: &Found,
     engine: &Engine,
 ) -> Result<Value, String> {
-    let area = |n: &Name| -> Result<MultiPolygon<f64>, String> {
-        done.get(n).ok_or_else(|| format!("{} is missing", n))?.area(n).cloned().map_err(|e| e.to_string())
+    let area = |n: &Name| -> Result<&'a MultiPolygon<f64>, String> {
+        done.get(n).ok_or_else(|| format!("{} is missing", n))?.area(n).map_err(|e| e.to_string())
     };
-    let lines = |n: &Name| -> Result<Lines, String> {
-        done.get(n).ok_or_else(|| format!("{} is missing", n))?.lines(n).cloned().map_err(|e| e.to_string())
+    let lines = |n: &Name| -> Result<&'a Lines, String> {
+        done.get(n).ok_or_else(|| format!("{} is missing", n))?.lines(n).map_err(|e| e.to_string())
     };
-    let feats = |n: &Name| -> Result<Vec<Feature>, String> {
+    let feats = |n: &Name| -> Result<&'a [Feature], String> {
         done.get(n)
             .ok_or_else(|| format!("{} is missing", n))?
             .features(n)
-            .map(<[Feature]>::to_vec)
             .map_err(|e| e.to_string())
     };
 
@@ -381,19 +437,19 @@ fn eval_op(
             Value::Features(features.tiles.iter().filter(|f| crate::tiles::keeps(&t.filter, f)).cloned().collect())
         }
         Op::Where(w) => Value::Features(
-            feats(&w.of)?.into_iter().filter(|f| crate::select::passes(&w.tags, f)).collect(),
+            feats(&w.of)?.iter().filter(|f| crate::select::passes(&w.tags, f)).cloned().collect(),
         ),
 
         // ---- areas ---------------------------------------------------------
-        Op::Polygons(n) => Value::Area(union_features(&feats(n)?)),
+        Op::Polygons(n) => Value::Area(union_features(feats(n)?)),
         Op::Union(rules) => {
-            let parts: Vec<MultiPolygon<f64>> = refs_of(rules).iter().map(&area).collect::<Result<_, _>>()?;
-            Value::Area(geom::union_multi(&parts))
+            let parts: Vec<&MultiPolygon<f64>> = refs_of(rules).iter().map(&area).collect::<Result<_, _>>()?;
+            Value::Area(geom::union_multi(parts))
         }
         Op::Difference(d) => {
-            let mut base = area(&d.base)?;
+            let mut base = area(&d.base)?.clone();
             for cut in &d.cut {
-                base = geom::difference(&base, &area(cut)?);
+                base = geom::difference(&base, area(cut)?);
             }
             Value::Area(base)
         }
@@ -403,13 +459,13 @@ fn eval_op(
                 Some(n) => area(n)?,
                 None => return Err("tools_intersect needs a keep".into()),
             };
-            Value::Area(geom::intersection(&base, &keep))
+            Value::Area(geom::intersection(base, keep))
         }
-        Op::FillHoles(n) => Value::Area(geom::fill_holes(&area(n)?)),
-        Op::FillCover(f) => Value::Area(crate::fill::cover(&area(&f.in_area)?, &f.spec).map_err(|e| e.to_string())?),
+        Op::FillHoles(n) => Value::Area(geom::fill_holes(area(n)?)),
+        Op::FillCover(f) => Value::Area(crate::fill::cover(area(&f.in_area)?, &f.spec).map_err(|e| e.to_string())?),
         Op::LabelArea(p) => Value::Area(label_pick(done, p)?),
         Op::LabelLines(p) => Value::Lines(label_lines(done, p)?),
-        Op::Grow(g) => Value::Area(geom::buffer(&area(&g.of)?, g.by.0)),
+        Op::Grow(g) => Value::Area(geom::buffer(area(&g.of)?, g.by.0)),
         Op::Around(a) => {
             let discs: Vec<MultiPolygon<f64>> = feats(&a.of)?
                 .iter()
@@ -427,7 +483,7 @@ fn eval_op(
             let ls = lines(&b.lines)?;
             let radius = b.by.0;
             let parts: Vec<MultiPolygon<f64>> = ls
-                .iter()
+                .par_iter()
                 .map(|l| match b.cap {
                     LineBufferCap::Round => geom::buffer_line_round(l, radius),
                     LineBufferCap::Flat => geom::buffer_line_flat(l, radius),
@@ -440,7 +496,7 @@ fn eval_op(
             let of = area(&e.of)?;
             let within = area(&e.within)?;
             let reach = e.gap_mm.map(|m| m.0).unwrap_or(1.0);
-            Value::Area(geom::extend_to_frame_edges(&of, &within, reach))
+            Value::Area(geom::extend_to_frame_edges(of, within, reach))
         }
 
         // ---- lines ---------------------------------------------------------
@@ -454,7 +510,7 @@ fn eval_op(
         Op::Text(t) => Value::Lines(text_on_page(t, engine)?.0),
         Op::Rings(r) => {
             let a = area(&r.of)?;
-            Value::Lines(if r.exterior_only { geom::exterior_rings(&a) } else { geom::rings(&a) })
+            Value::Lines(if r.exterior_only { geom::exterior_rings(a) } else { geom::rings(a) })
         }
         Op::Lines(n) => {
             let f = feats(n)?;
@@ -465,15 +521,15 @@ fn eval_op(
             let f = feats(n)?;
             Value::Lines(f.iter().flat_map(|f| geom::lines_of(&f.geometry)).collect())
         }
-        Op::Dedupe(n) => Value::Lines(geom::dedupe_segments(&lines(n)?)),
-        Op::Merge(n) => Value::Lines(geom::linemerge(&lines(n)?)),
+        Op::Dedupe(n) => Value::Lines(geom::dedupe_segments(lines(n)?)),
+        Op::Merge(n) => Value::Lines(geom::linemerge(lines(n)?)),
         Op::Join(rules) => {
-            let parts: Vec<Lines> = refs_of(rules).iter().map(&lines).collect::<Result<_, _>>()?;
-            Value::Lines(parts.into_iter().flatten().collect())
+            let parts: Vec<&Lines> = refs_of(rules).iter().map(&lines).collect::<Result<_, _>>()?;
+            Value::Lines(parts.into_iter().flat_map(|p| p.iter().cloned()).collect())
         }
         Op::ClipLines(c) => {
             let within = area(&c.within)?;
-            Value::Lines(geom::clip_lines(&lines(&c.lines)?, &within, c.invert))
+            Value::Lines(geom::clip_lines(lines(&c.lines)?, within, c.invert))
         }
 
         // Handled in the fill pass, so `values` never holds one.
@@ -485,7 +541,7 @@ fn eval_op(
             // the border (see `terrain::bounds_of`); clip it back to the page,
             // or to `in_area` when the profile asks for one.
             Value::Lines(match &t.in_area {
-                Some(n) => geom::clip_lines(&drawn, &area(n)?, false),
+                Some(n) => geom::clip_lines(&drawn, area(n)?, false),
                 None => geom::clip_lines(&drawn, &engine.output, false),
             })
         }
@@ -496,25 +552,25 @@ fn eval_op(
             let regions: Vec<(&str, Region)> = b
                 .regions
                 .iter()
-                .map(|(name, a)| Ok((name.as_str(), crate::terrain::region_from_area(&area(a)?, &placed))))
+                .map(|(name, a)| Ok((name.as_str(), crate::terrain::region_from_area(area(a)?, &placed))))
                 .collect::<Result<_, String>>()?;
             let drawing = crate::terrain::draw_burin(grid, b, &regions)?;
             let drawn = crate::terrain::lines(&drawing, &placed);
             Value::Lines(match &b.in_area {
-                Some(n) => geom::clip_lines(&drawn, &area(n)?, false),
+                Some(n) => geom::clip_lines(&drawn, area(n)?, false),
                 None => geom::clip_lines(&drawn, &engine.output, false),
             })
         }
         Op::Labels(l) => {
             let mut named = Vec::new();
             for n in &l.from {
-                named.extend(feats(n)?);
+                named.extend_from_slice(feats(n)?);
             }
             Value::Labels(crate::labels::place(&named, &engine.output, &l.style, engine.google_fonts)?)
         }
         Op::Fill(_) => return Err("tools_fill is evaluated in the fill pass".into()),
         Op::Module(m) => match &m.from {
-            Some(from) => eval_module(&m.name, &feats(from)?, engine.of)?,
+            Some(from) => eval_module(&m.name, feats(from)?, engine.of)?,
             None => eval_module(&m.name, features.osm, engine.of)?,
         },
     })
@@ -639,6 +695,23 @@ fn run_fill(def: &Def, spec: &crate::grammar::Fill, fills: &Fills, sink: &mut Gr
         .area(&spec.in_area)?;
     let failed = |source| RunError::Def { def: def.label(), source };
     let start = sink.fed;
+    let check_budget = |generator: &str| -> Result<(), String> {
+        if let Some(budget) = fills.budget {
+            let spacing = fill::spacing_mm(&spec.spec).unwrap_or(0.5);
+            let estimate = crate::budget::cost(area_area(area), generator, spacing);
+            if estimate.bytes > budget {
+                return Err(format!(
+                    "{name}: this fill needs {}, more than the {} the page has. It covers {} mm² of paper \
+                     with {generator} at {spacing} mm. Widen the spacing, use a sparser pattern, shrink the \
+                     output, or draw it with the command line.",
+                    crate::progress::human_bytes(estimate.bytes),
+                    crate::progress::human_bytes(budget),
+                    thousands(estimate.area_mm2 as u64),
+                ));
+            }
+        }
+        Ok(())
+    };
     if let Some(content) = &spec.content {
         let lines = fills
             .values
@@ -650,6 +723,11 @@ fn run_fill(def: &Def, spec: &crate::grammar::Fill, fills: &Fills, sink: &mut Gr
             sink.line(l);
         }
     } else if spec.per_feature {
+        let generator = spec.spec.generator.clone().unwrap_or_else(|| "dots".into());
+        if let Err(detail) = check_budget(&generator) {
+            task.fail(&detail);
+            return Err(RunError::TooLarge(detail));
+        }
         // One penfill run per polygon of the input area, so neighbouring
         // buildings keep their own hatching instead of merging.
         task.set_total(area.0.len() as u64);
@@ -657,7 +735,7 @@ fn run_fill(def: &Def, spec: &crate::grammar::Fill, fills: &Fills, sink: &mut Gr
             let filled: Result<Vec<Lines>, FillError> = chunk
                 .par_iter()
                 .map(|p| {
-                    let lines = fill::fill(&MultiPolygon::new(vec![p.clone()]), &spec.spec, fills.sources);
+                    let lines = fill::fill_polygon(p, &spec.spec, fills.sources);
                     task.tick();
                     lines
                 })
@@ -672,21 +750,9 @@ fn run_fill(def: &Def, spec: &crate::grammar::Fill, fills: &Fills, sink: &mut Gr
         // since the WASM allocator traps rather than failing. From the
         // command line `budget` is `None` and this is skipped.
         let generator = spec.spec.generator.clone().unwrap_or_else(|| "dots".into());
-        if let Some(budget) = fills.budget.filter(|_| spec.spec.source.is_some() || !fill::streams(&generator)) {
-            let spacing = fill::spacing_mm(&spec.spec).unwrap_or(0.5);
-            let estimate = crate::budget::cost(area_area(area), &generator, spacing);
-            if estimate.bytes > budget {
-                let detail = format!(
-                    "{name}: this fill needs {}, more than the {} the page has. It covers {} mm² of paper \
-                     with {generator} at {spacing} mm. Widen the spacing, use a sparser pattern, shrink the \
-                     output, or draw it with the command line.",
-                    crate::progress::human_bytes(estimate.bytes),
-                    crate::progress::human_bytes(budget),
-                    thousands(estimate.area_mm2 as u64),
-                );
-                task.fail(&detail);
-                return Err(RunError::TooLarge(detail));
-            }
+        if let Err(detail) = check_budget(&generator) {
+            task.fail(&detail);
+            return Err(RunError::TooLarge(detail));
         }
         task.set_total(1);
         fill::fill_into(area, &spec.spec, fills.sources, sink).map_err(failed)?;

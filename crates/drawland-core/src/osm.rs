@@ -3,9 +3,9 @@
 //! and which features survive the area and tag filters.
 
 use crate::geom;
-use geo::{Contains, Coord, Geometry, Intersects, LineString, MultiPolygon, Point, Polygon};
+use geo::{BoundingRect, Contains, Coord, Geometry, Intersects, LineString, MultiPolygon, Point, Polygon};
 use serde::Deserialize;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 pub type Tags = BTreeMap<String, String>;
 
@@ -173,12 +173,28 @@ fn build_relation(members: &[Member], ways: &HashMap<i64, WayGeom>) -> MultiPoly
     if inners.is_empty() {
         return geom::union_all(&outers);
     }
+    let inner_boxes: Vec<Option<geo::Rect<f64>>> = inners.iter().map(|i| i.bounding_rect()).collect();
     let with_holes: Vec<MultiPolygon<f64>> = outers
         .iter()
         .map(|outer| {
-            let holes: Vec<&Polygon<f64>> = inners.iter().filter(|i| outer.contains(*i)).collect();
+            let outer_box = outer.bounding_rect();
+            let holes: Vec<&Polygon<f64>> = inners
+                .iter()
+                .zip(&inner_boxes)
+                .filter(|(i, ib)| {
+                    match (outer_box, ib) {
+                        (Some(ob), Some(ib)) if !ob.intersects(ib) => false,
+                        _ => outer.contains(*i),
+                    }
+                })
+                .map(|(i, _)| i)
+                .collect();
             let shell = geom::union_all(std::iter::once(outer));
-            geom::difference(&shell, &geom::union_all(holes))
+            if holes.is_empty() {
+                shell
+            } else {
+                geom::difference(&shell, &geom::union_all(holes))
+            }
         })
         .collect();
     geom::union_multi(&with_holes)
@@ -222,16 +238,30 @@ fn make_valid(g: Geometry<f64>) -> Geometry<f64> {
 pub fn features_from_overpass(json: &str, area: &Polygon<f64>, tags: &[&str]) -> Result<Vec<Feature>, OsmError> {
     let response: Response = serde_json::from_str(json)?;
     let wanted = |t: &Tags| tags.iter().any(|k| t.contains_key(*k));
+    let area_box = area.bounding_rect();
 
     let mut coords: HashMap<i64, Coord<f64>> = HashMap::new();
+    let mut relation_ways: HashSet<i64> = HashSet::new();
     for e in &response.elements {
-        if let Raw::Node { id, lat, lon, .. } = e {
-            coords.insert(*id, Coord { x: *lon, y: *lat });
+        match e {
+            Raw::Node { id, lat, lon, .. } => {
+                coords.insert(*id, Coord { x: *lon, y: *lat });
+            }
+            Raw::Relation { members, tags, .. } => {
+                if tags.get("type").is_some_and(|t| RELATION_TYPES.contains(&t.as_str())) && wanted(tags) {
+                    for m in members {
+                        if m.kind == "way" {
+                            relation_ways.insert(m.id);
+                        }
+                    }
+                }
+            }
+            _ => {}
         }
     }
 
     let mut features = Vec::new();
-    let mut way_geoms: HashMap<i64, WayGeom> = HashMap::new();
+    let mut way_geoms: HashMap<i64, WayGeom> = HashMap::with_capacity(relation_ways.len());
     for e in &response.elements {
         match e {
             Raw::Node { id, lat, lon, tags } if wanted(tags) => features.push(Feature {
@@ -241,8 +271,13 @@ pub fn features_from_overpass(json: &str, area: &Polygon<f64>, tags: &[&str]) ->
                 geometry: Geometry::Point(Point::new(*lon, *lat)),
             }),
             Raw::Way { id, nodes, tags } => {
+                let is_wanted = wanted(tags);
+                let in_rel = relation_ways.contains(id);
+                if !is_wanted && !in_rel {
+                    continue;
+                }
                 let g = build_way(nodes, tags, &coords);
-                if wanted(tags) {
+                if is_wanted {
                     let geometry = match &g {
                         WayGeom::Line(l) => Geometry::LineString(l.clone()),
                         WayGeom::Area(p) => Geometry::Polygon(p.clone()),
@@ -250,14 +285,16 @@ pub fn features_from_overpass(json: &str, area: &Polygon<f64>, tags: &[&str]) ->
                     };
                     features.push(Feature { element: Element::Way, id: *id, tags: tags.clone(), geometry });
                 }
-                way_geoms.insert(*id, g);
+                if in_rel {
+                    way_geoms.insert(*id, g);
+                }
             }
             _ => {}
         }
     }
     for e in &response.elements {
         if let Raw::Relation { id, members, tags } = e {
-            if !tags.get("type").is_some_and(|t| RELATION_TYPES.contains(&t.as_str())) {
+            if !tags.get("type").is_some_and(|t| RELATION_TYPES.contains(&t.as_str())) || !wanted(tags) {
                 continue;
             }
             let geometry = area_geometry(build_relation(members, &way_geoms));
@@ -265,14 +302,19 @@ pub fn features_from_overpass(json: &str, area: &Polygon<f64>, tags: &[&str]) ->
         }
     }
 
+    let bbox_hits = |g: &Geometry<f64>| match (area_box, g.bounding_rect()) {
+        (Some(ab), Some(gb)) => ab.intersects(&gb),
+        _ => true,
+    };
+
     let mut out: Vec<Feature> = features
         .into_iter()
-        .filter(|f| !is_empty(&f.geometry))
+        .filter(|f| !is_empty(&f.geometry) && bbox_hits(&f.geometry))
         .map(|mut f| {
             f.geometry = make_valid(f.geometry);
             f
         })
-        .filter(|f| !is_empty(&f.geometry) && f.geometry.intersects(area) && wanted(&f.tags))
+        .filter(|f| !is_empty(&f.geometry) && bbox_hits(&f.geometry) && f.geometry.intersects(area))
         .collect();
     out.sort_by_key(|f| (f.element, f.id));
     Ok(out)
