@@ -42,16 +42,16 @@ type TilePreset =
 
 /** A penfill pattern. */
 type Pattern =
-  | "amphibolite" | "arena" | "beds" | "bentonite" | "brackets" | "breccia" | "breccia-blobs" | "canopy" | "chalky-soil"
+  | "amphibolite" | "arena" | "beds" | "bentonite" | "brackets" | "breccia" | "breccia-blobs" | "canopy" | "cell-net" | "chalky-soil"
   | "chess" | "clay-soil" | "coal" | "coarse-stone" | "compacted-soil" | "concentric" | "conglomerate"
   | "conglomerate-flat" | "coquina" | "cracked-earth" | "cracks" | "dacite" | "debris-soil" | "diabase" | "diatom"
-  | "diorite" | "dots" | "drift" | "dry-cracked-soil" | "erosion-lines" | "feldspar" | "ferrous" | "fill" | "fine-gravel"
+  | "diorite" | "dots" | "drift" | "dry-cracked-soil" | "eddies" | "erosion-lines" | "feldspar" | "ferrous" | "fill" | "fine-gravel"
   | "fluid-grass" | "gabbro" | "gneiss" | "grainy-soil" | "granite" | "granite-x" | "grass" | "gravel" | "gravel-clipped"
   | "gravelly-soil" | "grid" | "growth" | "hilbert" | "honeycomb" | "hornblende" | "isoline-blobs" | "isoline-stack" | "isoline-stack-hatched" | "laminae" | "lava" | "layered-soil" | "lily-pads"
   | "lines" | "loose-soil" | "marble" | "masonry" | "mixed-rocks" | "mulch" | "mulched-soil" | "none" | "ophitic"
-  | "organic-topsoil" | "pat" | "pebble-scatter" | "pebbled-soil" | "pebbles" | "rectilinear" | "sandy-soil" | "scales"
+  | "organic-topsoil" | "pat" | "pebble-scatter" | "pebbled-soil" | "pebbles" | "rectilinear" | "ripples" | "sandy-soil" | "scales"
   | "scribble" | "shards" | "silty-soil" | "solid" | "spiral" | "sprouts" | "stipple" | "stipple-edge" | "stipple-noise"
-  | "stone-cluster" | "sunburst" | "terrazzo" | "triangles" | "truchet" | "wave-grid" | "wave_grid" | "waves" | "wood"
+  | "stone-cluster" | "sunburst" | "swells" | "terrazzo" | "triangles" | "truchet" | "tufts" | "twigs" | "vines" | "wave-grid" | "wave_grid" | "waves" | "wood"
   | "zigzag"
 
 /** A built-in hatch for `pattern: "pat"`. */
@@ -76,6 +76,8 @@ interface FillOptions {
   mark?: Length
   /** Shrink the area first. `waves` default to 0.1mm. */
   inset?: Length
+  /** Perimeter-aware edge fade width: lines break into shorter dashes/dots and disappear before the boundary. */
+  fray?: Length
   /** For the random patterns: the same seed draws the same lines. */
   seed?: number
   /** `"global"` (default): neighbouring areas share one grid. `"local"`: each shape on its own. */

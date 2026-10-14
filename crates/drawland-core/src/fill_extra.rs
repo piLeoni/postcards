@@ -9,11 +9,25 @@ use penfill::gravel::{fill_gravel_with, GravelEdge};
 use penfill::litho;
 use penfill::nature;
 use penfill::stipple;
+use penfill::textures;
 use penfill::Anchor;
 
-pub fn run(generator: &str, r: &Region, s: f64, a: f64, seed: u64, at: Anchor) -> Option<Strokes> {
+pub fn run(generator: &str, r: &Region, s: f64, a: f64, seed: u64, at: Anchor, fray: f64) -> Option<Strokes> {
     Some(match generator {
-        "wave-grid" => dotswaves::fill_wave_grid(r, s * 1.5, a, at),
+        "cell-net" => textures::fill_cell_net_frayed(r, s * 2.2, seed, fray),
+        "tufts" => nature::fill_tufts_frayed(r, s * 1.4, a, seed, fray),
+        "eddies" => textures::fill_eddies_frayed(r, s, a, seed, at, fray),
+        "twigs" => nature::fill_twigs_frayed(r, s * 2.0, seed, fray),
+        "ripples" => textures::fill_ripples_frayed(r, s, a, seed, at, fray),
+        "vines" => nature::fill_vines_frayed(r, s * 1.8, a, seed, at, fray),
+        "swells" => textures::fill_swells_frayed(r, s * 1.05, a, seed, at, fray),
+        "wave-grid" => {
+            if fray > 0.0 {
+                dotswaves::fill_wave_grid_frayed(r, s * 1.5, a, at, fray, seed)
+            } else {
+                dotswaves::fill_wave_grid(r, s * 1.5, a, at)
+            }
+        }
         "stipple-noise" => stipple::fill_stipple_noise(r, s * 0.6, s * 3.0, s * 0.25, 12.0, seed),
         "stipple-edge" => stipple::fill_stipple_edge(r, s * 0.6, s * 3.0, s * 0.25, 8.0, 0.5, seed),
         "pebbles" => nature::fill_pebbles(r, s * 1.2, seed),

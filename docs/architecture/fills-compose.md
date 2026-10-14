@@ -8,7 +8,7 @@ Turn areas into pen paths (patterns or outlines) and emit grouped SVG in millime
 
 - Input: `FillSpec` from profile + `MultiPolygon` region in mm.
 - Backed by **penfill** (`Region`, generators, optional SVG `source`).
-- Generator names in `GENERATORS` (must stay in sync with d.ts / penfill).
+- Generator names in `GENERATORS` (must stay in sync with d.ts / penfill). Optional `fray` (mm) uses `penfill::fray` for perimeter-aware edge fade; cell-net, tufts, eddies, twigs, ripples, vines, and swells fray inside penfill; other generators get `fray_strokes` when `fray > 0`.
 - Output: `geom::Lines` (same type as hand-drawn linework).
 
 Per-feature fills (`per: "feature"`) iterate features for placement.
@@ -21,7 +21,7 @@ Fill budget / memory: WASM sets `Job.memoryBudget` from WASM memory max; oversiz
 
 ## SVG (`svg.rs`)
 
-Layered groups matching `draw` ids and `compose.order`. Masks subtract paths from targeted groups before merge.
+Layered groups matching `draw` ids and `compose.order`. Masks subtract paths from targeted groups before merge. Coordinate precision (`round_svg_decimals`) and per-layer / per-sheet file splitting (`split_svg_layers`, `sheets::export_svg_files`) are shared helpers in `drawland-core`.
 
 ## Compose (authoring vs runtime)
 

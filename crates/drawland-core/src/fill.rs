@@ -30,16 +30,16 @@ pub enum FillError {
 }
 
 pub const GENERATORS: &[&str] = &[
-    "amphibolite", "arena", "beds", "bentonite", "brackets", "breccia", "breccia-blobs", "canopy", "chalky-soil",
+    "amphibolite", "arena", "beds", "bentonite", "brackets", "breccia", "breccia-blobs", "canopy", "cell-net", "chalky-soil",
     "chess", "clay-soil", "coal", "coarse-stone", "compacted-soil", "concentric", "conglomerate",
     "conglomerate-flat", "coquina", "cracked-earth", "cracks", "dacite", "debris-soil", "diabase", "diatom",
-    "diorite", "dots", "drift", "dry-cracked-soil", "erosion-lines", "feldspar", "ferrous", "fill", "fine-gravel",
+    "diorite", "dots", "drift", "dry-cracked-soil", "eddies", "erosion-lines", "feldspar", "ferrous", "fill", "fine-gravel",
     "fluid-grass", "gabbro", "gneiss", "grainy-soil", "granite", "granite-x", "grass", "gravel", "gravel-clipped",
     "gravelly-soil", "grid", "growth", "hilbert", "honeycomb", "hornblende", "isoline-blobs", "isoline-stack", "isoline-stack-hatched", "laminae", "lava", "layered-soil", "lily-pads",
     "lines", "loose-soil", "marble", "masonry", "mixed-rocks", "mulch", "mulched-soil", "none", "ophitic",
-    "organic-topsoil", "pat", "pebble-scatter", "pebbled-soil", "pebbles", "rectilinear", "sandy-soil", "scales",
+    "organic-topsoil", "pat", "pebble-scatter", "pebbled-soil", "pebbles", "rectilinear", "ripples", "sandy-soil", "scales",
     "scribble", "shards", "silty-soil", "solid", "spiral", "sprouts", "stipple", "stipple-edge", "stipple-noise",
-    "stone-cluster", "sunburst", "terrazzo", "triangles", "truchet", "wave-grid", "wave_grid", "waves", "wood",
+    "stone-cluster", "sunburst", "swells", "terrazzo", "triangles", "truchet", "tufts", "twigs", "vines", "wave-grid", "wave_grid", "waves", "wood",
     "zigzag",
 ];
 
@@ -172,6 +172,7 @@ impl Opts<'_> {
 fn default_angle(generator: &str) -> f64 {
     match generator {
         "rectilinear" | "zigzag" | "dots" => 45.0,
+        "vines" => 90.0,
         _ => 0.0,
     }
 }
@@ -235,27 +236,50 @@ fn run_generator_into(region: &Region, generator: &str, spec: &FillSpec, sink: &
     let r = &shrunk;
     let mark = |default: f64| spec.mark.map_or(default, |m| m.0);
     let at = anchor(&o)?;
-    // The generators that stream hand their rows to `sink` themselves; the
-    // rest make the whole fill and pass it on at the end.
-    match generator {
-        "rectilinear" => rectilinear::fill_rectilinear_into(r, s, a, inset, at, sink),
-        "lines" => grid::fill_lines_into(r, s, a, at, sink),
-        "grid" => grid::fill_grid_into(r, s, a, at, sink),
+    let fray = o.mm("fray")?.unwrap_or(0.0);
+    if fray <= 0.0 {
+        match generator {
+            "rectilinear" => rectilinear::fill_rectilinear_into(r, s, a, inset, at, sink),
+            "lines" => grid::fill_lines_into(r, s, a, at, sink),
+            "grid" => grid::fill_grid_into(r, s, a, at, sink),
+            "dots" => {
+                let lattice = match o.str("lattice")?.unwrap_or("square") {
+                    "square" => Lattice::Square,
+                    "hex" | "hexagonal" => Lattice::Hexagonal,
+                    other => return Err(o.bad("lattice", format!("{other:?}: use square or hexagonal"))),
+                };
+                dotswaves::fill_dots_with_lattice_into(r, s, a, mark(0.2), lattice, at, sink);
+            }
+            "waves" => dotswaves::fill_waves_into(r, s, a, at, sink),
+            _ => {}
+        }
+        if streams(generator) {
+            return Ok(());
+        }
+    }
+    let natively_frayed = matches!(
+        generator,
+        "cell-net" | "tufts" | "eddies" | "twigs" | "ripples" | "vines" | "swells"
+    );
+    let mut whole = match generator {
+        "rectilinear" => rectilinear::fill_rectilinear(r, s, a, inset, at),
+        "lines" => grid::fill_lines(r, s, a, at),
+        "grid" => grid::fill_grid(r, s, a, at),
         "dots" => {
             let lattice = match o.str("lattice")?.unwrap_or("square") {
                 "square" => Lattice::Square,
                 "hex" | "hexagonal" => Lattice::Hexagonal,
                 other => return Err(o.bad("lattice", format!("{other:?}: use square or hexagonal"))),
             };
-            dotswaves::fill_dots_with_lattice_into(r, s, a, mark(0.2), lattice, at, sink);
+            dotswaves::fill_dots_with_lattice(r, s, a, mark(0.2), lattice, at)
         }
-        "waves" => dotswaves::fill_waves_into(r, s, a, at, sink),
-        _ => {}
-    }
-    if streams(generator) {
-        return Ok(());
-    }
-    let whole = match generator {
+        "waves" => {
+            if fray > 0.0 {
+                dotswaves::fill_waves_frayed(r, s, a, at, fray, seed)
+            } else {
+                dotswaves::fill_waves(r, s, a, at)
+            }
+        }
         "zigzag" => zigzag::fill_zigzag_inset(r, s, a, inset, at),
         "triangles" => grid::fill_triangles(r, s, a, at),
         "honeycomb" => honeycomb::fill_honeycomb(r, s, a, o.mm("line_width")?.unwrap_or(0.0), at),
@@ -283,11 +307,14 @@ fn run_generator_into(region: &Region, generator: &str, spec: &FillSpec, sink: &
             pat::fill_pat(r, &pattern, o.mm("scale")?.unwrap_or(s), a, at)
         }
         "none" | "solid" => vec![],
-        other => match crate::fill_extra::run(other, r, s, a, seed, at) {
+        other => match crate::fill_extra::run(other, r, s, a, seed, at, fray) {
             Some(whole) => whole,
             None => return Err(FillError::UnknownGenerator(other.into())),
         },
     };
+    if fray > 0.0 && !natively_frayed && !matches!(generator, "waves") {
+        whole = penfill::fray::fray_strokes(r, whole, s, fray, seed);
+    }
     sink.batch(whole);
     Ok(())
 }
