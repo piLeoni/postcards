@@ -4,11 +4,12 @@ mod google_fonts;
 mod osm_http;
 mod term;
 
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 use drawland_core::output::Output;
 use drawland_core::grammar::Grammar;
 use drawland_core::osm::{features_from_overpass, Feature};
 use drawland_core::progress::{thousands, Event, Level, Progress, Task};
+use drawland_core::sheets::{ExportOptions, SliceExport, export_svg_files};
 use drawland_core::tiles::{self, Tiles};
 use std::collections::BTreeMap;
 use std::io::IsTerminal;
@@ -21,6 +22,27 @@ use term::Term;
 struct Cli {
     #[command(subcommand)]
     command: Command,
+}
+
+#[derive(Clone, Copy, Debug, Default, ValueEnum)]
+enum SlicesArg {
+    /// Only the whole composed output.
+    Whole,
+    /// Only the cut sheets (`r1c1`, …).
+    Slices,
+    /// Whole output plus each cut sheet (default).
+    #[default]
+    Both,
+}
+
+impl From<SlicesArg> for SliceExport {
+    fn from(v: SlicesArg) -> Self {
+        match v {
+            SlicesArg::Whole => SliceExport::Whole,
+            SlicesArg::Slices => SliceExport::Slices,
+            SlicesArg::Both => SliceExport::Both,
+        }
+    }
 }
 
 #[derive(Subcommand)]
@@ -42,6 +64,15 @@ enum Command {
         lng: Option<f64>,
         #[arg(long = "output", short, default_value = "map.svg")]
         out: PathBuf,
+        /// Coordinate decimal places in SVG output (0..6); default is full (4).
+        #[arg(long, value_parser = clap::value_parser!(u8).range(0..=6))]
+        decimals: Option<u8>,
+        /// Write one SVG file per top-level layer (`<stem>-<layer>.svg`).
+        #[arg(long)]
+        per_layer: bool,
+        /// Which files to write when the output is cut into slices.
+        #[arg(long, value_enum, default_value_t = SlicesArg::Both)]
+        slices: SlicesArg,
         /// Response cache: Overpass replies and Nominatim lookups.
         #[arg(long, default_value = "cache")]
         cache: PathBuf,
@@ -103,7 +134,7 @@ fn load(path: &Path) -> Result<Grammar, String> {
 }
 
 /// The map for `profile_path`; the stroke count of every group drawn.
-fn map(term: &Term, http: &osm_http::Http, profile_path: &Path, place: Place, out: &Path) -> Result<Vec<(String, usize)>, String> {
+fn map(term: &Term, http: &osm_http::Http, profile_path: &Path, place: Place, out: &Path, export: ExportOptions) -> Result<Vec<(String, usize)>, String> {
     let task = Task::begin(term, "script", None, "script", 0, "");
     task.note(&profile_path.display().to_string());
     let grammar = match load(profile_path) {
@@ -115,7 +146,7 @@ fn map(term: &Term, http: &osm_http::Http, profile_path: &Path, place: Place, ou
     };
     let nodes: usize = grammar.sections.iter().map(|(_, d)| d.len()).sum();
     task.ok(&format!("{nodes} nodes · {} draws", grammar.draw.len()));
-    map_v3(term, http, grammar, profile_path, place, out)
+    map_v3(term, http, grammar, profile_path, place, out, export)
 }
 
 /// What a document reads: the OSM keys to ask Overpass for (none: no Overpass
@@ -221,25 +252,47 @@ fn read_tiles(
     Ok(features)
 }
 
-/// Writes the SVG as the last row under `draw`, which ends with it; an output
-/// cut into slices also writes each sheet next to it, `map_r1c2.svg`.
-fn save(draw: Task, out: &Path, svg: &str, slices: &[(String, String)]) -> Result<(), String> {
+/// Writes the SVG files according to `export` as the last row under `draw`.
+fn save(draw: Task, out: &Path, svg: &str, slices: &[(String, String)], export: ExportOptions) -> Result<(), String> {
     let task = draw.child("save", "save", 0, "");
     let write = |path: &Path, text: &str| std::fs::write(path, text).map_err(|e| format!("{}: {e}", path.display()));
-    write(out, svg)?;
     let stem = out.file_stem().and_then(|s| s.to_str()).unwrap_or("map");
-    for (name, text) in slices {
-        write(&out.with_file_name(format!("{stem}_{name}.svg")), text)?;
+    let ext = out.extension().and_then(|s| s.to_str()).unwrap_or("svg");
+    let files = export_svg_files(svg, slices, export);
+    for (suffix, text) in &files {
+        if suffix.is_empty() {
+            write(out, text)?;
+        } else {
+            write(&out.with_file_name(format!("{stem}{suffix}.{ext}")), text)?;
+        }
     }
-    let cut = if slices.is_empty() { String::new() } else { format!(" + {} slices", slices.len()) };
-    task.ok(&format!("{}{cut}", out.display()));
+    let extra = files.len().saturating_sub(1);
+    let note = if extra == 0 {
+        out.display().to_string()
+    } else {
+        format!("{} + {extra} files", out.display())
+    };
+    task.ok(&note);
     draw.ok("");
     Ok(())
 }
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
-    let Command::Map { profile, dump_graph, address, lat, lng, out, cache, offline, refresh } = cli.command;
+    let Command::Map {
+        profile,
+        dump_graph,
+        address,
+        lat,
+        lng,
+        out,
+        decimals,
+        per_layer,
+        slices,
+        cache,
+        offline,
+        refresh,
+    } = cli.command;
     if dump_graph {
         return match load(&profile) {
             Ok(g) => {
@@ -252,9 +305,14 @@ fn main() -> ExitCode {
             }
         };
     }
+    let export = ExportOptions {
+        decimals,
+        per_layer,
+        slices: slices.into(),
+    };
     let term = Term::new();
     let http = osm_http::Http::new(cache, offline, refresh);
-    let result = map(&term, &http, &profile, Place { address, lat, lng }, &out);
+    let result = map(&term, &http, &profile, Place { address, lat, lng }, &out, export);
     if let Err(e) = &result {
         term.event(Event::Log { level: Level::Error, text: e });
     }
@@ -280,6 +338,7 @@ fn map_v3(
     profile_path: &Path,
     place: Place,
     out: &Path,
+    export: ExportOptions,
 ) -> Result<Vec<(String, usize)>, String> {
     let base = profile_path.parent().unwrap_or(Path::new("."));
     let mut sources = BTreeMap::new();
@@ -309,6 +368,6 @@ fn map_v3(
         &draw,
     )
     .map_err(|e| e.to_string())?;
-    save(draw, out, &rendered.svg, &rendered.slices)?;
+    save(draw, out, &rendered.svg, &rendered.slices, export)?;
     Ok(rendered.groups)
 }

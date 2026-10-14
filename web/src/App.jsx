@@ -63,16 +63,6 @@ function unitsOf(doc) {
   }
 }
 
-/** Download `svg`, a Blob, as `name`. */
-function saveFile(name, svg) {
-  const url = URL.createObjectURL(svg)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = name
-  a.click()
-  setTimeout(() => URL.revokeObjectURL(url), 1000)
-}
-
 export default function App() {
   const [engine, setEngine] = useState(null)
   const [engineError, setEngineError] = useState(null)
@@ -107,6 +97,7 @@ export default function App() {
   const [menuOpen, setMenuOpen] = useState(false)
   // The share sheet, a panel over the map rather than over the script column.
   const [sharing, setSharing] = useState(false)
+  const [downloading, setDownloading] = useState(false)
   // The sidebar is a column on a wide screen and a drawer on a narrow one.
   // Read the width, not just `matchMedia`: an emulated or resized viewport
   // does not always fire `change`, and the column would stay hidden.
@@ -429,18 +420,6 @@ export default function App() {
     return () => clearTimeout(t)
   }, [graph, here, planTiles])
 
-  // A cut output downloads one file per sheet, a moment apart: browsers drop
-  // downloads fired in the same instant.
-  const downloadSvg = useCallback(async () => {
-    if (!current || !output) return
-    const base = `drawland_${output.lat.toFixed(4)}_${output.lng.toFixed(4)}_1-${Math.round(output.scale)}`
-    const files = current.slices?.length ? current.slices.map(([name, svg]) => [`${base}_${name}.svg`, svg]) : [[`${base}.svg`, current.svg]]
-    for (const [i, [name, svg]] of files.entries()) {
-      if (i > 0) await new Promise((r) => setTimeout(r, 300))
-      saveFile(name, svg)
-    }
-  }, [current, output])
-
   /**
    * Write keys of the output, then note beside the scale the terrain that
    * paper × scale comes to: `scale: "1:8000",   // terrain 1.22 × 0.813 km`.
@@ -590,7 +569,7 @@ export default function App() {
           tiles={tilesOnMap}
           planned={plannedOnMap}
           onEditOutput={() => setDrawing(null)}
-          onDownload={downloadSvg}
+          onDownload={() => setDownloading(true)}
           onMoveOutput={moveOutput}
           onOutputKeys={editOutput}
           onOutputToCentre={centreOutputOnMap}
@@ -599,6 +578,9 @@ export default function App() {
           share={sharing}
           shareDoc={doc}
           onShareClose={() => setSharing(false)}
+          download={downloading}
+          downloadDoc={doc}
+          onDownloadClose={() => setDownloading(false)}
         />
         <button
           type="button"

@@ -180,29 +180,58 @@ export function Scrub({ icon, label, title, model, value, onChange, sign, px, on
  * One of a few options, side by side in a field's box; the chosen one is
  * inverted. `options` are `[value, text]`.
  */
-export function Choice({ label, title, options, value, onChange }) {
+export function Choice({ label, title, options, value, onChange, isOptionDisabled }) {
   return (
     <span role="radiogroup" aria-label={label} title={title} className="flex min-w-0 border border-black bg-white text-[0.9em] leading-[1.75] select-none">
-      {options.map(([v, text], i) => (
-        <span
-          key={v}
-          role="radio"
-          aria-checked={v === value}
-          tabIndex={v === value ? 0 : -1}
-          className={`min-w-0 flex-1 cursor-pointer text-center ${i ? 'border-l border-black' : ''} ${v === value ? 'bg-black text-white' : 'hover:bg-black/10'}`}
-          onClick={() => onChange(v)}
-          onKeyDown={(e) => {
-            const step = { ArrowLeft: -1, ArrowUp: -1, ArrowRight: 1, ArrowDown: 1 }[e.key]
-            if (e.key === 'Enter' || e.key === ' ') onChange(v)
-            else if (step) onChange(options[(i + step + options.length) % options.length][0])
-            else return
-            e.preventDefault()
-          }}
-        >
-          {text}
-        </span>
-      ))}
+      {options.map(([v, text], i) => {
+        const off = isOptionDisabled?.(v)
+        const on = v === value
+        return (
+          <span
+            key={v}
+            role="radio"
+            aria-checked={on}
+            aria-disabled={off || undefined}
+            tabIndex={off ? -1 : on ? 0 : -1}
+            className={`min-w-0 flex-1 text-center ${i ? 'border-l border-black' : ''} ${
+              off ? 'cursor-not-allowed opacity-45' : `cursor-pointer ${on ? 'bg-black text-white' : 'hover:bg-black/10'}`
+            }`}
+            onClick={() => !off && onChange(v)}
+            onKeyDown={(e) => {
+              if (off) return
+              const step = { ArrowLeft: -1, ArrowUp: -1, ArrowRight: 1, ArrowDown: 1 }[e.key]
+              if (e.key === 'Enter' || e.key === ' ') onChange(v)
+              else if (step) onChange(options[(i + step + options.length) % options.length][0])
+              else return
+              e.preventDefault()
+            }}
+          >
+            {text}
+          </span>
+        )
+      })}
     </span>
+  )
+}
+
+/**
+ * One line in a list of choices: ● when `selected`, ○ when not — same convention
+ * as the preset list and the docs index. A WebTUI `small` button, left-aligned.
+ */
+export function Pick({ selected, disabled, title, onClick, children }) {
+  return (
+    <button
+      type="button"
+      size-="small"
+      variant-={selected ? 'foreground0' : 'background1'}
+      disabled={disabled}
+      title={title}
+      className="h-auto min-w-0 justify-start! text-left!"
+      onClick={onClick}
+    >
+      {selected ? '● ' : '○ '}
+      {children}
+    </button>
   )
 }
 

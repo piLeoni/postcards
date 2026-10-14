@@ -350,6 +350,21 @@ export function createPreviewPainter() {
       const pxH = Math.max(1, Math.round(hMm * scale))
       return paintRegion(0, 0, wMm, hMm, pxW, pxH)
     },
+    /** Raster at `pxPerMm`, capped so the longest side is at most `maxPx`. */
+    bitmapAt(pxPerMm, maxPx = 8192) {
+      if (carry) {
+        processLine(carry, 0, carry.length)
+        carry = ''
+      }
+      flushGroupStrokes()
+      if (!(wMm > 0 && hMm > 0)) return null
+      let scale = pxPerMm
+      const longMm = Math.max(wMm, hMm)
+      if (longMm * scale > maxPx) scale = maxPx / longMm
+      const pxW = Math.max(1, Math.round(wMm * scale))
+      const pxH = Math.max(1, Math.round(hMm * scale))
+      return paintRegion(0, 0, wMm, hMm, pxW, pxH)
+    },
     renderViewport({ mmX0, mmY0, mmX1, mmY1, pxW, pxH }) {
       const scale = Math.min(1, MAX_VIEWPORT_PX / Math.max(pxW, pxH, 1))
       const w = Math.max(1, Math.round(pxW * scale))
@@ -357,4 +372,29 @@ export function createPreviewPainter() {
       return paintRegion(mmX0, mmY0, mmX1, mmY1, w, h)
     },
   }
+}
+
+/**
+ * Turn SVG text into a PNG blob using the same vector recorder as the draw
+ * preview (no DOM parse). `background` is `'transparent'` or `'white'`.
+ */
+export async function svgTextToPngBlob(text, { pxPerMm = 10, background = 'transparent', maxPx = 8192 } = {}) {
+  const painter = createPreviewPainter()
+  if (!painter) return null
+  painter.feed(text)
+  const bmp = painter.bitmapAt(pxPerMm, maxPx)
+  if (!bmp) return null
+  const canvas = new OffscreenCanvas(bmp.width, bmp.height)
+  const ctx = canvas.getContext('2d')
+  if (!ctx) {
+    bmp.close?.()
+    return null
+  }
+  if (background === 'white') {
+    ctx.fillStyle = '#ffffff'
+    ctx.fillRect(0, 0, bmp.width, bmp.height)
+  }
+  ctx.drawImage(bmp, 0, 0)
+  bmp.close?.()
+  return canvas.convertToBlob({ type: 'image/png' })
 }

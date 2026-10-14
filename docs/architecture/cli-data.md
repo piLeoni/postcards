@@ -12,6 +12,7 @@
 - Place: `--address` (Nominatim) or `--lat` / `--lng`
 - `--cache` (default `cache/`), `--offline`, `--refresh`
 - `--dump-graph` — print JSON and exit
+- SVG export: `--decimals <0..6>`, `--per-layer`, `--slices <whole|slices|both>` (`sheets::export_svg_files`)
 
 `generate.sh` wraps common invocations.
 

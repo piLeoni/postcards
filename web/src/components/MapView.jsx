@@ -13,6 +13,7 @@ import { mapViewAtom } from '../lib/store'
 import OutputControls from './OutputControls'
 import SearchModal from './SearchModal'
 import ShareModal from './ShareModal'
+import DownloadModal from './DownloadModal'
 import { angleModel, MAX_SCALE, MIN_SCALE, norm, PX_PER_DEG, PX_PER_STEP, scaleModel, terrainPair } from './controls'
 import LoadCard from './LoadCard'
 
@@ -555,6 +556,9 @@ export default function MapView({
   share,
   shareDoc,
   onShareClose,
+  download,
+  downloadDoc,
+  onDownloadClose,
 }) {
   const [menu, setMenu] = useState(false)
   const [search, setSearch] = useState(false)
@@ -1194,7 +1198,6 @@ export default function MapView({
     window.addEventListener('pointercancel', up)
   }
 
-  const slices = drawing?.slices?.length ?? 0
   const tilesLive = tiles?.live === true
 
   return (
@@ -1288,12 +1291,12 @@ export default function MapView({
           </span>
           {drawing?.svg && (
             <Tag
-              title={slices ? `Save each of the ${slices} slices as its own SVG` : 'Save the drawing as an SVG'}
+              title="Export SVG or PNG with options"
               aria-label="Download the output"
               className={`cursor-pointer bg-black! text-white! hover:underline ${RAISED}`}
               onClick={onDownload}
             >
-              {slices ? `↓ download ${slices} slices` : '↓ download'}
+              ↓ download
             </Tag>
           )}
           {!output.computed && (
@@ -1315,6 +1318,7 @@ export default function MapView({
       {/* The share sheet is a panel over the map, the same sheet search and
           load wear, centred on the drawing rather than on the script column. */}
       <ShareModal open={share} onClose={onShareClose} doc={shareDoc} />
+      <DownloadModal open={download} onClose={onDownloadClose} doc={downloadDoc} drawing={drawing} output={output} />
 
       {/* The draw, reported over the map: a separate output, not a frame drawn
           inside the output that is about to be replaced. It stays until the

@@ -77,6 +77,89 @@ pub struct Paper {
     pub slices: Vec<(String, String)>,
 }
 
+/// How to emit SVG files from a [`Paper`] (or rendered `svg` + `slices`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SliceExport {
+    /// Only the whole uncut drawing (`<stem>.svg`).
+    Whole,
+    /// Only the cut sheets (`<stem>-r1c1.svg`, …), or the whole drawing when uncut.
+    Slices,
+    /// Both the whole drawing and each cut sheet (CLI default when sliced).
+    Both,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ExportOptions {
+    pub decimals: Option<u8>,
+    pub per_layer: bool,
+    pub slices: SliceExport,
+}
+
+impl Default for ExportOptions {
+    fn default() -> Self {
+        ExportOptions {
+            decimals: None,
+            per_layer: false,
+            slices: SliceExport::Both,
+        }
+    }
+}
+
+/// Produce `(file_stem_suffix, svg_text)` pairs according to `opts`.
+/// `file_stem_suffix` is `""` for the single whole file, or `"-r1c1"`, `"-roads"`, `"-r1c1-roads"`, etc.
+pub fn export_svg_files(whole_svg: &str, slices: &[(String, String)], opts: ExportOptions) -> Vec<(String, String)> {
+    let mut base_items: Vec<(String, String)> = Vec::new();
+    match opts.slices {
+        SliceExport::Whole => {
+            base_items.push((String::new(), whole_svg.to_string()));
+        }
+        SliceExport::Slices => {
+            if slices.is_empty() {
+                base_items.push((String::new(), whole_svg.to_string()));
+            } else {
+                for (name, svg) in slices {
+                    base_items.push((name.clone(), svg.clone()));
+                }
+            }
+        }
+        SliceExport::Both => {
+            base_items.push((String::new(), whole_svg.to_string()));
+            for (name, svg) in slices {
+                base_items.push((name.clone(), svg.clone()));
+            }
+        }
+    }
+
+    let mut out = Vec::new();
+    for (sheet_suffix, mut text) in base_items {
+        if let Some(d) = opts.decimals {
+            text = svg::round_svg_decimals(&text, d);
+        }
+        if opts.per_layer {
+            let layers = svg::split_svg_layers(&text);
+            if layers.len() > 1 {
+                for (id, layer_svg) in layers {
+                    let layer_tok = svg::slug_token(&id);
+                    let suffix = if sheet_suffix.is_empty() {
+                        format!("-{layer_tok}")
+                    } else {
+                        format!("-{sheet_suffix}-{layer_tok}")
+                    };
+                    out.push((suffix, layer_svg));
+                }
+                continue;
+            }
+        }
+        let suffix = if sheet_suffix.is_empty() {
+            String::new()
+        } else {
+            format!("-{sheet_suffix}")
+        };
+        out.push((suffix, text));
+    }
+    out
+}
+
 /// Lay the composed groups on the paper: cropped to the padding and the
 /// sheets' margins, then cut into one drawing per sheet.
 pub fn lay_out(width: f64, height: f64, padding: MmXY, slices: &Slices, groups: Vec<(String, Lines)>) -> Paper {
@@ -114,6 +197,7 @@ pub struct Layout {
     groups: Vec<(String, usize)>,
     /// Colour for [`multipolygon_filled`] while a [`begin_fill`] group is open.
     fill_paint: Option<String>,
+    decimals: u8,
 }
 
 /// Bytes of SVG text a part holds before handing them out.
@@ -121,6 +205,10 @@ pub const PIECE: usize = 1 << 20;
 
 impl Layout {
     pub fn new(width: f64, height: f64, padding: MmXY, slices: &Slices) -> Layout {
+        Self::new_with_decimals(width, height, padding, slices, svg::DEFAULT_DECIMALS)
+    }
+
+    pub fn new_with_decimals(width: f64, height: f64, padding: MmXY, slices: &Slices, decimals: u8) -> Layout {
         let sheets = sheets(width, height, padding, slices);
         let cropped = true;
         let mut parts = vec![svg::header(width, height)];
@@ -128,7 +216,7 @@ impl Layout {
             let um = |v: f64| (v * 1000.0).round() / 1000.0;
             parts.extend(sheets.iter().map(|s| svg::header(um(s.at[2] - s.at[0]), um(s.at[3] - s.at[1]))));
         }
-        Layout { sheets, cropped, parts, groups: Vec::new(), fill_paint: None }
+        Layout { sheets, cropped, parts, groups: Vec::new(), fill_paint: None, decimals: decimals.min(6) }
     }
 
     fn cut(&self) -> bool {
@@ -202,7 +290,8 @@ impl Layout {
                 g.1 += paths;
             }
         }
-        svg::multipolygon_filled(&mut self.parts[0], &whole, fill);
+        let d = self.decimals;
+        svg::multipolygon_filled_with_decimals(&mut self.parts[0], &whole, fill, d);
         if self.cut() {
             for (k, (s, piece)) in self.sheets.iter().zip(per_sheet).enumerate() {
                 if piece.0.is_empty() {
@@ -232,7 +321,7 @@ impl Layout {
                         })
                         .collect(),
                 );
-                svg::multipolygon_filled(&mut self.parts[k + 1], &moved, fill);
+                svg::multipolygon_filled_with_decimals(&mut self.parts[k + 1], &moved, fill, d);
             }
         }
         for (k, p) in self.parts.iter_mut().enumerate() {
@@ -245,6 +334,7 @@ impl Layout {
 
     /// Lines of the group begun last.
     pub fn lines(&mut self, lines: &[LineString<f64>], out: &mut Out) {
+        let d = self.decimals;
         if self.cut() {
             let mut total_whole = 0;
             for (k, s) in self.sheets.iter().enumerate() {
@@ -252,9 +342,9 @@ impl Layout {
                 total_whole += sheet_lines.len();
                 let [x0, y0, _, _] = s.at;
                 for l in &sheet_lines {
-                    svg::polyline(&mut self.parts[0], l);
+                    svg::polyline_with_decimals(&mut self.parts[0], l, d);
                     let moved = LineString::new(l.0.iter().map(|c| Coord { x: c.x - x0, y: c.y - y0 }).collect());
-                    svg::polyline(&mut self.parts[k + 1], &moved);
+                    svg::polyline_with_decimals(&mut self.parts[k + 1], &moved, d);
                 }
             }
             if let Some(g) = self.groups.last_mut() {
@@ -272,7 +362,7 @@ impl Layout {
                 g.1 += whole.len();
             }
             for l in whole {
-                svg::polyline(&mut self.parts[0], l);
+                svg::polyline_with_decimals(&mut self.parts[0], l, d);
             }
         }
         for (k, p) in self.parts.iter_mut().enumerate() {
@@ -423,5 +513,29 @@ mod tests {
         assert!(paper.slices[1].1.contains("width=\"75mm\""), "{}", &paper.slices[1].1[..200]);
         let one = lay_out(150.0, 100.0, MmXY::default(), &Slices::default(), vec![("g".into(), vec![])]);
         assert!(one.slices.is_empty());
+
+        let two_layers = lay_out(
+            150.0,
+            100.0,
+            MmXY::default(),
+            &Slices { columns: 2, rows: 1, gutter: MmXY { x: 6.0, y: 6.0 } },
+            vec![
+                ("roads_outlines".into(), vec![LineString::from(vec![(0.0, 50.1234), (150.0, 50.1234)])]),
+                ("parks".into(), vec![LineString::from(vec![(0.0, 20.5678), (150.0, 20.5678)])]),
+            ],
+        );
+        let exported = export_svg_files(
+            &two_layers.svg,
+            &two_layers.slices,
+            ExportOptions {
+                decimals: Some(2),
+                per_layer: true,
+                slices: SliceExport::Slices,
+            },
+        );
+        let suffixes: Vec<&str> = exported.iter().map(|(s, _)| s.as_str()).collect();
+        assert_eq!(suffixes, vec!["-r1c1-roads-outlines", "-r1c1-parks", "-r1c2-roads-outlines", "-r1c2-parks"]);
+        assert!(exported[0].1.contains("50.12"));
+        assert!(!exported[0].1.contains("50.1234"));
     }
 }
