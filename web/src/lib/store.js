@@ -1,5 +1,6 @@
 import { atom } from 'jotai'
 import { atomWithStorage } from 'jotai/utils'
+import { DEFAULT_GCODE_CONFIG } from './gcode'
 import { START_DOC } from './presets'
 import { inlineShare } from './share'
 
@@ -67,6 +68,13 @@ export const mapViewAtom = atomWithStorage('drawland.mapView', null, undefined, 
 
 /** The right column's width, in px. */
 export const sidebarWidthAtom = atomWithStorage('drawland.sidebarWidth', 448, undefined, ON_INIT)
+
+/**
+ * The plotter G-code (`vpype-gcode` TOML) configuration and placement options,
+ * kept across sessions so the user's machine settings persist independently of
+ * the map style script.
+ */
+export const gcodeConfigAtom = atomWithStorage('drawland.gcodeConfig', DEFAULT_GCODE_CONFIG, undefined, ON_INIT)
 
 /**
  * The search, for one session only: the text typed, the matches it found, and

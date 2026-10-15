@@ -1,5 +1,7 @@
+import { useAtomValue } from 'jotai'
 import { useEffect, useMemo, useState } from 'react'
 import { Pick } from './controls'
+import GcodeConfig from './GcodeConfig'
 import {
   joinNameParts,
   prepareDownloads,
@@ -8,6 +10,7 @@ import {
   saveDownloads,
   suggestExportBasename,
 } from '../lib/download'
+import { gcodeConfigAtom } from '../lib/store'
 
 const KEY = { 'size-': 'small', 'variant-': 'background1' }
 
@@ -38,6 +41,8 @@ export default function DownloadModal({ open, onClose, doc, drawing, output }) {
   const [basename, setBasename] = useState('drawland')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
+  const [svgSample, setSvgSample] = useState(null)
+  const gcodeConfig = useAtomValue(gcodeConfigAtom)
 
   useEffect(() => {
     if (!open) return
@@ -48,6 +53,24 @@ export default function DownloadModal({ open, onClose, doc, drawing, output }) {
   }, [open, doc, hasSlices])
 
   useEffect(() => {
+    if (!open || options.format !== 'gcode' || !drawing?.svg) {
+      setSvgSample(null)
+      return
+    }
+    let cancelled = false
+    const blob =
+      options.sliceMode === 'slices' && hasSlices && drawing.slices?.[0]?.[1]
+        ? drawing.slices[0][1]
+        : drawing.svg
+    blob.text().then((t) => {
+      if (!cancelled) setSvgSample(t)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [open, options.format, options.sliceMode, hasSlices, drawing])
+
+  useEffect(() => {
     if (!open) return
     const onKey = (e) => {
       if (e.key === 'Escape') onClose?.()
@@ -56,12 +79,13 @@ export default function DownloadModal({ open, onClose, doc, drawing, output }) {
     return () => window.removeEventListener('keydown', onKey)
   }, [open, onClose])
 
-  const ext = options.format === 'png' ? 'png' : 'svg'
+  const gcodeExt = gcodeConfig?.ext === 'gcode' ? 'gcode' : 'gco'
+  const ext = options.format === 'png' ? 'png' : options.format === 'gcode' ? gcodeExt : 'svg'
   const cleanBase = useMemo(() => sanitizeBasename(basename), [basename])
 
   const namePreview = useMemo(() => {
     const useSlices = options.sliceMode === 'slices' && hasSlices
-    const useLayers = options.format === 'svg' && options.perLayer && canSplitLayers
+    const useLayers = (options.format === 'svg' || options.format === 'gcode') && options.perLayer && canSplitLayers
     const stem = useSlices ? joinNameParts(cleanBase, 'r1c1') : cleanBase
     if (useLayers) {
       const count = (useSlices ? drawnSlices : 1) * layerCount
@@ -82,15 +106,21 @@ export default function DownloadModal({ open, onClose, doc, drawing, output }) {
     setBusy(true)
     setError(null)
     try {
-      const files = await prepareDownloads(drawing, { ...options, basename: cleanBase })
+      const files = await prepareDownloads(drawing, {
+        ...options,
+        basename: cleanBase,
+        gcodeToml: gcodeConfig?.toml,
+        gcodeFitMarginMm: gcodeConfig?.fitMarginMm,
+        gcodeExt,
+      })
       if (!files.length) {
         setError('Nothing to export.')
         return
       }
       await saveDownloads(files)
       onClose?.()
-    } catch {
-      setError('Export failed.')
+    } catch (err) {
+      setError(err?.message || 'Export failed.')
     } finally {
       setBusy(false)
     }
@@ -143,7 +173,7 @@ export default function DownloadModal({ open, onClose, doc, drawing, output }) {
           <fieldset className="m-0 mb-[1.5lh] border-0 p-0">
             <legend className="mb-[0.5lh] font-bold">Format</legend>
             <div className="flex flex-wrap gap-[1ch]">
-              {['svg', 'png'].map((f) => (
+              {['svg', 'png', 'gcode'].map((f) => (
                 <button
                   key={f}
                   type="button"
@@ -217,6 +247,32 @@ export default function DownloadModal({ open, onClose, doc, drawing, output }) {
                 )}
               </fieldset>
             </>
+          ) : options.format === 'gcode' ? (
+            <div className="flex flex-col gap-[1.5lh]">
+              <GcodeConfig svgSample={svgSample} />
+
+              <fieldset className="m-0 border-0 p-0">
+                <legend className="mb-[0.5lh] font-bold">Layers</legend>
+                <Pick
+                  selected={options.perLayer}
+                  disabled={!canSplitLayers}
+                  title={
+                    canSplitLayers
+                      ? `Write one G-code file per layer`
+                      : 'Only one layer in this drawing'
+                  }
+                  onClick={() => set({ perLayer: !options.perLayer })}
+                >
+                  One file per layer
+                </Pick>
+                {!canSplitLayers && (
+                  <p className="m-0 mt-[0.5lh] opacity-60">This draw has only one layer.</p>
+                )}
+                {canSplitLayers && (
+                  <p className="m-0 mt-[0.5lh] opacity-60">{layerCount} layers in this draw.</p>
+                )}
+              </fieldset>
+            </div>
           ) : (
             <>
               <fieldset className="m-0 mb-[1.5lh] border-0 p-0">

@@ -299,22 +299,23 @@ draw({ id: "lines_labels", from: labels.lines, stroke: penStroke({ style: "solid
 // What sits on top of what is decided by the masks above.
 compose.order(
   "lines_labels",
-  "lines_buildings_ring",
-  "fill_buildings",
-  "fill_wood_trees",
-  "fill_wood_foliage",
-  "lines_roads_seams",
-  "lines_roads_center",
+  "lines_water_ring",
   "lines_roads_outlines",
   "lines_rail",
-  "lines_water_ring",
-  "fill_water",
+  "lines_roads_seams",
+  "lines_roads_center",
   "lines_ferry",
-  "lines_piers",
   "lines_dock_ring",
   "lines_garden_paths",
   "lines_nature_ring",
   "lines_nature_terrain",
+  "lines_piers",
+  "lines_buildings_ring",
+  "lines_ground_burin",
+  "fill_buildings",
+  "fill_wood_trees",
+  "fill_wood_foliage",
+  "fill_water",
   "fill_nature_garden",
   "fill_nature_flowerbed",
   "fill_nature_grass",
@@ -328,7 +329,6 @@ compose.order(
   "fill_nature_farmland",
   "fill_nature_park",
   "fill_nature_protected",
-  "lines_ground_burin",
 )
 
 // ── Plotter optimization ────────────────────────────────────────────────────
@@ -352,3 +352,7 @@ const cityAndRoutes = [...cityLines, ...routeLines]
 compose.deoverlap(cityLines, { tolerance: PEN })
 compose.linemerge(cityLines, "0.1mm")
 compose.simplify(cityAndRoutes, "0.03mm")
+// Sort pen travel inside every layer, including fills/patterns. Keep label
+// outline strokes in their text order rather than turning their glyphs into
+// an arbitrary nearest-neighbour route.
+compose.linesort({ except: ["lines_labels"] })

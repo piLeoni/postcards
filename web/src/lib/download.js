@@ -1,6 +1,7 @@
 /**
  * Export the drawn SVG (and raster fallbacks) from the browser.
  */
+import { svgToGcode } from './gcode.js'
 import { svgTextToPngBlob } from './preview.js'
 
 const slugToken = (s) =>
@@ -165,6 +166,41 @@ export async function prepareDownloads(drawing, options) {
         background: options.pngBackground,
       })
       if (png) files.push({ name: `${stem}.png`, blob: png })
+      continue
+    }
+
+    if (options.format === 'gcode') {
+      const gcodeExt = options.gcodeExt === 'gcode' ? 'gcode' : 'gco'
+      if (options.perLayer) {
+        const layers = splitSvgByTopLevelGroups(text)
+        if (layers.length > 1) {
+          for (const [id, layerSvg] of layers) {
+            const filename = `${joinNameParts(stem, safeLayer(id))}.${gcodeExt}`
+            const { gcode, segmentCount } = svgToGcode(layerSvg, {
+              toml: options.gcodeToml,
+              fitMarginMm: options.gcodeFitMarginMm,
+              filename,
+            })
+            if (segmentCount > 0) {
+              files.push({
+                name: filename,
+                blob: new Blob([gcode], { type: 'text/plain;charset=utf-8' }),
+              })
+            }
+          }
+          continue
+        }
+      }
+      const filename = `${stem}.${gcodeExt}`
+      const { gcode } = svgToGcode(text, {
+        toml: options.gcodeToml,
+        fitMarginMm: options.gcodeFitMarginMm,
+        filename,
+      })
+      files.push({
+        name: filename,
+        blob: new Blob([gcode], { type: 'text/plain;charset=utf-8' }),
+      })
       continue
     }
 
