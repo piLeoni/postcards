@@ -9,6 +9,8 @@ license.workspace = true
 penfill = { workspace = true }
 burin-map-core = { workspace = true }
 terramask = { workspace = true, features = ["dem"] }
+deoverlap-core = { workspace = true }
+rstar = { workspace = true }
 geo = { workspace = true }
 i_overlay = { workspace = true }
 geographiclib-rs = { workspace = true }

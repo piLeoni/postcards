@@ -326,6 +326,7 @@ pub struct LabelPick {
 pub struct Labels {
     /// Placed together, so no set's labels cover another's.
     pub from: Vec<Name>,
+    pub in_area: Option<Name>,
     pub style: crate::labels::Style,
 }
 
@@ -476,7 +477,7 @@ impl Op {
                 .cloned()
                 .chain(b.regions.values().cloned())
                 .collect(),
-            Op::Labels(l) => l.from.clone(),
+            Op::Labels(l) => l.from.iter().chain(l.in_area.iter()).cloned().collect(),
             Op::LabelLines(p) | Op::LabelArea(p) => vec![p.of.clone()],
             Op::Fill(f) | Op::FillCover(f) => {
                 std::iter::once(f.in_area.clone()).chain(f.content.iter().cloned()).collect()
@@ -600,6 +601,7 @@ pub struct Compose {
     pub masks: Vec<(String, Mask)>,
     pub clip: BTreeMap<Id, Clip>,
     pub clip_default: Clip,
+    pub optimize: Vec<crate::optimize::OptimizeStep>,
 }
 
 // ---------------------------------------------------------------------------
@@ -822,6 +824,20 @@ struct RawCompose {
     masks: Vec<(String, RawMask)>,
     #[serde(default)]
     clip: ClipBlock,
+    #[serde(default)]
+    optimize: Vec<RawOptimizeStep>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RawOptimizeStep {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub layers: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub except: Vec<String>,
+    #[serde(flatten)]
+    pub op: crate::optimize::OptimizeOp,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub at: Option<At>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -983,11 +999,24 @@ fn build(raw: Raw) -> Result<Grammar, GrammarError> {
         ),
     };
 
+    let optimize = raw
+        .compose
+        .optimize
+        .into_iter()
+        .map(|s| crate::optimize::OptimizeStep {
+            layers: s.layers.into_iter().map(Id).collect(),
+            except: s.except.into_iter().map(Id).collect(),
+            op: s.op,
+            at: s.at,
+        })
+        .collect();
+
     let compose = Compose {
         order: raw.compose.order.into_iter().map(Id).collect(),
         masks,
         clip: BTreeMap::new(),
         clip_default,
+        optimize,
     };
 
     let grammar = Grammar { title: raw.title, output: raw.output, sections, draw, compose };
@@ -1294,9 +1323,20 @@ fn parse_op(raw: RawOp, section: Section) -> Result<Op, GrammarError> {
             if let Some(f) = from.iter().find(|f| f.section != Section::Features) {
                 return Err(GrammarError::Invalid(format!("tools_labels.from has {f}, but it reads $features sets")));
             }
+            let in_area = match body.remove("in") {
+                None => None,
+                Some(Value::String(s)) => {
+                    let n = refname(&s)?;
+                    if n.section != Section::Areas {
+                        return Err(GrammarError::Invalid(format!("tools_labels.in is {n}, but it reads an $areas def")));
+                    }
+                    Some(n)
+                }
+                Some(_) => return Err(GrammarError::Invalid("tools_labels.in expects an $areas reference".into())),
+            };
             let style: crate::labels::Style = json(&Value::Object(body), "tools_labels")?;
             crate::labels::validate_style(&style).map_err(GrammarError::Invalid)?;
-            Op::Labels(Labels { from, style })
+            Op::Labels(Labels { from, in_area, style })
         }
         "tools_rings" => match &value {
             Value::String(s) => Op::Rings(Rings { of: refname(s)?, exterior_only: false }),
@@ -1733,6 +1773,9 @@ pub fn op_to_json(op: &Op) -> Value {
         Op::Labels(l) => {
             let mut body = serde_json::to_value(&l.style).unwrap_or_else(|_| json!({}));
             body["from"] = refs_json(&l.from);
+            if let Some(a) = &l.in_area {
+                body["in"] = Value::String(a.to_string());
+            }
             ("tools_labels", body)
         }
         Op::Grow(g) => ("tools_grow", json!({ "of": g.of.to_string(), "by": g.by })),
@@ -1868,14 +1911,29 @@ impl Grammar {
             Clip::None => json!("none"),
             Clip::Areas(ns) => refs_json(ns),
         };
-        out.insert(
-            "compose".into(),
-            json!({
-                "order": self.compose.order.iter().map(|i| i.0.clone()).collect::<Vec<_>>(),
-                "masks": masks,
-                "clip": { "default": clip },
-            }),
-        );
+        let mut compose_obj = json!({
+            "order": self.compose.order.iter().map(|i| i.0.clone()).collect::<Vec<_>>(),
+            "masks": masks,
+            "clip": { "default": clip },
+        });
+        if !self.compose.optimize.is_empty() {
+            let opt: Vec<Value> = self
+                .compose
+                .optimize
+                .iter()
+                .map(|s| {
+                    let raw = RawOptimizeStep {
+                        layers: s.layers.iter().map(|i| i.0.clone()).collect(),
+                        except: s.except.iter().map(|i| i.0.clone()).collect(),
+                        op: s.op.clone(),
+                        at: s.at,
+                    };
+                    serde_json::to_value(raw).unwrap()
+                })
+                .collect();
+            compose_obj["optimize"] = Value::Array(opt);
+        }
+        out.insert("compose".into(), compose_obj);
         Value::Object(out)
     }
 
@@ -1990,6 +2048,24 @@ pub fn validate(g: &Grammar) -> Result<(), GrammarError> {
                 if n.section != Section::Areas || g.find(n).is_none() {
                     return Err(GrammarError::Invalid(format!("compose.clip[{:?}]: {n} is not an area def", id.0)));
                 }
+            }
+        }
+    }
+    for step in &g.compose.optimize {
+        for id in &step.layers {
+            if !groups.contains(&id.0) {
+                return Err(GrammarError::Invalid(located(
+                    &format!("compose.{} names {:?}, which is not a draw id", step.op.name(), id.0),
+                    step.at,
+                )));
+            }
+        }
+        for id in &step.except {
+            if !groups.contains(&id.0) {
+                return Err(GrammarError::Invalid(located(
+                    &format!("compose.{} except names {:?}, which is not a draw id", step.op.name(), id.0),
+                    step.at,
+                )));
             }
         }
     }

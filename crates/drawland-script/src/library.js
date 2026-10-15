@@ -440,13 +440,14 @@
     // strokes, `area` what they cover, for fills.fill, masks and the rest.
     labels(options = {}) {
       object(options, "modules.labels options");
-      const { from, keys, rules, ...rest } = options;
+      const { from, in: inArea, keys, rules, ...rest } = options;
       const sets = Array.isArray(from) ? from : [from];
       if (!sets.length) fail("modules.labels: from needs at least one feature set");
       const op = {
         from: sets.map((f, i) => need(f, Features, sets.length > 1 ? `modules.labels from (input ${i + 1})` : "modules.labels from")),
-        ...labelLook(rest, "modules.labels", "option", ["from", "keys", "rules"]),
+        ...labelLook(rest, "modules.labels", "option", ["from", "in", "keys", "rules"]),
       };
+      if (inArea !== undefined) op.in = need(inArea, Area, "modules.labels in");
       if (keys !== undefined) {
         const ks = Array.isArray(keys) ? keys : [keys];
         if (!ks.length || !ks.every((k) => typeof k === "string")) fail(`modules.labels: keys is a tag or a list of tags, got ${describe(keys)}`);
@@ -531,6 +532,66 @@
 
   const ids = (args) => (args.length === 1 && Array.isArray(args[0]) ? args[0] : args).map(String);
 
+  const isLengthValue = (v) =>
+    typeof v === "number" ||
+    (typeof v === "string" && /^-?\d+(\.\d+)?\s*(mm|cm|in|pt|px)?$/i.test(v.trim()));
+
+  function parseOptimize(name, a, b, lengthKey, keyMap) {
+    const where = `compose.${name}`;
+    let layers = [];
+    let rawOpts = undefined;
+    if (a === undefined) {
+      rawOpts = b;
+    } else if (Array.isArray(a)) {
+      layers = a.map(String);
+      rawOpts = b;
+    } else if (typeof a === "object" && a !== null) {
+      if (b !== undefined) fail(`${where}: unexpected second argument when first is options`);
+      rawOpts = a;
+    } else if (typeof a === "string" || typeof a === "number") {
+      if (b !== undefined) {
+        if (typeof a !== "string") fail(`${where}: layers expects a draw id or list of draw ids, got ${describe(a)}`);
+        layers = [a];
+        rawOpts = b;
+      } else if (lengthKey && isLengthValue(a)) {
+        rawOpts = { [lengthKey]: a };
+      } else if (typeof a === "string") {
+        layers = [a];
+      } else {
+        fail(`${where}: unexpected ${describe(a)}`);
+      }
+    } else {
+      fail(`${where}: unexpected ${describe(a)}`);
+    }
+
+    const spec = {};
+    let except = [];
+    if (rawOpts !== undefined) {
+      if (lengthKey && isLengthValue(rawOpts)) {
+        spec[keyMap[lengthKey]] = rawOpts;
+      } else {
+        object(rawOpts, where);
+        const allowed = [...Object.keys(keyMap), "except"];
+        for (const [k, v] of Object.entries(rawOpts)) {
+          if (k === "except") {
+            if (v !== undefined) {
+              if (!Array.isArray(v)) fail(`${where}: except is a list of draw ids, got ${describe(v)}`);
+              except = v.map(String);
+            }
+          } else if (k in keyMap) {
+            if (v !== undefined) spec[keyMap[k]] = v;
+          } else {
+            fail(`${where}: unknown key ${k} (${allowed.join(", ")})`);
+          }
+        }
+      }
+    }
+    const step = { [name]: spec };
+    if (layers.length) step.layers = layers;
+    if (except.length) step.except = except;
+    dl.optimize(step);
+  }
+
   const compose = {
     order(...order) { dl.order(ids(order)); },
     mask(spec) {
@@ -544,6 +605,36 @@
       if (value === "auto" || value === "none") return dl.clip(value);
       if (Array.isArray(value)) return dl.clip(value.map((a) => need(a, Area, "compose.clip")));
       fail(`compose.clip expects "auto", "none" or a list of areas, got ${describe(value)}`);
+    },
+    deoverlap(a, b) {
+      parseOptimize("deoverlap", a, b, "tolerance", {
+        tolerance: "tolerance",
+        selfOverlap: "self_overlap",
+        acrossLayers: "across_layers",
+        angle: "angle",
+        prefer: "prefer",
+        minLength: "min_length",
+        drop: "drop",
+      });
+    },
+    linemerge(a, b) {
+      parseOptimize("linemerge", a, b, "tolerance", { tolerance: "tolerance" });
+    },
+    simplify(a, b) {
+      parseOptimize("simplify", a, b, "tolerance", { tolerance: "tolerance" });
+    },
+    filter(a, b) {
+      parseOptimize("filter", a, b, "minLength", { minLength: "min_length" });
+    },
+    reloop(a, b) {
+      parseOptimize("reloop", a, b, null, {});
+    },
+    linesort(a, b) {
+      parseOptimize("linesort", a, b, null, {
+        twoOpt: "two_opt",
+        passes: "passes",
+        follow: "follow",
+      });
     },
   };
 

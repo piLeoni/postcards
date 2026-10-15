@@ -135,6 +135,17 @@ aside :is(h1, h2, h3, p, div, header, section) {
   color: #666 !important;
 }
 
+/* Disable Monaco's custom button tooltips (e.g. "Close (Escape)" on the Find
+   bar), which clamp inside the editor top edge and cover the buttons themselves. */
+.monaco-editor .context-view:has(.monaco-hover, .monaco-custom-hover, .workbench-hover),
+.monaco-editor .monaco-custom-hover,
+.monaco-editor .workbench-hover,
+.monaco-editor .workbench-hover-container,
+.monaco-hover.workbench-hover {
+  display: none !important;
+  pointer-events: none !important;
+}
+
 /* Keep the mobile controls button above the home indicator. */
 .safe-fab {
   bottom: calc(3.5rem + env(safe-area-inset-bottom, 0px));

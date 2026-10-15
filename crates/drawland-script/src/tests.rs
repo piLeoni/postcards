@@ -505,3 +505,41 @@ fn the_description_lists_every_pattern_preset_and_hatch() {
     let hatches: Vec<String> = penfill::pat::BUILTIN.iter().map(|s| s.to_string()).collect();
     assert_eq!(union("PatName"), hatches);
 }
+
+#[test]
+fn compose_optimize_steps_round_trip_and_execute() {
+    let g = evaluate(
+        "output({ width: '100mm', height: '50mm' })\n\
+         const f = engine.frame()\n\
+         const inner = areas.grow(f, '-10mm')\n\
+         draw({ id: 'ring_a', from: lines.rings(inner), stroke: 'solid' })\n\
+         draw({ id: 'ring_b', from: lines.rings(inner), stroke: 'dash' })\n\
+         const solid = ['ring_a']\n\
+         const dashed = ['ring_b']\n\
+         compose.deoverlap(solid, { tolerance: '0.3mm', acrossLayers: true })\n\
+         compose.linemerge(solid, '0.1mm')\n\
+         compose.simplify([...solid, ...dashed], '0.05mm')\n\
+         compose.filter(solid, '0.05mm')\n\
+         compose.reloop(solid)\n\
+         compose.linesort([...solid, ...dashed])\n",
+    )
+    .unwrap();
+    assert_eq!(g.compose.optimize.len(), 6);
+    let back = drawland_core::grammar::Grammar::from_json(&g.to_json().to_string()).unwrap();
+    assert_eq!(back, g);
+    let out = run(
+        &g,
+        &Output::new(&g.output, (0.0, 0.0)),
+        Inputs { features: vec![], tiles: vec![], sources: &BTreeMap::new(), terrain: None, memory_budget: None, google_fonts: BTreeMap::new() },
+    )
+    .unwrap();
+    assert!(out.groups.iter().any(|(id, n)| id == "ring_a" && *n >= 1));
+    assert!(out.groups.iter().any(|(id, n)| id == "ring_b" && *n >= 1));
+
+    let e = err(
+        "draw({ id: 'ring_a', from: lines.rings(engine.frame()) })\n\
+         compose.deoverlap(['missing_layer'], '0.3mm')\n",
+    );
+    assert!(e.message.contains("missing_layer"), "{e}");
+    assert_eq!(e.at, Some(At(2, 18)));
+}

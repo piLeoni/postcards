@@ -15,7 +15,9 @@ Place names along lines or at points; render as Hershey strokes or Google font o
 
 ## Module contract
 
-`modules.labels({ from: [feature sets], rules: [...] })` in `library.js`.
+`modules.labels({ from: [feature sets], in?: area, rules: [...] })` in `library.js`.
+
+By default, label placement (`labels::place`) checks glyph quads against the drawable sheet area (`sheets::drawable_area`, which subtracts `output.padding` and `output.slices.gutter`) rather than the raw card edge, so `output.padding` never slices placed labels in half. When `in: area` is passed, labels are further restricted to that area (e.g. a custom inset or rounded frame).
 
 Rules match tags (`tiles:layer`, road `class`, etc.), set sizes (`size`, `minSize`), fonts, buffering along lines (`buffer`, `keepCenterline`).
 

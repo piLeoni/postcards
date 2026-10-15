@@ -68,6 +68,28 @@ pub fn sheets(width: f64, height: f64, padding: MmXY, slices: &Slices) -> Vec<Sh
     out
 }
 
+/// The drawable area of the output after `padding` and `slices.gutter` margins:
+/// every sheet's `inner` rectangle, as a [`MultiPolygon`].
+pub fn drawable_area(width: f64, height: f64, padding: MmXY, slices: &Slices) -> MultiPolygon<f64> {
+    MultiPolygon::new(
+        sheets(width, height, padding, slices)
+            .into_iter()
+            .filter_map(|s| {
+                let [x0, y0, x1, y1] = s.inner;
+                (x1 > x0 && y1 > y0).then(|| {
+                    polygon![
+                        (x: x0, y: y0),
+                        (x: x1, y: y0),
+                        (x: x1, y: y1),
+                        (x: x0, y: y1),
+                        (x: x0, y: y0),
+                    ]
+                })
+            })
+            .collect(),
+    )
+}
+
 /// The output's SVG and, when it is cut, one SVG per sheet.
 pub struct Paper {
     pub svg: String,
@@ -221,6 +243,19 @@ impl Layout {
 
     fn cut(&self) -> bool {
         self.sheets.len() > 1
+    }
+
+    /// Crop `lines` to the sheets' inner rectangles before `compose.optimize`
+    /// runs, so border-clipped stubs are filtered, merged, and sorted.
+    pub fn crop(&self, lines: &[LineString<f64>]) -> Lines {
+        if !self.cropped {
+            return lines.to_vec();
+        }
+        let mut out = Vec::new();
+        for s in &self.sheets {
+            out.extend(clip(lines, s.inner));
+        }
+        out
     }
 
     /// Start the group `id`, in every part.

@@ -18,6 +18,9 @@ burin-map-core = { path = "../burin-map/crates/burin-map-core", version = "0.1.0
 burin-map-script = { path = "../burin-map/crates/burin-map-script", version = "0.1.0" }
 # Reads tiles only; the CLI turns `fetch` on, the page downloads them itself.
 terramask = { path = "../terramask/crates/terramask", version = "0.2.0", default-features = false }
+# Corridor de-overlap of vector strokes, for compose.deoverlap.
+deoverlap-core = { path = "../deoverlap/core", version = "4.2.0" }
+rstar = "0.12"
 geo = "0.33"
 # The boolean engine under geo, for the non-zero fill of font outlines.
 i_overlay = "4.5"

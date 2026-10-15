@@ -79,12 +79,13 @@ fn install(ctx: &mut Context) -> JsResult<()> {
     ctx.eval(Source::from_bytes(
         "delete globalThis.Date; delete Math.random; delete globalThis.WeakRef; delete globalThis.FinalizationRegistry;",
     ))?;
-    let natives: [(&str, usize, fn(&JsValue, &[JsValue], &mut Context) -> JsResult<JsValue>); 9] = [
+    let natives: [(&str, usize, fn(&JsValue, &[JsValue], &mut Context) -> JsResult<JsValue>); 10] = [
         ("node", 2, native_node),
         ("draw", 1, native_draw),
         ("order", 1, native_order),
         ("mask", 1, native_mask),
         ("clip", 1, native_clip),
+        ("optimize", 1, native_optimize),
         ("output", 1, native_output),
         ("title", 1, native_title),
         ("fail", 1, native_fail),
@@ -118,6 +119,7 @@ struct Builder {
     order_at: Option<At>,
     masks: Vec<(String, Mask)>,
     clip: Option<Clip>,
+    optimize: Vec<drawland_core::optimize::OptimizeStep>,
     /// The last error a native raised, with the user's line: a JS error
     /// thrown from the library would otherwise point inside the library.
     failure: Option<(String, Option<At>)>,
@@ -156,6 +158,7 @@ impl Builder {
             masks: self.masks,
             clip: Default::default(),
             clip_default: self.clip.unwrap_or(Clip::Auto),
+            optimize: self.optimize,
         };
         let graph = Grammar { title: self.title, output, sections, draw: self.draw, compose };
         grammar::validate(&graph).map_err(|e| {
@@ -325,6 +328,21 @@ fn native_clip(_: &JsValue, args: &[JsValue], ctx: &mut Context) -> JsResult<JsV
         other => return Err(fail(ctx, format!("compose.clip: {other} is not auto, none or a list of areas"))),
     };
     with(|b| b.clip = Some(clip));
+    Ok(JsValue::undefined())
+}
+
+fn native_optimize(_: &JsValue, args: &[JsValue], ctx: &mut Context) -> JsResult<JsValue> {
+    let spec = json_arg(args, 0, ctx)?;
+    let at = user_at(ctx);
+    let raw: grammar::RawOptimizeStep = serde_json::from_value(spec)
+        .map_err(|e| fail(ctx, format!("compose: {}", strip_kind(&e.to_string()))))?;
+    let step = drawland_core::optimize::OptimizeStep {
+        layers: raw.layers.into_iter().map(Id).collect(),
+        except: raw.except.into_iter().map(Id).collect(),
+        op: raw.op,
+        at,
+    };
+    with(|b| b.optimize.push(step));
     Ok(JsValue::undefined())
 }
 

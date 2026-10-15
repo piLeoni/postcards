@@ -9,6 +9,7 @@ pub mod google_fonts;
 pub mod grammar;
 pub mod grammar_run;
 pub mod labels;
+pub mod optimize;
 pub mod osm;
 pub mod osm_cache;
 pub mod output;

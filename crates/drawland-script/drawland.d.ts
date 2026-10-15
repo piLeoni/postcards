@@ -512,6 +512,8 @@ declare const modules: {
 interface LabelOptions {
   /** The named features, `features.tiles("road_names")`, or several sets placed together. */
   from: Features | Features[]
+  /** Area to keep labels inside (default: the drawable sheet area after `output.padding`). */
+  in?: Area
   /** Capital height of the most important labels. Default `"2mm"`. */
   size?: Length
   /** Capital height of the least important. Default `"1.1mm"`. */
@@ -604,7 +606,53 @@ type Labels = {
 /** Put lines on paper; returns the group id. Later draws go on top. */
 declare function draw(options: DrawOptions): string
 
-/** How the drawn groups stack and cover each other. */
+type LayerTargets = string | string[]
+
+interface DeoverlapOptions {
+  /** Corridor half-width (typically the pen width). Default: `"0.3mm"`. */
+  tolerance?: Length
+  /** Dedup segments within a single polyline too. Default: `true`. */
+  selfOverlap?: boolean
+  /** Propagate the drawn corridor mask to subsequent layers in this call. Default: `false`. */
+  acrossLayers?: boolean
+  /** Maximum angular difference in degrees (`0..=90`), or omit to disable angle check. */
+  angle?: number
+  /** Which overlapping polyline keeps the shared section. Default: `"longest"`. */
+  prefer?: "longest" | "first" | "shortest"
+  /** Drop remnants shorter than this after clipping. Default: `tolerance`. */
+  minLength?: Length
+  /** Drop polylines whose retained length is below this fraction (`0..=1`) of their original length. */
+  drop?: number
+  /** Exclude these layer ids when `layers` is omitted. */
+  except?: string[]
+}
+
+interface ToleranceOptimizeOptions {
+  tolerance?: Length
+  except?: string[]
+}
+
+interface FilterOptimizeOptions {
+  minLength?: Length
+  except?: string[]
+}
+
+interface ReloopOptimizeOptions {
+  except?: string[]
+}
+
+interface LinesortOptions {
+  /** Run 2-opt swaps after nearest-neighbour pass. Default: `true`. */
+  twoOpt?: boolean
+  /** Maximum 2-opt passes. Default: `250`. */
+  passes?: number
+  /** Follow connected endpoints when sorting. Default: `true`. */
+  follow?: boolean
+  /** Exclude these layer ids when `layers` is omitted. */
+  except?: string[]
+}
+
+/** How the drawn groups stack, cover each other, and are optimized for the plotter. */
 declare const compose: {
   /** Group ids, bottom first; groups left out go on top in draw order. Default: draw order. */
   order(...ids: (string | string[])[]): void
@@ -612,6 +660,18 @@ declare const compose: {
   mask(options: { name?: string; from: Area; occludes: string[] }): void
   /** Which masks cut: `"auto"` (default), `"none"`, or exactly these areas. */
   clip(value: "auto" | "none" | Area[]): void
+  /** Remove overlapping stroke segments within or across layers. */
+  deoverlap(layers?: LayerTargets | Length | DeoverlapOptions, options?: Length | DeoverlapOptions): void
+  /** Join polylines whose endpoints are within `tolerance` (default `"0.1mm"`). */
+  linemerge(layers?: LayerTargets | Length | ToleranceOptimizeOptions, options?: Length | ToleranceOptimizeOptions): void
+  /** Ramer-Douglas-Peucker simplification within `tolerance` (default `"0.05mm"`). */
+  simplify(layers?: LayerTargets | Length | ToleranceOptimizeOptions, options?: Length | ToleranceOptimizeOptions): void
+  /** Drop strokes shorter than `minLength` (default `"0.05mm"`). */
+  filter(layers?: LayerTargets | Length | FilterOptimizeOptions, options?: Length | FilterOptimizeOptions): void
+  /** Randomize seam vertex on closed loops to avoid ink blobs. */
+  reloop(layers?: LayerTargets | ReloopOptimizeOptions): void
+  /** Nearest-neighbour + 2-opt stroke ordering to minimize pen-up travel. */
+  linesort(layers?: LayerTargets | LinesortOptions, options?: LinesortOptions): void
 }
 
 /** Where the map is and on what paper. The page edits this call when its values are written literally. */

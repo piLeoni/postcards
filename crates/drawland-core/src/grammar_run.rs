@@ -212,9 +212,12 @@ pub fn run_into(grammar: &Grammar, output: &Output, inputs: Inputs, draw: &Task,
         let decoded = crate::google_fonts::decode_font_bytes(raw).map_err(RunError::Plan)?;
         decompressed_fonts.insert(k.clone(), decoded);
     }
+    let spec = &grammar.output;
+    let drawable = crate::sheets::drawable_area(w, h, spec.padding, &spec.slices);
     let engine = Engine {
         of: output,
         output: warp.bend_area(w, h, &frame),
+        drawable: warp.bend_area(w, h, &drawable),
         terrain: inputs.terrain.as_ref(),
         projector: &projector,
         google_fonts: &decompressed_fonts,
@@ -264,6 +267,8 @@ struct Found<'a> {
 struct Engine<'a> {
     of: &'a Output,
     output: MultiPolygon<f64>,
+    /// The area actually drawn after `output.padding` and `output.slices.gutter`.
+    drawable: MultiPolygon<f64>,
     /// The elevation under the output, when a def draws terrain; `None` when
     /// none does, so nothing is fetched for a document that never asks.
     terrain: Option<&'a crate::terrain::Grid>,
@@ -566,7 +571,11 @@ fn eval_op<'a>(
             for n in &l.from {
                 named.extend_from_slice(feats(n)?);
             }
-            Value::Labels(crate::labels::place(&named, &engine.output, &l.style, engine.google_fonts)?)
+            let bounds = match &l.in_area {
+                Some(n) => geom::intersection(area(n)?, &engine.drawable),
+                None => engine.drawable.clone(),
+            };
+            Value::Labels(crate::labels::place(&named, &bounds, &l.style, engine.google_fonts)?)
         }
         Op::Fill(_) => return Err("tools_fill is evaluated in the fill pass".into()),
         Op::Module(m) => match &m.from {
@@ -821,9 +830,15 @@ fn run_solid_fill(
     Ok(())
 }
 
+enum SinkDest<'a, 'o> {
+    Stream(&'a mut crate::sheets::Layout, &'a mut crate::sheets::Out<'o>),
+    Collect(&'a crate::sheets::Layout, &'a mut Lines),
+}
+
 /// One group on its way to the paper: strokes come in, are styled, gathered
-/// into a batch, cut by the masks over the group, and written. Only the
-/// batch is ever held.
+/// into a batch, cut by the masks over the group, and written (or collected
+/// when `compose.optimize` is active). Only the batch is ever held when
+/// streaming.
 struct GroupSink<'a, 'o> {
     stroke: Option<&'a crate::profile::StrokeSpec>,
     /// What the masks over this group cover; empty when none does.
@@ -832,8 +847,7 @@ struct GroupSink<'a, 'o> {
     points: usize,
     /// Strokes taken in, before styling and masking: for the progress row.
     fed: usize,
-    layout: &'a mut crate::sheets::Layout,
-    out: &'a mut crate::sheets::Out<'o>,
+    dest: SinkDest<'a, 'o>,
 }
 
 impl GroupSink<'_, '_> {
@@ -864,7 +878,10 @@ impl GroupSink<'_, '_> {
         let batch = std::mem::take(&mut self.pending);
         self.points = 0;
         let kept = if self.mask.0.is_empty() { batch } else { geom::clip_lines(&batch, self.mask, true) };
-        self.layout.lines(&kept, self.out);
+        match &mut self.dest {
+            SinkDest::Stream(layout, out) => layout.lines(&kept, out),
+            SinkDest::Collect(layout, acc) => acc.extend(layout.crop(&kept)),
+        }
     }
 }
 
@@ -952,13 +969,33 @@ fn compose(
         ids
     };
 
-    // 4. Each group made, masked and written. A mask cuts exactly the groups
-    // it lists, wherever they sit in the order: the order is only the
-    // sequence the groups are drawn in.
+    // 4. Each group made, masked and written (or collected for optimize). A mask
+    // cuts exactly the groups it lists, wherever they sit in the order: the
+    // order is only the sequence the groups are drawn in.
     // Groups mostly share their masks, and a union over the whole card is
     // the slow part of a group: one union per set of masks.
     let mut unions: BTreeMap<Vec<&str>, MultiPolygon<f64>> = BTreeMap::new();
     let occlude_task = task.child("compose:occlude", "occlusion", order.len() as u64, "groups");
+
+    enum BufferedGroup<'a> {
+        SolidFill {
+            id: String,
+            stroke: Option<&'a crate::profile::StrokeSpec>,
+            def: &'a Def,
+            spec: &'a crate::grammar::Fill,
+            above: MultiPolygon<f64>,
+        },
+        Strokes {
+            id: String,
+            stroke: Option<&'a crate::profile::StrokeSpec>,
+            under_hatch: Option<(&'a Def, &'a crate::grammar::Fill, MultiPolygon<f64>)>,
+        },
+    }
+
+    let has_optimize = !grammar.compose.optimize.is_empty();
+    let mut buffered_meta: Vec<BufferedGroup> = Vec::new();
+    let mut buffered_lines: Vec<(String, Lines)> = Vec::new();
+
     for id in &order {
         occlude_task.tick();
         let Some((what, stroke)) = drawn.remove(id) else { continue };
@@ -989,34 +1026,81 @@ fn compose(
                 geom::union_multi(&parts)
             }
         };
-        match what {
-            Drawing::Fill(def, spec) if fill::is_solid(&spec.spec) => {
-                layout.begin_fill(id, stroke);
-                run_solid_fill(def, spec, fills, &above, layout, out, false)?;
-                layout.end();
-            }
-            Drawing::Fill(def, spec) if spec.spec.background.is_some() => {
-                layout.begin_with_style(id, stroke);
-                run_solid_fill(def, spec, fills, &above, layout, out, true)?;
-                let mut sink = GroupSink { stroke, mask: &above, pending: Vec::new(), points: 0, fed: 0, layout, out };
-                run_fill(def, spec, fills, &mut sink)?;
-                sink.flush();
-                layout.end();
-            }
-            other => {
-                layout.begin_with_style(id, stroke);
-                let mut sink = GroupSink { stroke, mask: &above, pending: Vec::new(), points: 0, fed: 0, layout, out };
-                match other {
-                    Drawing::Lines(lines) => {
-                        for l in lines {
-                            sink.line(l.clone());
-                        }
-                    }
-                    Drawing::Fill(def, spec) => run_fill(def, spec, fills, &mut sink)?,
-                    Drawing::Nothing => {}
+        if !has_optimize {
+            match what {
+                Drawing::Fill(def, spec) if fill::is_solid(&spec.spec) => {
+                    layout.begin_fill(id, stroke);
+                    run_solid_fill(def, spec, fills, &above, layout, out, false)?;
+                    layout.end();
                 }
-                sink.flush();
-                layout.end();
+                Drawing::Fill(def, spec) if spec.spec.background.is_some() => {
+                    layout.begin_with_style(id, stroke);
+                    run_solid_fill(def, spec, fills, &above, layout, out, true)?;
+                    let mut sink = GroupSink { stroke, mask: &above, pending: Vec::new(), points: 0, fed: 0, dest: SinkDest::Stream(layout, out) };
+                    run_fill(def, spec, fills, &mut sink)?;
+                    sink.flush();
+                    layout.end();
+                }
+                other => {
+                    layout.begin_with_style(id, stroke);
+                    let mut sink = GroupSink { stroke, mask: &above, pending: Vec::new(), points: 0, fed: 0, dest: SinkDest::Stream(layout, out) };
+                    match other {
+                        Drawing::Lines(lines) => {
+                            for l in lines {
+                                sink.line(l.clone());
+                            }
+                        }
+                        Drawing::Fill(def, spec) => run_fill(def, spec, fills, &mut sink)?,
+                        Drawing::Nothing => {}
+                    }
+                    sink.flush();
+                    layout.end();
+                }
+            }
+        } else {
+            match what {
+                Drawing::Fill(def, spec) if fill::is_solid(&spec.spec) => {
+                    buffered_meta.push(BufferedGroup::SolidFill {
+                        id: id.clone(),
+                        stroke,
+                        def,
+                        spec,
+                        above,
+                    });
+                }
+                other => {
+                    let under_hatch = match &other {
+                        Drawing::Fill(def, spec) if spec.spec.background.is_some() => Some((*def, *spec, above.clone())),
+                        _ => None,
+                    };
+                    let mut acc = Lines::new();
+                    {
+                        let mut sink = GroupSink {
+                            stroke,
+                            mask: &above,
+                            pending: Vec::new(),
+                            points: 0,
+                            fed: 0,
+                            dest: SinkDest::Collect(layout, &mut acc),
+                        };
+                        match other {
+                            Drawing::Lines(lines) => {
+                                for l in lines {
+                                    sink.line(l.clone());
+                                }
+                            }
+                            Drawing::Fill(def, spec) => run_fill(def, spec, fills, &mut sink)?,
+                            Drawing::Nothing => {}
+                        }
+                        sink.flush();
+                    }
+                    buffered_lines.push((id.clone(), acc));
+                    buffered_meta.push(BufferedGroup::Strokes {
+                        id: id.clone(),
+                        stroke,
+                        under_hatch,
+                    });
+                }
             }
         }
         if probing() {
@@ -1024,6 +1108,30 @@ fn compose(
         }
     }
     occlude_task.ok("");
+
+    if has_optimize {
+        crate::optimize::run_pipeline(&grammar.compose.optimize, &order, &mut buffered_lines, task);
+        let mut by_id: BTreeMap<String, Lines> = buffered_lines.into_iter().collect();
+        for item in buffered_meta {
+            match item {
+                BufferedGroup::SolidFill { id, stroke, def, spec, above } => {
+                    layout.begin_fill(&id, stroke);
+                    run_solid_fill(def, spec, fills, &above, layout, out, false)?;
+                    layout.end();
+                }
+                BufferedGroup::Strokes { id, stroke, under_hatch } => {
+                    layout.begin_with_style(&id, stroke);
+                    if let Some((def, spec, above)) = under_hatch {
+                        run_solid_fill(def, spec, fills, &above, layout, out, true)?;
+                    }
+                    if let Some(lines) = by_id.remove(&id) {
+                        layout.lines(&lines, out);
+                    }
+                    layout.end();
+                }
+            }
+        }
+    }
     Ok(())
 }
 

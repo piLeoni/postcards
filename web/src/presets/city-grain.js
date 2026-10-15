@@ -5,13 +5,17 @@ output({
   scale: "1:10000",   // terrain 0.947 × 0.631 mi
   bearing: -4,
   projection: "webmercator",
-  lat: 37.7864972,
-  lng: -122.4850441,
+  lat: 37.7946707,
+  lng: -122.4528951,
   tileZoom: 14,
 })
 
-const PEN = "0.2mm"
+const PEN = 0.2
 
+// `isoline-stack`: 3D crowns of metaball spheres, cut into slices that
+// overhang each other, lit from one side (`light`, `light_angle`) so the
+// canopy reads as lumpy and shaded, not flat dots.
+//
 // Bottom to top: bare ground (burin), nature (one pattern per kind, burin
 // only where the kind has relief), water, roads, buildings, labels.
 
@@ -147,83 +151,123 @@ const trailLines = lines.clip(lines.of(features.tiles("paths")), nature)
 const trailClear = areas.buffer(trailLines, "0.45mm")
 
 // ── Draw, bottom to top ────────────────────────────────────────────────────
+// Layer ids use a type-first convention: `fill_*` for patterns/filled marks
+// and `lines_*` for every pen stroke. Mask names use `mask_<action>_<subject>`.
 const penStroke = (stroke) => ({ ...stroke, width: PEN, cap: "round" })
-const ground = [draw({ id: "ground_burin", from: groundBurin, stroke: penStroke({ style: "solid" }) })]
+const ground = [draw({ id: "lines_ground_burin", from: groundBurin, stroke: penStroke({ style: "solid" }) })]
 const natureFills = NATURE.map((k) =>
-  draw({ id: `nat_fill_${k.id}`, from: fills.fill({ in: k.visible, ...k.fill }), stroke: penStroke({ style: "solid" }) }),
+  draw({ id: `fill_nature_${k.id}`, from: fills.fill({ in: k.visible, ...k.fill }), stroke: penStroke({ style: "solid" }) }),
 )
 const wood = NATURE.find((k) => k.id === "wood")
+// 3D canopy: metaball crowns cut into slices (overhang), lit from one side.
+// Where OSM maps a tree, it gets its own crown in a small disc around it
+// (overlapping discs merge into a grove), bulging a little past the disc
+// (`edge: "overflow"`). The rest of the wood gets generated crowns that
+// close before its border (`edge: "inside"`), with clearings (`coverage`).
+// `fills.cover(...)` below reports each canopy's real footprint so the dots
+// and the ground burin only hide where a crown actually stands.
+/** @type {Omit<FillOptions, "in">} */
+const SHADE = {
+  pattern: "isoline-stack",
+  seed: 7,
+  slices: 5,
+  jitter: 4,
+  light: 0.85,
+  light_angle: 225,
+} // light from the top left, as on the burin maps
+const trees = features.osm({ natural: "tree" })
+// Mapped crowns on any dry land (campus quads, park edges, …), not only
+// inside the forest polygon. Where a mapped tree disc touches or sits near
+// the wood, unioning it into `wood.visible` lets its crown and the forest
+// canopy share a single 3D metaball field and merge seamlessly; only trees
+// standing out in the open are drawn by `MAPPED_TREES`.
+const land = areas.difference(frame, water)
+const treeDiscsMapped = areas.intersect(areas.around(trees, "1.4mm"), land)
+const treeDiscsOpen = areas.difference(treeDiscsMapped, areas.grow(wood.visible, "1.0mm"))
 /** @type {FillOptions} */
 const FOLIAGE = {
-  in: wood.visible,
-  pattern: "isoline-stack",
-  spacing: "4mm",
-  seed: 7,
-  edge: "inside",
-  coverage: 0.8,
-  bubble: "1.2mm",
-  slices: 12,
-  jitter: 0.8,
-  light: 0.8,
-  light_angle: 225, // from the top left, as on the burin maps
+  ...SHADE,
+  in: areas.union(wood.visible, areas.difference(treeDiscsMapped, treeDiscsOpen)),
+  spacing: "2.0mm",
+  edge: "overflow",
+  coverage: 0.5,
+  bubble: "1mm",
+}
+/** @type {FillOptions} */
+const MAPPED_TREES = {
+  ...SHADE,
+  in: treeDiscsOpen,
+  spacing: "2.0mm",
+  edge: "overflow",
+  coverage: 1.0,
+  bubble: "1mm",
 }
 const woodFoliage = draw({
-  id: "nat_fill_wood_foliage",
+  id: "fill_wood_foliage",
   from: fills.fill(FOLIAGE),
   stroke: penStroke({ style: "solid" }),
 })
+const woodTrees = draw({
+  id: "fill_wood_trees",
+  from: fills.fill(MAPPED_TREES),
+  stroke: penStroke({ style: "solid" }),
+})
+// Seen from above, crowns sit over roads, paths and water but under buildings
+// and labels. Strokes never hide each other by order; only masks cut ink, so
+// see the `mask_canopy_over`, `mask_buildings_over` and `mask_clear_labels`
+// masks below.
+const canopyDraws = [woodFoliage, woodTrees]
 const natureDraws = [
-  draw({ id: "nat_terrain", from: natureBurin, stroke: penStroke({ style: "solid" }) }),
+  draw({ id: "lines_nature_terrain", from: natureBurin, stroke: penStroke({ style: "solid" }) }),
   ...natureFills,
-  woodFoliage,
-  draw({ id: "nat_ring", from: lines.rings(nature), stroke: penStroke({ style: "dash", dash: "0.45mm", gap: "0.4mm" }) }),
+  draw({ id: "lines_nature_ring", from: lines.rings(nature), stroke: penStroke({ style: "dash", dash: "0.45mm", gap: "0.4mm" }) }),
 ]
 const pathDraws = [
   draw({
-    id: "garden_paths",
+    id: "lines_garden_paths",
     from: trailLines,
     stroke: penStroke({ style: "dotted", mark: "0.35mm", gap: "0.5mm" }),
   }),
 ]
 const waterDraws = [
   draw({
-    id: "water_ring",
+    id: "lines_water_ring",
     from: lines.clip(lines.rings(water), areas.grow(frame, "-0.25mm")),
     stroke: penStroke({ style: "solid" }),
   }),
-  draw({ id: "water_fill", from: fills.fill({ in: water, pattern: "waves", spacing: "0.75mm" }), stroke: penStroke({ style: "solid" }) }),
-  draw({ id: "dock_ring", from: lines.rings(docks), stroke: penStroke({ style: "solid" }) }),
-  draw({ id: "piers", from: lines.rings(pierPads), stroke: penStroke({ style: "solid" }) }),
-  // White strip on waves, then a dashed centreline — comment either draw or `ferry_on_water` to try one alone.
-  draw({ id: "ferry", from: ferryRoutes, stroke: penStroke({ style: "dash", dash: "0.45mm", gap: "0.4mm" }) }),
+  draw({ id: "fill_water", from: fills.fill({ in: water, pattern: "waves", spacing: "0.75mm" }), stroke: penStroke({ style: "solid" }) }),
+  draw({ id: "lines_dock_ring", from: lines.rings(docks), stroke: penStroke({ style: "solid" }) }),
+  draw({ id: "lines_piers", from: lines.rings(pierPads), stroke: penStroke({ style: "solid" }) }),
+  // White strip on waves, then a dashed centreline — comment either draw or `mask_ferry_on_water` to try one alone.
+  draw({ id: "lines_ferry", from: ferryRoutes, stroke: penStroke({ style: "dash", dash: "0.45mm", gap: "0.4mm" }) }),
 ]
 const roadDraws = [
-  draw({ id: "rail", from: roads.rails, stroke: penStroke({ style: "dash", dash: "1.4mm", gap: "1.1mm" }) }),
-  draw({ id: "roads_out", from: roads.outlines, stroke: penStroke({ style: "solid" }) }),
-  draw({ id: "roads_center", from: roads.centerlines, stroke: penStroke({ style: "dash", dash: "0.3mm", gap: "0.35mm" }) }),
-  draw({ id: "roads_seam", from: roads.seams, stroke: penStroke({ style: "solid" }) }),
+  draw({ id: "lines_rail", from: roads.rails, stroke: penStroke({ style: "dash", dash: "1.4mm", gap: "1.1mm" }) }),
+  draw({ id: "lines_roads_outlines", from: roads.outlines, stroke: penStroke({ style: "solid" }) }),
+  draw({ id: "lines_roads_center", from: roads.centerlines, stroke: penStroke({ style: "dash", dash: "0.3mm", gap: "0.35mm" }) }),
+  draw({ id: "lines_roads_seams", from: roads.seams, stroke: penStroke({ style: "solid" }) }),
 ]
 const buildingDraws = [
   draw({
-    id: "bldg_fill",
+    id: "fill_buildings",
     from: fills.fill({ in: buildings, per: "feature", pattern: "lines", spacing: "0.5mm", angle: 45 }),
     stroke: penStroke({ style: "solid" }),
   }),
-  draw({ id: "bldg_ring", from: lines.rings(buildings), stroke: penStroke({ style: "solid" }) }),
+  draw({ id: "lines_buildings_ring", from: lines.rings(buildings), stroke: penStroke({ style: "solid" }) }),
 ]
 
 const underRoads = [...ground, ...natureDraws, ...waterDraws]
-compose.mask({ name: "trail_clear", from: trailClear, occludes: ["nat_terrain", ...natureFills, "nat_fill_wood_foliage"] })
-compose.mask({
-  name: "wood_foliage",
-  from: fills.cover(FOLIAGE),
-  occludes: ["nat_terrain", "nat_fill_wood"],
-})
-compose.mask({ name: "wet_cover", from: water, occludes: [...ground, ...natureDraws] })
-compose.mask({ name: "pier_on_water", from: piersOnWater, occludes: ["water_fill"] })
-compose.mask({ name: "ferry_on_water", from: ferryCorridor, occludes: ["water_fill"] })
-compose.mask({ name: "roads_cover", from: roads.area, occludes: underRoads })
-compose.mask({ name: "bldg_cover", from: buildings, occludes: [...underRoads, ...roadDraws] })
+compose.mask({ name: "mask_clear_trails", from: trailClear, occludes: ["lines_nature_terrain", ...natureFills] })
+// The canopy's footprint cuts everything under it (ground, nature, paths,
+// water, roads); mapped crowns also cut the generated ones they overlap.
+const canopy = areas.union(fills.cover(FOLIAGE), fills.cover(MAPPED_TREES))
+compose.mask({ name: "mask_canopy_over", from: canopy, occludes: [...underRoads, ...pathDraws, ...roadDraws] })
+compose.mask({ name: "mask_mapped_trees_over_wood", from: fills.cover(MAPPED_TREES), occludes: ["fill_wood_foliage"] })
+compose.mask({ name: "mask_water_over", from: water, occludes: [...ground, ...natureDraws, ...pathDraws] })
+compose.mask({ name: "mask_piers_on_water", from: piersOnWater, occludes: ["fill_water"] })
+compose.mask({ name: "mask_ferry_on_water", from: ferryCorridor, occludes: ["fill_water"] })
+compose.mask({ name: "mask_roads_over", from: roads.area, occludes: underRoads })
+compose.mask({ name: "mask_buildings_over", from: buildings, occludes: [...underRoads, ...roadDraws, ...canopyDraws] })
 
 // ── Labels ─────────────────────────────────────────────────────────────────
 const labels = modules.labels({
@@ -241,42 +285,70 @@ const labels = modules.labels({
     { id: "street", tags: { "tiles:layer": "transportation_name" } },
   ],
 })
-const labelClear = areas.union(labels.area, areas.buffer(labels.lines, "0.85mm"))
-compose.mask({ name: "label_clear", from: labelClear, occludes: [...underRoads, ...roadDraws, ...buildingDraws, ...pathDraws] })
+const labelClear = areas.union(labels.area, areas.buffer(labels.lines, "0.6mm"))
+compose.mask({
+  name: "mask_clear_labels",
+  from: labelClear,
+  occludes: [...underRoads, ...roadDraws, ...buildingDraws, ...pathDraws, ...canopyDraws],
+})
 
-draw({ id: "labels", from: labels.lines, stroke: penStroke({ style: "solid" }) })
+draw({ id: "lines_labels", from: labels.lines, stroke: penStroke({ style: "solid" }) })
 
-// ── Layer order, bottom first ──────────────────────────────────────────────
-// Masks still cut only the groups they list, wherever those sit here.
+// ── Layer order, top first ───────────────────────────────────────────────────
+// Only the sequence groups are written in (and plotted); it hides nothing.
+// What sits on top of what is decided by the masks above.
 compose.order(
-  "labels",
-  "bldg_ring",
-  "bldg_fill",
-  "roads_seam",
-  "roads_center",
-  "roads_out",
-  "rail",
-  "ferry",
-  "piers",
-  "dock_ring",
-  "water_fill",
-  "water_ring",
-  "nat_ring",
-  "nat_terrain",
-  "nat_fill_garden",
-  "nat_fill_flowerbed",
-  "nat_fill_grass",
-  "nat_fill_golf",
-  "nat_fill_scrub",
-  "nat_fill_wood_foliage",
-  "nat_fill_wood",
-  "nat_fill_bare_rock",
-  "nat_fill_sand",
-  "nat_fill_wetland",
-  "nat_fill_ice",
-  "nat_fill_farmland",
-  "nat_fill_park",
-  "nat_fill_protected",
-  "ground_burin",
-  "garden_paths",
+  "lines_labels",
+  "lines_buildings_ring",
+  "fill_buildings",
+  "fill_wood_trees",
+  "fill_wood_foliage",
+  "lines_roads_seams",
+  "lines_roads_center",
+  "lines_roads_outlines",
+  "lines_rail",
+  "lines_water_ring",
+  "fill_water",
+  "lines_ferry",
+  "lines_piers",
+  "lines_dock_ring",
+  "lines_garden_paths",
+  "lines_nature_ring",
+  "lines_nature_terrain",
+  "fill_nature_garden",
+  "fill_nature_flowerbed",
+  "fill_nature_grass",
+  "fill_nature_golf",
+  "fill_nature_scrub",
+  "fill_nature_wood",
+  "fill_nature_bare_rock",
+  "fill_nature_sand",
+  "fill_nature_wetland",
+  "fill_nature_ice",
+  "fill_nature_farmland",
+  "fill_nature_park",
+  "fill_nature_protected",
+  "lines_ground_burin",
 )
+
+// ── Plotter optimization ────────────────────────────────────────────────────
+// Keep stippled nature and field fills untouched: overlap removal changes
+// their texture. These are the urban outlines and route layers instead.
+const cityLines = [
+  "lines_labels",
+  "lines_buildings_ring",
+  "fill_buildings",
+  "fill_wood_trees",
+  "fill_wood_foliage",
+  "lines_roads_seams",
+  "lines_roads_outlines",
+  "lines_water_ring",
+  "lines_piers",
+  "lines_dock_ring",
+]
+const routeLines = ["lines_roads_center", "lines_rail", "lines_ferry", "lines_garden_paths", "lines_nature_ring"]
+const cityAndRoutes = [...cityLines, ...routeLines]
+
+compose.deoverlap(cityLines, { tolerance: PEN })
+compose.linemerge(cityLines, "0.1mm")
+compose.simplify(cityAndRoutes, "0.03mm")

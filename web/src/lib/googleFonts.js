@@ -36,7 +36,7 @@ async function fetchChecked(url, signal, what) {
   } catch (e) {
     const hint =
       e?.message === 'Failed to fetch'
-        ? ' (rete, VPN, o blocco su fonts.googleapis.com / fonts.gstatic.com — prova a disattivare ad-block per questo sito)'
+        ? ' (network, VPN, or a block on fonts.googleapis.com / fonts.gstatic.com — try disabling your ad blocker for this site)'
         : ''
     throw new Error(`${what}: ${e?.message ?? e}${hint}`)
   }
@@ -56,7 +56,7 @@ export async function fetchGoogleFontKey(key, signal) {
   const url = pickUrl(css)
   if (!url) {
     throw new Error(
-      `Google font "${family}" (${key}): nessun file nel foglio stile — controlla nome e peso (es. weight: 400).`,
+      `Google font "${family}" (${key}): no font file found in stylesheet — check the family name and weight (e.g. weight: 400).`,
     )
   }
   const buf = await fetchChecked(url, signal, `Google font file for "${family}"`).then((r) => r.arrayBuffer())
