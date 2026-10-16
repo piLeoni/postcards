@@ -5,8 +5,8 @@ output({
   scale: "1:10000",   // terrain 0.947 × 0.631 mi
   bearing: -4,
   projection: "webmercator",
-  lat: 46.9480416,
-  lng: 7.4520005,
+  lat: 48.8518693,
+  lng: 2.3545666,
   tileZoom: 14,
   padding: "0.1in",
 })
@@ -24,7 +24,7 @@ const penStroke = (stroke) => ({ ...stroke, width: PEN, cap: "round" })
 const STROKE_SOLID         = penStroke({ style: "solid" })
 const STROKE_DOTTED_RING   = penStroke({ style: "dotted", mark: "0.30mm", gap: "1.30mm" })
 const STROKE_GARDEN_PATH   = penStroke({ style: "dotted", mark: "0.35mm", gap: "0.50mm" })
-const STROKE_ROAD_CENTER   = penStroke({ style: "dash",   dash: "0.55mm", gap: "0.60mm" })
+const STROKE_ROAD_CENTER   = penStroke({ style: "dash",   dash: "0.35mm", gap: "0.80mm" })
 const STROKE_RAIL          = penStroke({ style: "dash",   dash: "0.80mm", gap: "0.50mm" })
 const STROKE_RUNWAY_CENTER = penStroke({ style: "dash",   dash: "1.20mm", gap: "0.90mm" })
 const STROKE_AERIALWAY     = penStroke({ style: "dash",   dash: "0.60mm", gap: "0.50mm" })
@@ -41,6 +41,7 @@ const TRAIL_CLEAR_W    = "0.45mm"
 const LABEL_CLEAR_W    = "0.65mm"
 const NATURE_MERGE_GAP = "0.15mm"
 const SIMPLIFY_TOL     = "0.03mm"
+const FILTER_MIN_LEN   = "0.25mm"   // urban outlines only (buildings/roads); never on trees, gardens, or dotted routes
 
 // 1c. Road Widths, Lanes & Mask Clearances (`modules.roads`)
 // - `widthMode`: "ground" (metres on earth, scaled by `output.scale`) or "paper" (mm on sheet)
@@ -88,7 +89,7 @@ const ROAD_OPTIONS = {
 // Note: no `inset` on nature/garden/court fills so adjacent patches (e.g.
 // garden beds inside a park) meet seamlessly without a white exclusion halo.
 /** @type {Omit<FillOptions, "in">} */
-const FILL_BUILDINGS = { per: "feature", pattern: "zigzag", inset: PEN * 1.3, spacing: "0.50mm", angle: 45 }
+const FILL_BUILDINGS = { per: "feature", pattern: "lines", inset: PEN * 1.3, spacing: "0.50mm", angle: 45 }
 /** @type {Omit<FillOptions, "in">} */
 const FILL_WATER     = { pattern: "waves", spacing: "0.75mm" }
 /** @type {Omit<FillOptions, "in">} */
@@ -143,16 +144,15 @@ const BURIN_NATURE_STYLE = {
   space_dark: 10,
 }
 
-// 1g. Typography & Label Rules
-/** @type {GoogleFont} */
-const FONT_BOLD = { origin: "google", family: "Roboto", weight: 700 }
+// 1g. Typography & Label Rules (draw.land monoline `futural` only; one cap height)
+const LABEL_SIZE = "2.2mm"
 /** @type {LabelRule[]} */
 const LABEL_RULES = [
-  { id: "park",      tags: { "tiles:layer": "park" },                      size: "3.5mm", minSize: "2.2mm", font: FONT_BOLD },
-  { id: "aerodrome", tags: { "tiles:layer": "aerodrome_label" },           size: "2.8mm", minSize: "2.0mm", font: FONT_BOLD },
-  { id: "place",     tags: { "tiles:layer": "place" },                     size: "2.6mm", minSize: "2.1mm" },
-  { id: "poi",       tags: { "tiles:layer": "poi" },                       size: "2.0mm", minSize: "1.6mm" },
-  { id: "major",     tags: { class: ["motorway", "trunk", "primary"] },    buffer: 1, bufferStep: "0.2mm", keepCenterline: false },
+  { id: "park",      tags: { "tiles:layer": "park" } },
+  { id: "aerodrome", tags: { "tiles:layer": "aerodrome_label" } },
+  { id: "place",     tags: { "tiles:layer": "place" } },
+  { id: "poi",       tags: { "tiles:layer": "poi" } },
+  { id: "major",     tags: { class: ["motorway", "trunk", "primary"] } },
   { id: "street",    tags: { "tiles:layer": "transportation_name" } },
 ]
 
@@ -219,7 +219,8 @@ const PAVED_LANDUSE_TILES =
 
 // 2a. Frame, Roads, Transit, Aeroway, Buildings & Urban Mask
 const frame = engine.frame()
-const roads = modules.roads({ from: features.tiles("roads", "rail"), ...ROAD_OPTIONS })
+// Mainline rail only (`transportation:rail/rail`); omit `transit`/tram/light_rail from the `rail` preset.
+const roads = modules.roads({ from: features.tiles("roads", "transportation:rail/rail"), ...ROAD_OPTIONS })
 const buildings = areas.polygons(features.tiles("buildings"))
 const aerialways = lines.of(features.tiles("transportation:aerialway"))
 
@@ -281,7 +282,12 @@ const openGround = areas.difference(frame, covered)
 const facilityRingArea = areas.union(...NATURE.filter((k) => k.ring).map((k) => k.visible))
 const ridgeLines = lines.of(features.tiles("mountain_peak:cliff,ridge,arete"))
 
-const trailLines = lines.clip(lines.of(features.tiles("paths")), nature)
+// Park paths only: clipped strictly to true municipal parks (`landcover:park,recreation_ground,village_green`)
+// and gardens, NOT `"parks"` (`park:protected_area` covers the entire UNESCO Seine riverbanks in Paris!).
+const parkFootprint = areas.polygons(
+  features.tiles("landcover:park,recreation_ground,village_green,garden"),
+)
+const trailLines = lines.clip(lines.of(features.tiles("paths")), parkFootprint)
 const trailClear = areas.buffer(trailLines, TRAIL_CLEAR_W)
 
 // 2d. Terrain Hatching & 3D Foliage Regions
@@ -333,6 +339,9 @@ const labels = modules.labels({
     features.tiles("poi:attraction,museum,monument,castle,theme_park,viewpoint"),
     features.tiles("aerodrome_label:*"),
   ],
+  font: "futural",
+  size: LABEL_SIZE,
+  minSize: LABEL_SIZE,
   rules: LABEL_RULES,
 })
 
@@ -455,7 +464,6 @@ const cityLines = [
   "lines_roads_outlines",
   "lines_roads_seams",
   "lines_buildings_ring",
-  // "fill_buildings",
   "fill_wood_foliage",
   "fill_park_foliage",
   "fill_shrub_foliage",
@@ -481,5 +489,6 @@ const cityAndRoutes = [...cityLines, ...routeLines]
 
 compose.deoverlap(cityLines, { tolerance: PEN * 1.2, selfOverlap: true, acrossLayers: true })
 compose.linemerge(cityLines, PEN * 2)
+compose.filter(["lines_buildings_ring", "lines_roads_outlines", "lines_roads_seams", "lines_aeroway", "lines_piers", "lines_dock_ring"], { minLength: FILTER_MIN_LEN })
 compose.simplify(cityAndRoutes, SIMPLIFY_TOL)
 compose.linesort({ except: ["lines_labels"] })

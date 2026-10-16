@@ -323,7 +323,7 @@ export default function Sidebar({ open, onClose, doc, setDoc, check, output, sta
               presets ▾
             </summary>
             <div className="z-30 w-full border border-black bg-white">
-              <ul className="max-h-[60vh] divide-y divide-black overflow-y-auto">
+              <ul className="editor-scroll max-h-[60vh] divide-y divide-black overflow-y-auto">
                 {PRESETS.map((p) => (
                   <li key={p.id} className="flex items-stretch">
                     <button
@@ -344,9 +344,13 @@ export default function Sidebar({ open, onClose, doc, setDoc, check, output, sta
                       size-="small"
                       variant-="background0"
                       title="Use this preset's layers here; keep the map position and paper"
-                      className="shrink-0 border-l border-black px-[1ch] py-[0.5lh] hover:bg-black hover:text-white hover:no-underline"
+                      aria-label={`Inject ${p.name} here`}
+                      className="flex shrink-0 flex-row items-center justify-center gap-[0.5ch] self-stretch whitespace-nowrap border-b border-l border-black px-[1ch] hover:bg-black hover:text-white hover:no-underline"
                       onClick={() => injectPreset(p)}
                     >
+                      <svg aria-hidden viewBox="0 0 12 12" className="h-[1em] w-[1em] shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M6 2.5v7M6 9.5l-2.5-2.5M6 9.5l2.5-2.5" />
+                      </svg>
                       inject here
                     </button>
                   </li>

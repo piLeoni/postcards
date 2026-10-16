@@ -154,7 +154,7 @@ export default function DownloadModal({ open, onClose, doc, drawing, output }) {
           </button>
         </div>
 
-        <div className="min-h-0 overflow-y-auto p-[2ch]">
+        <div className="editor-scroll min-h-0 overflow-y-auto p-[2ch]">
           <fieldset className="m-0 mb-[1.5lh] border-0 p-0">
             <legend className="mb-[0.5lh] font-bold">File name</legend>
             <div className="flex items-center gap-[1ch]">
