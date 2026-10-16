@@ -495,10 +495,67 @@ interface BurinBuilder {
   depth: unknown
 }
 
+/**
+ * A road measurement: a bare number (interpreted via `widthMode`: metres on the
+ * ground or millimetres on paper), or an explicit `{ ground: number }` (metres)
+ * or `{ paper: number }` (millimetres on the sheet).
+ */
+type RoadMeasure = number | { ground: number } | { paper: number }
+
+/**
+ * Per-class road configuration in `modules.roads({ classes })`.
+ * Either a 2-sided road (`ground` / `paper` / `width`, `lanes`, `centerline`, `clearance`)
+ * or a single-line path/rail (`singleLine: true`, `clearance`).
+ */
+interface RoadClassObject {
+  /** Base width in ground metres (per lane when `multiplyByLanes: true`). */
+  ground?: number
+  /** Base width in paper millimetres (per lane when `multiplyByLanes: true`). */
+  paper?: number
+  /** Base width in the top-level `widthMode` coordinate space. */
+  width?: number
+  /** Default lane count when the feature has no `lanes` tag and `inferLanesByClass: true`. */
+  lanes?: number
+  /** Emit a centre line on `roads.centerlines` when at least `centerlineMinWidth` wide. */
+  centerline?: boolean
+  /** Draw as a single line on `roads.trails` (or `roads.rails` for `rail`) instead of a 2-sided outline. */
+  singleLine?: boolean
+  /**
+   * For `singleLine: true`: total mask corridor width in `roads.area`.
+   * For 2-sided roads: extra mask margin outside the carriageway in `roads.area`.
+   */
+  clearance?: RoadMeasure
+}
+
+type RoadClassSpec = number | RoadClassObject
+
+interface RoadOptions {
+  /** Road & rail features (e.g. `features.tiles("roads", "rail")`). Default: all OSM features. */
+  from?: Features
+  /** Coordinate space for bare numbers: `"ground"` (metres scaled by map scale, default) or `"paper"` (mm on sheet). */
+  widthMode?: "ground" | "paper"
+  /** Global multiplier applied to 2-sided road widths. Default: `1.0`. */
+  widthMultiplier?: number
+  /** Honour explicit OSM `width` / `width:lanes` tags when present. Default: `true`. */
+  useWidthTag?: boolean
+  /** Multiply each class's base width by the lane count. Default: `true`. */
+  multiplyByLanes?: boolean
+  /** When `multiplyByLanes` is `true` and the feature has no `lanes` tag, use the class's `lanes` count. Default: `true`. */
+  inferLanesByClass?: boolean
+  /** Minimum carriageway width required to emit `roads.centerlines`. Default: `{ ground: 7.0 }`. */
+  centerlineMinWidth?: RoadMeasure
+  /** Morphological close radius for smoothing road intersections (`0` disables). Default: `{ ground: 3.0 }`. */
+  jointClose?: RoadMeasure
+  /** Default extra mask clearance added around 2-sided roads in `roads.area`. Default: `0`. */
+  clearance?: RoadMeasure
+  /** Per-class road configuration keyed by class name (`"motorway"`, `"primary"`, `"residential"`, `"footway"`, `"rail"`, `"default"`, …). */
+  classes?: Record<string, RoadClassSpec>
+}
+
 /** Compiled recipes. */
 declare const modules: {
   /** Roads with their widths, crossings and bridges; from OSM `highway` unless given features. Call once. */
-  roads(options?: { from?: Features }): Roads
+  roads(options?: RoadOptions): Roads
   /**
    * Names written on the map, in a single-stroke (Hershey) font or an outline
    * font, placed so that none covers another: along each road, bent with it

@@ -417,11 +417,91 @@
     },
   };
 
+  const ROAD_OPT_KEYS = {
+    widthMode: "width_mode",
+    widthMultiplier: "width_multiplier",
+    useWidthTag: "use_width_tag",
+    multiplyByLanes: "multiply_by_lanes",
+    inferLanesByClass: "infer_lanes_by_class",
+    centerlineMinWidth: "centerline_min_width",
+    jointClose: "joint_close",
+    clearance: "clearance",
+    classes: "classes",
+  };
+  const ROAD_CLASS_KEYS = {
+    ground: "ground",
+    paper: "paper",
+    width: "width",
+    lanes: "lanes",
+    centerline: "centerline",
+    singleLine: "single_line",
+    clearance: "clearance",
+  };
+  function roadMeasure(v, where) {
+    if (typeof v === "number" && Number.isFinite(v)) return v;
+    if (v && typeof v === "object" && !Array.isArray(v)) {
+      const keys = Object.keys(v);
+      if (keys.length === 1 && (keys[0] === "ground" || keys[0] === "paper") && typeof v[keys[0]] === "number" && Number.isFinite(v[keys[0]])) {
+        return { [keys[0]]: v[keys[0]] };
+      }
+    }
+    fail(`${where} expects a number or { ground: number } / { paper: number }, got ${describe(v)}`);
+  }
+
   const modules = {
     roads(options = {}) {
       object(options, "modules.roads options");
+      const allowed = ["from", ...Object.keys(ROAD_OPT_KEYS)];
       const op = {};
-      if (options.from !== undefined) op.from = need(options.from, Features, "modules.roads from");
+      for (const [k, v] of Object.entries(options)) {
+        if (v === undefined) continue;
+        if (k === "from") {
+          op.from = need(v, Features, "modules.roads from");
+        } else if (k === "widthMode") {
+          if (v !== "ground" && v !== "paper") fail(`modules.roads widthMode expects "ground" or "paper", got ${describe(v)}`);
+          op.width_mode = v;
+        } else if (k === "widthMultiplier") {
+          if (typeof v !== "number" || !Number.isFinite(v) || v <= 0) fail(`modules.roads widthMultiplier expects a positive number, got ${describe(v)}`);
+          op.width_multiplier = v;
+        } else if (k === "useWidthTag" || k === "multiplyByLanes" || k === "inferLanesByClass") {
+          op[ROAD_OPT_KEYS[k]] = !!v;
+        } else if (k === "centerlineMinWidth" || k === "jointClose" || k === "clearance") {
+          op[ROAD_OPT_KEYS[k]] = roadMeasure(v, `modules.roads ${k}`);
+        } else if (k === "classes") {
+          object(v, "modules.roads classes");
+          const classes = {};
+          for (const [cls, spec] of Object.entries(v)) {
+            if (spec === undefined) continue;
+            const cwhere = `modules.roads classes.${cls}`;
+            if (typeof spec === "number" && Number.isFinite(spec)) {
+              classes[cls] = spec;
+            } else {
+              object(spec, cwhere);
+              const entry = {};
+              const classAllowed = Object.keys(ROAD_CLASS_KEYS);
+              for (const [ck, cv] of Object.entries(spec)) {
+                if (cv === undefined) continue;
+                if (!(ck in ROAD_CLASS_KEYS)) fail(`${cwhere}: unknown key ${ck} (${classAllowed.join(", ")})`);
+                if (ck === "ground" || ck === "paper" || ck === "width") {
+                  if (typeof cv !== "number" || !Number.isFinite(cv)) fail(`${cwhere}.${ck} expects a number, got ${describe(cv)}`);
+                  entry[ROAD_CLASS_KEYS[ck]] = cv;
+                } else if (ck === "lanes") {
+                  if (typeof cv !== "number" || !Number.isFinite(cv) || cv <= 0) fail(`${cwhere}.lanes expects a positive number, got ${describe(cv)}`);
+                  entry.lanes = cv;
+                } else if (ck === "centerline" || ck === "singleLine") {
+                  entry[ROAD_CLASS_KEYS[ck]] = !!cv;
+                } else if (ck === "clearance") {
+                  entry.clearance = roadMeasure(cv, `${cwhere}.clearance`);
+                }
+              }
+              classes[cls] = entry;
+            }
+          }
+          op.classes = classes;
+        } else {
+          fail(`modules.roads: unknown option ${k} (${allowed.join(", ")})`);
+        }
+      }
       const ref = dl.node("areas", { module_roads: op });
       const out = (name) => new Lines(`roads.${name}`, "roads");
       return Object.freeze({

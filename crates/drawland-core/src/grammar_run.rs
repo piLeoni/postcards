@@ -579,19 +579,17 @@ fn eval_op<'a>(
         }
         Op::Fill(_) => return Err("tools_fill is evaluated in the fill pass".into()),
         Op::Module(m) => match &m.from {
-            Some(from) => eval_module(&m.name, feats(from)?, engine.of)?,
-            None => eval_module(&m.name, features.osm, engine.of)?,
+            Some(from) => eval_module(m, feats(from)?, engine.of)?,
+            None => eval_module(m, features.osm, engine.of)?,
         },
     })
 }
 
 /// The four sections of the toolkit, as values.
-fn eval_module(module: &str, features: &[Feature], output: &Output) -> Result<Value, String> {
-    match module {
+fn eval_module(module: &crate::grammar::Module, features: &[Feature], output: &Output) -> Result<Value, String> {
+    match module.name.as_str() {
         "roads" => {
-            // The module needs no profile knobs: it reads OSM tags (or a tile
-            // feature's attributes) and the output scale. Its outputs are the same three names every module publishes.
-            let roads = crate::themes::roads_render(&crate::themes::Context { output, features });
+            let roads = crate::themes::roads_render(&crate::themes::Context { output, features }, &module.roads);
             let parts = roads.parts;
             Ok(Value::Module {
                 area: parts.mask,

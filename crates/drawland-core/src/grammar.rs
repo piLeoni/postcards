@@ -126,6 +126,7 @@ pub struct Where {
 pub struct Module {
     pub name: String,
     pub from: Option<Name>,
+    pub roads: crate::themes::RoadOptions,
 }
 
 /// Buffer a shape by a distance, positive or negative.
@@ -691,7 +692,7 @@ impl Grammar {
         for def in defs {
             match &def.op {
                 Op::Select(sel) => sel.keys().for_each(|k| add(&mut keys, k)),
-                Op::Module(Module { name, from: None }) => {
+                Op::Module(Module { name, from: None, .. }) => {
                     crate::themes::osm_keys(name).iter().for_each(|k| add(&mut keys, k))
                 }
                 _ => {}
@@ -1069,20 +1070,23 @@ fn parse_op(raw: RawOp, section: Section) -> Result<Op, GrammarError> {
         "tools_fill" => Section::Fills,
         other => {
             if let Some(rest) = other.strip_prefix("module_") {
-                #[derive(Deserialize)]
-                #[serde(deny_unknown_fields)]
-                struct Raw {
-                    #[serde(default)]
-                    from: Option<String>,
-                }
-                let raw: Raw = json(&value, &key)?;
-                let from = raw.from.as_deref().map(refname).transpose()?;
+                let mut obj = value.as_object().cloned().ok_or_else(|| {
+                    GrammarError::Json(format!("{key}: expected an object"))
+                })?;
+                let from_val = obj.remove("from");
+                let from = match from_val {
+                    Some(Value::String(s)) => Some(refname(&s)?),
+                    Some(v) => return Err(GrammarError::Json(format!("{key}.from: expected a string, got {v}"))),
+                    None => None,
+                };
                 if let Some(f) = &from {
                     if f.section != Section::Features {
                         return Err(GrammarError::Invalid(format!("{key}.from is {f}, but it must be a $features set")));
                     }
                 }
-                return Ok(Op::Module(Module { name: rest.to_string(), from }));
+                let roads: crate::themes::RoadOptions = json(&Value::Object(obj), &key)?;
+                roads.validate().map_err(GrammarError::Invalid)?;
+                return Ok(Op::Module(Module { name: rest.to_string(), from, roads }));
             }
             if let Some(rest) = other.strip_prefix("primitives_") {
                 return Err(GrammarError::Invalid(format!(
@@ -1831,10 +1835,12 @@ pub fn op_to_json(op: &Op) -> Value {
         }
         Op::Module(m) => {
             let key = format!("module_{}", m.name);
-            let body = match &m.from {
-                Some(from) => json!({ "from": from.to_string() }),
-                None => json!({}),
-            };
+            let mut body = serde_json::to_value(&m.roads).unwrap_or_else(|_| json!({}));
+            if let Some(from) = &m.from {
+                if let Some(obj) = body.as_object_mut() {
+                    obj.insert("from".into(), Value::String(from.to_string()));
+                }
+            }
             return json!({ key: body });
         }
     };
@@ -2249,7 +2255,10 @@ compose:
     fn modules_are_recorded_and_bad_references_named() {
         let module = "$lines:\n  roads: { module_roads: {} }\n";
         let g = parse(module).unwrap();
-        assert_eq!(g.defs(Section::Lines)[0].op, Op::Module(Module { name: "roads".into(), from: None }));
+        assert_eq!(
+            g.defs(Section::Lines)[0].op,
+            Op::Module(Module { name: "roads".into(), from: None, roads: Default::default() })
+        );
         let bad_ref = "$areas:\n  a: { tools_union: [dense] }\n";
         assert!(matches!(parse(bad_ref), Err(GrammarError::Invalid(m)) if m.contains("\"dense\" is not a $section.name reference")));
         let bad_len = "$fills:\n  f: { tools_fill: { in: $areas.a, spacing: dense } }\n$areas:\n  a: { engine_frame: {} }\n";

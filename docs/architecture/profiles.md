@@ -31,7 +31,7 @@ Common patterns:
 - `features.tiles("buildings")` / `features.osm({ … })`
 - `areas.polygons`, `union`, `difference`, `grow`, `buffer`, …
 - `fills.fill({ in, pattern, spacing, … })`
-- `modules.roads({ from })`, `modules.labels({ from, rules })`
+- `modules.roads({ from, widthMode, classes, … })`, `modules.labels({ from, rules })`
 - `burin.terrain((b) => …)` — burin-map-script builder; atlas stored on graph
 - `compose.mask({ name, from, occludes: [draw ids…] })`
 
@@ -47,6 +47,12 @@ Common patterns:
 - **pkg** — full engine (`drawland-wasm`).
 
 Rebuild: `web/build-wasm.sh`.
+
+## Authoring conventions
+
+For substantial presets (`web/src/presets/*.js`, `configs/*.js`), follow `.cursor/rules/profile-style.mdc`:
+- Group all visual constants, stroke specs, buffer widths, fill patterns, and taxonomy tables at the top (`1. PARAMETERS & STYLE PALETTE`).
+- Execute feature extraction/geometry (`2`), `draw` declarations (`3`), `compose.mask` / `compose.order` (`4`), and plotter optimization (`5`) linearly below without inline magic numbers.
 
 ## When changing the API
 

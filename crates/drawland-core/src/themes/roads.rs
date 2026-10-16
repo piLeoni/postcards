@@ -6,30 +6,366 @@ use super::{below_ground, Context, LayerParts};
 use crate::fill;
 use crate::geom::{self, Lines};
 use crate::osm::{Element, Feature};
-use crate::tiles::LAYER_TAG;
 use crate::profile::StrokeSpec;
+use crate::tiles::LAYER_TAG;
 use geo::algorithm::buffer::Buffer;
 use geo::{Coord, Geometry, LineString, MultiLineString, MultiPolygon};
+use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
 
-/// Typical carriageway width, metres, when OSM says nothing better.
-fn width_by_type(highway: &str) -> Option<f64> {
-    Some(match highway {
-        "motorway" => 15.0,
-        "motorway_link" => 7.0,
-        "trunk" => 10.0,
-        "trunk_link" => 6.0,
-        "primary" => 7.0,
-        "primary_link" => 6.0,
-        "secondary" => 6.0,
-        "secondary_link" | "tertiary" | "tertiary_link" | "construction" => 5.0,
-        "residential" | "unclassified" => 4.0,
-        "living_street" | "service" | "pedestrian" => 3.0,
-        "footway" | "path" | "steps" => 1.0,
-        "cycleway" | "elevator" => 1.5,
-        "bridleway" => 2.0,
-        _ => return None,
-    })
+/// Coordinate space for bare numbers in [`RoadOptions`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum RoadWidthMode {
+    /// Metres on the ground, scaled by the map's `scale`.
+    #[default]
+    Ground,
+    /// Millimetres on the printed sheet, independent of map `scale`.
+    Paper,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GroundMeasure {
+    pub ground: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PaperMeasure {
+    pub paper: f64,
+}
+
+/// A road measurement: a bare number (interpreted with [`RoadOptions::width_mode`]),
+/// `{ ground: m }` (metres on earth), or `{ paper: mm }` (mm on paper).
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum RoadMeasure {
+    Bare(f64),
+    Ground(GroundMeasure),
+    Paper(PaperMeasure),
+}
+
+impl RoadMeasure {
+    pub const fn bare(v: f64) -> Self {
+        RoadMeasure::Bare(v)
+    }
+
+    pub const fn ground(v: f64) -> Self {
+        RoadMeasure::Ground(GroundMeasure { ground: v })
+    }
+
+    pub const fn paper(v: f64) -> Self {
+        RoadMeasure::Paper(PaperMeasure { paper: v })
+    }
+
+    /// Convert to output millimetres. Ground metres are multiplied by `scale_ratio`.
+    pub fn to_mm(self, default_mode: RoadWidthMode, scale_ratio: f64) -> f64 {
+        match self {
+            RoadMeasure::Ground(g) => g.ground * scale_ratio,
+            RoadMeasure::Paper(p) => p.paper,
+            RoadMeasure::Bare(v) => match default_mode {
+                RoadWidthMode::Ground => v * scale_ratio,
+                RoadWidthMode::Paper => v,
+            },
+        }
+    }
+
+    pub fn is_ground(self, default_mode: RoadWidthMode) -> bool {
+        match self {
+            RoadMeasure::Ground(_) => true,
+            RoadMeasure::Paper(_) => false,
+            RoadMeasure::Bare(_) => default_mode == RoadWidthMode::Ground,
+        }
+    }
+}
+
+/// Per-class configuration in [`RoadOptions::classes`].
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RoadClassObject {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ground: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub paper: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub width: Option<RoadMeasure>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lanes: Option<f64>,
+    #[serde(default, alias = "singleLine", skip_serializing_if = "Option::is_none")]
+    pub single_line: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub centerline: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub clearance: Option<RoadMeasure>,
+}
+
+impl RoadClassObject {
+    pub fn width_measure(&self) -> Option<RoadMeasure> {
+        if let Some(g) = self.ground {
+            Some(RoadMeasure::ground(g))
+        } else if let Some(p) = self.paper {
+            Some(RoadMeasure::paper(p))
+        } else {
+            self.width
+        }
+    }
+
+    pub fn validate(&self, where_: &str) -> Result<(), String> {
+        let count = usize::from(self.ground.is_some())
+            + usize::from(self.paper.is_some())
+            + usize::from(self.width.is_some());
+        if count > 1 {
+            return Err(format!("{where_}: specify only one of ground, paper, or width"));
+        }
+        if self.single_line == Some(true) && count > 0 {
+            return Err(format!(
+                "{where_}: singleLine classes do not take a road width (use clearance for mask width)"
+            ));
+        }
+        if let Some(l) = self.lanes {
+            if !l.is_finite() || l <= 0.0 {
+                return Err(format!("{where_}: lanes must be a positive number"));
+            }
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum RoadClassSpec {
+    Bare(f64),
+    Object(RoadClassObject),
+}
+
+impl RoadClassSpec {
+    pub fn as_object(&self) -> RoadClassObject {
+        match self {
+            RoadClassSpec::Bare(v) => RoadClassObject {
+                width: Some(RoadMeasure::Bare(*v)),
+                ..Default::default()
+            },
+            RoadClassSpec::Object(o) => o.clone(),
+        }
+    }
+
+    pub fn validate(&self, where_: &str) -> Result<(), String> {
+        match self {
+            RoadClassSpec::Bare(v) => {
+                if !v.is_finite() || *v < 0.0 {
+                    return Err(format!("{where_}: width must be a non-negative number"));
+                }
+                Ok(())
+            }
+            RoadClassSpec::Object(o) => o.validate(where_),
+        }
+    }
+}
+
+fn default_one() -> f64 {
+    1.0
+}
+fn default_true() -> bool {
+    true
+}
+fn default_centerline_min_width() -> RoadMeasure {
+    RoadMeasure::Bare(CENTERLINE_MIN_WIDTH_M)
+}
+fn default_joint_close() -> RoadMeasure {
+    RoadMeasure::Bare(JOINT_CLOSE_M)
+}
+fn default_zero_measure() -> RoadMeasure {
+    RoadMeasure::Bare(0.0)
+}
+fn is_one(v: &f64) -> bool {
+    (*v - 1.0).abs() < 1e-12
+}
+fn is_true(v: &bool) -> bool {
+    *v
+}
+fn is_default_mode(m: &RoadWidthMode) -> bool {
+    *m == RoadWidthMode::Ground
+}
+fn is_default_centerline(m: &RoadMeasure) -> bool {
+    *m == default_centerline_min_width()
+}
+fn is_default_joint_close(m: &RoadMeasure) -> bool {
+    *m == default_joint_close()
+}
+fn is_zero_measure(m: &RoadMeasure) -> bool {
+    *m == default_zero_measure()
+}
+
+/// Profile options for `modules.roads(...)`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RoadOptions {
+    #[serde(default, alias = "widthMode", skip_serializing_if = "is_default_mode")]
+    pub width_mode: RoadWidthMode,
+    #[serde(default = "default_one", alias = "widthMultiplier", skip_serializing_if = "is_one")]
+    pub width_multiplier: f64,
+    #[serde(default = "default_true", alias = "useWidthTag", skip_serializing_if = "is_true")]
+    pub use_width_tag: bool,
+    #[serde(default = "default_true", alias = "multiplyByLanes", skip_serializing_if = "is_true")]
+    pub multiply_by_lanes: bool,
+    #[serde(default = "default_true", alias = "inferLanesByClass", skip_serializing_if = "is_true")]
+    pub infer_lanes_by_class: bool,
+    #[serde(
+        default = "default_centerline_min_width",
+        alias = "centerlineMinWidth",
+        skip_serializing_if = "is_default_centerline"
+    )]
+    pub centerline_min_width: RoadMeasure,
+    #[serde(
+        default = "default_joint_close",
+        alias = "jointClose",
+        skip_serializing_if = "is_default_joint_close"
+    )]
+    pub joint_close: RoadMeasure,
+    #[serde(default = "default_zero_measure", skip_serializing_if = "is_zero_measure")]
+    pub clearance: RoadMeasure,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub classes: BTreeMap<String, RoadClassSpec>,
+}
+
+impl Default for RoadOptions {
+    fn default() -> Self {
+        Self {
+            width_mode: RoadWidthMode::Ground,
+            width_multiplier: 1.0,
+            use_width_tag: true,
+            multiply_by_lanes: true,
+            infer_lanes_by_class: true,
+            centerline_min_width: default_centerline_min_width(),
+            joint_close: default_joint_close(),
+            clearance: default_zero_measure(),
+            classes: BTreeMap::new(),
+        }
+    }
+}
+
+impl RoadOptions {
+    pub fn is_default(&self) -> bool {
+        *self == Self::default()
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        if !self.width_multiplier.is_finite() || self.width_multiplier < 0.0 {
+            return Err("module_roads.width_multiplier must be a non-negative number".into());
+        }
+        for (k, v) in &self.classes {
+            v.validate(&format!("module_roads.classes.{k}"))?;
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ResolvedClass {
+    width: RoadMeasure,
+    lanes: f64,
+    single_line: bool,
+    centerline: Option<bool>,
+    clearance: Option<RoadMeasure>,
+}
+
+fn builtin_class(class: &str) -> ResolvedClass {
+    let road = |w: f64, lanes: f64| ResolvedClass {
+        width: RoadMeasure::ground(w),
+        lanes,
+        single_line: false,
+        centerline: None,
+        clearance: None,
+    };
+    let single = |clear_m: f64| ResolvedClass {
+        width: RoadMeasure::ground(clear_m),
+        lanes: 1.0,
+        single_line: true,
+        centerline: Some(false),
+        clearance: Some(RoadMeasure::ground(clear_m)),
+    };
+    match class {
+        "motorway" => road(3.75, 4.0),
+        "motorway_link" => road(3.5, 2.0),
+        "trunk" => road(5.0, 2.0),
+        "trunk_link" => road(3.0, 2.0),
+        "primary" => road(3.5, 2.0),
+        "primary_link" => road(3.0, 2.0),
+        "secondary" => road(3.0, 2.0),
+        "secondary_link" | "tertiary" | "tertiary_link" | "construction" => road(2.5, 2.0),
+        "residential" | "unclassified" => road(4.0, 1.0),
+        "living_street" | "service" | "pedestrian" => road(3.0, 1.0),
+        "elevator" => road(1.5, 1.0),
+        "footway" | "path" | "steps" => single(TRAIL_WIDTH_M),
+        "cycleway" => single(TRAIL_WIDTH_M),
+        "bridleway" => single(TRAIL_WIDTH_M),
+        "track" => single(TRAIL_WIDTH_M),
+        "rail" => single(RAIL_WIDTH_M),
+        _ => road(LANE_WIDTH_M, 2.0),
+    }
+}
+
+fn apply_override(mut base: ResolvedClass, over: &RoadClassObject) -> ResolvedClass {
+    if let Some(w) = over.width_measure() {
+        base.width = w;
+        if over.single_line.is_none() {
+            base.single_line = false;
+        }
+    }
+    if let Some(lanes) = over.lanes {
+        base.lanes = lanes;
+    }
+    if let Some(single) = over.single_line {
+        base.single_line = single;
+    }
+    if let Some(cl) = over.centerline {
+        base.centerline = Some(cl);
+    }
+    if let Some(c) = over.clearance {
+        base.clearance = Some(c);
+    }
+    base
+}
+
+fn resolve_class(class: &str, opts: &RoadOptions) -> ResolvedClass {
+    let mut resolved = builtin_class(class);
+    let is_known = matches!(
+        class,
+        "motorway"
+            | "motorway_link"
+            | "trunk"
+            | "trunk_link"
+            | "primary"
+            | "primary_link"
+            | "secondary"
+            | "secondary_link"
+            | "tertiary"
+            | "tertiary_link"
+            | "construction"
+            | "residential"
+            | "unclassified"
+            | "living_street"
+            | "service"
+            | "pedestrian"
+            | "elevator"
+            | "footway"
+            | "path"
+            | "steps"
+            | "cycleway"
+            | "bridleway"
+            | "track"
+            | "rail"
+    );
+    if !is_known {
+        if let Some(def) = opts.classes.get("default") {
+            resolved = apply_override(resolved, &def.as_object());
+        }
+    }
+    if let Some(spec) = opts.classes.get(class) {
+        resolved = apply_override(resolved, &spec.as_object());
+    }
+    resolved
 }
 
 /// Soft upper bounds, metres: tags like `width=200` on a residential happen.
@@ -50,7 +386,6 @@ fn max_width_by_type(highway: &str) -> f64 {
     }
 }
 
-const DEFAULT_WIDTH_M: f64 = 6.0;
 const LANE_WIDTH_M: f64 = 3.0;
 const BUFFER_FUDGE: f64 = 1.25;
 /// Gaps narrower than this on the ground are closed after buffering (flat-cap
@@ -176,29 +511,88 @@ fn bridge(f: &Feature) -> bool {
     }
 }
 
-fn road_width_m(f: &Feature) -> f64 {
-    let highway = highway(f).unwrap_or("");
-    let clamp = |w: f64| w.max(0.5).min(max_width_by_type(highway));
+fn explicit_width_m(f: &Feature) -> Option<f64> {
     if let Some(w) = f.tag("width").and_then(parse_width_m).filter(|w| *w > 0.0) {
-        return clamp(w);
+        return Some(w);
     }
     for key in ["width:lanes", "width:lanes:forward", "width:lanes:backward"] {
         if let Some(w) = f.tag(key).and_then(width_lanes_m) {
-            return clamp(w);
+            return Some(w);
         }
     }
-    if let Some(lanes) = f.tag("lanes") {
-        if let Ok(n) = lanes.replace('|', ";").split(';').next().unwrap_or("").trim().parse::<f64>() {
-            return clamp(n * LANE_WIDTH_M);
-        }
-    }
-    width_by_type(highway).unwrap_or(DEFAULT_WIDTH_M)
+    None
 }
 
-/// Ways drawn as a single line instead of a carriageway outline: at output
-/// scale their two edges would be a tenth of a millimetre apart.
+fn parse_lanes(f: &Feature) -> Option<f64> {
+    let lanes = f.tag("lanes")?;
+    let n = lanes
+        .replace('|', ";")
+        .split(';')
+        .next()
+        .unwrap_or("")
+        .trim()
+        .parse::<f64>()
+        .ok()?;
+    (n.is_finite() && n > 0.0).then_some(n)
+}
+
+fn road_width_mm(
+    f: &Feature,
+    class_name: &str,
+    resolved: &ResolvedClass,
+    opts: &RoadOptions,
+    scale_ratio: f64,
+) -> f64 {
+    let mult = opts.width_multiplier.max(0.0);
+    let clamp_m = |w: f64| w.max(0.5).min(max_width_by_type(class_name));
+    if opts.use_width_tag {
+        if let Some(w_m) = explicit_width_m(f) {
+            return clamp_m(w_m) * scale_ratio * mult;
+        }
+    }
+    let explicit_lanes = parse_lanes(f);
+    let lane_mult = if opts.multiply_by_lanes {
+        if let Some(n) = explicit_lanes {
+            n
+        } else if opts.infer_lanes_by_class {
+            resolved.lanes
+        } else {
+            1.0
+        }
+    } else {
+        1.0
+    };
+    if resolved.width.is_ground(opts.width_mode) {
+        let base_m = match resolved.width {
+            RoadMeasure::Ground(g) => g.ground,
+            RoadMeasure::Bare(v) => v,
+            RoadMeasure::Paper(_) => unreachable!(),
+        };
+        let w_m = if explicit_lanes.is_some() {
+            clamp_m(base_m * lane_mult)
+        } else {
+            (base_m * lane_mult).max(0.0)
+        };
+        w_m * scale_ratio * mult
+    } else {
+        let base_mm = resolved.width.to_mm(opts.width_mode, scale_ratio);
+        (base_mm * lane_mult * mult).max(0.0)
+    }
+}
+
+#[cfg(test)]
+fn road_width_m(f: &Feature) -> f64 {
+    let opts = RoadOptions::default();
+    let class_name = if is_rail(f) { "rail" } else { highway(f).unwrap_or("") };
+    let resolved = resolve_class(class_name, &opts);
+    road_width_mm(f, class_name, &resolved, &opts, 1.0)
+}
+
+/// Ways drawn as a single line instead of a carriageway outline by default.
+#[cfg(test)]
 fn is_trail(f: &Feature) -> bool {
-    matches!(highway(f), Some("footway" | "path" | "steps" | "track" | "bridleway" | "cycleway"))
+    let opts = RoadOptions::default();
+    highway(f).is_some_and(|h| resolve_class(h, &opts).single_line)
 }
 
 /// Railways drawn as one line: an OSM `railway` that carries trains, or a
@@ -290,7 +684,7 @@ pub struct Roads {
     pub rails: Lines,
 }
 
-pub(crate) fn build(ctx: &Context) -> Roads {
+pub(crate) fn build(ctx: &Context, opts: &RoadOptions) -> Roads {
     let feats: Vec<(&Feature, i64)> = ctx
         .features
         .iter()
@@ -307,8 +701,10 @@ pub(crate) fn build(ctx: &Context) -> Roads {
     }
 
     let scale_ratio = 1.0 / (ctx.output.scale / 1000.0) * BUFFER_FUDGE;
+    let centerline_min_mm = opts.centerline_min_width.to_mm(opts.width_mode, scale_ratio);
 
     let mut buffered: Vec<MultiPolygon<f64>> = Vec::new();
+    let mut extra_covered: Vec<MultiPolygon<f64>> = Vec::new();
     // Trails at ground level stop at the carriageway edge; on a bridge they
     // are drawn across whatever they span.
     let mut ground_trails: Lines = Vec::new();
@@ -317,27 +713,68 @@ pub(crate) fn build(ctx: &Context) -> Roads {
     // across it on a bridge.
     let mut ground_rails: Lines = Vec::new();
     let mut raised_rails: Lines = Vec::new();
-    // Keyed by (layer, radius as 1e-4 mm steps), in first-seen order.
-    let mut key_order: Vec<(i64, i64)> = Vec::new();
-    let mut lines_by_key: HashMap<(i64, i64), Lines> = HashMap::new();
+    // Single-line mask strips keyed by clearance radius in 1e-4 mm steps.
+    let mut single_clear_order: Vec<i64> = Vec::new();
+    let mut single_clear_by_key: HashMap<i64, Lines> = HashMap::new();
+    // Keyed by (layer, radius as 1e-4 mm steps, has_centerline, extra_clearance_steps), in first-seen order.
+    type RoadKey = (i64, i64, bool, i64);
+    let mut key_order: Vec<RoadKey> = Vec::new();
+    let mut lines_by_key: HashMap<RoadKey, Lines> = HashMap::new();
     // Snapped node → (its position, the radii of the ways ending there).
     type NodeKey = (i64, u64, u64);
     let mut node_radii: HashMap<NodeKey, (Coord<f64>, Vec<f64>)> = HashMap::new();
 
     for (f, lyr) in &feats {
+        let rail = is_rail(f);
+        let class_name = if rail {
+            "rail"
+        } else {
+            let Some(h) = highway(f) else { continue };
+            h
+        };
+        let resolved = resolve_class(class_name, opts);
         match &f.geometry {
-            Geometry::LineString(_) | Geometry::MultiLineString(_) if is_rail(f) => {
-                let parts = geom::lines_of(&f.geometry).into_iter().filter(|p| geom::line_length(p) > 0.0);
-                if *lyr >= 1 { raised_rails.extend(parts) } else { ground_rails.extend(parts) }
+            Geometry::LineString(_) | Geometry::MultiLineString(_) if resolved.single_line => {
+                let parts: Lines =
+                    geom::lines_of(&f.geometry).into_iter().filter(|p| geom::line_length(p) > 0.0).collect();
+                if parts.is_empty() {
+                    continue;
+                }
+                let clear_mm = resolved
+                    .clearance
+                    .unwrap_or_else(|| RoadMeasure::ground(if rail { RAIL_WIDTH_M } else { TRAIL_WIDTH_M }))
+                    .to_mm(opts.width_mode, scale_ratio);
+                let clear_steps = ((clear_mm / 2.0) * 1e4).round_ties_even() as i64;
+                if clear_steps > 0 {
+                    if !single_clear_by_key.contains_key(&clear_steps) {
+                        single_clear_order.push(clear_steps);
+                    }
+                    single_clear_by_key.entry(clear_steps).or_default().extend(parts.iter().cloned());
+                }
+                if rail {
+                    if *lyr >= 1 { raised_rails.extend(parts) } else { ground_rails.extend(parts) }
+                } else if *lyr >= 1 {
+                    raised_trails.extend(parts)
+                } else {
+                    ground_trails.extend(parts)
+                }
             }
-            Geometry::Polygon(_) | Geometry::MultiPolygon(_) if is_rail(f) => {}
-            Geometry::LineString(_) | Geometry::MultiLineString(_) if is_trail(f) => {
-                let parts = geom::lines_of(&f.geometry).into_iter().filter(|p| geom::line_length(p) > 0.0);
-                if *lyr >= 1 { raised_trails.extend(parts) } else { ground_trails.extend(parts) }
-            }
+            Geometry::Polygon(_) | Geometry::MultiPolygon(_) if resolved.single_line => {}
             Geometry::LineString(_) | Geometry::MultiLineString(_) => {
-                let radius = road_width_m(f) / 2.0 * scale_ratio;
-                let key = (*lyr, (radius * 1e4).round_ties_even() as i64);
+                let width_mm = road_width_mm(f, class_name, &resolved, opts, scale_ratio);
+                let radius = width_mm / 2.0;
+                let r_steps = (radius * 1e4).round_ties_even() as i64;
+                if r_steps <= 0 {
+                    continue;
+                }
+                let has_centerline = resolved.centerline.unwrap_or(width_mm >= centerline_min_mm - 1e-9);
+                let extra_clear_mm = resolved
+                    .clearance
+                    .unwrap_or(opts.clearance)
+                    .to_mm(opts.width_mode, scale_ratio)
+                    .max(0.0);
+                let clear_steps = (extra_clear_mm * 1e4).round_ties_even() as i64;
+                let key = (*lyr, r_steps, has_centerline, clear_steps);
                 for part in geom::lines_of(&f.geometry) {
                     if part.0.len() < 2 || geom::line_length(&part) == 0.0 {
                         continue;
@@ -365,16 +802,19 @@ pub(crate) fn build(ctx: &Context) -> Roads {
     let mut centerlines_by_layer: BTreeMap<i64, Lines> = BTreeMap::new();
 
     for key in &key_order {
-        let (lyr, r_steps) = *key;
+        let (lyr, r_steps, has_centerline, clear_steps) = *key;
         let radius = r_steps as f64 / 1e4;
-        let width_m = 2.0 * radius / scale_ratio;
+        let extra_clear = clear_steps as f64 / 1e4;
         for part in geom::linemerge(&lines_by_key[key]) {
             if geom::line_length(&part) == 0.0 {
                 continue;
             }
             let piece = geom::buffer_line_flat(&part, radius);
             buffered.push(piece.clone());
-            if width_m >= CENTERLINE_MIN_WIDTH_M {
+            if extra_clear > 0.0 {
+                extra_covered.push(geom::buffer_line_flat(&part, radius + extra_clear));
+            }
+            if has_centerline {
                 centerlines_by_layer.entry(lyr).or_default().push(part.clone());
             }
             if lyr >= 1 {
@@ -399,7 +839,7 @@ pub(crate) fn build(ctx: &Context) -> Roads {
     }
 
     let mut carriageway = merge(&buffered);
-    let close = JOINT_CLOSE_M * scale_ratio;
+    let close = opts.joint_close.to_mm(opts.width_mode, scale_ratio);
     if close > 0.0 {
         carriageway = close_gaps(&carriageway, close);
         for decks in by_layer.values_mut() {
@@ -454,18 +894,22 @@ pub(crate) fn build(ctx: &Context) -> Roads {
     let mut details: Lines = centerlines.iter().flat_map(dashed_centerline).collect();
     details.extend(all_seams.iter().cloned());
 
-    // Trails stay out of the carriageway and of its gap closing: they add no
-    // outline, only their own narrow cut to the mask.
+    // Trails and rails stay out of the carriageway and of its gap closing: they
+    // add no outline, only their own clearance strip to the mask.
+    let mut covered: Vec<MultiPolygon<f64>> = Vec::new();
+    for clear_steps in single_clear_order {
+        let r = clear_steps as f64 / 1e4;
+        for line in geom::linemerge(&single_clear_by_key[&clear_steps]) {
+            covered.push(geom::buffer_line_flat(&line, r));
+        }
+    }
+    covered.extend(extra_covered);
+    covered.push(carriageway.clone());
+
     let ground_trails = geom::linemerge(&ground_trails);
     let raised_trails = geom::linemerge(&raised_trails);
-    let trail_radius = TRAIL_WIDTH_M / 2.0 * scale_ratio;
-    let mut covered: Vec<MultiPolygon<f64>> =
-        ground_trails.iter().chain(&raised_trails).map(|t| geom::buffer_line_flat(t, trail_radius)).collect();
     let ground_rails = geom::linemerge(&ground_rails);
     let raised_rails = geom::linemerge(&raised_rails);
-    let rail_radius = RAIL_WIDTH_M / 2.0 * scale_ratio;
-    covered.extend(ground_rails.iter().chain(&raised_rails).map(|r| geom::buffer_line_flat(r, rail_radius)));
-    covered.push(carriageway.clone());
     let mut trails = geom::clip_lines(&ground_trails, &carriageway, true);
     trails.extend(raised_trails);
     let mut rails = geom::clip_lines(&ground_rails, &carriageway, true);
@@ -499,7 +943,7 @@ mod tests {
         assert!((road_width_m(&feature(&[("highway", "primary"), ("width", "20'")])) - 6.096).abs() < 1e-9);
         assert!((road_width_m(&feature(&[("highway", "primary"), ("width", "12'6\"")])) - 3.81).abs() < 1e-9);
         assert_eq!(road_width_m(&feature(&[("highway", "primary"), ("width:lanes", "3.5|3.5")])), 7.0);
-        assert_eq!(road_width_m(&feature(&[("highway", "primary"), ("lanes", "3")])), 9.0);
+        assert_eq!(road_width_m(&feature(&[("highway", "primary"), ("lanes", "3")])), 10.5);
         assert_eq!(road_width_m(&feature(&[("highway", "motorway")])), 15.0);
         assert_eq!(road_width_m(&feature(&[("highway", "raceway")])), 6.0);
         assert_eq!(parse_width_m("3 m;5"), Some(5.0));
@@ -553,7 +997,7 @@ mod tests {
         let output = Output::new(&map, (0.0, 0.0));
         let features = vec![way("residential", 30.0), way("track", 10.0), way("service", 20.0)];
         let ctx = Context { output: &output, features: &features };
-        let parts = build(&ctx).parts;
+        let parts = build(&ctx, &RoadOptions::default()).parts;
 
         assert_eq!(parts.trails.len(), 1, "only the track is a trail");
         assert!(parts.trails[0].0.iter().all(|c| c.y == 10.0));
@@ -604,7 +1048,7 @@ mod tests {
             line(&[("railway", "rail")], (25.0, 10.0), (25.0, 45.0)),
             line(&[("railway", "subway"), ("tunnel", "yes")], (60.0, 10.0), (60.0, 45.0)),
         ];
-        let roads = build(&Context { output: &output, features: &features });
+        let roads = build(&Context { output: &output, features: &features }, &RoadOptions::default());
 
         assert!(!roads.rails.is_empty());
         assert!(roads.rails.iter().all(|l| l.0.iter().all(|c| c.x == 25.0)), "the subway stays underground");
@@ -642,7 +1086,7 @@ mod tests {
         let output = Output::new(&map, (0.0, 0.0));
         let features = vec![way(&[("highway", "residential"), ("lanes", "2")], 30.0), way(&[("highway", "residential")], 10.0)];
         let ctx = Context { output: &output, features: &features };
-        let roads = build(&ctx);
+        let roads = build(&ctx, &RoadOptions::default());
 
         assert_eq!(roads.centerlines.len(), 1, "two lanes make 6 m; one lane of 4 m has none");
         assert!(roads.centerlines[0].0.iter().all(|c| c.y == 30.0));
@@ -660,5 +1104,39 @@ mod tests {
         assert_eq!(road_layer(&feature(&[("tunnel", "yes"), ("layer", "-2")])), -2);
         assert_eq!(road_layer(&feature(&[("tunnel", "building_passage")])), 0);
         assert_eq!(road_layer(&feature(&[("layer", "1;2")])), 1);
+    }
+
+    #[test]
+    fn custom_road_options_paper_lanes_and_single_line() {
+        let opts: RoadOptions = serde_json::from_value(serde_json::json!({
+            "width_mode": "paper",
+            "multiply_by_lanes": true,
+            "infer_lanes_by_class": true,
+            "classes": {
+                "primary": { "paper": 0.4, "lanes": 2, "centerline": true },
+                "residential": { "single_line": true, "clearance": 0.6 },
+                "footway": { "ground": 2.0, "lanes": 1 }
+            }
+        }))
+        .unwrap();
+        opts.validate().unwrap();
+
+        let scale_ratio = 1000.0 / 10000.0; // 1:10,000 -> 0.1 mm per metre
+        // primary without lanes tag gets 0.4mm * 2 lanes = 0.8mm
+        let p = resolve_class("primary", &opts);
+        assert!(!p.single_line && p.centerline == Some(true));
+        assert!((road_width_mm(&feature(&[("highway", "primary")]), "primary", &p, &opts, scale_ratio) - 0.8).abs() < 1e-9);
+        // primary with lanes=4 gets 0.4mm * 4 = 1.6mm
+        assert!((road_width_mm(&feature(&[("highway", "primary"), ("lanes", "4")]), "primary", &p, &opts, scale_ratio) - 1.6).abs() < 1e-9);
+
+        // residential overridden to single_line
+        let r = resolve_class("residential", &opts);
+        assert!(r.single_line);
+        assert!((r.clearance.unwrap().to_mm(opts.width_mode, scale_ratio) - 0.6).abs() < 1e-9);
+
+        // footway promoted from single_line to 2-sided road (2.0m at 1:10000 = 0.2mm)
+        let f = resolve_class("footway", &opts);
+        assert!(!f.single_line);
+        assert!((road_width_mm(&feature(&[("highway", "footway")]), "footway", &f, &opts, scale_ratio) - 0.2).abs() < 1e-9);
     }
 }

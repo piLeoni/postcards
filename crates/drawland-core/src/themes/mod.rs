@@ -1,7 +1,7 @@
 //! Compiled modules: features (output mm) in, named lines and areas out.
 
 mod roads;
-pub use roads::Roads;
+pub use roads::{GroundMeasure, PaperMeasure, RoadClassObject, RoadClassSpec, RoadMeasure, RoadOptions, RoadWidthMode, Roads};
 
 use crate::geom::Lines;
 use crate::osm::Feature;
@@ -43,8 +43,8 @@ pub struct Context<'a> {
 }
 
 /// The compiled roads module.
-pub fn roads_render(ctx: &Context) -> Roads {
-    roads::build(ctx)
+pub fn roads_render(ctx: &Context, opts: &RoadOptions) -> Roads {
+    roads::build(ctx, opts)
 }
 
 /// OSM keys a module selects on, when it reads every OSM feature.
