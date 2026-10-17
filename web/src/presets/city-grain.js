@@ -3,10 +3,10 @@ output({
   width: "6in",
   height: "4in",
   scale: "1:10000",   // terrain 0.947 × 0.631 mi
-  bearing: -4,
+  bearing: 0,
   projection: "webmercator",
-  lat: 48.8518693,
-  lng: 2.3545666,
+  lat: 37.8056294,
+  lng: -122.4462699,
   tileZoom: 14,
   padding: "0.1in",
 })
