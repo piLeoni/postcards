@@ -609,6 +609,7 @@ export default function App() {
           output={output}
           units={units}
           drawing={current}
+          busy={status.phase === 'working'}
           onRequestViewport={requestViewport}
           apiRef={mapApiRef}
           load={load}

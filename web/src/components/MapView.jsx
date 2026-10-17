@@ -347,8 +347,8 @@ function sizeText(output, units) {
   return `${paperText(output, units)} · 1:${sig3(output.scale)} · ${terrainPair(output, units.terrain)}${turned}${cut}`
 }
 
-/** The lines where the output is cut, like its outline, and the dotted margins drawn on. */
-function Guides({ output }) {
+/** Slice cuts (always) and dotted margin insets (only before the raster preview is ready). */
+function Guides({ output, showMargins }) {
   if (!hasLayout(output)) return null
   const [w, h] = [output.width_mm, output.height_mm]
   const cols = Math.max(1, output.columns ?? 1)
@@ -356,13 +356,14 @@ function Guides({ output }) {
   const line = { vectorEffect: 'non-scaling-stroke', fill: 'none' }
   return (
     <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none">
-      {sheetsOf(output).map((s, i) => {
-        const [x0, y0, x1, y1] = s.inner
-        const margin = s.inner.some((v, k) => Math.abs(v - s.at[k]) > 1e-6)
-        return margin && x1 > x0 && y1 > y0 ? (
-          <rect key={i} x={x0} y={y0} width={x1 - x0} height={y1 - y0} stroke="var(--chrome-divider)" strokeDasharray="1 3" strokeWidth={1} {...line} />
-        ) : null
-      })}
+      {showMargins &&
+        sheetsOf(output).map((s, i) => {
+          const [x0, y0, x1, y1] = s.inner
+          const margin = s.inner.some((v, k) => Math.abs(v - s.at[k]) > 1e-6)
+          return margin && x1 > x0 && y1 > y0 ? (
+            <rect key={i} x={x0} y={y0} width={x1 - x0} height={y1 - y0} stroke="var(--chrome-divider)" strokeDasharray="1 3" strokeWidth={1} {...line} />
+          ) : null
+        })}
       {Array.from({ length: cols - 1 }, (_, i) => (w * (i + 1)) / cols).map((x) => (
         <line key={`c${x}`} x1={x} y1={0} x2={x} y2={h} stroke="var(--chrome-divider)" strokeWidth={1} {...line} />
       ))}
@@ -548,6 +549,7 @@ export default function MapView({
   downloadDoc,
   onDownloadClose,
   onOpenControls,
+  busy = false,
 }) {
   const [menu, setMenu] = useState(false)
   const [search, setSearch] = useState(false)
@@ -1202,6 +1204,12 @@ export default function MapView({
   }
 
   const tilesLive = tiles?.live === true
+  // First draw: let live tiles show through the in-flight SVG. Rerun: keep the last
+  // raster on a solid sheet and dim it so the wait reads as “updating”, not a flash.
+  const redrawing = busy && drawing?.preview
+  const dimForTiles = tilesLive && !drawing?.preview
+  const previewDim = redrawing ? 'opacity-45' : dimForTiles ? 'opacity-20' : ''
+  const paperBg = drawing?.preview || (drawing?.svg && !tilesLive)
 
   const mapStatusTags = (
     <>
@@ -1242,7 +1250,7 @@ export default function MapView({
       <div
         ref={overlayRef}
         className={`pointer-events-none absolute left-0 top-0 overflow-hidden outline outline-[color:var(--chrome-divider)] ${RAISED} ${
-          drawing?.svg && !tilesLive ? 'bg-[var(--background0)]' : 'bg-[color-mix(in_srgb,var(--background0)_20%,transparent)]'
+          paperBg ? 'bg-[var(--background0)]' : 'bg-[color-mix(in_srgb,var(--background0)_20%,transparent)]'
         }`}
         style={{ display: 'none', willChange: 'transform' }}
       >
@@ -1255,17 +1263,17 @@ export default function MapView({
             <>
               <canvas
                 ref={previewCanvasRef}
-                className={`block h-full w-full select-none ${tilesLive ? 'opacity-20' : ''}`}
+                className={`block h-full w-full select-none ${previewDim}`}
               />
               <canvas
                 ref={detailCanvasRef}
-                className={`pointer-events-none absolute bg-[var(--background0)] select-none ${tilesLive ? 'opacity-20' : ''}`}
+                className={`pointer-events-none absolute bg-[var(--background0)] select-none ${previewDim}`}
                 style={{ display: 'none' }}
               />
             </>
           ) : drawing?.svg && svgUrl ? (
             <img
-              className={`block h-full w-full select-none object-fill ${tilesLive ? 'opacity-20' : ''}`}
+              className={`block h-full w-full select-none object-fill ${previewDim}`}
               src={svgUrl}
               alt=""
               draggable={false}
@@ -1273,7 +1281,7 @@ export default function MapView({
             />
           ) : null}
         </div>
-        {output && <Guides output={output} />}
+        {output && <Guides output={output} showMargins={!drawing?.preview} />}
       </div>
 
       {output && (
