@@ -321,3 +321,16 @@ aside :is(h1, h2, h3, p, div, header, section) {
 .flame .tk-o {
   color: var(--syntax-dim);
 }
+
+@keyframes map-boot-bar {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(400%);
+  }
+}
+
+.map-boot-bar {
+  animation: map-boot-bar 1.35s ease-in-out infinite;
+}

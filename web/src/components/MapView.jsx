@@ -550,8 +550,10 @@ export default function MapView({
   onDownloadClose,
   onOpenControls,
   busy = false,
+  appReady = true,
 }) {
   const [menu, setMenu] = useState(false)
+  const [mapBooted, setMapBooted] = useState(false)
   const [search, setSearch] = useState(false)
   const [tilesOn, setTilesOn] = useState(true)
   const [mapView, setMapView] = useAtom(mapViewAtom)
@@ -580,6 +582,48 @@ export default function MapView({
   const menuDragRef = useRef(false)
   const readyRef = useRef(false)
   const lastFitRef = useRef('')
+  const initialFitDoneRef = useRef(false)
+  const mapBootedRef = useRef(false)
+  const revealMapRef = useRef(() => {})
+  revealMapRef.current = () => {
+    if (mapBootedRef.current) return
+    mapBootedRef.current = true
+    setMapBooted(true)
+  }
+  /** Once per visit: frame the stored selection like "map to selection". */
+  const fitMapToOutputRef = useRef(() => {})
+  fitMapToOutputRef.current = () => {
+    if (initialFitDoneRef.current) return
+    const map = mapRef.current
+    const out = outputRef.current
+    if (!map || !readyRef.current || !out) return
+    initialFitDoneRef.current = true
+    requestAnimationFrame(() => {
+      const m = mapRef.current
+      const o = outputRef.current
+      if (!m || !o) {
+        initialFitDoneRef.current = false
+        return
+      }
+      let settled = false
+      const settle = () => {
+        if (settled) return
+        settled = true
+        m.off('moveend', settle)
+        m.off('idle', settle)
+        revealMapRef.current()
+      }
+      m.once('moveend', settle)
+      m.once('idle', settle)
+      m.jumpTo({
+        center: [o.lng, o.lat],
+        zoom: m.getZoom() + zoomToFit(m, o, FIT_AIR),
+        bearing: norm(o.bearing ?? 0),
+      })
+      // `jumpTo` with no camera change may skip `moveend` on some browsers.
+      window.setTimeout(settle, 80)
+    })
+  }
   // While a drag is on, the output follows the pointer from here; the document
   // trails it by a frame.
   const editRef = useRef(null)
@@ -679,12 +723,17 @@ export default function MapView({
         detailBitmapRef.current = msg.bitmap
         const dc = detailCanvasRef.current
         if (!dc || !msg.bitmap) return
+        const outNow = outputRef.current
+        const bNow = outNow ? outputBox(mapRef.current, outNow) : null
+        if (!bNow || !(outNow.width_mm > 0 && outNow.height_mm > 0)) return
+        const sx = bNow.w / outNow.width_mm
+        const sy = bNow.h / outNow.height_mm
         dc.width = msg.bitmap.width
         dc.height = msg.bitmap.height
-        dc.style.left = `${msg.rect.mmX0}px`
-        dc.style.top = `${msg.rect.mmY0}px`
-        dc.style.width = `${msg.rect.mmX1 - msg.rect.mmX0}px`
-        dc.style.height = `${msg.rect.mmY1 - msg.rect.mmY0}px`
+        dc.style.left = `${msg.rect.mmX0 * sx}px`
+        dc.style.top = `${msg.rect.mmY0 * sy}px`
+        dc.style.width = `${(msg.rect.mmX1 - msg.rect.mmX0) * sx}px`
+        dc.style.height = `${(msg.rect.mmY1 - msg.rect.mmY0) * sy}px`
         const ctx = dc.getContext('2d')
         if (ctx) {
           ctx.clearRect(0, 0, msg.bitmap.width, msg.bitmap.height)
@@ -720,10 +769,13 @@ export default function MapView({
     }
     const wrap = previewWrapRef.current
     const out = outputRef.current
+    // Size the wrap to the card's screen pixels (no inner scale). Safari
+    // rasterizes canvases inside a scaled layer at the pre-transform size,
+    // which leaves the overview and detail bitmaps permanently soft.
     if (wrap && out && out.width_mm > 0 && out.height_mm > 0) {
-      wrap.style.width = `${out.width_mm}px`
-      wrap.style.height = `${out.height_mm}px`
-      wrap.style.transform = `scale3d(${b.w / out.width_mm}, ${b.h / out.height_mm}, 1)`
+      wrap.style.width = `${b.w}px`
+      wrap.style.height = `${b.h}px`
+      wrap.style.transform = ''
     }
     // Written here rather than by React, so a resize reads live.
     // The label over the top edge and the tags under the bottom one, flush
@@ -811,6 +863,7 @@ export default function MapView({
       map.resize()
       readyRef.current = true
       place()
+      fitMapToOutputRef.current()
     })
 
     const onZoomEnd = () => applyOutputBearingRef.current()
@@ -970,6 +1023,17 @@ export default function MapView({
   useEffect(() => {
     place()
   })
+
+  // The script compiles after the map may already be up; fit once both exist.
+  useEffect(() => {
+    fitMapToOutputRef.current()
+  }, [output])
+
+  // Engine up but no output to frame (e.g. a compile error): show the map anyway.
+  useEffect(() => {
+    if (mapBootedRef.current || !appReady || output) return
+    revealMapRef.current()
+  }, [appReady, output])
 
   // A bearing written in the document turns the map about the output, so the
   // output stays where it is on screen. During a rotate the map already turns.
@@ -1203,6 +1267,8 @@ export default function MapView({
     window.addEventListener('pointercancel', up)
   }
 
+  const showBootScreen = !appReady || !mapBooted
+
   const tilesLive = tiles?.live === true
   // First draw: let live tiles show through the in-flight SVG. Rerun: keep the last
   // raster on a solid sheet and dim it so the wait reads as “updating”, not a flash.
@@ -1239,7 +1305,7 @@ export default function MapView({
 
   return (
     <div className="relative h-full w-full min-w-0 overflow-hidden">
-      <div ref={containerRef} className="h-full w-full" />
+      <div ref={containerRef} className={`h-full w-full ${showBootScreen ? 'invisible' : ''}`} aria-hidden={showBootScreen} />
 
       {/*
         Positioned with a transform on the map's own render tick (see `place`),
@@ -1254,11 +1320,7 @@ export default function MapView({
         }`}
         style={{ display: 'none', willChange: 'transform' }}
       >
-        <div
-          ref={previewWrapRef}
-          className="relative origin-top-left"
-          style={{ willChange: 'transform' }}
-        >
+        <div ref={previewWrapRef} className="relative h-full w-full origin-top-left">
           {drawing?.preview ? (
             <>
               <canvas
@@ -1384,6 +1446,23 @@ export default function MapView({
         >
           controls
         </TermKey>
+      )}
+
+      {showBootScreen && (
+        <div
+          className="absolute inset-0 z-40 flex flex-col items-center justify-center gap-[1lh] bg-[var(--background0)]"
+          aria-busy="true"
+          aria-live="polite"
+        >
+          <div
+            className="h-2 w-96 max-w-[90vw] overflow-hidden bg-[color-mix(in_srgb,var(--foreground0)_12%,transparent)]"
+            role="status"
+            aria-label="Loading"
+          >
+            <div className="map-boot-bar h-full w-1/4 bg-[var(--foreground0)]" />
+          </div>
+          <p className="m-0 font-mono text-[10px] opacity-60">Booting…</p>
+        </div>
       )}
     </div>
   )
