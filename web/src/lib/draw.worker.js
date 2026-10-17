@@ -14,6 +14,7 @@ import { fetchOverpass } from './overpass'
 import { fetchTiles } from './tiles'
 import { fetchTerrain } from './terrain'
 import { fetchGoogleFonts } from './googleFonts'
+import { fetchStrokeFonts } from './strokeFonts'
 import { createPreviewPainter } from './preview'
 import { Task } from './progress'
 
@@ -41,7 +42,7 @@ self.onmessage = ({ data }) => {
   }
 }
 
-async function run({ token, graph, lat, lng, googleFonts }) {
+async function run({ token, graph, lat, lng, googleFonts, strokeFonts }) {
   current?.abort()
   const ac = new AbortController()
   current = ac
@@ -90,6 +91,18 @@ async function run({ token, graph, lat, lng, googleFonts }) {
         row.ok(`${n} font${n === 1 ? '' : 's'}`)
       } else {
         await fetchGoogleFonts(engine, graph, job, ac.signal, download)
+      }
+      if (strokeFonts && Object.keys(strokeFonts).length) {
+        const row = download.child('stroke-fonts', 'stroke-fonts', Object.keys(strokeFonts).length, 'stroke fonts')
+        let n = 0
+        for (const [url, bytes] of Object.entries(strokeFonts)) {
+          job.addStrokeFont(url, bytes)
+          n += 1
+          row.step(n, url)
+        }
+        row.ok(`${n} font${n === 1 ? '' : 's'}`)
+      } else {
+        await fetchStrokeFonts(engine, graph, job, ac.signal, download)
       }
       if (ac.signal.aborted) return
       download.ok()

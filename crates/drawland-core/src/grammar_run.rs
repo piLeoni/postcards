@@ -109,6 +109,8 @@ pub struct Inputs<'a> {
     pub memory_budget: Option<u64>,
     /// TTF bytes for `modules.labels` Google fonts, keyed by `text::google_font_key`.
     pub google_fonts: BTreeMap<String, Vec<u8>>,
+    /// SVG/JHF bytes for single-stroke fonts, keyed by URL (see `text::LabelFont::stroke_font_key`).
+    pub stroke_fonts: BTreeMap<String, Vec<u8>>,
 }
 
 /// Evaluate `grammar` against `inputs`, project to `output`, compose and write.
@@ -221,6 +223,7 @@ pub fn run_into(grammar: &Grammar, output: &Output, inputs: Inputs, draw: &Task,
         terrain: inputs.terrain.as_ref(),
         projector: &projector,
         google_fonts: &decompressed_fonts,
+        stroke_fonts: &inputs.stroke_fonts,
     };
     project.ok("");
 
@@ -275,6 +278,7 @@ struct Engine<'a> {
     /// The projection, so terrain pixels land in the same millimetres.
     projector: &'a crate::projection::Projector,
     google_fonts: &'a crate::labels::GoogleFonts,
+    stroke_fonts: &'a crate::labels::StrokeFonts,
 }
 
 /// A profile's shape on the page, in output mm.
@@ -307,7 +311,8 @@ fn text_on_page(t: &crate::grammar::Text, engine: &Engine) -> Result<(geom::Line
         ),
         None => None,
     };
-    let layout = crate::text::layout(&t.font, bytes, &t.text)?;
+    let stroke = t.font.stroke_font_key().and_then(|k| engine.stroke_fonts.get(&k).map(Vec::as_slice));
+    let layout = crate::text::layout(&t.font, bytes, stroke, &t.text)?;
     let k = t.size.0 / layout.cap_height;
     let (cx, cy) = (layout.width / 2.0, (layout.top + layout.bottom) / 2.0);
     let shape = crate::grammar::Shape { at: t.at.clone(), points: vec![], rotate: t.rotate, closed: false };
@@ -575,7 +580,7 @@ fn eval_op<'a>(
                 Some(n) => geom::intersection(area(n)?, &engine.drawable),
                 None => engine.drawable.clone(),
             };
-            Value::Labels(crate::labels::place(&named, &bounds, &l.style, engine.google_fonts)?)
+            Value::Labels(crate::labels::place(&named, &bounds, &l.style, engine.google_fonts, engine.stroke_fonts)?)
         }
         Op::Fill(_) => return Err("tools_fill is evaluated in the fill pass".into()),
         Op::Module(m) => match &m.from {
@@ -1191,7 +1196,7 @@ mod tests {
         run(
             &grammar,
             &output(),
-            Inputs { features: vec![], tiles: vec![], sources: &BTreeMap::new(), terrain: None, memory_budget: None, google_fonts: BTreeMap::new() },
+            Inputs { features: vec![], tiles: vec![], sources: &BTreeMap::new(), terrain: None, memory_budget: None, google_fonts: BTreeMap::new(), stroke_fonts: BTreeMap::new() },
         )
     }
 
@@ -1225,7 +1230,7 @@ mod tests {
         let out = run(
             &grammar,
             &output(),
-            Inputs { features: vec![park], tiles: vec![], sources: &BTreeMap::new(), terrain: None, memory_budget: None, google_fonts: fonts },
+            Inputs { features: vec![park], tiles: vec![], sources: &BTreeMap::new(), terrain: None, memory_budget: None, google_fonts: fonts, stroke_fonts: BTreeMap::new() },
         )
         .unwrap();
         let count = |id: &str| out.groups.iter().find(|(g, _)| g == id).map_or(0, |(_, n)| *n);

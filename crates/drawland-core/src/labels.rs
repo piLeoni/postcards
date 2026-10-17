@@ -29,11 +29,14 @@ use std::collections::{BTreeMap, HashMap};
 /// Font file bytes (TTF, OTF or WOFF2) keyed by [`text::google_font_key`].
 pub type GoogleFonts = BTreeMap<String, Vec<u8>>;
 
+/// Single-stroke font file bytes (SVG or JHF) keyed by URL / catalog URL.
+pub type StrokeFonts = BTreeMap<String, Vec<u8>>;
+
 /// How labels look and how close they may come. Every field has a default.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Style {
-    /// Draw.land Hershey font (`"futural"`) or `{ origin: "google", family, weight? }`.
+    /// `"futural"`, catalog stroke id, `{ origin: "drawland" | "stroke" | "google", … }`.
     pub font: LabelFont,
     /// Capital height of the most important labels.
     pub size: Mm,
@@ -202,12 +205,31 @@ pub fn validate_style(style: &Style) -> Result<(), String> {
 
 /// Every Google font key any `tools_labels` def in the grammar needs (`Roboto:400`, …).
 pub fn google_font_keys_in_grammar(grammar: &crate::grammar::Grammar) -> Vec<String> {
+    font_keys_in_grammar(grammar, FontKeyKind::Google)
+}
+
+pub fn stroke_font_keys_in_grammar(grammar: &crate::grammar::Grammar) -> Vec<String> {
+    font_keys_in_grammar(grammar, FontKeyKind::Stroke)
+}
+
+enum FontKeyKind {
+    Google,
+    Stroke,
+}
+
+fn font_keys_in_grammar(grammar: &crate::grammar::Grammar, kind: FontKeyKind) -> Vec<String> {
     use crate::grammar::Op;
     let mut keys: Vec<String> = grammar
         .all_defs()
         .flat_map(|def| match &def.op {
-            Op::Labels(l) => l.style.fonts().filter_map(LabelFont::google_key).collect::<Vec<_>>(),
-            Op::Text(t) | Op::TextArea(t) => t.font.google_key().into_iter().collect(),
+            Op::Labels(l) => l.style.fonts().filter_map(|f| match kind {
+                FontKeyKind::Google => LabelFont::google_key(f),
+                FontKeyKind::Stroke => f.stroke_font_key(),
+            }).collect::<Vec<_>>(),
+            Op::Text(t) | Op::TextArea(t) => match kind {
+                FontKeyKind::Google => t.font.google_key().into_iter().collect(),
+                FontKeyKind::Stroke => t.font.stroke_font_key().into_iter().collect(),
+            },
             _ => vec![],
         })
         .collect();
@@ -512,8 +534,38 @@ impl Pose {
     }
 }
 
+const LATIN_FALLBACK_KEYS: &[&str] = &[
+    "name:en",
+    "name:latin",
+    "name_en",
+    "name_int",
+    "int_name",
+    "name:fr",
+];
+
+fn pick_feature_label<'a>(f: &'a Feature, keys: &[String]) -> Option<&'a str> {
+    let (key, raw) = keys
+        .iter()
+        .find_map(|k| f.tag(k).map(str::trim).filter(|s| !s.is_empty()).map(|s| (k.as_str(), s)))?;
+    if key == "name" && !crate::stroke_font::has_native_glyphs(raw) {
+        if let Some(latin) = LATIN_FALLBACK_KEYS
+            .iter()
+            .find_map(|k| f.tag(k).map(str::trim).filter(|s| !s.is_empty() && crate::stroke_font::has_native_glyphs(s)))
+        {
+            return Some(latin);
+        }
+    }
+    Some(raw)
+}
+
 /// The labels of `features` (output millimetres).
-pub fn place(features: &[Feature], frame: &MultiPolygon<f64>, style: &Style, google_fonts: &GoogleFonts) -> Result<Placed, String> {
+pub fn place(
+    features: &[Feature],
+    frame: &MultiPolygon<f64>,
+    style: &Style,
+    google_fonts: &GoogleFonts,
+    stroke_fonts: &StrokeFonts,
+) -> Result<Placed, String> {
     validate_style(style)?;
     // Each font file decoded once, not once per label.
     let mut faces: HashMap<String, Vec<u8>> = HashMap::new();
@@ -532,7 +584,7 @@ pub fn place(features: &[Feature], frame: &MultiPolygon<f64>, style: &Style, goo
     // candidate however the data cut it.
     let mut roads: BTreeMap<(String, String), (f64, Lines, Look, Option<String>)> = BTreeMap::new();
     for f in features {
-        let Some(raw) = style.keys.iter().find_map(|k| f.tag(k)).map(str::trim).filter(|s| !s.is_empty()) else {
+        let Some(raw) = pick_feature_label(f, &style.keys) else {
             continue;
         };
         let (look, rule) = style.look(f);
@@ -594,7 +646,10 @@ pub fn place(features: &[Feature], frame: &MultiPolygon<f64>, style: &Style, goo
                 })?;
                 cf.layout(&c.text)
             }
-            None => text::layout(&look.font, None, &c.text)?,
+            None => {
+                let stroke = look.font.stroke_font_key().and_then(|k| stroke_fonts.get(&k).map(Vec::as_slice));
+                text::layout(&look.font, None, stroke, &c.text)?
+            }
         };
         let (big, small) = (look.size.0.max(0.1), look.min_size.0.max(0.1));
         let size = small + (big - small) * c.rank.clamp(0.0, 1.0);
@@ -836,7 +891,7 @@ mod tests {
     fn crossing_roads_do_not_overlap() {
         let a = road("Fulton Street", "primary", &[(0.0, 50.0), (100.0, 50.0)]);
         let b = road("Great Avenue", "minor", &[(50.0, 0.0), (50.0, 100.0)]);
-        let out = place(&[a, b], &frame(), &Style::default(), &GoogleFonts::new()).unwrap().lines;
+        let out = place(&[a, b], &frame(), &Style::default(), &GoogleFonts::new(), &StrokeFonts::new()).unwrap().lines;
         assert!(!out.is_empty());
         // The primary is placed first, on its middle; the avenue is pushed off
         // the crossing.
@@ -848,7 +903,7 @@ mod tests {
     fn text_reads_left_to_right() {
         let a = road("AB", "primary", &[(90.0, 50.0), (10.0, 50.0)]);
         let style = Style { font: LabelFont::drawland("futural"), ..Style::default() };
-        let out = place(&[a], &frame(), &style, &GoogleFonts::new()).unwrap().lines;
+        let out = place(&[a], &frame(), &style, &GoogleFonts::new(), &StrokeFonts::new()).unwrap().lines;
         // The first stroke drawn is the `A`, left of the `B`.
         let first = out[0].0[0].x;
         let last = out.last().unwrap().0[0].x;
@@ -858,7 +913,7 @@ mod tests {
     #[test]
     fn a_short_road_goes_unlabelled() {
         let a = road("A very long street name", "minor", &[(10.0, 10.0), (14.0, 10.0)]);
-        assert!(place(&[a], &frame(), &Style::default(), &GoogleFonts::new()).unwrap().lines.is_empty());
+        assert!(place(&[a], &frame(), &Style::default(), &GoogleFonts::new(), &StrokeFonts::new()).unwrap().lines.is_empty());
     }
 
     #[test]
@@ -867,7 +922,7 @@ mod tests {
             "rules": [{ "id": "park", "tags": { "tiles:layer": "park" }, "size": "8mm", "min_size": "8mm" }],
         }))
         .unwrap();
-        let placed = place(&[park("Lake")], &frame(), &style, &GoogleFonts::new()).unwrap();
+        let placed = place(&[park("Lake")], &frame(), &style, &GoogleFonts::new(), &StrokeFonts::new()).unwrap();
         let bucket = placed.buckets.get("park").expect("park bucket");
         assert!(!bucket.lines.is_empty());
         assert_eq!(placed.lines.len(), bucket.lines.len());
@@ -875,12 +930,12 @@ mod tests {
 
     #[test]
     fn a_single_stroke_label_covers_something_only_when_buffered() {
-        let plain = place(&[park("Lake")], &frame(), &Style::default(), &GoogleFonts::new()).unwrap();
+        let plain = place(&[park("Lake")], &frame(), &Style::default(), &GoogleFonts::new(), &StrokeFonts::new()).unwrap();
         assert!(!plain.lines.is_empty());
         assert!(plain.area().0.is_empty());
 
         let style = Style { buffer: 2, keep_centerline: false, ..Style::default() };
-        let thick = place(&[park("Lake")], &frame(), &style, &GoogleFonts::new()).unwrap();
+        let thick = place(&[park("Lake")], &frame(), &style, &GoogleFonts::new(), &StrokeFonts::new()).unwrap();
         let area = thick.area();
         assert!(!area.0.is_empty());
         // Every outline lies on or inside the outermost one.
@@ -920,7 +975,7 @@ mod tests {
     }
 
     fn assert_glyphs_merge(font: LabelFont, bytes: &[u8], sample: &str) {
-        let layout = text::layout(&font, Some(bytes), sample).unwrap();
+        let layout = text::layout(&font, Some(bytes), None, sample).unwrap();
         assert!(layout.outline);
         for (ch, g) in sample.chars().zip(&layout.glyphs) {
             if g.strokes.is_empty() {
@@ -958,7 +1013,7 @@ mod tests {
         assert_glyphs_merge(font.clone(), &bytes, "Lands End");
         let sample = "LandsEOPeg";
         let counters = [0, 1, 0, 1, 0, 0, 1, 1, 1, 1];
-        let layout = text::layout(&font, Some(&bytes), sample).unwrap();
+        let layout = text::layout(&font, Some(&bytes), None, sample).unwrap();
         for ((ch, g), want) in sample.chars().zip(&layout.glyphs).zip(counters) {
             let contours: Lines = g
                 .strokes
@@ -973,7 +1028,7 @@ mod tests {
         // The pen draws each letter's edge once: one ring per body and counter.
         let fonts = GoogleFonts::from([(font.google_key().unwrap(), bytes)]);
         let style = Style { font, size: Mm(6.0), min_size: Mm(6.0), ..Style::default() };
-        let placed = place(&[park(sample)], &frame(), &style, &fonts).unwrap();
+        let placed = place(&[park(sample)], &frame(), &style, &fonts, &StrokeFonts::new()).unwrap();
         assert_eq!(placed.lines.len(), sample.len() + counters.iter().sum::<usize>());
     }
 
@@ -981,7 +1036,7 @@ mod tests {
     fn an_outline_font_covers_its_glyphs_with_the_counters_open() {
         let Some((font, fonts)) = system_face() else { return };
         let style = Style { font, size: Mm(6.0), min_size: Mm(6.0), ..Style::default() };
-        let placed = place(&[park("OPg")], &frame(), &style, &fonts).unwrap();
+        let placed = place(&[park("OPg")], &frame(), &style, &fonts, &StrokeFonts::new()).unwrap();
         assert!(!placed.lines.is_empty(), "the contours are drawn");
         let ink = geom::union_multi(&placed.shapes);
         assert_eq!(ink.0.len(), 3);

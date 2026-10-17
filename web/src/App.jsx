@@ -5,6 +5,7 @@ import Sidebar from './components/Sidebar'
 import Docs from './docs/Docs'
 import { loadDrawland } from './lib/drawland'
 import { loadGoogleFontsForGraph } from './lib/googleFonts'
+import { loadStrokeFontsForGraph } from './lib/strokeFonts'
 import { docAtom } from './lib/store'
 import { outputComment, outputUnit, setOutputComment, setOutputKeys } from './lib/doc'
 import { compile, literalOutputInfo } from './lib/graph'
@@ -355,10 +356,13 @@ export default function App() {
     drawAbortRef.current?.abort()
     const ac = new AbortController()
     drawAbortRef.current = ac
-    loadGoogleFontsForGraph(engine, graph, ac.signal)
-      .then((googleFonts) => {
+    Promise.all([
+      loadGoogleFontsForGraph(engine, graph, ac.signal),
+      loadStrokeFontsForGraph(engine, graph, ac.signal),
+    ])
+      .then(([googleFonts, strokeFonts]) => {
         if (token !== drawTokenRef.current || ac.signal.aborted) return
-        workerRef.current.postMessage({ type: 'draw', token, graph, lat, lng, googleFonts })
+        workerRef.current.postMessage({ type: 'draw', token, graph, lat, lng, googleFonts, strokeFonts })
       })
       .catch((e) => {
         if (token !== drawTokenRef.current || e?.name === 'AbortError') return

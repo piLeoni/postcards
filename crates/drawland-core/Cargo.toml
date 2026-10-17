@@ -20,6 +20,7 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 rayon = { workspace = true }
 ttf-parser = { workspace = true }
+deunicode = { workspace = true }
 wuff = { workspace = true, features = ["brotli", "z"] }
 
 [target.'cfg(target_family = "wasm")'.dependencies]

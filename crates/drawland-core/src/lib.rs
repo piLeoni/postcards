@@ -20,6 +20,7 @@ pub mod select;
 pub mod sheets;
 pub mod svg;
 pub mod terrain;
+pub mod stroke_font;
 pub mod text;
 pub mod themes;
 pub mod tiles;

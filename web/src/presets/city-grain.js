@@ -42,6 +42,7 @@ const LABEL_CLEAR_W    = "0.65mm"
 const NATURE_MERGE_GAP = "0.15mm"
 const SIMPLIFY_TOL     = "0.03mm"
 const FILTER_MIN_LEN   = "0.25mm"   // urban outlines only (buildings/roads); never on trees, gardens, or dotted routes
+const FILL_ORIENT      = "tl-br"    // preferred stroke direction for fills to prevent pen skipping on reversals
 
 // 1c. Road Widths, Lanes & Mask Clearances (`modules.roads`)
 // - `widthMode`: "ground" (metres on earth, scaled by `output.scale`) or "paper" (mm on sheet)
@@ -487,8 +488,18 @@ const routeLines = [
 ]
 const cityAndRoutes = [...cityLines, ...routeLines]
 
+const fillLayers = [
+  "fill_buildings",
+  "fill_water",
+  ...canopyDraws,
+  ...natureFills,
+  "lines_ground_burin",
+  "lines_nature_terrain",
+]
+
 compose.deoverlap(cityLines, { tolerance: PEN * 1.2, selfOverlap: true, acrossLayers: true })
 compose.linemerge(cityLines, PEN * 2)
 compose.filter(["lines_buildings_ring", "lines_roads_outlines", "lines_roads_seams", "lines_aeroway", "lines_piers", "lines_dock_ring"], { minLength: FILTER_MIN_LEN })
 compose.simplify(cityAndRoutes, SIMPLIFY_TOL)
+compose.orient(fillLayers, { direction: FILL_ORIENT, splitReversals: true })
 compose.linesort({ except: ["lines_labels"] })

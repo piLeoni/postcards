@@ -126,6 +126,85 @@ impl Default for FilterSpec {
     }
 }
 
+/// Preferred drawing direction: either a compass preset (`"lr"`, `"tb"`,
+/// `"tl-br"`, `"se"`, …) or an explicit angle in degrees (`0` = East/right,
+/// `45` = South-East / top-left to bottom-right, `90` = South/down).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DirectionAngle(pub f64);
+
+impl DirectionAngle {
+    pub fn parse_str(s: &str) -> Result<Self, String> {
+        let deg = match s.trim().to_ascii_lowercase().as_str() {
+            "lr" | "left-to-right" | "e" | "east" => 0.0,
+            "tl-br" | "nw-se" | "se" | "southeast" => 45.0,
+            "tb" | "top-to-bottom" | "s" | "south" => 90.0,
+            "tr-bl" | "ne-sw" | "sw" | "southwest" => 135.0,
+            "rl" | "right-to-left" | "w" | "west" => 180.0,
+            "br-tl" | "se-nw" | "nw" | "northwest" => 225.0,
+            "bt" | "bottom-to-top" | "n" | "north" => 270.0,
+            "bl-tr" | "sw-ne" | "ne" | "northeast" => 315.0,
+            other => {
+                return Err(format!(
+                    "unknown direction {other:?} (expected a degree angle or \"lr\", \"rl\", \"tb\", \"bt\", \"tl-br\", \"tr-bl\", \"bl-tr\", \"br-tl\", \"e\", \"se\", \"s\", \"sw\", \"w\", \"nw\", \"n\", \"ne\")"
+                ))
+            }
+        };
+        Ok(DirectionAngle(deg))
+    }
+
+    pub fn unit_vector(self) -> (f64, f64) {
+        let rad = self.0.to_radians();
+        (rad.cos(), rad.sin())
+    }
+}
+
+impl Serialize for DirectionAngle {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_f64(self.0)
+    }
+}
+
+impl<'de> Deserialize<'de> for DirectionAngle {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum Raw {
+            Num(f64),
+            Str(String),
+        }
+        match Raw::deserialize(deserializer)? {
+            Raw::Num(deg) if deg.is_finite() => Ok(DirectionAngle(deg)),
+            Raw::Num(deg) => Err(serde::de::Error::custom(format!("direction angle must be finite, got {deg}"))),
+            Raw::Str(s) => DirectionAngle::parse_str(&s).map_err(serde::de::Error::custom),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OrientSpec {
+    #[serde(default = "default_orient_direction", alias = "angle")]
+    pub direction: DirectionAngle,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_length: Option<Mm>,
+    #[serde(default)]
+    pub split_reversals: bool,
+}
+
+fn default_orient_direction() -> DirectionAngle {
+    DirectionAngle(0.0)
+}
+
+impl Default for OrientSpec {
+    fn default() -> Self {
+        Self {
+            direction: default_orient_direction(),
+            max_length: None,
+            split_reversals: false,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct LinesortSpec {
@@ -135,6 +214,12 @@ pub struct LinesortSpec {
     pub passes: usize,
     #[serde(default)]
     pub follow: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none", alias = "angle")]
+    pub direction: Option<DirectionAngle>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_length: Option<Mm>,
+    #[serde(default)]
+    pub split_reversals: bool,
 }
 
 fn default_true() -> bool {
@@ -151,6 +236,9 @@ impl Default for LinesortSpec {
             two_opt: true,
             passes: default_passes(),
             follow: false,
+            direction: None,
+            max_length: None,
+            split_reversals: false,
         }
     }
 }
@@ -168,6 +256,7 @@ pub enum OptimizeOp {
     Simplify(SimplifySpec),
     Filter(FilterSpec),
     Reloop(ReloopSpec),
+    Orient(OrientSpec),
     Linesort(LinesortSpec),
 }
 
@@ -183,6 +272,7 @@ impl OptimizeOp {
             OptimizeOp::Simplify(_) => "simplify",
             OptimizeOp::Filter(_) => "filter",
             OptimizeOp::Reloop(_) => "reloop",
+            OptimizeOp::Orient(_) => "orient",
             OptimizeOp::Linesort(_) => "linesort",
         }
     }
@@ -227,6 +317,7 @@ pub fn run_pipeline(
         return;
     }
     let opt_task = parent.child("optimize", "optimize", 0, "");
+    let mut oriented_layers: BTreeSet<String> = BTreeSet::new();
     for (step_idx, step) in steps.iter().enumerate() {
         let targets = step.target_layers(order);
         let id_set: BTreeSet<&str> = targets.iter().map(String::as_str).collect();
@@ -339,16 +430,37 @@ pub fn run_pipeline(
                     groups[idx].1 = out;
                 }
             }
-            OptimizeOp::Linesort(spec) => {
+            OptimizeOp::Orient(spec) => {
                 let results: Vec<(usize, Lines)> = indices
                     .par_iter()
                     .map(|&idx| {
-                        let out = linesort_lines(&groups[idx].1, spec);
+                        let out = orient_lines(&groups[idx].1, spec);
                         step_task.tick();
                         (idx, out)
                     })
                     .collect();
                 for (idx, out) in results {
+                    oriented_layers.insert(groups[idx].0.clone());
+                    groups[idx].1 = out;
+                }
+            }
+            OptimizeOp::Linesort(spec) => {
+                let results: Vec<(usize, Lines)> = indices
+                    .par_iter()
+                    .map(|&idx| {
+                        let mut eff = spec.clone();
+                        if oriented_layers.contains(&groups[idx].0) {
+                            eff.follow = true;
+                        }
+                        let out = linesort_lines(&groups[idx].1, &eff);
+                        step_task.tick();
+                        (idx, out)
+                    })
+                    .collect();
+                for (idx, out) in results {
+                    if spec.direction.is_some() {
+                        oriented_layers.insert(groups[idx].0.clone());
+                    }
                     groups[idx].1 = out;
                 }
             }
@@ -611,7 +723,118 @@ pub fn reloop_lines(lines: &[LineString<f64>]) -> Lines {
 }
 
 // ---------------------------------------------------------------------------
-// 6. Linesort (nearest-neighbor + 2-opt)
+// 6. Orient (align stroke directions to a preferred angle/compass direction)
+// ---------------------------------------------------------------------------
+
+fn split_at_reversals(line: &LineString<f64>, ux: f64, uy: f64) -> Lines {
+    let pts = &line.0;
+    if pts.len() < 3 {
+        return vec![line.clone()];
+    }
+    let first = pts[0];
+    let last = *pts.last().unwrap();
+    if (first.x - last.x).powi(2) + (first.y - last.y).powi(2) <= 1e-8 {
+        return vec![line.clone()];
+    }
+
+    let mut pieces: Lines = Vec::new();
+    let mut current: Vec<Coord<f64>> = vec![pts[0]];
+    // Sign of projection onto (ux, uy): +1 for forward, -1 for backward, 0 if perpendicular.
+    let mut prev_sign: i8 = 0;
+
+    for w in pts.windows(2) {
+        let a = w[0];
+        let b = w[1];
+        let dx = b.x - a.x;
+        let dy = b.y - a.y;
+        let seg_len = (dx * dx + dy * dy).sqrt();
+        if seg_len <= 1e-9 {
+            continue;
+        }
+        let proj = (dx * ux + dy * uy) / seg_len;
+        // Only count as a strong forward/backward commitment if |cos(theta)| > 0.15 (~81 deg)
+        let sign = if proj > 0.15 {
+            1
+        } else if proj < -0.15 {
+            -1
+        } else {
+            0
+        };
+
+        if prev_sign != 0 && sign != 0 && sign != prev_sign {
+            if current.len() >= 2 {
+                pieces.push(LineString::new(current));
+            }
+            current = vec![a, b];
+            prev_sign = sign;
+        } else {
+            current.push(b);
+            if sign != 0 {
+                prev_sign = sign;
+            }
+        }
+    }
+
+    if current.len() >= 2 {
+        pieces.push(LineString::new(current));
+    }
+    pieces
+}
+
+pub fn orient_lines(lines: &[LineString<f64>], spec: &OrientSpec) -> Lines {
+    let (ux, uy) = spec.direction.unit_vector();
+    let max_len = spec.max_length.map(|m| m.0).filter(|&m| m > 0.0);
+
+    let candidates: Lines = if spec.split_reversals {
+        lines
+            .iter()
+            .filter(|l| l.0.len() >= 2)
+            .flat_map(|l| {
+                if let Some(limit) = max_len {
+                    if geom::line_length(l) > limit {
+                        return vec![l.clone()];
+                    }
+                }
+                split_at_reversals(l, ux, uy)
+            })
+            .collect()
+    } else {
+        lines.iter().filter(|l| l.0.len() >= 2).cloned().collect()
+    };
+
+    candidates
+        .into_iter()
+        .map(|mut l| {
+            let first = l.0[0];
+            let last = *l.0.last().unwrap();
+            let closed = (first.x - last.x).powi(2) + (first.y - last.y).powi(2) <= 1e-8;
+            if closed {
+                return l;
+            }
+            if let Some(limit) = max_len {
+                if geom::line_length(&l) > limit {
+                    return l;
+                }
+            }
+            let dx = last.x - first.x;
+            let dy = last.y - first.y;
+            let dot = dx * ux + dy * uy;
+            if dot < -1e-9 {
+                l.0.reverse();
+            } else if dot.abs() <= 1e-9 {
+                // Tie-breaker on perpendicular axis so perpendicular lines are also consistent.
+                let perp = -dx * uy + dy * ux;
+                if perp < -1e-9 {
+                    l.0.reverse();
+                }
+            }
+            l
+        })
+        .collect()
+}
+
+// ---------------------------------------------------------------------------
+// 7. Linesort (nearest-neighbor + 2-opt)
 // ---------------------------------------------------------------------------
 
 pub fn travel_distance(lines: &[LineString<f64>]) -> f64 {
@@ -626,12 +849,23 @@ pub fn travel_distance(lines: &[LineString<f64>]) -> f64 {
 }
 
 pub fn linesort_lines(lines: &[LineString<f64>], spec: &LinesortSpec) -> Lines {
-    let valid: Vec<LineString<f64>> = lines.iter().filter(|l| l.0.len() >= 2).cloned().collect();
+    let valid: Vec<LineString<f64>> = if let Some(dir) = spec.direction {
+        orient_lines(
+            lines,
+            &OrientSpec {
+                direction: dir,
+                max_length: spec.max_length,
+                split_reversals: spec.split_reversals,
+            },
+        )
+    } else {
+        lines.iter().filter(|l| l.0.len() >= 2).cloned().collect()
+    };
     if valid.len() < 2 {
         return valid;
     }
 
-    let allow_flip = !spec.follow;
+    let allow_flip = !spec.follow && spec.direction.is_none();
     let mut entries = Vec::with_capacity(valid.len() * if allow_flip { 2 } else { 1 });
     for (i, l) in valid.iter().enumerate().skip(1) {
         let first = l.0[0];
@@ -782,5 +1016,53 @@ mod tests {
         let sorted = linesort_lines(&[l1, l2, l3], &LinesortSpec::default());
         let after = travel_distance(&sorted);
         assert!(after < before, "travel reduced: {before} -> {after}");
+    }
+
+    #[test]
+    fn orient_flips_strokes_to_preferred_direction_and_splits_reversals() {
+        let forward = line_string![(x: 0.0, y: 0.0), (x: 10.0, y: 0.0)];
+        let backward = line_string![(x: 10.0, y: 5.0), (x: 0.0, y: 5.0)];
+        let spec = OrientSpec {
+            direction: DirectionAngle::parse_str("lr").unwrap(),
+            max_length: None,
+            split_reversals: false,
+        };
+        let oriented = orient_lines(&[forward, backward], &spec);
+        assert_eq!(oriented.len(), 2);
+        for l in &oriented {
+            assert!(l.0.first().unwrap().x < l.0.last().unwrap().x);
+        }
+
+        // Zigzag stroke reversing along x should split into 3 forward strokes when split_reversals = true.
+        let zigzag = line_string![
+            (x: 0.0, y: 0.0),
+            (x: 10.0, y: 1.0),
+            (x: 0.0, y: 2.0),
+            (x: 10.0, y: 3.0)
+        ];
+        let split_spec = OrientSpec {
+            direction: DirectionAngle(0.0),
+            max_length: None,
+            split_reversals: true,
+        };
+        let split = orient_lines(&[zigzag], &split_spec);
+        assert_eq!(split.len(), 3);
+        for l in &split {
+            assert!(l.0.first().unwrap().x < l.0.last().unwrap().x);
+        }
+
+        // Linesort with direction should orient strokes and never flip them back.
+        let s1 = line_string![(x: 10.0, y: 0.0), (x: 0.0, y: 0.0)];
+        let s2 = line_string![(x: 10.0, y: 0.1), (x: 0.0, y: 0.1)];
+        let sorted = linesort_lines(
+            &[s1, s2],
+            &LinesortSpec {
+                direction: Some(DirectionAngle::parse_str("tl-br").unwrap()),
+                ..Default::default()
+            },
+        );
+        for l in &sorted {
+            assert!(l.0.first().unwrap().x < l.0.last().unwrap().x);
+        }
     }
 }

@@ -16,10 +16,12 @@ import inkByRiver from '../presets/ink-by-river.js?raw'
 import inkByElevation from '../presets/ink-by-elevation.js?raw'
 import flatColor from '../presets/flat-color.js?raw'
 import cityGrain from '../presets/city-grain.js?raw'
+import labelFontsDemo from '../presets/label-fonts-demo.js?raw'
 import { titleOf } from './doc'
 
 export const PRESETS = [
   { id: 'city-grain', hint: 'burin ground, nature patterns, isoline-stack tree crowns', doc: cityGrain },
+  { id: 'label-fonts-demo', hint: 'single-stroke fonts: futural, EMS, URL load', doc: labelFontsDemo },
   { id: 'flat-color', hint: 'solid fills for water, parks and buildings (screen-style)', doc: flatColor },
   { id: 'full', hint: 'roads, trails, parks, water, buildings; all from OpenFreeMap', doc: full },
   { id: 'mixed', hint: 'the same output; only the roads asked of Overpass', doc: mixed },

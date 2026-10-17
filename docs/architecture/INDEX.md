@@ -24,7 +24,7 @@ See [pipeline.md](pipeline.md).
 | Fills & strokes | [fills-compose.md](fills-compose.md) | `fill.rs`, `optimize.rs`, `profile.rs`, `svg.rs`, penfill |
 | Isoline blob fills (design) | [isoline-blob-fills.md](isoline-blob-fills.md) | penfill (new generator), `fill.rs`, compose masks |
 | Terrain (burin) | [terrain-burin.md](terrain-burin.md) | `terrain.rs`, `burin.*` in profiles |
-| Labels & text | [labels.md](labels.md) | `labels.rs`, `text.rs`, `google_fonts.rs` |
+| Labels & text | [labels.md](labels.md) | `labels.rs`, `text.rs`, `stroke_font.rs`, `google_fonts.rs` |
 | Decisions | [decisions.md](decisions.md) | Rationale that spans crates |
 
 ## External libraries (sibling repos)

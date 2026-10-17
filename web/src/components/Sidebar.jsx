@@ -408,7 +408,7 @@ export default function Sidebar({ open, onClose, doc, setDoc, check, output, sta
           </p>
         )}
         <div className="relative mt-[0.5lh] min-h-0 flex-1 overflow-hidden border border-black pt-[0.5lh]">
-          <div className="absolute right-[2ch] bottom-[0.5lh] z-10 flex gap-[1ch]">
+          <div className="absolute top-[0.5lh] right-[2ch] z-10 flex gap-[1ch]">
             {dirty && (
               <>
                 <button type="button" {...KEY} title="Back to the script as it was" onClick={() => { setDraft(null); clearProblem() }}>
@@ -451,7 +451,6 @@ export default function Sidebar({ open, onClose, doc, setDoc, check, output, sta
               lineNumbersMinChars: 3,
               scrollBeyondLastLine: false,
               wordWrap: 'off',
-              fixedOverflowWidgets: true,
               // Follows the column as it is resized.
               automaticLayout: true,
               tabSize: 2,

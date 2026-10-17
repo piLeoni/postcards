@@ -11,7 +11,7 @@
 | `grammar.rs` | Schema, parsing/validation, JSON serde, `Grammar` type |
 | `grammar_run.rs` | Evaluate defs, run fills, apply masks, run `compose.optimize`, emit SVG |
 | `geom.rs` | `Lines`, clipping, buffering, boolean ops on areas |
-| `optimize.rs` | Post-masking plotter path optimization (`deoverlap`, `linemerge`, `simplify`, `filter`, `reloop`, `linesort`) |
+| `optimize.rs` | Post-masking plotter path optimization (`deoverlap`, `linemerge`, `simplify`, `filter`, `reloop`, `orient`, `linesort`) |
 | `select.rs` | Tag selectors for OSM/tile features |
 
 ## Graph shape
@@ -48,7 +48,7 @@ Road drawing typically uses `roads.outlines`, `roads.centerlines`, `roads.seams`
 
 Masks **occlude** only the group ids listed in `occludes` — not a global z-buffer. Lets a layer sit on top without punching holes through unrelated groups. Clip bounds the final SVG.
 
-When `compose.optimize` steps (`compose.deoverlap`, `compose.linemerge`, `compose.simplify`, `compose.filter`, `compose.reloop`, `compose.linesort`) are present, `grammar_run::compose` collects masked and sheet-cropped strokes per layer, runs `optimize::run_pipeline` in sequence (recording progress/timing tasks under `optimize`), and then emits the separate `<g id="…">` layers in compose order.
+When `compose.optimize` steps (`compose.deoverlap`, `compose.linemerge`, `compose.simplify`, `compose.filter`, `compose.reloop`, `compose.orient`, `compose.linesort`) are present, `grammar_run::compose` collects masked and sheet-cropped strokes per layer, runs `optimize::run_pipeline` in sequence (recording progress/timing tasks under `optimize`), and then emits the separate `<g id="…">` layers in compose order. Layers oriented by `compose.orient` (or `compose.linesort({ direction })`) preserve their stroke directions (`follow: true`) in subsequent `linesort` passes.
 
 ## Errors
 

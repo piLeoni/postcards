@@ -624,18 +624,50 @@ interface LabelRule {
   keepCenterline?: boolean
 }
 
-/** `modules.labels` font: draw.land monoline (Hershey) or Google outline. */
+/**
+ * `modules.labels` / `lines.text` font: built-in Hershey, EMS/Hershey catalog,
+ * custom stroke URL, or Google outline.
+ */
 type LabelFont =
   | DrawlandFontId
+  | DrawlandCatalogFontId
   | DrawlandFont
+  | StrokeFont
   | GoogleFont
 
-/** Built-in single-stroke font id (today: `"futural"`). */
+/** Built-in single-stroke font (Greek/Cyrillic/Latin-ext fallback in WASM). */
 type DrawlandFontId = "futural"
+
+/**
+ * Evil Mad Scientist / Hershey SVG fonts (downloaded at render time; same URLs
+ * as the [oskay/svg-fonts](https://gitlab.com/oskay/svg-fonts) catalog).
+ */
+type DrawlandCatalogFontId =
+  | "ems-readability"
+  | "ems-readability-italic"
+  | "ems-swiss"
+  | "ems-tech"
+  | "ems-casual-hand"
+  | "ems-allure"
+  | "ems-osmotron"
+  | "ems-nixish"
+  | "ems-bird"
+  | "ems-capitol"
+  | "hershey-serif-med"
+  | "hershey-script"
+  | "hershey-goth-english"
 
 interface DrawlandFont {
   origin: "drawland"
-  id: DrawlandFontId | string
+  id: DrawlandFontId | DrawlandCatalogFontId | string
+  /** Override catalog URL or load a custom Hershey/EMS SVG/JHF file. */
+  url?: string
+}
+
+/** Any single-stroke SVG or `.jhf` font by URL (`fetch` in browser/CLI). */
+interface StrokeFont {
+  origin: "stroke"
+  url: string
 }
 
 interface GoogleFont {
@@ -698,13 +730,50 @@ interface ReloopOptimizeOptions {
   except?: string[]
 }
 
+/**
+ * Preferred drawing direction for pen strokes:
+ * - A compass preset (`"lr"`, `"rl"`, `"tb"`, `"bt"`, `"tl-br"`, `"tr-bl"`, `"bl-tr"`, `"br-tl"`, `"e"`, `"se"`, `"s"`, `"sw"`, `"w"`, `"nw"`, `"n"`, `"ne"`)
+ * - Or a numeric angle in degrees (`0` = East / left-to-right, `45` = South-East / top-left to bottom-right, `90` = South / top-to-bottom).
+ */
+type OrientDirection =
+  | number
+  | "lr" | "left-to-right" | "e" | "east"
+  | "tl-br" | "nw-se" | "se" | "southeast"
+  | "tb" | "top-to-bottom" | "s" | "south"
+  | "tr-bl" | "ne-sw" | "sw" | "southwest"
+  | "rl" | "right-to-left" | "w" | "west"
+  | "br-tl" | "se-nw" | "nw" | "northwest"
+  | "bt" | "bottom-to-top" | "n" | "north"
+  | "bl-tr" | "sw-ne" | "ne" | "northeast"
+
+interface OrientOptions {
+  /** Preferred stroke direction (compass preset or angle in degrees). Default: `"lr"` (`0`). */
+  direction?: OrientDirection
+  /** Alias for `direction` when specifying an angle in degrees. */
+  angle?: OrientDirection
+  /** Leave strokes longer than `maxLength` untouched. */
+  maxLength?: Length
+  /** Split multi-segment strokes (such as zigzags) where they reverse against `direction` before orienting. Default: `false`. */
+  splitReversals?: boolean
+  /** Exclude these layer ids when `layers` is omitted. */
+  except?: string[]
+}
+
 interface LinesortOptions {
   /** Run 2-opt swaps after nearest-neighbour pass. Default: `true`. */
   twoOpt?: boolean
   /** Maximum 2-opt passes. Default: `250`. */
   passes?: number
-  /** Follow connected endpoints when sorting. Default: `true`. */
+  /** Do not flip stroke directions during sorting (connect `end -> start` only). Default: `false` (automatically `true` when `direction`/`angle` is set or after `compose.orient`). */
   follow?: boolean
+  /** Orient strokes along this preferred direction before sorting, and lock their direction (`follow: true`). */
+  direction?: OrientDirection
+  /** Alias for `direction`. */
+  angle?: OrientDirection
+  /** When `direction`/`angle` is set, leave strokes longer than `maxLength` untouched. */
+  maxLength?: Length
+  /** When `direction`/`angle` is set, split strokes at sharp reversals against `direction` before orienting. Default: `false`. */
+  splitReversals?: boolean
   /** Exclude these layer ids when `layers` is omitted. */
   except?: string[]
 }
@@ -727,8 +796,10 @@ declare const compose: {
   filter(layers?: LayerTargets | Length | FilterOptimizeOptions, options?: Length | FilterOptimizeOptions): void
   /** Randomize seam vertex on closed loops to avoid ink blobs. */
   reloop(layers?: LayerTargets | ReloopOptimizeOptions): void
+  /** Flip open strokes so they flow toward a preferred direction (e.g. `"tl-br"` or `45` degrees) to avoid pen skipping on reversals. */
+  orient(layers?: LayerTargets | OrientDirection | OrientOptions, options?: OrientDirection | OrientOptions): void
   /** Nearest-neighbour + 2-opt stroke ordering to minimize pen-up travel. */
-  linesort(layers?: LayerTargets | LinesortOptions, options?: LinesortOptions): void
+  linesort(layers?: LayerTargets | OrientDirection | LinesortOptions, options?: OrientDirection | LinesortOptions): void
 }
 
 /** Where the map is and on what paper. The page edits this call when its values are written literally. */

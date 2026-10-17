@@ -43,8 +43,8 @@ pub struct Font {
     glyphs: Vec<Glyph>,
 }
 
-/// The fonts built in, by name.
-pub const FONTS: &[&str] = &["futural"];
+/// Built-in stroke font ids (no download). Catalog ids (`ems-readability`, …) load at run time.
+pub const FONTS: &[&str] = crate::stroke_font::BUILTIN_STROKE_IDS;
 
 pub fn font(name: &str) -> Option<&'static Font> {
     static FUTURAL: OnceLock<Font> = OnceLock::new();
@@ -68,7 +68,13 @@ pub enum LabelFont {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "origin", rename_all = "lowercase")]
 pub enum LabelFontOrigin {
-    Drawland { id: String },
+    Drawland {
+        id: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        url: Option<String>,
+    },
+    /// Single-stroke SVG or JHF font from a URL (`fetch` in the browser / CLI).
+    Stroke { url: String },
     Google {
         family: String,
         #[serde(default = "default_google_weight", deserialize_with = "deserialize_font_weight")]
@@ -125,8 +131,18 @@ impl LabelFont {
     pub fn drawland_id(&self) -> Option<&str> {
         match self {
             LabelFont::Drawland(s) => Some(s),
-            LabelFont::Origin(LabelFontOrigin::Drawland { id }) => Some(id),
-            LabelFont::Origin(LabelFontOrigin::Google { .. }) => None,
+            LabelFont::Origin(LabelFontOrigin::Drawland { id, .. }) => Some(id),
+            LabelFont::Origin(LabelFontOrigin::Google { .. }) | LabelFont::Origin(LabelFontOrigin::Stroke { .. }) => None,
+        }
+    }
+
+    /// URL whose bytes must be supplied in [`stroke_font_keys_in_grammar`] / `Inputs.stroke_fonts`.
+    pub fn stroke_font_key(&self) -> Option<String> {
+        match self {
+            LabelFont::Drawland(id) => stroke_key_for_id(id, None),
+            LabelFont::Origin(LabelFontOrigin::Drawland { id, url }) => stroke_key_for_id(id, url.as_deref()),
+            LabelFont::Origin(LabelFontOrigin::Stroke { url }) => Some(url.clone()),
+            _ => None,
         }
     }
 
@@ -196,44 +212,94 @@ pub struct LabelLayout {
 
 /// Lay out `text` with a draw.land or Google font. Google needs the TTF/OTF
 /// bytes of that face (see [`crate::google_fonts::decode_font_bytes`]).
-pub fn layout(label_font: &LabelFont, google_bytes: Option<&[u8]>, text: &str) -> Result<LabelLayout, String> {
-    if let Some(id) = label_font.drawland_id() {
-        return layout_drawland(id, text);
+/// Stroke fonts need the file at [`LabelFont::stroke_font_key`] in `stroke_bytes`.
+pub fn layout(
+    label_font: &LabelFont,
+    google_bytes: Option<&[u8]>,
+    stroke_bytes: Option<&[u8]>,
+    text: &str,
+) -> Result<LabelLayout, String> {
+    if let Some((family, weight, italic)) = label_font.google_spec() {
+        let bytes = google_bytes.ok_or_else(|| {
+            format!(
+                "labels: google font {:?} ({}) was not loaded",
+                family,
+                google_font_key(family, weight, italic)
+            )
+        })?;
+        return layout_google(bytes, text);
     }
-    let Some((family, weight, italic)) = label_font.google_spec() else {
-        return Err("labels: font has no origin".into());
-    };
-    let bytes = google_bytes.ok_or_else(|| {
-        format!(
-            "labels: google font {:?} ({}) was not loaded",
-            family,
-            google_font_key(family, weight, italic)
-        )
-    })?;
-    layout_google(bytes, text)
+    if label_font.stroke_font_key().is_some() || label_font.drawland_id().is_some() {
+        return layout_stroke_font(label_font, stroke_bytes, text);
+    }
+    Err("labels: font has no origin".into())
 }
 
 pub fn validate_label_font(label_font: &LabelFont) -> Result<(), String> {
-    if let Some(id) = label_font.drawland_id() {
-        if font(id).is_none() {
-            return Err(format!("labels: no drawland font {:?} (built in: {})", id, FONTS.join(", ")));
+    match label_font {
+        LabelFont::Drawland(id) => validate_stroke_id(id, None),
+        LabelFont::Origin(LabelFontOrigin::Drawland { id, url }) => validate_stroke_id(id, url.as_deref()),
+        LabelFont::Origin(LabelFontOrigin::Stroke { url }) => {
+            if url.is_empty() {
+                return Err("labels: stroke font url is non-empty".into());
+            }
+            Ok(())
         }
+        LabelFont::Origin(LabelFontOrigin::Google { .. }) => Ok(()),
     }
-    Ok(())
 }
 
-fn layout_drawland(id: &str, text: &str) -> Result<LabelLayout, String> {
-    let f = font(id).ok_or_else(|| format!("labels: no drawland font {:?}", id))?;
-    let (glyphs, width) = f.layout(text);
+fn validate_stroke_id(id: &str, url: Option<&str>) -> Result<(), String> {
+    if id == "futural" || url.is_some() || crate::stroke_font::catalog_url(id).is_some() {
+        return Ok(());
+    }
+    Err(format!(
+        "labels: unknown drawland font {:?} (built in: {}; catalog: ems-readability, ems-swiss, or pass url)",
+        id,
+        FONTS.join(", ")
+    ))
+}
+
+fn stroke_key_for_id(id: &str, url: Option<&str>) -> Option<String> {
+    if let Some(u) = url.filter(|s| !s.is_empty()) {
+        return Some(u.to_string());
+    }
+    if id == "futural" {
+        return None;
+    }
+    crate::stroke_font::catalog_url(id).map(str::to_string)
+}
+
+fn layout_stroke_font(label_font: &LabelFont, stroke_bytes: Option<&[u8]>, text: &str) -> Result<LabelLayout, String> {
+    let fallback = crate::stroke_font::StrokeFont::futural();
+    if matches!(
+        label_font,
+        LabelFont::Drawland(id) if id == "futural",
+    ) || matches!(
+        label_font,
+        LabelFont::Origin(LabelFontOrigin::Drawland { id, .. }) if id == "futural",
+    ) {
+        return stroke_layout_to_label(crate::stroke_font::layout_stroke(fallback, fallback, text));
+    }
+    let key = label_font
+        .stroke_font_key()
+        .ok_or_else(|| "labels: stroke font has no load key".to_string())?;
+    let bytes = stroke_bytes.ok_or_else(|| format!("labels: stroke font {:?} was not loaded", key))?;
+    let primary = crate::stroke_font::parse_stroke_font_bytes(bytes)?;
+    stroke_layout_to_label(crate::stroke_font::layout_stroke(&primary, fallback, text))
+}
+
+fn stroke_layout_to_label(sl: crate::stroke_font::StrokeLabelLayout) -> Result<LabelLayout, String> {
     Ok(LabelLayout {
-        glyphs: glyphs
+        glyphs: sl
+            .glyphs
             .into_iter()
-            .map(|(x, g)| LabelGlyph { x, advance: g.advance(), strokes: g.strokes.clone() })
+            .map(|g| LabelGlyph { x: g.x, advance: g.advance, strokes: g.strokes })
             .collect(),
-        width,
-        cap_height: CAP_HEIGHT,
-        top: CAP_TOP,
-        bottom: BASELINE + 3.0,
+        width: sl.width,
+        cap_height: sl.cap_height,
+        top: sl.top,
+        bottom: sl.bottom,
         outline: false,
     })
 }
@@ -416,7 +482,7 @@ impl<'a> CachedGoogleFont<'a> {
     pub fn layout(&mut self, text: &str) -> LabelLayout {
         let mut x = 0.0;
         let mut glyphs = Vec::with_capacity(text.len());
-        for c in text.chars().map(fold) {
+        for c in text.chars() {
             let (advance, strokes) = self
                 .glyphs
                 .entry(c)

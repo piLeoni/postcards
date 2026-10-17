@@ -43,6 +43,10 @@ Terrarium PNGs for elevation — terramask; web `terrain.js`, CLI/wasm `readTerr
 
 CLI: `drawland-cli/src/google_fonts.rs`. Core: `google_fonts.rs`, `text.rs`. Web prefetches in `App.jsx` / `googleFonts.js` and passes bytes into the worker.
 
+## Stroke fonts (labels / `lines.text`)
+
+CLI: `drawland-cli/src/stroke_fonts.rs` fetches catalog or custom URLs from `stroke_font_keys_in_grammar`. Core: `stroke_font.rs`, `text.rs`. Web: `strokeFonts.js`, `strokeFontKeys` / `addStrokeFont` on `Job` (see [web.md](web.md)).
+
 ## Cache layout
 
 Default `cache/overpass/` for Overpass bodies; geocoding under cache root. Web uses Cache Storage with similar coverage rules (see `web/README.md`).

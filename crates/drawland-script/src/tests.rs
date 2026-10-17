@@ -101,7 +101,7 @@ fn a_script_draws_contours_in_a_loop_over_elevation_bands() {
     let out = run(
         &g,
         &output,
-        Inputs { features: vec![], tiles: vec![], sources: &BTreeMap::new(), terrain: Some(terrain), memory_budget: None, google_fonts: BTreeMap::new() },
+        Inputs { features: vec![], tiles: vec![], sources: &BTreeMap::new(), terrain: Some(terrain), memory_budget: None, google_fonts: BTreeMap::new(), stroke_fonts: BTreeMap::new() },
     )
     .unwrap();
     assert_eq!(out.groups.len(), 3, "three contour belts");
@@ -130,7 +130,7 @@ fn the_postcard_script_renders_without_osm_data() {
     let back = Grammar::from_json(&g.to_json().to_string()).unwrap();
     assert_eq!(back, g, "the graph survives JSON");
     let output = Output::new(&g.output, (-122.256196, 37.8771145));
-    let out = run(&g, &output, Inputs { features: vec![], tiles: vec![], sources: &BTreeMap::new(), terrain: None, memory_budget: None, google_fonts: BTreeMap::new() }).unwrap();
+    let out = run(&g, &output, Inputs { features: vec![], tiles: vec![], sources: &BTreeMap::new(), terrain: None, memory_budget: None, google_fonts: BTreeMap::new(), stroke_fonts: BTreeMap::new() }).unwrap();
     assert!(!out.svg.is_empty());
     assert_eq!(out.groups.len(), 15);
 }
@@ -167,7 +167,7 @@ fn a_script_draws_terrain_from_the_elevation() {
     let out = run(
         &g,
         &output,
-        Inputs { features: vec![], tiles: vec![], sources: &BTreeMap::new(), terrain: Some(terrain), memory_budget: None, google_fonts: BTreeMap::new() },
+        Inputs { features: vec![], tiles: vec![], sources: &BTreeMap::new(), terrain: Some(terrain), memory_budget: None, google_fonts: BTreeMap::new(), stroke_fonts: BTreeMap::new() },
     )
     .unwrap();
     assert_eq!(out.groups.len(), 2, "two terrain groups");
@@ -216,7 +216,7 @@ fn a_burin_document_runs_inside_a_profile() {
     let out = run(
         &g,
         &output,
-        Inputs { features: vec![], tiles: vec![], sources: &BTreeMap::new(), terrain: Some(terrain), memory_budget: None, google_fonts: BTreeMap::new() },
+        Inputs { features: vec![], tiles: vec![], sources: &BTreeMap::new(), terrain: Some(terrain), memory_budget: None, google_fonts: BTreeMap::new(), stroke_fonts: BTreeMap::new() },
     )
     .unwrap();
     assert_eq!(out.groups.len(), 1);
@@ -399,6 +399,33 @@ fn labels_accept_keep_centerline_and_font_origins() {
 }
 
 #[test]
+fn stroke_fonts_compile_for_labels_and_lines_text() {
+    let g = evaluate(
+        "const t = lines.text({ text: 'a', font: 'ems-readability', at: ['10mm', '10mm'] })\n\
+         const names = modules.labels({\n\
+           from: features.tiles('parks'),\n\
+           font: { origin: 'stroke', url: 'https://example.com/Custom.svg' },\n\
+         })\n\
+         draw({ id: 't', from: t })\n\
+         draw({ id: 'n', from: names.lines })\n",
+    )
+    .unwrap();
+    let text = g.defs(Section::Lines).iter().find_map(|d| match &d.op {
+        Op::Text(t) => Some(t.font.stroke_font_key()),
+        _ => None,
+    });
+    assert_eq!(
+        text,
+        Some(Some("https://gitlab.com/oskay/svg-fonts/-/raw/master/fonts/EMS/EMSReadability.svg".into()))
+    );
+    let labels = g.defs(Section::Lines).iter().find_map(|d| match &d.op {
+        Op::Labels(l) => Some(l.style.font.stroke_font_key()),
+        _ => None,
+    });
+    assert_eq!(labels, Some(Some("https://example.com/Custom.svg".into())));
+}
+
+#[test]
 fn labels_read_several_feature_sets_and_draw_as_lines() {
     let g = evaluate(
         "const streets = features.tiles('road_names')\n\
@@ -521,16 +548,17 @@ fn compose_optimize_steps_round_trip_and_execute() {
          compose.simplify([...solid, ...dashed], '0.05mm')\n\
          compose.filter(solid, '0.05mm')\n\
          compose.reloop(solid)\n\
-         compose.linesort([...solid, ...dashed])\n",
+         compose.orient(solid, 'tl-br')\n\
+         compose.linesort([...solid, ...dashed], { direction: 45, splitReversals: true })\n",
     )
     .unwrap();
-    assert_eq!(g.compose.optimize.len(), 6);
+    assert_eq!(g.compose.optimize.len(), 7);
     let back = drawland_core::grammar::Grammar::from_json(&g.to_json().to_string()).unwrap();
     assert_eq!(back, g);
     let out = run(
         &g,
         &Output::new(&g.output, (0.0, 0.0)),
-        Inputs { features: vec![], tiles: vec![], sources: &BTreeMap::new(), terrain: None, memory_budget: None, google_fonts: BTreeMap::new() },
+        Inputs { features: vec![], tiles: vec![], sources: &BTreeMap::new(), terrain: None, memory_budget: None, google_fonts: BTreeMap::new(), stroke_fonts: BTreeMap::new() },
     )
     .unwrap();
     assert!(out.groups.iter().any(|(id, n)| id == "ring_a" && *n >= 1));

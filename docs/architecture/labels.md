@@ -9,7 +9,8 @@ Place names along lines or at points; render as Hershey strokes or Google font o
 | File | Role |
 |------|------|
 | `labels.rs` | `module_labels` — rules, collision, placement, outputs |
-| `text.rs` | Hershey + Google layout, `glyph_silhouette` |
+| `text.rs` | Stroke + Google layout, `glyph_silhouette` |
+| `stroke_font.rs` | Hershey `.jhf`, EMS SVG fonts, catalog URLs, fallback layout |
 | `google_fonts.rs` | Font bytes keyed for the job |
 | `grammar_run.rs` | `Value::Labels` — lines + area coverage |
 
@@ -33,9 +34,9 @@ Web downloads CSS + font files (`web/src/lib/googleFonts.js`). Core parses TTF w
 
 Outline glyphs: filled silhouette uses **non-zero** winding across all contours (`text::glyph_silhouette`); ink uses silhouette rings, not raw overlapping contours. See [../google-font-labels.md](../google-font-labels.md) for history and tests.
 
-## Hershey
+## Hershey / stroke fonts
 
-`{ origin: "drawland", id: "…" }` or string id — single-stroke glyphs, no TTF overlap issue.
+`"futural"` or `{ origin: "drawland", id, url? }` — single-stroke Hershey or EMS SVG fonts (`stroke_font.rs`). Catalog ids (`ems-readability`, `ems-swiss`) download at run time; `url` overrides the fetch target. `{ origin: "stroke", url }` loads any SVG/JHF URL. Missing glyphs fall back to `futural`, then whole-word `deunicode` transliteration (Arabic/CJK/Hangul → Latin letters; Greek/Cyrillic are drawn natively in `futural`). Bytes keyed by URL in `Inputs.stroke_fonts` (web: `strokeFontKeys` / `addStrokeFont`; CLI: `stroke_fonts::fetch`).
 
 ## Projection
 

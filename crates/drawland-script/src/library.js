@@ -52,7 +52,7 @@
     return v;
   }
 
-  /** Draw.land Hershey id (`"futural"`) or `{ origin: "drawland" | "google", … }`. */
+  /** Draw.land Hershey id (`"futural"`) or `{ origin: "drawland" | "stroke" | "google", … }`. */
   function labelFont(font, where) {
     if (typeof font === "string") {
       if (!font) fail(`${where}: font id is a non-empty string`);
@@ -61,7 +61,16 @@
     const o = object(font, where);
     if (o.origin === "drawland") {
       if (typeof o.id !== "string" || !o.id) fail(`${where}: drawland font needs id`);
-      return { origin: "drawland", id: o.id };
+      const out = { origin: "drawland", id: o.id };
+      if (o.url != null) {
+        if (typeof o.url !== "string" || !o.url) fail(`${where}: drawland font url is a non-empty string`);
+        out.url = o.url;
+      }
+      return out;
+    }
+    if (o.origin === "stroke") {
+      if (typeof o.url !== "string" || !o.url) fail(`${where}: stroke font needs url`);
+      return { origin: "stroke", url: o.url };
     }
     if (o.origin === "google") {
       const { family, weight = 400, italic = false } = o;
@@ -73,7 +82,7 @@
       if (italic) out.italic = true;
       return out;
     }
-    fail(`${where}: font origin is "drawland" or "google"`);
+    fail(`${where}: font origin is "drawland", "stroke", or "google"`);
   }
 
   const make = (Kind, section, op) => new Kind(dl.node(section, op));
@@ -144,7 +153,7 @@
     object(spec, where);
     if (typeof spec.text !== "string" || !spec.text) fail(`${where}.text is a string`);
     const op = { at: spec.at ?? ["50%", "50%"], text: spec.text, size: spec.size ?? "4mm", rotate: spec.rotate ?? 0 };
-    if (spec.font != null) op.font = spec.font;
+    if (spec.font != null) op.font = labelFont(spec.font, `${where}.font`);
     return op;
   };
   const unit = (t, where) => {
@@ -616,7 +625,21 @@
     typeof v === "number" ||
     (typeof v === "string" && /^-?\d+(\.\d+)?\s*(mm|cm|in|pt|px)?$/i.test(v.trim()));
 
-  function parseOptimize(name, a, b, lengthKey, keyMap) {
+  const DIRECTION_PRESETS = new Set([
+    "lr", "left-to-right", "e", "east",
+    "tl-br", "nw-se", "se", "southeast",
+    "tb", "top-to-bottom", "s", "south",
+    "tr-bl", "ne-sw", "sw", "southwest",
+    "rl", "right-to-left", "w", "west",
+    "br-tl", "se-nw", "nw", "northwest",
+    "bt", "bottom-to-top", "n", "north",
+    "bl-tr", "sw-ne", "ne", "northeast",
+  ]);
+  const isDirectionValue = (v) =>
+    (typeof v === "number" && Number.isFinite(v)) ||
+    (typeof v === "string" && DIRECTION_PRESETS.has(v.trim().toLowerCase()));
+
+  function parseOptimize(name, a, b, shorthandKey, keyMap, isShorthand = isLengthValue) {
     const where = `compose.${name}`;
     let layers = [];
     let rawOpts = undefined;
@@ -633,8 +656,8 @@
         if (typeof a !== "string") fail(`${where}: layers expects a draw id or list of draw ids, got ${describe(a)}`);
         layers = [a];
         rawOpts = b;
-      } else if (lengthKey && isLengthValue(a)) {
-        rawOpts = { [lengthKey]: a };
+      } else if (shorthandKey && isShorthand(a)) {
+        rawOpts = { [shorthandKey]: a };
       } else if (typeof a === "string") {
         layers = [a];
       } else {
@@ -647,8 +670,8 @@
     const spec = {};
     let except = [];
     if (rawOpts !== undefined) {
-      if (lengthKey && isLengthValue(rawOpts)) {
-        spec[keyMap[lengthKey]] = rawOpts;
+      if (shorthandKey && isShorthand(rawOpts)) {
+        spec[keyMap[shorthandKey]] = rawOpts;
       } else {
         object(rawOpts, where);
         const allowed = [...Object.keys(keyMap), "except"];
@@ -709,12 +732,24 @@
     reloop(a, b) {
       parseOptimize("reloop", a, b, null, {});
     },
+    orient(a, b) {
+      parseOptimize("orient", a, b, "direction", {
+        direction: "direction",
+        angle: "direction",
+        maxLength: "max_length",
+        splitReversals: "split_reversals",
+      }, isDirectionValue);
+    },
     linesort(a, b) {
-      parseOptimize("linesort", a, b, null, {
+      parseOptimize("linesort", a, b, "direction", {
         twoOpt: "two_opt",
         passes: "passes",
         follow: "follow",
-      });
+        direction: "direction",
+        angle: "direction",
+        maxLength: "max_length",
+        splitReversals: "split_reversals",
+      }, isDirectionValue);
     },
   };
 
