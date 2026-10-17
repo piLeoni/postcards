@@ -296,33 +296,33 @@ const PUSH_MAX = 1500
 /** What floats over the map: the output, its menu, the buttons in the corner. */
 const RAISED = 'shadow-[0_2px_8px_rgba(0,0,0,0.18)]'
 
-/** ODbL credit for the basemap; same chip as the map tags, links on hover. */
-function MapCredit() {
-  return (
-    <span
-      className={`group pointer-events-auto inline-flex items-center gap-[0.75ch] bg-white/90 px-1.5 py-0.5 font-mono text-[10px] whitespace-nowrap select-none hover:bg-black hover:text-white ${RAISED}`}
-      title="Map data attribution"
-    >
-      <span aria-hidden className="w-[1.5ch] text-center">i</span>
-      <span className="hidden group-hover:inline">
-        ©{' '}
-        <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer" className="group-hover:underline">
-          OpenStreetMap
-        </a>{' '}
-        contributors ·{' '}
-        <a href="https://openfreemap.org" target="_blank" rel="noreferrer" className="group-hover:underline">
-          OpenFreeMap
-        </a>
-      </span>
-    </span>
-  )
-}
-
 /** The marks on the map tags, the same plain glyphs the transform menu wears. */
 const ICONS = {
   toMap: '✥',        // the move glyph: the selection goes onto the map
   toSelection: '⌖',  // a target: the map comes to the selection
   search: '⌕',
+}
+
+/** A map key styled like the terminal UI (not a native `button`; WebTUI adds 3lh bars). */
+function TermKey({ title, onClick, className = '', children, ...rest }) {
+  return (
+    <span
+      role="button"
+      tabIndex={0}
+      title={title}
+      className={`map-term-key ${className}`}
+      onClick={onClick}
+      onKeyDown={(e) => {
+        if (onClick && (e.key === 'Enter' || e.key === ' ')) {
+          e.preventDefault()
+          onClick(e)
+        }
+      }}
+      {...rest}
+    >
+      {children}
+    </span>
+  )
 }
 
 /** A small tag on the map that acts as a button; not a WebTUI key. */
@@ -559,6 +559,7 @@ export default function MapView({
   download,
   downloadDoc,
   onDownloadClose,
+  onOpenControls,
 }) {
   const [menu, setMenu] = useState(false)
   const [search, setSearch] = useState(false)
@@ -1200,6 +1201,32 @@ export default function MapView({
 
   const tilesLive = tiles?.live === true
 
+  const mapStatusTags = (
+    <>
+      {load && loadMin && (
+        <Tag
+          title="Bring back the progress and report of the last draw"
+          className={`cursor-pointer ${RAISED}`}
+          onClick={() => onLoadMin?.(false)}
+        >
+          ▸ {statusWord(load)}
+        </Tag>
+      )}
+      {(tiles || planned) && (
+        <Tag
+          title={`OpenFreeMap vector tiles (Web Mercator z/x/y, OpenMapTiles · © OpenStreetMap)${
+            tiles ? '' : ` — planned z${planned.zoom}, ${planned.ids.length / 3} tiles`
+          }`}
+          aria-pressed={tilesOn}
+          className={`cursor-pointer ${RAISED}`}
+          onClick={() => setTilesOn((v) => !v)}
+        >
+          {tilesOn ? 'hide tiles' : 'show tiles'}
+        </Tag>
+      )}
+    </>
+  )
+
   return (
     <div className="relative h-full w-full min-w-0 overflow-hidden">
       <div ref={containerRef} className="h-full w-full" />
@@ -1328,36 +1355,26 @@ export default function MapView({
           <LoadCard load={load} onMin={onLoadMin && (() => onLoadMin(true))} />
         </div>
       )}
-      {/* Bottom left: basemap credit (ODbL). Bottom right: tiles and progress. */}
-      <div className="absolute z-30 pointer-events-none" style={{ left: EDGE, bottom: EDGE }}>
-        <MapCredit />
+      {/* Tile toggle and draw report: left on mobile, right on desktop. Attribution in the sidebar. */}
+      <div
+        className="map-chrome-bottom map-chrome-left absolute z-30 flex max-w-[calc(100%-2*var(--map-edge)-8rem)] flex-row flex-wrap items-center gap-1.5 lg:hidden"
+      >
+        {mapStatusTags}
       </div>
       <div
-        className="absolute z-30 flex flex-col items-end gap-1.5"
-        style={{ right: EDGE, bottom: EDGE }}
+        className="map-chrome-bottom map-chrome-right absolute z-30 hidden flex-row flex-wrap items-center justify-end gap-1.5 lg:flex"
       >
-        {load && loadMin && (
-          <Tag
-            title="Bring back the progress and report of the last draw"
-            className={`cursor-pointer ${RAISED}`}
-            onClick={() => onLoadMin?.(false)}
-          >
-            ▸ {statusWord(load)}
-          </Tag>
-        )}
-        {(tiles || planned) && (
-          <Tag
-            title={`OpenFreeMap vector tiles (Web Mercator z/x/y, OpenMapTiles · © OpenStreetMap)${
-              tiles ? '' : ` — planned z${planned.zoom}, ${planned.ids.length / 3} tiles`
-            }`}
-            aria-pressed={tilesOn}
-            className={`cursor-pointer ${RAISED}`}
-            onClick={() => setTilesOn((v) => !v)}
-          >
-            {tilesOn ? 'hide tiles' : 'show tiles'}
-          </Tag>
-        )}
+        {mapStatusTags}
       </div>
+      {onOpenControls && (
+        <TermKey
+          title="Script and draw controls"
+          className={`map-chrome-bottom map-chrome-right absolute z-35 lg:hidden ${RAISED}`}
+          onClick={onOpenControls}
+        >
+          controls
+        </TermKey>
+      )}
     </div>
   )
 }

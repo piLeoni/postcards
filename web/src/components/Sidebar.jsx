@@ -279,7 +279,7 @@ export default function Sidebar({ open, onClose, doc, setDoc, check, output, sta
 
   return (
     <aside
-      className={`fixed inset-x-0 bottom-0 z-40 flex h-[85vh] min-h-0 w-full min-w-0 flex-col border-t border-black bg-white px-[2ch] transition-transform duration-200 lg:relative lg:z-30 lg:h-full lg:shadow-[-4px_0_14px_rgba(0,0,0,0.16)] lg:w-[var(--side-w)] lg:shrink-0 lg:translate-y-0 lg:pointer-events-auto lg:border-t-0 lg:border-l ${
+      className={`fixed inset-x-0 bottom-0 z-40 flex h-[85vh] min-h-0 w-full min-w-0 flex-col border-t border-black bg-white px-[2ch] pb-[env(safe-area-inset-bottom,0px)] transition-transform duration-200 lg:relative lg:z-30 lg:h-full lg:pb-0 lg:shadow-[-4px_0_14px_rgba(0,0,0,0.16)] lg:w-[var(--side-w)] lg:shrink-0 lg:translate-y-0 lg:pointer-events-auto lg:border-t-0 lg:border-l ${
         open ? 'translate-y-0' : 'pointer-events-none translate-y-full'
       }`}
       style={{ color: '#000', backgroundColor: '#fff', '--side-w': `${width}px` }}
@@ -491,13 +491,36 @@ export default function Sidebar({ open, onClose, doc, setDoc, check, output, sta
       <details className="group shrink-0 border-t border-black py-[0.5lh]">
         <summary className="flex cursor-pointer list-none items-center gap-[1ch] select-none">
           <span className="font-bold">Map data</span>
-          <span className="min-w-0 truncate opacity-60">OpenStreetMap · OpenFreeMap · Overpass</span>
+          <span className="min-w-0 truncate opacity-60">
+            OpenStreetMap · OpenFreeMap · Overpass · terramask · penfill · burin
+          </span>
           <span className="ml-auto transition-transform group-open:rotate-90">›</span>
         </summary>
-        <ul className="mt-[0.5lh] opacity-60">
+        <ul className="mt-[0.5lh] space-y-[0.35lh] opacity-60">
           <li>Features and sea: © OpenMapTiles © OpenStreetMap contributors, tiles from OpenFreeMap.</li>
           <li>With features.osm: © OpenStreetMap contributors, through Overpass.</li>
           <li>Basemap: © OpenMapTiles © OpenStreetMap contributors, Positron style from OpenFreeMap, drawn with MapLibre.</li>
+          <li>
+            Vector tiles and terrain grids:{' '}
+            <a href="https://github.com/piLeoni/terramask" target="_blank" rel="noreferrer" className="underline">
+              terramask
+            </a>
+            .
+          </li>
+          <li>
+            Pattern fills inside areas:{' '}
+            <a href="https://github.com/piLeoni/penfill" target="_blank" rel="noreferrer" className="underline">
+              penfill
+            </a>
+            .
+          </li>
+          <li>
+            Elevation hatching and stippling:{' '}
+            <a href="https://github.com/piLeoni/burin-map" target="_blank" rel="noreferrer" className="underline">
+              burin-map
+            </a>
+            .
+          </li>
         </ul>
       </details>
 

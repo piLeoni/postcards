@@ -135,9 +135,56 @@ aside :is(h1, h2, h3, p, div, header, section) {
   color: #666 !important;
 }
 
-/* Keep the mobile controls button above the home indicator. */
-.safe-fab {
-  bottom: calc(3.5rem + env(safe-area-inset-bottom, 0px));
+/* Map chrome: full-bleed map; keys sit above the safe area on phones. */
+:root {
+  --map-edge: 8px;
+  --map-safe-bottom: 8px;
+}
+
+@media (max-width: 1023px) {
+  :root {
+    --map-edge: 12px;
+    --map-safe-bottom: calc(env(safe-area-inset-bottom, 0px) + 44px);
+  }
+}
+
+.map-chrome-bottom {
+  bottom: var(--map-edge);
+}
+
+@media (max-width: 1023px) {
+  .map-chrome-bottom {
+    bottom: var(--map-safe-bottom);
+  }
+}
+
+.map-chrome-left {
+  left: var(--map-edge);
+}
+
+.map-chrome-right {
+  right: var(--map-edge);
+}
+
+/* One terminal row: border on the box, padding in ch × lh (not a WebTUI button). */
+.map-term-key {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.5lh 2ch;
+  border: 1px solid var(--foreground0);
+  background-color: var(--background0);
+  font-family: var(--font-family);
+  font-size: var(--font-size);
+  font-weight: var(--font-weight-bold);
+  line-height: var(--line-height);
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+}
+
+.map-term-key:hover {
+  background-color: var(--foreground0);
+  color: var(--background0);
 }
 
 /* ---------------------------------------------------------------- */

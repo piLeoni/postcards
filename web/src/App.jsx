@@ -585,16 +585,8 @@ export default function App() {
           download={downloading}
           downloadDoc={doc}
           onDownloadClose={() => setDownloading(false)}
+          onOpenControls={() => setMenuOpen(true)}
         />
-        <button
-          type="button"
-          size-="small"
-          variant-="background1"
-          className="safe-fab absolute right-4 z-20 lg:hidden"
-          onClick={() => setMenuOpen(true)}
-        >
-          controls
-        </button>
       </main>
 
       {menuOpen ? (
