@@ -18,6 +18,7 @@ const SHARED_COLORS = {
   'editor.findMatchBackground': '#00000022',
   'editor.findMatchHighlightBackground': '#00000014',
   'editorOverviewRuler.border': '#00000000',
+  'editorBracketHighlight.foreground1': '#888888',
   'editorBracketHighlight.foreground2': '#888888',
   'editorBracketHighlight.foreground3': '#888888',
   'editorBracketHighlight.foreground4': '#888888',

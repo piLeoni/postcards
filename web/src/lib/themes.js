@@ -3,7 +3,7 @@
  * editor token colours here stay in step with each palette.
  */
 
-import { accentSyntaxRules, graySyntaxRules, phosphorSyntaxRules } from './editorTokens.js'
+import { graySyntaxRules, phosphorSyntaxRules, readableSyntaxRules } from './editorTokens.js'
 
 export const DEFAULT_THEME_ID = 'paper'
 
@@ -237,16 +237,19 @@ export const EDITOR_PALETTES = {
     },
   },
   silk: {
-    rules: accentSyntaxRules({
+    rules: readableSyntaxRules({
       base: '5f5d58',
-      bold: '3a3834',
-      type: '4a4868',
-      string: '3d6b48',
-      number: '8a6830',
-      comment: '949188',
-      dim: 'b8b5ad',
-      mid: '6e6c66',
-      func: '2a8888',
+      keyword: '2a2848',
+      type: '3a52b0',
+      namespace: '0a7070',
+      variable: '4a4844',
+      member: 'a04818',
+      func: '007878',
+      string: '2a7a38',
+      number: 'a06818',
+      comment: '8a8780',
+      dim: 'b0ada5',
+      mid: '6a6862',
     }),
     colors: {
       'editor.background': '#f7f6f2',
@@ -274,16 +277,19 @@ export const EDITOR_PALETTES = {
     },
   },
   abyss: {
-    rules: accentSyntaxRules({
+    rules: readableSyntaxRules({
       base: 'e9dfc8',
-      bold: 'f5eed8',
-      type: '62b8de',
-      string: 'c6f926',
-      number: 'e8c050',
-      comment: '5a7888',
-      dim: '3d6878',
-      mid: 'c8b8a0',
-      func: 'c8b4de',
+      keyword: 'f8f0d8',
+      type: '7ad4ff',
+      namespace: '62d8f0',
+      variable: 'e0d4bc',
+      member: 'ffb070',
+      func: 'd8b8ff',
+      string: 'd0ff50',
+      number: 'ffd060',
+      comment: '6a98a8',
+      dim: '4a8090',
+      mid: 'c0b0a0',
     }),
     colors: {
       'editor.background': '#0b2326',
@@ -320,6 +326,9 @@ export const EDITOR_PALETTES = {
       { token: 'number', foreground: 'ff9830', fontStyle: 'bold' },
       { token: 'identifier', foreground: 'e8a838' },
       { token: 'variable', foreground: 'e8a838' },
+      { token: 'namespace', foreground: 'ffc860', fontStyle: 'bold' },
+      { token: 'member', foreground: 'd89828' },
+      { token: 'function', foreground: 'ffb050' },
       { token: 'string', foreground: 'd89828' },
       { token: 'regexp', foreground: 'd89828' },
       { token: 'comment', foreground: '907030', fontStyle: 'italic' },

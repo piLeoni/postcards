@@ -5,6 +5,7 @@ import { PRESETS } from '../lib/presets'
 import { injectStyleAtPlace, outputOf, styleOf, titleOf } from '../lib/doc'
 import { sidebarWidthAtom, themeAtom } from '../lib/store'
 import { defineEditorThemes, editorFont, editorThemeName } from '../lib/editorTheme'
+import { registerProfileJavascriptTokenizer } from '../lib/profileJavascriptMonarch'
 import LIBRARY from '../../../crates/drawland-script/drawland.d.ts?raw'
 import Panel from './Panel'
 
@@ -44,6 +45,7 @@ const plain = (text) => sentence(text.replace(/^(Error: |graph JSON: )/, ''))
 let libraryAdded = false
 function setUpEditor(monaco) {
   defineEditorThemes(monaco)
+  registerProfileJavascriptTokenizer(monaco.languages)
   const ts = monaco.typescript ?? monaco.languages.typescript
   const js = ts.javascriptDefaults
   js.setCompilerOptions({
@@ -69,6 +71,7 @@ const slug = (s) => s.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerC
 export default function Sidebar({ open, onClose, doc, setDoc, check, output, status, drawing, busy, onDraw, onDrawAfterApply, onStop, onShare, onPlaceMap }) {
   const [width, setWidth] = useAtom(sidebarWidthAtom)
   const [themeId] = useAtom(themeAtom)
+  const readableEditor = themeId === 'silk' || themeId === 'abyss'
   const [draft, setDraft] = useState(null)   // text typed but not applied yet
   const [notice, setNotice] = useState(null)   // { text, error? }
   const [problem, setProblem] = useState(null)   // { kind: 'apply' | 'draw', title, text }
@@ -78,6 +81,12 @@ export default function Sidebar({ open, onClose, doc, setDoc, check, output, sta
   const presetMenuRef = useRef(null)
   const noticeTimer = useRef(0)
   const applyDraftRef = useRef(() => {})
+
+  useEffect(() => {
+    monacoRef.current?.editor.updateOptions({
+      bracketPairColorization: { enabled: readableEditor },
+    })
+  }, [readableEditor])
 
   const shown = draft ?? doc
   const shownRef = useRef(shown)
@@ -448,7 +457,7 @@ export default function Sidebar({ open, onClose, doc, setDoc, check, output, sta
               minimap: { enabled: false },
               fontFamily: editorFont(),
               fontSize: 11,
-              bracketPairColorization: { enabled: false },
+              bracketPairColorization: { enabled: readableEditor },
               lineNumbersMinChars: 3,
               scrollBeyondLastLine: false,
               wordWrap: 'off',
