@@ -4,7 +4,7 @@
  */
 export default function Panel({ title, aside, className = '', children }) {
   return (
-    <section className={`border-black py-[1lh] not-first:border-t ${className}`}>
+    <section className={`border-[color:var(--chrome-divider)] py-[1lh] not-first:border-t ${className}`}>
       {(title || aside) && (
         <header className="mb-[0.5lh] flex min-h-[1lh] shrink-0 items-center gap-[1ch]">
           {title && <h2 className="shrink-0 truncate font-bold">{title}</h2>}

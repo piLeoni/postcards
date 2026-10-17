@@ -14,7 +14,7 @@ import { lengthText, MM_PER, sig3 } from '../lib/frame'
  */
 
 /** A field fills its grid cell; the columns decide the width, the host the type size. */
-const FIELD = 'h-auto w-full min-w-0 border border-black bg-white px-1 text-right font-mono text-[length:inherit] leading-[1.6]'
+const FIELD = 'chrome-field h-auto w-full min-w-0 px-1 text-right font-mono text-[length:inherit] leading-[1.6]'
 
 /** Pixels dragged per step of a label (scale scrub and transform tag). */
 export const PX_PER_STEP = 4
@@ -78,7 +78,8 @@ function useDrag({ model, value, onChange, sign = 1, px = PX_PER_STEP, custom })
 }
 
 /** What a draggable thing looks like: lit while hovered, and while held. */
-const grabbed = (held) => `hover:bg-black hover:text-white ${held ? 'bg-black text-white' : ''}`
+const grabbed = (held) =>
+  `hover:bg-[var(--foreground0)] hover:text-[var(--background0)] ${held ? 'bg-[var(--foreground0)] text-[var(--background0)]' : ''}`
 
 /**
  * A short text field. What is typed is written when confirmed, with Enter or
@@ -112,7 +113,7 @@ export function Field({ label, title, model, value, onChange, px, sign, muted = 
         aria-label={label}
         title={title}
         value={shown}
-        className={`${FIELD} pl-[2.2ch] ${muted ? 'text-black/45 focus:text-black' : ''} ${className}`}
+        className={`${FIELD} pl-[2.2ch] ${muted ? 'opacity-45 focus:opacity-100' : ''} ${className}`}
         onChange={(e) => setDraft(e.target.value)}
         onFocus={(e) => {
           settledRef.current = false
@@ -142,7 +143,7 @@ export function Field({ label, title, model, value, onChange, px, sign, muted = 
         aria-hidden
         title={`Drag to change the ${label} alone`}
         data-drag
-        className={`absolute inset-y-px left-px flex w-[1.8ch] cursor-ew-resize items-center justify-center text-black/35 select-none ${grabbed(drag.held)}`}
+        className={`absolute inset-y-px left-px flex w-[1.8ch] cursor-ew-resize items-center justify-center opacity-35 select-none ${grabbed(drag.held)}`}
         onPointerDown={drag.onPointerDown}
       >
         ↔
@@ -182,7 +183,7 @@ export function Scrub({ icon, label, title, model, value, onChange, sign, px, on
  */
 export function Choice({ label, title, options, value, onChange, isOptionDisabled }) {
   return (
-    <span role="radiogroup" aria-label={label} title={title} className="flex min-w-0 border border-black bg-white text-[0.9em] leading-[1.75] select-none">
+    <span role="radiogroup" aria-label={label} title={title} className="chrome-surface chrome-border flex min-w-0 border text-[0.9em] leading-[1.75] select-none">
       {options.map(([v, text], i) => {
         const off = isOptionDisabled?.(v)
         const on = v === value
@@ -193,8 +194,10 @@ export function Choice({ label, title, options, value, onChange, isOptionDisable
             aria-checked={on}
             aria-disabled={off || undefined}
             tabIndex={off ? -1 : on ? 0 : -1}
-            className={`min-w-0 flex-1 text-center ${i ? 'border-l border-black' : ''} ${
-              off ? 'cursor-not-allowed opacity-45' : `cursor-pointer ${on ? 'bg-black text-white' : 'hover:bg-black/10'}`
+            className={`min-w-0 flex-1 text-center ${i ? 'border-l border-[color:var(--chrome-divider)]' : ''} ${
+              off
+                ? 'cursor-not-allowed opacity-45'
+                : `cursor-pointer ${on ? 'bg-[var(--foreground0)] text-[var(--background0)]' : 'hover:bg-[color-mix(in_srgb,var(--foreground0)_12%,transparent)]'}`
             }`}
             onClick={() => !off && onChange(v)}
             onKeyDown={(e) => {
@@ -238,7 +241,7 @@ export function Pick({ selected, disabled, title, onClick, children }) {
 /** A titled group of rows on a grid of its own: `cols` is its Tailwind `grid-cols-*`. */
 export function Section({ title, cols, first = false, children }) {
   return (
-    <div className={first ? '' : 'mt-1 border-t border-black/20 pt-1'}>
+    <div className={first ? '' : 'mt-1 border-t border-[color:var(--chrome-divider)] pt-1'}>
       <div className="px-1 pb-0.5 text-[0.9em] uppercase tracking-wider opacity-50">{title}</div>
       <div className={`grid items-center gap-x-1.5 gap-y-1 ${cols}`}>{children}</div>
     </div>

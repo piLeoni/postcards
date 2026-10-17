@@ -16,20 +16,29 @@ const TARGET_OVERVIEW_PX_PER_MM = 16
 const MAX_VIEWPORT_PX = 3840
 const STROKE_BATCH = 4096
 
+const DEFAULT_INK_SENTINEL = '#000000'
+
+function isDefaultBlack(color) {
+  if (!color) return false
+  const c = color.trim().toLowerCase()
+  return c === '#000000' || c === '#000' || c === 'black'
+}
+
 const DEFAULT_STYLE = {
-  stroke: '#000000',
+  stroke: DEFAULT_INK_SENTINEL,
   lineWidth: 0.1,
   lineCap: 'round',
   lineJoin: 'round',
   fill: null,
 }
 
-export function createPreviewPainter() {
+export function createPreviewPainter(initialDefaultInk = '#000000') {
   if (typeof OffscreenCanvas === 'undefined') return null
 
   let wMm = 0
   let hMm = 0
   let carry = ''
+  let defaultInk = initialDefaultInk || '#000000'
   let style = { ...DEFAULT_STYLE }
   const stack = []
 
@@ -266,7 +275,8 @@ export function createPreviewPainter() {
 
     for (const item of items) {
       const s = item.style
-      if (s.stroke) ctx.strokeStyle = s.stroke
+      const resolveColor = (c) => (isDefaultBlack(c) ? defaultInk : c)
+      if (s.stroke) ctx.strokeStyle = resolveColor(s.stroke)
       ctx.lineWidth = s.lineWidth
       ctx.lineCap = s.lineCap
       ctx.lineJoin = s.lineJoin
@@ -274,7 +284,7 @@ export function createPreviewPainter() {
         if (typeof Path2D === 'undefined') continue
         const p = new Path2D(item.d)
         if (item.fill && item.fill !== 'none') {
-          ctx.fillStyle = item.fill
+          ctx.fillStyle = resolveColor(item.fill)
           ctx.fill(p, 'evenodd')
         }
         if (s.stroke) ctx.stroke(p)
@@ -350,6 +360,17 @@ export function createPreviewPainter() {
       const pxH = Math.max(1, Math.round(hMm * scale))
       return paintRegion(0, 0, wMm, hMm, pxW, pxH)
     },
+    setDefaultInk(color) {
+      if (color) defaultInk = color
+    },
+    renderOverview(color) {
+      if (color) defaultInk = color
+      if (!(wMm > 0 && hMm > 0)) return null
+      const scale = Math.min(MAX_OVERVIEW_PX / Math.max(wMm, hMm), TARGET_OVERVIEW_PX_PER_MM)
+      const pxW = Math.max(1, Math.round(wMm * scale))
+      const pxH = Math.max(1, Math.round(hMm * scale))
+      return paintRegion(0, 0, wMm, hMm, pxW, pxH)
+    },
     /** Raster at `pxPerMm`, capped so the longest side is at most `maxPx`. */
     bitmapAt(pxPerMm, maxPx = 8192) {
       if (carry) {
@@ -365,7 +386,8 @@ export function createPreviewPainter() {
       const pxH = Math.max(1, Math.round(hMm * scale))
       return paintRegion(0, 0, wMm, hMm, pxW, pxH)
     },
-    renderViewport({ mmX0, mmY0, mmX1, mmY1, pxW, pxH }) {
+    renderViewport({ mmX0, mmY0, mmX1, mmY1, pxW, pxH }, color) {
+      if (color) defaultInk = color
       const scale = Math.min(1, MAX_VIEWPORT_PX / Math.max(pxW, pxH, 1))
       const w = Math.max(1, Math.round(pxW * scale))
       const h = Math.max(1, Math.round(pxH * scale))

@@ -29,11 +29,8 @@ export default function LoadCard({ load, onMin }) {
   }, [lines.length, running, now])
 
   return (
-    <div
-      className="pointer-events-auto w-full max-w-[48rem] bg-white p-[2ch] text-[11px] leading-snug text-black"
-      style={{ boxShadow: '0 0 0 1px #000, 0 12px 32px rgb(0 0 0 / 0.18)' }}
-    >
-      <div className="mb-[0.5lh] flex items-baseline gap-[1ch] border-b border-black pb-[0.5lh]">
+    <div className="chrome-surface pointer-events-auto w-full max-w-[48rem] p-[2ch] text-[11px] leading-snug chrome-modal-shadow">
+      <div className="chrome-border mb-[0.5lh] flex items-baseline gap-[1ch] border-b pb-[0.5lh]">
         <span className="mr-auto font-bold">Drawing</span>
         {onMin && (
           <span
@@ -41,7 +38,7 @@ export default function LoadCard({ load, onMin }) {
             tabIndex={0}
             title="Put the card away into the corner; click it there to bring it back"
             aria-label="Put the progress card away"
-            className="shrink-0 cursor-pointer border border-black bg-white px-[0.4ch] font-mono hover:bg-black hover:text-white"
+            className="map-chip map-chip-bordered shrink-0 cursor-pointer border px-[0.4ch] font-mono"
             onClick={onMin}
             onKeyDown={(e) => {
               if (e.key === 'Enter' || e.key === ' ') {
@@ -58,7 +55,11 @@ export default function LoadCard({ load, onMin }) {
         {lines.map((runs, i) => (
           <div key={i} className="overflow-hidden text-ellipsis whitespace-pre">
             {runs.map((r, j) => (
-              <span key={j} className={r.bold ? 'font-bold' : ''} style={r.dim ? { color: '#555' } : undefined}>
+              <span
+                key={j}
+                className={r.bold ? 'font-bold' : ''}
+                style={r.dim ? { color: 'var(--foreground2)' } : undefined}
+              >
                 {r.text}
               </span>
             ))}

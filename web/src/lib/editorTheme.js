@@ -1,83 +1,49 @@
 /**
- * A greyscale theme for the editor, in step with the black-and-white page:
- * what is what is told by tone, weight and slant, not by colour. Keywords
- * (`const`, `for`) are black and bold, names and values near-black, strings
- * mid-grey, comments light and italic, punctuation lightest.
- *
- * Built without inheriting from `vs`: its token rules are more specific than
- * ours and would bring colour back.
+ * Monaco themes per palette (`lib/themes.js`). Still mostly two inks; keywords,
+ * strings and comments are separated by tone, weight and slant.
  */
 
-export const EDITOR_THEME = 'drawland-grey'
+import { DEFAULT_THEME_ID, EDITOR_PALETTES, THEME_LIST, editorThemeName, themeMeta } from './themes'
 
-// Darker than burin-map's: a profile is mostly calls on `{ }` objects, so
-// punctuation is a large share of what is on screen.
-const NAME = '000000'
-const VALUE = '262626'
-const TEXT = '333333'
-const HELP = '666666'
-const MARK = '666666'
+export { editorThemeName }
 
+/** @deprecated use editorThemeName(themeId) */
+export const EDITOR_THEME = editorThemeName(DEFAULT_THEME_ID)
+
+const SHARED_COLORS = {
+  'editor.lineHighlightBorder': '#00000000',
+  'editor.selectionHighlightBackground': '#00000012',
+  'editor.wordHighlightBackground': '#00000010',
+  'editor.wordHighlightStrongBackground': '#00000018',
+  'editor.findMatchBackground': '#00000022',
+  'editor.findMatchHighlightBackground': '#00000014',
+  'editorOverviewRuler.border': '#00000000',
+  'editorBracketHighlight.foreground2': '#888888',
+  'editorBracketHighlight.foreground3': '#888888',
+  'editorBracketHighlight.foreground4': '#888888',
+  'editorBracketHighlight.foreground5': '#888888',
+  'editorBracketHighlight.foreground6': '#888888',
+  'editorBracketHighlight.unexpectedBracket.foreground': '#888888',
+  'editorWhitespace.foreground': '#00000014',
+}
+
+export function defineEditorThemes(monaco) {
+  for (const { id } of THEME_LIST) {
+    const pal = EDITOR_PALETTES[id]
+    if (!pal) continue
+    const scheme = themeMeta(id).scheme
+    monaco.editor.defineTheme(editorThemeName(id), {
+      base: scheme === 'dark' ? 'vs-dark' : 'vs',
+      inherit: false,
+      rules: pal.rules,
+      colors: { ...SHARED_COLORS, ...pal.colors },
+    })
+  }
+}
+
+/** @deprecated use defineEditorThemes */
 export function defineEditorTheme(monaco) {
-  monaco.editor.defineTheme(EDITOR_THEME, {
-    base: 'vs',
-    inherit: false,
-    rules: [
-      { token: '', foreground: '1a1a1a' },
-      { token: 'type', foreground: NAME, fontStyle: 'bold' },
-      { token: 'string.key', foreground: NAME, fontStyle: 'bold' },
-      { token: 'attribute.name', foreground: NAME, fontStyle: 'bold' },
-      { token: 'number', foreground: VALUE },
-      { token: 'keyword', foreground: NAME, fontStyle: 'bold' },
-      { token: 'identifier', foreground: VALUE },
-      { token: 'variable', foreground: VALUE },
-      { token: 'type.identifier', foreground: VALUE },
-      { token: 'string', foreground: TEXT },
-      { token: 'regexp', foreground: TEXT },
-      { token: 'comment', foreground: HELP, fontStyle: 'italic' },
-      { token: 'delimiter', foreground: MARK },
-      { token: 'operators', foreground: MARK },
-      { token: 'white', foreground: MARK },
-    ],
-    colors: {
-      'editor.background': '#ffffff',
-      'editor.foreground': '#1a1a1a',
-      'editorGutter.background': '#ffffff',
-      'editorLineNumber.foreground': '#8a8a8a',
-      'editorLineNumber.activeForeground': '#1a1a1a',
-      'editor.lineHighlightBackground': '#f5f5f5',
-      'editor.lineHighlightBorder': '#00000000',
-      'editorCursor.foreground': '#000000',
-      'editor.selectionBackground': '#d9d9d9',
-      'editor.inactiveSelectionBackground': '#e8e8e8',
-      'editor.selectionHighlightBackground': '#ebebeb',
-      'editor.wordHighlightBackground': '#ebebeb',
-      'editor.wordHighlightStrongBackground': '#e0e0e0',
-      'editor.findMatchBackground': '#c4c4c4',
-      'editor.findMatchHighlightBackground': '#e3e3e3',
-      // Monaco colours bracket pairs even with `bracketPairColorization` off.
-      'editorBracketHighlight.foreground1': '#666666',
-      'editorBracketHighlight.foreground2': '#666666',
-      'editorBracketHighlight.foreground3': '#666666',
-      'editorBracketHighlight.foreground4': '#666666',
-      'editorBracketHighlight.foreground5': '#666666',
-      'editorBracketHighlight.foreground6': '#666666',
-      'editorBracketHighlight.unexpectedBracket.foreground': '#666666',
-      'editorBracketMatch.background': '#e6e6e6',
-      'editorBracketMatch.border': '#9a9a9a',
-      'editorIndentGuide.background1': '#eeeeee',
-      'editorIndentGuide.activeBackground1': '#c8c8c8',
-      'editorWhitespace.foreground': '#d6d6d6',
-      'editorOverviewRuler.border': '#00000000',
-      'editorWidget.background': '#ffffff',
-      'editorWidget.border': '#1a1a1a',
-      'editorSuggestWidget.selectedBackground': '#ebebeb',
-      'focusBorder': '#1a1a1a',
-      'scrollbarSlider.background': '#00000018',
-      'scrollbarSlider.hoverBackground': '#00000030',
-      'scrollbarSlider.activeBackground': '#00000048',
-    },
-  })
+  defineEditorThemes(monaco)
 }
 
 /** The page's monospace (`--font-mono` in index.css), for the editor. */

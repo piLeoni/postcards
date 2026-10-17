@@ -2,19 +2,19 @@ import { useAtom } from 'jotai'
 import Editor from '@monaco-editor/react'
 import { useMemo, useRef } from 'react'
 import { GCODE_PRESETS, HBOT_MARLIN_TOML, parseGwriteToml, svgToGcode } from '../lib/gcode'
-import { defineEditorTheme, EDITOR_THEME, editorFont } from '../lib/editorTheme'
-import { gcodeConfigAtom } from '../lib/store'
+import { defineEditorThemes, editorFont, editorThemeName } from '../lib/editorTheme'
+import { gcodeConfigAtom, themeAtom } from '../lib/store'
 
 const KEY = { 'size-': 'small', 'variant-': 'background1' }
 
 const INPUT =
-  'm-0 h-auto min-w-0 flex-1 border border-black px-[1ch] py-[0.4lh] font-mono text-[10px] leading-snug outline-none bg-black/[0.03] text-black/80 focus:border-black'
+  'chrome-field m-0 h-auto min-w-0 flex-1 px-[1ch] py-[0.4lh] font-mono text-[10px] leading-snug outline-none'
 
 let tomlLanguageAdded = false
 
 /** Register the small TOML subset used by vpype-gcode profiles. */
 function setUpTomlEditor(monaco) {
-  defineEditorTheme(monaco)
+  defineEditorThemes(monaco)
   if (tomlLanguageAdded) return
   monaco.languages.register({ id: 'toml' })
   monaco.languages.setMonarchTokensProvider('toml', {
@@ -55,6 +55,7 @@ function setUpTomlEditor(monaco) {
  * accepts controlled `config` / `onChange` props.
  */
 export default function GcodeConfig({ config: controlledConfig, onChange, svgSample }) {
+  const [themeId] = useAtom(themeAtom)
   const [storedConfig, setStoredConfig] = useAtom(gcodeConfigAtom)
   const config = controlledConfig ?? storedConfig
   const updateConfig = (patch) => {
@@ -120,8 +121,8 @@ export default function GcodeConfig({ config: controlledConfig, onChange, svgSam
               <summary is-="button" {...KEY} title="Replace this TOML with a starter plotter profile">
                 presets ▾
               </summary>
-              <div className="z-30 w-full border border-black bg-white">
-                <ul className="divide-y divide-black">
+              <div className="chrome-surface chrome-border z-30 w-full border">
+                <ul className="divide-y divide-[color:var(--chrome-divider)]">
                   {GCODE_PRESETS.map((p) => (
                     <li key={p.id}>
                       <button
@@ -167,12 +168,12 @@ export default function GcodeConfig({ config: controlledConfig, onChange, svgSam
           </div>
         </div>
 
-        <div className="h-[18lh] min-h-[12lh] resize-y overflow-hidden border border-black">
+        <div className="chrome-border h-[18lh] min-h-[12lh] resize-y overflow-hidden border">
           <Editor
           height="100%"
           language="toml"
           path="file:///plotter.toml"
-          theme={EDITOR_THEME}
+          theme={editorThemeName(themeId)}
           value={tomlText}
           beforeMount={setUpTomlEditor}
           onChange={(value) => updateConfig({ toml: value ?? '' })}

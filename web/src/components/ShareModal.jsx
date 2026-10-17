@@ -79,14 +79,13 @@ export default function ShareModal({ open, onClose, doc }) {
       role="dialog"
       aria-modal="true"
       aria-label="Share this script"
-      className="absolute inset-0 z-40 flex items-center justify-center bg-black/25 p-6"
+      className="absolute inset-0 z-40 flex items-center justify-center bg-[var(--overlay-scrim)] p-6"
       onMouseDown={(e) => { if (e.target === e.currentTarget) onClose?.() }}
     >
       <div
-        className="flex max-h-[80vh] w-full max-w-[min(88ch,100%)] flex-col bg-white font-mono text-[12px]"
-        style={{ boxShadow: '0 0 0 1px #000, 0 16px 44px rgb(0 0 0 / 0.3)' }}
+        className="chrome-surface flex max-h-[80vh] w-full max-w-[min(88ch,100%)] flex-col font-mono text-[12px] chrome-modal-shadow"
       >
-        <div className="flex shrink-0 items-center gap-[1ch] border-b border-black py-[0.5lh] pr-[1ch] pl-[2ch]">
+        <div className="chrome-border flex shrink-0 items-center gap-[1ch] border-b py-[0.5lh] pr-[1ch] pl-[2ch]">
           <span className="font-bold tracking-[0.2em]">SHARE</span>
           <span className="min-w-0 truncate opacity-60">send this script to someone</span>
           <button type="button" {...KEY} className="ml-auto" aria-label="Close" title="Close" onClick={onClose}>
@@ -101,7 +100,7 @@ export default function ShareModal({ open, onClose, doc }) {
             const link = linkOf(o)
             const ready = o.id === 'stored' ? storedReady : o.ok
             return (
-              <div key={o.id} className="flex min-w-0 flex-col gap-[0.5lh] border-b border-black/20 p-[2ch] last:border-b-0">
+              <div key={o.id} className="flex min-w-0 flex-col gap-[0.5lh] border-b border-[color:var(--chrome-divider)] p-[2ch] last:border-b-0">
                 <div className="flex items-baseline gap-[1ch]">
                   <span className="font-bold">{o.title}</span>
                   <span className="min-w-0 truncate opacity-70">{o.hint}</span>
@@ -124,8 +123,8 @@ export default function ShareModal({ open, onClose, doc }) {
                     placeholder='#'
                     onFocus={(e) => link && e.target.select()}
                     onClick={(e) => link && e.target.select()}
-                    className={`m-0 h-auto min-w-0 flex-1 border border-black px-[1ch] py-[0.4lh] font-mono text-[10px] leading-snug outline-none ${
-                      link ? 'bg-black/[0.03] text-black/80 focus:border-black' : 'bg-black/[0.02] text-black/30'
+                    className={`chrome-field m-0 h-auto min-w-0 flex-1 px-[1ch] py-[0.4lh] font-mono text-[10px] leading-snug outline-none ${
+                      link ? '' : 'opacity-40'
                     }`}
                   />
                   <button
@@ -140,7 +139,7 @@ export default function ShareModal({ open, onClose, doc }) {
                   </button>
                 </div>
 
-                {o.why && <p className="m-0 text-black/50">{o.why}</p>}
+                {o.why && <p className="m-0 opacity-50">{o.why}</p>}
               </div>
             )
           })}
@@ -149,7 +148,7 @@ export default function ShareModal({ open, onClose, doc }) {
         {/* The footer only ever says something when a copy failed; the two
             choices explain themselves above it. */}
         {error && (
-          <p className="shrink-0 border-t border-black py-[0.5lh] pr-[2ch] pl-[2ch] font-bold">{error}</p>
+          <p className="chrome-border shrink-0 border-t py-[0.5lh] pr-[2ch] pl-[2ch] font-bold">{error}</p>
         )}
       </div>
     </div>

@@ -3,8 +3,8 @@ import { useAtom } from 'jotai'
 import Editor from '@monaco-editor/react'
 import { PRESETS } from '../lib/presets'
 import { injectStyleAtPlace, outputOf, styleOf, titleOf } from '../lib/doc'
-import { sidebarWidthAtom } from '../lib/store'
-import { EDITOR_THEME, defineEditorTheme, editorFont } from '../lib/editorTheme'
+import { sidebarWidthAtom, themeAtom } from '../lib/store'
+import { defineEditorThemes, editorFont, editorThemeName } from '../lib/editorTheme'
 import LIBRARY from '../../../crates/drawland-script/drawland.d.ts?raw'
 import Panel from './Panel'
 
@@ -43,7 +43,7 @@ const plain = (text) => sentence(text.replace(/^(Error: |graph JSON: )/, ''))
  */
 let libraryAdded = false
 function setUpEditor(monaco) {
-  defineEditorTheme(monaco)
+  defineEditorThemes(monaco)
   const ts = monaco.typescript ?? monaco.languages.typescript
   const js = ts.javascriptDefaults
   js.setCompilerOptions({
@@ -68,6 +68,7 @@ const slug = (s) => s.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerC
 
 export default function Sidebar({ open, onClose, doc, setDoc, check, output, status, drawing, busy, onDraw, onDrawAfterApply, onStop, onShare, onPlaceMap }) {
   const [width, setWidth] = useAtom(sidebarWidthAtom)
+  const [themeId] = useAtom(themeAtom)
   const [draft, setDraft] = useState(null)   // text typed but not applied yet
   const [notice, setNotice] = useState(null)   // { text, error? }
   const [problem, setProblem] = useState(null)   // { kind: 'apply' | 'draw', title, text }
@@ -279,10 +280,10 @@ export default function Sidebar({ open, onClose, doc, setDoc, check, output, sta
 
   return (
     <aside
-      className={`fixed inset-x-0 bottom-0 z-40 flex h-[85vh] min-h-0 w-full min-w-0 flex-col border-t border-black bg-white px-[2ch] pb-[env(safe-area-inset-bottom,0px)] transition-transform duration-200 lg:relative lg:z-30 lg:h-full lg:pb-0 lg:shadow-[-4px_0_14px_rgba(0,0,0,0.16)] lg:w-[var(--side-w)] lg:shrink-0 lg:translate-y-0 lg:pointer-events-auto lg:border-t-0 lg:border-l ${
+      className={`fixed inset-x-0 bottom-0 z-40 flex h-[85vh] min-h-0 w-full min-w-0 flex-col border-t border-[color:var(--chrome-divider)] bg-[var(--background0)] px-[2ch] pb-[env(safe-area-inset-bottom,0px)] transition-transform duration-200 lg:relative lg:z-30 lg:h-full lg:pb-0 lg:shadow-[var(--chrome-panel-shadow)] lg:w-[var(--side-w)] lg:shrink-0 lg:translate-y-0 lg:pointer-events-auto lg:border-t-0 lg:border-l lg:border-[color:var(--chrome-divider)] ${
         open ? 'translate-y-0' : 'pointer-events-none translate-y-full'
       }`}
-      style={{ color: '#000', backgroundColor: '#fff', '--side-w': `${width}px` }}
+      style={{ '--side-w': `${width}px` }}
     >
       <Panel
         title={<span className="tracking-[0.2em]">DRAWLAND</span>}
@@ -322,8 +323,8 @@ export default function Sidebar({ open, onClose, doc, setDoc, check, output, sta
             <summary is-="button" {...KEY} title="Replace the profile with a ready-made one; the map centres on its place">
               presets ▾
             </summary>
-            <div className="z-30 w-full border border-black bg-white">
-              <ul className="editor-scroll max-h-[60vh] divide-y divide-black overflow-y-auto">
+            <div className="chrome-surface chrome-border z-30 w-full border">
+              <ul className="editor-scroll max-h-[60vh] divide-y divide-[color:var(--chrome-divider)] overflow-y-auto">
                 {PRESETS.map((p) => (
                   <li key={p.id} className="flex items-stretch">
                     <button
@@ -331,8 +332,8 @@ export default function Sidebar({ open, onClose, doc, setDoc, check, output, sta
                       size-="small"
                       variant-="background0"
                       aria-current={p === preset || undefined}
-                      className={`h-auto min-w-0 flex-1 flex-col items-start justify-start px-[1ch] py-[0.5lh] text-left hover:bg-black hover:text-white hover:no-underline ${
-                        p === preset ? 'bg-black text-white' : ''
+                      className={`h-auto min-w-0 flex-1 flex-col items-start justify-start px-[1ch] py-[0.5lh] text-left hover:bg-[var(--foreground0)] hover:text-[var(--background0)] hover:no-underline ${
+                        p === preset ? 'bg-[var(--foreground0)]! text-[var(--background0)]!' : ''
                       }`}
                       onClick={() => loadPreset(p)}
                     >
@@ -345,7 +346,7 @@ export default function Sidebar({ open, onClose, doc, setDoc, check, output, sta
                       variant-="background0"
                       title="Use this preset's layers here; keep the map position and paper"
                       aria-label={`Inject ${p.name} here`}
-                      className="flex shrink-0 flex-row items-center justify-center gap-[0.5ch] self-stretch whitespace-nowrap border-b border-l border-black px-[1ch] hover:bg-black hover:text-white hover:no-underline"
+                      className="map-chip flex shrink-0 flex-row items-center justify-center gap-[0.5ch] self-stretch whitespace-nowrap border-b border-l border-[color:var(--chrome-divider)] px-[1ch] hover:no-underline"
                       onClick={() => injectPreset(p)}
                     >
                       <svg aria-hidden viewBox="0 0 12 12" className="h-[1em] w-[1em] shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -407,7 +408,7 @@ export default function Sidebar({ open, onClose, doc, setDoc, check, output, sta
             {notice.error ? `✗ ${sentence(notice.text)}` : sentence(notice.text)}
           </p>
         )}
-        <div className="relative mt-[0.5lh] min-h-0 flex-1 overflow-hidden border border-black pt-[0.5lh]">
+        <div className="chrome-border relative mt-[0.5lh] min-h-0 flex-1 overflow-hidden border pt-[0.5lh]">
           <div className="absolute top-[0.5lh] right-[2ch] z-10 flex gap-[1ch]">
             {dirty && (
               <>
@@ -424,12 +425,12 @@ export default function Sidebar({ open, onClose, doc, setDoc, check, output, sta
             </button>
           </div>
           {/* Under the buttons, so the script can still be reverted or applied. */}
-          {problem && <div aria-hidden className="absolute inset-0 z-[5] cursor-pointer bg-white/65" title="Close" onClick={clearProblem} />}
+          {problem && <div aria-hidden className="absolute inset-0 z-[5] cursor-pointer bg-[color-mix(in_srgb,var(--background0)_65%,transparent)]" title="Close" onClick={clearProblem} />}
           <Editor
             height="100%"
             language="javascript"
             path="file:///profile.js"
-            theme={EDITOR_THEME}
+            theme={editorThemeName(themeId)}
             defaultValue={shown}
             onChange={(v) => {
               if (!syncingRef.current) setDraft(v ?? '')
@@ -463,10 +464,9 @@ export default function Sidebar({ open, onClose, doc, setDoc, check, output, sta
         {problem && (
           <div
             role="alert"
-            className="absolute inset-x-[2ch] top-1/2 z-20 flex max-h-[80%] min-h-[min(12lh,80%)] -translate-y-1/2 flex-col bg-white"
-            style={{ boxShadow: '0 0 0 1px #000, 0 16px 44px rgb(0 0 0 / 0.3)' }}
+            className="chrome-surface absolute inset-x-[2ch] top-1/2 z-20 flex max-h-[80%] min-h-[min(12lh,80%)] -translate-y-1/2 flex-col chrome-modal-shadow"
           >
-            <div className="flex shrink-0 items-center gap-[1ch] border-b border-black py-[0.25lh] pr-[1ch] pl-[2ch]">
+            <div className="chrome-border flex shrink-0 items-center gap-[1ch] border-b py-[0.25lh] pr-[1ch] pl-[2ch]">
               <span className="font-bold">✗ {problem.title}</span>
               {/* Select-all-and-copy, and one button that does the same for a
                   message too long to drag through. The text is kept raw. */}
@@ -488,7 +488,7 @@ export default function Sidebar({ open, onClose, doc, setDoc, check, output, sta
         )}
       </Panel>
 
-      <details className="group shrink-0 border-t border-black py-[0.5lh]">
+      <details className="chrome-border group shrink-0 border-t py-[0.5lh]">
         <summary className="flex cursor-pointer list-none items-center gap-[1ch] select-none">
           <span className="font-bold">Map data</span>
           <span className="min-w-0 truncate opacity-60">

@@ -2,11 +2,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useAtom } from 'jotai'
 import MapView from './components/MapView'
 import Sidebar from './components/Sidebar'
+import ThemePicker from './components/ThemePicker'
 import Docs from './docs/Docs'
 import { loadDrawland } from './lib/drawland'
 import { loadGoogleFontsForGraph } from './lib/googleFonts'
 import { loadStrokeFontsForGraph } from './lib/strokeFonts'
-import { docAtom } from './lib/store'
+import { applyTheme, defaultInkColor, normalizeThemeId } from './lib/themes'
+import { docAtom, themeAtom } from './lib/store'
 import { outputComment, outputUnit, setOutputComment, setOutputKeys } from './lib/doc'
 import { compile, literalOutputInfo } from './lib/graph'
 import { inlineShare, readFragment, sharedScript } from './lib/share'
@@ -65,6 +67,7 @@ function unitsOf(doc) {
 }
 
 export default function App() {
+  const [themeId, setThemeId] = useAtom(themeAtom)
   const [engine, setEngine] = useState(null)
   const [engineError, setEngineError] = useState(null)
   const [doc, setDoc] = useAtom(docAtom)
@@ -121,6 +124,24 @@ export default function App() {
     window.addEventListener('popstate', onNav)
     return () => window.removeEventListener('popstate', onNav)
   }, [])
+
+  const themeIdRef = useRef(themeId)
+  themeIdRef.current = themeId
+  useEffect(() => {
+    const n = normalizeThemeId(themeId)
+    if (n !== themeId) setThemeId(n)
+  }, [themeId, setThemeId])
+  useEffect(() => {
+    applyTheme(themeId)
+    const tok = drawing?.token
+    if (workerRef.current && tok && tok === drawTokenRef.current) {
+      workerRef.current.postMessage({
+        type: 'recolor',
+        token: tok,
+        defaultInk: defaultInkColor(themeId),
+      })
+    }
+  }, [themeId, drawing?.token])
 
   useEffect(() => {
     loadDrawland()
@@ -295,6 +316,14 @@ export default function App() {
         onViewportRef.current?.(msg)
         return
       }
+      if (msg.type === 'recolor') {
+        if (msg.token !== drawTokenRef.current) {
+          msg.preview?.close?.()
+          return
+        }
+        setDrawing((d) => (d && d.token === msg.token ? { ...d, preview: msg.preview } : d))
+        return
+      }
       if (msg.token !== token) return
       if (msg.type === 'tiles') {
         if (msg.ids) {
@@ -362,7 +391,16 @@ export default function App() {
     ])
       .then(([googleFonts, strokeFonts]) => {
         if (token !== drawTokenRef.current || ac.signal.aborted) return
-        workerRef.current.postMessage({ type: 'draw', token, graph, lat, lng, googleFonts, strokeFonts })
+        workerRef.current.postMessage({
+          type: 'draw',
+          token,
+          graph,
+          lat,
+          lng,
+          googleFonts,
+          strokeFonts,
+          defaultInk: defaultInkColor(themeIdRef.current),
+        })
       })
       .catch((e) => {
         if (token !== drawTokenRef.current || e?.name === 'AbortError') return
@@ -518,7 +556,13 @@ export default function App() {
     if (!workerRef.current || !token) return 0
     const seq = ++viewportSeqRef.current
     onViewportRef.current = cb
-    workerRef.current.postMessage({ type: 'viewport', token, seq, rect })
+    workerRef.current.postMessage({
+      type: 'viewport',
+      token,
+      seq,
+      rect,
+      defaultInk: defaultInkColor(themeIdRef.current),
+    })
     return seq
   }, [])
 
@@ -558,7 +602,7 @@ export default function App() {
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
-      <SiteHeader docs={docs} />
+      <SiteHeader docs={docs} themeId={themeId} onTheme={setThemeId} />
       <div className="relative flex min-h-0 w-full flex-1 flex-col lg:flex-row">
         <main className="relative min-h-0 min-w-0 flex-1">
         <MapView
@@ -585,7 +629,7 @@ export default function App() {
           download={downloading}
           downloadDoc={doc}
           onDownloadClose={() => setDownloading(false)}
-          onOpenControls={() => setMenuOpen(true)}
+          onOpenControls={isDesktop ? undefined : () => setMenuOpen(true)}
         />
       </main>
 
@@ -593,7 +637,7 @@ export default function App() {
         <button
           type="button"
           aria-label="Close controls"
-          className="absolute inset-0 z-30 h-full w-full bg-black/25 bg-none lg:hidden"
+          className="absolute inset-0 z-30 h-full w-full bg-[var(--overlay-scrim)] bg-none lg:hidden"
           onClick={() => setMenuOpen(false)}
         />
       ) : null}
@@ -604,8 +648,8 @@ export default function App() {
       {/* The documentation, over the page. Kept mounted behind, not unmounted:
           the map, the editor and the drawing are as they were on the way back. */}
       {docs ? (
-        <div className="fixed inset-0 z-50 flex flex-col bg-white">
-          <SiteHeader docs={docs} over />
+        <div className="fixed inset-0 z-50 flex flex-col bg-[var(--background0)]">
+          <SiteHeader docs={docs} over themeId={themeId} onTheme={setThemeId} />
           <Docs />
         </div>
       ) : null}
@@ -614,10 +658,10 @@ export default function App() {
 }
 
 /** The links that belong to the site rather than to the drawing. */
-function SiteHeader({ docs, over = false }) {
+function SiteHeader({ docs, over = false, themeId, onTheme }) {
   return (
     <header
-      className={`z-40 flex shrink-0 items-center gap-[1ch] border-b border-black px-[1ch] py-[0.25lh] ${over ? '' : 'bg-white'}`}
+      className={`z-40 flex shrink-0 items-center gap-[1ch] border-b border-[color:var(--chrome-divider)] px-[1ch] py-[0.25lh] ${over ? '' : 'bg-[var(--background0)]'}`}
     >
       <a
         is-="button"
@@ -639,18 +683,20 @@ function SiteHeader({ docs, over = false }) {
       >
         docs
       </a>
-      <a
-        is-="button"
-        size-="small"
-        variant-="background1"
-        className="ml-auto"
-        href={REPO}
-        target="_blank"
-        rel="noreferrer"
-        title={REPO}
-      >
-        GitHub ↗
-      </a>
+      <span className="ml-auto flex items-center gap-[1ch]">
+        {onTheme ? <ThemePicker value={themeId} onChange={onTheme} /> : null}
+        <a
+          is-="button"
+          size-="small"
+          variant-="background1"
+          href={REPO}
+          target="_blank"
+          rel="noreferrer"
+          title={REPO}
+        >
+          GitHub ↗
+        </a>
+      </span>
     </header>
   )
 }

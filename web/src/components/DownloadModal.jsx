@@ -15,7 +15,7 @@ import { gcodeConfigAtom } from '../lib/store'
 const KEY = { 'size-': 'small', 'variant-': 'background1' }
 
 const INPUT =
-  'm-0 h-auto min-w-0 flex-1 border border-black px-[1ch] py-[0.4lh] font-mono text-[10px] leading-snug outline-none bg-black/[0.03] text-black/80 focus:border-black'
+  'chrome-field m-0 h-auto min-w-0 flex-1 px-[1ch] py-[0.4lh] font-mono text-[10px] leading-snug outline-none'
 
 const defaultOptions = (hasSlices) => ({
   format: 'svg',
@@ -137,16 +137,15 @@ export default function DownloadModal({ open, onClose, doc, drawing, output }) {
       role="dialog"
       aria-modal="true"
       aria-label="Download this drawing"
-      className="absolute inset-0 z-40 flex items-center justify-center bg-black/25 p-6"
+      className="absolute inset-0 z-40 flex items-center justify-center bg-[var(--overlay-scrim)] p-6"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose?.()
       }}
     >
       <div
-        className="flex max-h-[80vh] w-full max-w-[min(88ch,100%)] flex-col bg-white font-mono text-[12px]"
-        style={{ boxShadow: '0 0 0 1px #000, 0 16px 44px rgb(0 0 0 / 0.3)' }}
+        className="chrome-surface flex max-h-[80vh] w-full max-w-[min(88ch,100%)] flex-col font-mono text-[12px] chrome-modal-shadow"
       >
-        <div className="flex shrink-0 items-center gap-[1ch] border-b border-black py-[0.5lh] pr-[1ch] pl-[2ch]">
+        <div className="chrome-border flex shrink-0 items-center gap-[1ch] border-b py-[0.5lh] pr-[1ch] pl-[2ch]">
           <span className="font-bold tracking-[0.2em]">DOWNLOAD</span>
           <span className="min-w-0 truncate opacity-60">save the last draw</span>
           <button type="button" {...KEY} className="ml-auto" aria-label="Close" title="Close" onClick={onClose}>
@@ -315,7 +314,7 @@ export default function DownloadModal({ open, onClose, doc, drawing, output }) {
           )}
         </div>
 
-        <div className="flex shrink-0 items-center gap-[1ch] border-t border-black p-[2ch]">
+        <div className="chrome-border flex shrink-0 items-center gap-[1ch] border-t p-[2ch]">
           <button type="button" size-="small" variant-="foreground0" disabled={busy || !drawing?.svg} onClick={run}>
             {busy ? 'Preparing…' : 'Download'}
           </button>

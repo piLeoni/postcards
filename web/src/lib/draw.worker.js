@@ -25,9 +25,15 @@ let activeToken = 0
 self.onmessage = ({ data }) => {
   if (data.type === 'cancel') current?.abort()
   if (data.type === 'draw') run(data)
+  if (data.type === 'recolor') {
+    if (data.token !== activeToken || !activePainter) return
+    const preview = activePainter.renderOverview(data.defaultInk)
+    if (!preview) return
+    self.postMessage({ type: 'recolor', token: data.token, preview }, [preview])
+  }
   if (data.type === 'viewport') {
     if (data.token !== activeToken || !activePainter) return
-    const bitmap = activePainter.renderViewport(data.rect)
+    const bitmap = activePainter.renderViewport(data.rect, data.defaultInk)
     if (!bitmap) return
     self.postMessage(
       {
@@ -42,7 +48,7 @@ self.onmessage = ({ data }) => {
   }
 }
 
-async function run({ token, graph, lat, lng, googleFonts, strokeFonts }) {
+async function run({ token, graph, lat, lng, googleFonts, strokeFonts, defaultInk }) {
   current?.abort()
   const ac = new AbortController()
   current = ac
@@ -111,7 +117,7 @@ async function run({ token, graph, lat, lng, googleFonts, strokeFonts }) {
       // and part k the kth slice; a Blob keeps it out of the wasm heap and
       // past the length a single JS string may have.
       const parts = []
-      const previewPainter = createPreviewPainter()
+      const previewPainter = createPreviewPainter(defaultInk)
       const onText = (k, text) => {
         ;(parts[k] ??= []).push(text)
         if (k === 0) previewPainter?.feed(text)

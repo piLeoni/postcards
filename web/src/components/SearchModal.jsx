@@ -124,15 +124,14 @@ export default function SearchModal({ open, onClose, onPick }) {
       role="dialog"
       aria-modal="true"
       aria-label="Search an address"
-      className="absolute inset-0 z-40 flex items-center justify-center bg-black/25 p-6"
+      className="absolute inset-0 z-40 flex items-center justify-center bg-[var(--overlay-scrim)] p-6"
       onMouseDown={(e) => { if (e.target === e.currentTarget) onClose?.() }}
     >
       {/* One sheet, the shape the script's own report takes. */}
       <div
-        className="flex max-h-[80vh] w-full max-w-[min(72ch,100%)] flex-col bg-white font-mono text-[11px]"
-        style={{ boxShadow: '0 0 0 1px #000, 0 16px 44px rgb(0 0 0 / 0.3)' }}
+        className="chrome-surface flex max-h-[80vh] w-full max-w-[min(72ch,100%)] flex-col font-mono text-[11px] chrome-modal-shadow"
       >
-        <div className="flex shrink-0 items-center gap-[1ch] border-b border-black py-[0.25lh] pr-[1ch] pl-[2ch]">
+        <div className="chrome-border flex shrink-0 items-center gap-[1ch] border-b py-[0.25lh] pr-[1ch] pl-[2ch]">
           <span className="font-bold">Search</span>
           <span className="min-w-0 truncate opacity-60">an address or a place, through OpenStreetMap</span>
           <button type="button" {...KEY} className="ml-auto" aria-label="Close" title="Close" onClick={onClose}>
@@ -140,7 +139,7 @@ export default function SearchModal({ open, onClose, onPick }) {
           </button>
         </div>
 
-        <label className="flex shrink-0 items-center gap-[1ch] border-b border-black pr-[2ch] pl-[2ch] leading-[2.4]">
+        <label className="chrome-border flex shrink-0 items-center gap-[1ch] border-b pr-[2ch] pl-[2ch] leading-[2.4]">
           <span aria-hidden className="w-[1.5ch] text-center">⌕</span>
           <input
             ref={inputRef}
@@ -167,14 +166,14 @@ export default function SearchModal({ open, onClose, onPick }) {
                   tabIndex={0}
                   aria-selected="false"
                   title={p.display_name}
-                  className="group cursor-pointer px-[2ch] py-[0.25lh] text-black select-none hover:bg-black hover:text-white"
+                  className="map-chip group cursor-pointer px-[2ch] py-[0.25lh] select-none"
                   onClick={() => pick(p)}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(p) }
                   }}
                 >
                   <span className="block truncate font-bold">{upfront(title)}</span>
-                  {detail && <span className="block truncate text-black/60 group-hover:text-white/60">{detail}</span>}
+                  {detail && <span className="block truncate opacity-60">{detail}</span>}
                 </li>
               )
             })}
@@ -183,7 +182,7 @@ export default function SearchModal({ open, onClose, onPick }) {
           <p className="px-[2ch] py-[0.5lh] opacity-40">Type a place name or an address…</p>
         )}
 
-        <p className="shrink-0 border-t border-black py-[0.25lh] pr-[2ch] pl-[2ch] opacity-60">
+        <p className="chrome-border shrink-0 border-t py-[0.25lh] pr-[2ch] pl-[2ch] opacity-60">
           Search data © OpenStreetMap contributors, through Nominatim.
         </p>
       </div>

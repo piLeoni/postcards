@@ -1,0 +1,140 @@
+/* Palettes: WebTUI reads --background* / --foreground*; map uses MAP_PALETTES in themes.js.
+   Silk and Abyss chrome tokens follow daisyUI 5.7 (oklch). */
+
+[data-theme="paper"] {
+  --background0: #ffffff;
+  --background1: #fafafa;
+  --background2: #f0f0f0;
+  --background3: #dddddd;
+  --foreground0: #000000;
+  --foreground1: #333333;
+  --foreground2: #777777;
+  --syntax-base: #000000;
+  --syntax-keyword: #000000;
+  --syntax-name: #333333;
+  --syntax-string: #555555;
+  --syntax-comment: #777777;
+  --syntax-dim: #aaaaaa;
+  --syntax-type: #333333;
+  --syntax-number: #555555;
+  --overlay-scrim: rgb(0 0 0 / 0.25);
+  --chrome-elevate: 0 2px 8px rgb(0 0 0 / 0.16);
+  --chrome-modal-depth: 0 12px 32px rgb(0 0 0 / 0.22);
+  --chrome-panel-shadow: -4px 0 14px rgb(0 0 0 / 0.14);
+  --chrome-divider: var(--foreground0);
+}
+
+[data-theme="ink"] {
+  --background0: #0a0b0d;
+  --background1: #111318;
+  --background2: #222830;
+  --background3: #343c48;
+  --foreground0: #eef1f6;
+  --foreground1: #b8bec8;
+  --foreground2: #787f8c;
+  --syntax-base: #c8ccd4;
+  --syntax-keyword: #f2f4f8;
+  --syntax-name: #9aa3b0;
+  --syntax-string: #808890;
+  --syntax-comment: #5c6470;
+  --syntax-dim: #454c58;
+  --syntax-type: #9aa3b0;
+  --syntax-number: #808890;
+  --overlay-scrim: rgb(0 0 0 / 0.5);
+  --chrome-elevate: 0 2px 8px rgb(200 210 230 / 0.1);
+  --chrome-modal-depth: 0 12px 36px rgb(200 210 230 / 0.08);
+  --chrome-panel-shadow: -4px 0 14px rgb(200 210 230 / 0.07);
+  --chrome-divider: var(--foreground0);
+}
+
+[data-theme="silk"] {
+  --background0: oklch(97% 0.0035 67.78);
+  --background1: oklch(95% 0.0081 61.42);
+  --background2: oklch(90% 0.0081 61.42);
+  --background3: oklch(80% 0.0081 61.42);
+  --foreground0: oklch(40% 0.0081 61.42);
+  --foreground1: oklch(50% 0.0081 61.42);
+  --foreground2: oklch(65% 0.0081 61.42);
+  --syntax-base: oklch(40% 0.0081 61.42);
+  --syntax-keyword: oklch(30% 0.01 61.42);
+  --syntax-name: oklch(45% 0.02 284.3);
+  --syntax-string: oklch(50% 0.09 136.87);
+  --syntax-comment: oklch(60% 0.0081 61.42);
+  --syntax-dim: oklch(72% 0.0081 61.42);
+  --syntax-type: oklch(35% 0.025 284.3);
+  --syntax-number: oklch(55% 0.11 80);
+  --overlay-scrim: rgb(40 38 34 / 0.18);
+  --chrome-elevate: 0 2px 8px rgb(0 0 0 / 0.1);
+  --chrome-modal-depth: 0 12px 32px rgb(0 0 0 / 0.14);
+  --chrome-panel-shadow: -4px 0 14px rgb(0 0 0 / 0.1);
+  --chrome-divider: color-mix(in srgb, var(--foreground0) 22%, transparent);
+}
+
+[data-theme="abyss"] {
+  --background0: oklch(20% 0.08 209);
+  --background1: oklch(15% 0.08 209);
+  --background2: oklch(10% 0.08 209);
+  --background3: oklch(30% 0.08 209);
+  --foreground0: oklch(90% 0.076 70.697);
+  --foreground1: oklch(80% 0.06 70.697);
+  --foreground2: oklch(74% 0.16 232.661);
+  --syntax-base: oklch(90% 0.076 70.697);
+  --syntax-keyword: oklch(95% 0.08 70.697);
+  --syntax-name: oklch(74% 0.16 232.661);
+  --syntax-string: oklch(92% 0.2653 125);
+  --syntax-comment: oklch(45% 0.06 209);
+  --syntax-dim: oklch(35% 0.06 209);
+  --syntax-type: oklch(74% 0.16 232.661);
+  --syntax-number: oklch(84.8% 0.1962 84.62);
+  --overlay-scrim: rgb(0 20 28 / 0.55);
+  --chrome-elevate: 0 2px 10px oklch(74% 0.16 232.661 / 0.2);
+  --chrome-modal-depth: 0 12px 40px oklch(83.27% 0.0764 298.3 / 0.18);
+  --chrome-panel-shadow: -4px 0 16px oklch(74% 0.16 232.661 / 0.14);
+  --chrome-divider: color-mix(in srgb, var(--foreground0) 26%, transparent);
+}
+
+[data-theme="ember"] {
+  --background0: #120e06;
+  --background1: #1c1608;
+  --background2: #3d3020;
+  --background3: #5c4830;
+  --foreground0: #ffbf3a;
+  --foreground1: #e8a838;
+  --foreground2: #a07830;
+  --syntax-base: #e8a838;
+  --syntax-keyword: #ffbf3a;
+  --syntax-name: #d89828;
+  --syntax-string: #c08820;
+  --syntax-comment: #907030;
+  --syntax-dim: #705820;
+  --syntax-type: #ffc860;
+  --syntax-number: #ff9830;
+  --overlay-scrim: rgb(20 12 0 / 0.5);
+  --chrome-elevate: 0 2px 8px rgb(255 191 58 / 0.14);
+  --chrome-modal-depth: 0 12px 36px rgb(255 191 58 / 0.12);
+  --chrome-panel-shadow: -4px 0 14px rgb(255 191 58 / 0.1);
+  --chrome-divider: var(--foreground0);
+}
+
+[data-theme="phosphor"] {
+  --background0: #0a0f0a;
+  --background1: #0e140e;
+  --background2: #182018;
+  --background3: #283828;
+  --foreground0: #41ff41;
+  --foreground1: #30d030;
+  --foreground2: #208820;
+  --syntax-base: #8ee878;
+  --syntax-keyword: #b8ffb0;
+  --syntax-name: #90d088;
+  --syntax-string: #70b868;
+  --syntax-comment: #488840;
+  --syntax-dim: #386830;
+  --syntax-type: #90d088;
+  --syntax-number: #78c870;
+  --overlay-scrim: rgb(0 16 0 / 0.55);
+  --chrome-elevate: 0 2px 8px rgb(65 255 65 / 0.14);
+  --chrome-modal-depth: 0 12px 36px rgb(65 255 65 / 0.12);
+  --chrome-panel-shadow: -4px 0 14px rgb(65 255 65 / 0.1);
+  --chrome-divider: var(--foreground0);
+}

@@ -9,7 +9,8 @@ import 'maplibre-gl/dist/maplibre-gl.css'
 // puts the pool together once, on the first style that loads.)
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url'
 import { outputBox, FIT_PAD, groundKm, hasLayout, lengthText, sheetsOf, sig3, zoomToFit } from '../lib/frame'
-import { mapViewAtom } from '../lib/store'
+import { mapViewAtom, themeAtom } from '../lib/store'
+import { defaultInkColor, mapColors } from '../lib/themes'
 import OutputControls from './OutputControls'
 import SearchModal from './SearchModal'
 import ShareModal from './ShareModal'
@@ -34,38 +35,6 @@ const STYLE = 'https://tiles.openfreemap.org/styles/positron'
  * changes; point them elsewhere — a dark or high-contrast set — and the map
  * follows, with no web map style to fork.
  */
-const ROLES = {
-  ink: 'var(--foreground0)', // black: nothing on the basemap should reach this
-  hard: 'var(--foreground1)', // #444: letters and lines that have to be read
-  soft: 'var(--foreground2)', // #888: labels, the way the app sets quiet text
-  faint: 'var(--background3)', // #a3a3a3: minor names and road shields
-  edge: 'var(--background2)', // #d4d4d4: casing under the paper-white roads
-  line: 'var(--background1)', // #ebebeb: the roads themselves
-  paper: 'var(--background0)', // #fff: the sheet, and the halo behind a label
-  // The basemap sits *under* the drawing, so it has to stay lighter and
-  // quieter than the UI chrome: the app's own greys are the ink, not the
-  // ground. These shades are the map's alone, tuned a step or two off paper
-  // so the output's lines remain the darkest thing on screen.
-  land: '#f7f7f7', // the ground, barely off the sheet
-  wash: '#e6e6e6', // where Positron paints water: sea, lakes, streams
-  botanical: '#f0f0f0', // where Positron paints parks and woodland
-}
-
-/**
- * Fold the `ROLES` into a map of `role -> resolved colour`. A role is either a
- * custom property, read from the page so the map follows the palette, or a
- * literal shade like `#c8c8c8`, used as-is.
- */
-function palette(el) {
-  const style = getComputedStyle(el)
-  const read = new Map()
-  for (const [role, token] of Object.entries(ROLES)) {
-    if (token.startsWith('var(--')) read.set(role, style.getPropertyValue(token.slice(4, -1)).trim() || '#888')
-    else read.set(role, token)
-  }
-  return { color: (role) => read.get(role) }
-}
-
 /** One label layer, in the page's palette: soft grey with a wide halo. */
 function placePaint(id, c) {
   if (!id.includes('label')) return null
@@ -88,8 +57,11 @@ function placePaint(id, c) {
  */
 function roadPaint(id, c) {
   if (/casing/.test(id)) return { 'line-color': c('edge') }
+  // Positron's railways: a wide grey line plus a lighter dashed overlay.
+  if (/dashline/.test(id)) return { 'line-color': c('line') }
+  if (/^railway/.test(id)) return { 'line-color': c('edge') }
   if (/_subtle/.test(id) || /tunnel/.test(id)) return { 'line-color': c('line') }
-  return { 'line-color': c('paper') }
+  return { 'line-color': c('line') }
 }
 
 /**
@@ -169,15 +141,22 @@ const POSITRON = [
   'road_shield_us',
   'highway-shield-us-interstate',
   'highway-shield-non-us',
+  'railway',
+  'railway_dashline',
+  'railway_transit',
+  'railway_transit_dashline',
+  'railway_service',
+  'railway_service_dashline',
 ]
-function calm(map) {
+function calm(map, themeId) {
   let layers
   try {
     layers = map.getStyle()?.layers
   } catch {
     return // The style went away before this ran (StrictMode's double mount).
   }
-  const c = palette(map.getContainer()).color
+  const colors = mapColors(themeId)
+  const c = (role) => colors[role]
   // Every id we style is Positron's, and we style by id. If upstream renames
   // or drops one the layer would quietly keep its warm tint rather than fail,
   // so say so, once, naming only what we meant to change.
@@ -227,8 +206,12 @@ function calm(map) {
         set('text-halo-color', c('paper'))
         set('text-halo-width', 1.5)
       }
-    } else if (source === 'transportation' && type === 'line' && /^(highway|tunnel)/.test(id)) {
-      // The roads: paper over a hairline of grey, in the app's palette.
+    } else if (
+      source === 'transportation' &&
+      type === 'line' &&
+      (/^(highway|tunnel|railway)/.test(id))
+    ) {
+      // Roads and railways: palette line/edge instead of Positron's white-grey pair.
       for (const [name, value] of Object.entries(roadPaint(id, c))) set(name, value)
     }
   }
@@ -260,11 +243,13 @@ const tileLabelLayout = {
   'text-ignore-placement': true,
 }
 
-const tileLabelPaint = {
-  'text-color': '#333',
-  'text-opacity': ['match', ['get', 'state'], 0, 0.25, 3, 0.6, 0.5],
-  'text-halo-color': '#fff',
-  'text-halo-width': 1.5,
+function tileLabelPaintOf(c) {
+  return {
+    'text-color': c.hard,
+    'text-opacity': ['match', ['get', 'state'], 0, 0.25, 3, 0.6, 0.5],
+    'text-halo-color': c.paper,
+    'text-halo-width': 1.5,
+  }
 }
 
 /** Space between the output and the label above it or the tags below it, px. */
@@ -294,7 +279,7 @@ const ZONE = 40
 const PUSH = 6
 const PUSH_MAX = 1500
 /** What floats over the map: the output, its menu, the buttons in the corner. */
-const RAISED = 'shadow-[0_2px_8px_rgba(0,0,0,0.18)]'
+const RAISED = 'chrome-raised'
 
 /** The marks on the map tags, the same plain glyphs the transform menu wears. */
 const ICONS = {
@@ -332,7 +317,7 @@ function Tag({ title, onClick, icon, className = 'cursor-pointer', children, ...
       role="button"
       tabIndex={0}
       title={title}
-      className={`inline-flex items-center gap-[0.75ch] bg-white/90 px-1.5 py-0.5 font-mono text-[10px] whitespace-nowrap select-none hover:bg-black hover:text-white ${className}`}
+      className={`map-chip inline-flex items-center gap-[0.75ch] px-1.5 py-0.5 font-mono text-[10px] whitespace-nowrap select-none ${className}`}
       onClick={onClick}
       onKeyDown={(e) => {
         if (onClick && (e.key === 'Enter' || e.key === ' ')) {
@@ -375,14 +360,14 @@ function Guides({ output }) {
         const [x0, y0, x1, y1] = s.inner
         const margin = s.inner.some((v, k) => Math.abs(v - s.at[k]) > 1e-6)
         return margin && x1 > x0 && y1 > y0 ? (
-          <rect key={i} x={x0} y={y0} width={x1 - x0} height={y1 - y0} stroke="#888" strokeDasharray="1 3" strokeWidth={1} {...line} />
+          <rect key={i} x={x0} y={y0} width={x1 - x0} height={y1 - y0} stroke="var(--chrome-divider)" strokeDasharray="1 3" strokeWidth={1} {...line} />
         ) : null
       })}
       {Array.from({ length: cols - 1 }, (_, i) => (w * (i + 1)) / cols).map((x) => (
-        <line key={`c${x}`} x1={x} y1={0} x2={x} y2={h} stroke="#000" strokeWidth={1} {...line} />
+        <line key={`c${x}`} x1={x} y1={0} x2={x} y2={h} stroke="var(--chrome-divider)" strokeWidth={1} {...line} />
       ))}
       {Array.from({ length: rows - 1 }, (_, i) => (h * (i + 1)) / rows).map((y) => (
-        <line key={`r${y}`} x1={0} y1={y} x2={w} y2={y} stroke="#000" strokeWidth={1} {...line} />
+        <line key={`r${y}`} x1={0} y1={y} x2={w} y2={y} stroke="var(--chrome-divider)" strokeWidth={1} {...line} />
       ))}
     </svg>
   )
@@ -451,8 +436,9 @@ function tileNw(z, x, y) {
  * fainter, dashed outline with no fill, so it reads as "these are the tiles
  * this output will ask for" and not as a download already read.
  */
-function showTiles(map, tiles) {
+function showTiles(map, tiles, themeId) {
   if (!map.isStyleLoaded()) return false
+  const c = mapColors(themeId)
   const features = []
   const marks = []
   const states = tiles?.state
@@ -484,15 +470,16 @@ function showTiles(map, tiles) {
   // The paint is applied on every call, not only when the layer is first
   // added: a color or width changed here then takes effect at once, without
   // waiting for the layer to be torn down and built again.
-  const tileFillPaint = { 'fill-color': '#000', 'fill-opacity': ['match', ['get', 'state'], 1, 0.06, 0] }
+  const tileFillPaint = { 'fill-color': c.ink, 'fill-opacity': ['match', ['get', 'state'], 1, 0.06, 0] }
   const tileLinePaint = {
-    // A planned tile (3) is a continuous gray line, a hint on the map of what
+    // A planned tile (3) is a continuous line, a hint on the map of what
     // the output will read until the draw lights its tiles up.
-    'line-color': ['match', ['get', 'state'], 3, '#ccc', '#222'],
+    'line-color': ['match', ['get', 'state'], 3, c.soft, c.hard],
     'line-width': ['match', ['get', 'state'], 3, 0.7, 0.5],
-    'line-opacity': ['match', ['get', 'state'], 2, 0.22, 3, 0.75, 0.3],
+    'line-opacity': ['match', ['get', 'state'], 2, 0.22, 3, 0.75, 0.45],
     'line-dasharray': ['match', ['get', 'state'], 2, ['literal', [2, 2]], ['literal', [1, 0]]],
   }
+  const tileLabelPaint = tileLabelPaintOf(c)
   if (!map.getLayer(`${TILE_LAYER}-fill`)) {
     map.addLayer({ id: `${TILE_LAYER}-fill`, type: 'fill', source: TILE_LAYER, paint: tileFillPaint })
   } else {
@@ -514,6 +501,7 @@ function showTiles(map, tiles) {
     })
   } else {
     map.setLayerZoomRange(`${TILE_LAYER}-label`, TILE_LABEL_MIN_ZOOM, 24)
+    for (const [k, v] of Object.entries(tileLabelPaint)) map.setPaintProperty(`${TILE_LAYER}-label`, k, v)
     syncTileLabelLayout(map)
   }
   syncTileLabelLayout(map)
@@ -565,6 +553,9 @@ export default function MapView({
   const [search, setSearch] = useState(false)
   const [tilesOn, setTilesOn] = useState(true)
   const [mapView, setMapView] = useAtom(mapViewAtom)
+  const [themeId] = useAtom(themeAtom)
+  const themeIdRef = useRef(themeId)
+  themeIdRef.current = themeId
   // The map is built once, in an effect with no dependencies; this holds the
   // saved view so that effect can read it without depending on it.
   const savedViewRef = useRef(mapView)
@@ -825,8 +816,8 @@ export default function MapView({
 
     // Restyle the basemap on every load, so a `setStyle` swap keeps it too.
     map.on('style.load', () => {
-      calm(map)
-      showTiles(map, tilesRef.current ?? plannedRef.current)
+      calm(map, themeIdRef.current)
+      showTiles(map, tilesRef.current ?? plannedRef.current, themeIdRef.current)
     })
 
     // The only surface App gets on the map: where its centre is, and how to
@@ -944,13 +935,24 @@ export default function MapView({
     const map = mapRef.current
     if (!map) return
     const paint = () => {
-      showTiles(map, tilesToShow())
+      showTiles(map, tilesToShow(), themeIdRef.current)
       tilesLayerVisible(map, tilesOn && Boolean(tilesToShow()))
     }
     if (paint()) return
     map.once('load', paint)
     return () => map.off('load', paint)
   }, [tiles, planned, tilesOn])
+
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map) return
+    const restyle = () => {
+      calm(map, themeId)
+      showTiles(map, tilesToShow(), themeId)
+    }
+    const id = requestAnimationFrame(restyle)
+    return () => cancelAnimationFrame(id)
+  }, [themeId])
 
   // A new drawing closes the transform menu, so it is seen whole. The same one
   // shown again (the output back where it was drawn) leaves the menu be.
@@ -1239,8 +1241,8 @@ export default function MapView({
       */}
       <div
         ref={overlayRef}
-        className={`pointer-events-none absolute left-0 top-0 overflow-hidden outline outline-black ${RAISED} ${
-          drawing?.svg && !tilesLive ? 'bg-white' : 'bg-white/20'
+        className={`pointer-events-none absolute left-0 top-0 overflow-hidden outline outline-[color:var(--chrome-divider)] ${RAISED} ${
+          drawing?.svg && !tilesLive ? 'bg-[var(--background0)]' : 'bg-[color-mix(in_srgb,var(--background0)_20%,transparent)]'
         }`}
         style={{ display: 'none', willChange: 'transform' }}
       >
@@ -1257,7 +1259,7 @@ export default function MapView({
               />
               <canvas
                 ref={detailCanvasRef}
-                className={`pointer-events-none absolute bg-white select-none ${tilesLive ? 'opacity-20' : ''}`}
+                className={`pointer-events-none absolute bg-[var(--background0)] select-none ${tilesLive ? 'opacity-20' : ''}`}
                 style={{ display: 'none' }}
               />
             </>
@@ -1277,7 +1279,7 @@ export default function MapView({
       {output && (
         <span
           ref={labelRef}
-          className="pointer-events-none absolute left-0 top-0 z-10 bg-white/90 px-1.5 py-0.5 font-mono text-[10px] whitespace-nowrap"
+          className="map-chip pointer-events-none absolute left-0 top-0 z-10 px-1.5 py-0.5 font-mono text-[10px] whitespace-nowrap"
           style={{ display: 'none' }}
         />
       )}
@@ -1297,14 +1299,14 @@ export default function MapView({
               title="Click for the full menu. Drag to move; Shift+drag to rotate (1° steps); Alt+drag to change scale (paper size stays put)"
               aria-label="Transform the output"
               aria-expanded={menu}
-              className={`cursor-pointer ${menu ? 'bg-black! text-white!' : ''}`}
+              className={`cursor-pointer ${menu ? 'map-chip-strong' : ''}`}
               onPointerDown={onTransformPointerDown}
             >
               transform {menu ? '▴' : '▾'}
             </Tag>
           )}
           {menu && !output.computed && (
-            <div className={`mt-1 max-h-[70vh] overflow-y-auto bg-white/95 p-1.5 ${RAISED}`} onPointerDownCapture={holdMenu}>
+            <div className={`chrome-surface mt-1 max-h-[70vh] overflow-y-auto p-1.5 ${RAISED}`} onPointerDownCapture={holdMenu}>
               <OutputControls output={output} units={units} onEdit={onOutputKeys} onMove={startDrag} />
             </div>
           )}
@@ -1313,14 +1315,14 @@ export default function MapView({
 
       {output && (
         <div className="absolute top-2 right-2 z-20 flex flex-wrap justify-end gap-1.5">
-          <span ref={awayRef} className="bg-white/90 px-1.5 py-0.5 font-mono text-[10px] whitespace-nowrap opacity-60" style={{ display: 'none' }}>
+          <span ref={awayRef} className="map-chip px-1.5 py-0.5 font-mono text-[10px] whitespace-nowrap opacity-60" style={{ display: 'none' }}>
             The selection is out of view
           </span>
           {drawing?.svg && (
             <Tag
               title="Export SVG or PNG with options"
               aria-label="Download the output"
-              className={`cursor-pointer bg-black! text-white! hover:underline ${RAISED}`}
+              className={`map-chip-strong cursor-pointer ${RAISED}`}
               onClick={onDownload}
             >
               ↓ download

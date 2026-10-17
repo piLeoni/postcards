@@ -1,6 +1,7 @@
 import { atom } from 'jotai'
 import { atomWithStorage } from 'jotai/utils'
 import { DEFAULT_GCODE_CONFIG } from './gcode'
+import { DEFAULT_THEME_ID } from './themes'
 import { START_DOC } from './presets'
 import { inlineShare } from './share'
 
@@ -75,6 +76,9 @@ export const sidebarWidthAtom = atomWithStorage('drawland.sidebarWidth', 448, un
  * the map style script.
  */
 export const gcodeConfigAtom = atomWithStorage('drawland.gcodeConfig', DEFAULT_GCODE_CONFIG, undefined, ON_INIT)
+
+/** UI + editor colour palette (`data-theme` on the document root). */
+export const themeAtom = atomWithStorage('drawland.theme', DEFAULT_THEME_ID, undefined, ON_INIT)
 
 /**
  * The search, for one session only: the text typed, the matches it found, and
