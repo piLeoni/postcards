@@ -12,6 +12,7 @@ import { outputBox, FIT_PAD, groundKm, hasLayout, lengthText, sheetsOf, sig3, zo
 import { mapViewAtom, themeAtom } from '../lib/store'
 import { defaultInkColor, mapColors } from '../lib/themes'
 import OutputControls from './OutputControls'
+import StylePresetPicker from './StylePresetPicker'
 import SearchModal from './SearchModal'
 import ShareModal from './ShareModal'
 import DownloadModal from './DownloadModal'
@@ -525,6 +526,8 @@ function syncTileLabelLayout(map) {
 }
 
 export default function MapView({
+  doc,
+  setDoc,
   output,
   units,
   drawing,
@@ -541,6 +544,12 @@ export default function MapView({
   onOutputKeys,
   onOutputToCentre,
   onCentreOnOutput,
+  onPlaceMap,
+  onDraw,
+  onStop,
+  search,
+  onOpenSearch,
+  onCloseSearch,
   onSearch,
   share,
   shareDoc,
@@ -548,14 +557,13 @@ export default function MapView({
   download,
   downloadDoc,
   onDownloadClose,
+  sidebarOpen = false,
   onOpenControls,
   busy = false,
   appReady = true,
 }) {
-  const [menu, setMenu] = useState(false)
   const [mapBooted, setMapBooted] = useState(false)
-  const [search, setSearch] = useState(false)
-  const [tilesOn, setTilesOn] = useState(true)
+  const [tilesOn] = useState(true)
   const [mapView, setMapView] = useAtom(mapViewAtom)
   const [themeId] = useAtom(themeAtom)
   const themeIdRef = useRef(themeId)
@@ -577,6 +585,8 @@ export default function MapView({
   const requestViewportRef = useRef(onRequestViewport)
   requestViewportRef.current = onRequestViewport
   const labelRef = useRef(null)
+  const topRightRef = useRef(null)
+  const bottomLeftRef = useRef(null)
   const tagsRef = useRef(null)
   const awayRef = useRef(null)
   const menuDragRef = useRef(false)
@@ -751,7 +761,7 @@ export default function MapView({
     const { clientWidth: W, clientHeight: H } = map.getContainer()
     const away = !b || b.x > W || b.y > H || b.x + b.w < 0 || b.y + b.h < 0
     if (awayRef.current) awayRef.current.style.display = outputRef.current && away ? '' : 'none'
-    const parts = [labelRef, tagsRef]
+    const parts = [labelRef, topRightRef, bottomLeftRef, tagsRef]
     if (away || b.w < 4 || b.h < 4) {
       el.style.display = 'none'
       for (const r of parts) if (r.current) r.current.style.display = 'none'
@@ -777,24 +787,33 @@ export default function MapView({
       wrap.style.height = `${b.h}px`
       wrap.style.transform = ''
     }
-    // Written here rather than by React, so a resize reads live.
-    // The label over the top edge and the tags under the bottom one, flush
-    // right; both outside, so the drawing is never covered, and `GAP` away.
+    // Top-left: style preset dropdown, pinned above the top-left corner.
     if (labelRef.current) {
-      labelRef.current.textContent = sizeText(outputRef.current, unitsRef.current)
-      labelRef.current.style.transform = `translate(${b.x}px, ${b.y - GAP}px) translateY(-100%)`
+      const l = labelRef.current
+      const x = Math.max(EDGE, Math.min(b.x, W - l.offsetWidth - EDGE))
+      const y = Math.max(l.offsetHeight + EDGE, Math.min(b.y - GAP, H - EDGE))
+      l.style.transform = `translate(${x}px, ${y}px) translateY(-100%)`
     }
-    // The tags, and the menu open under them, stay on the map: past its right
-    // or bottom edge they wait in that corner, so the output can be worked on
-    // zoomed in on any part of it.
+    // Top-right: DRAW / REGEN / STOP, pinned above the top-right corner.
+    if (topRightRef.current) {
+      const tr = topRightRef.current
+      const x = Math.max(tr.offsetWidth + EDGE, Math.min(b.x + b.w, W - EDGE))
+      const y = Math.max(tr.offsetHeight + EDGE, Math.min(b.y - GAP, H - EDGE))
+      tr.style.transform = `translate(${x}px, ${y}px) translate(-100%, -100%)`
+    }
+    // Bottom-left: download button, pinned below the bottom-left corner.
+    if (bottomLeftRef.current) {
+      const bl = bottomLeftRef.current
+      const x = Math.max(EDGE, Math.min(b.x, W - bl.offsetWidth - EDGE))
+      const y = Math.max(EDGE, Math.min(b.y + b.h + GAP, H - bl.offsetHeight - EDGE))
+      bl.style.transform = `translate(${x}px, ${y}px)`
+    }
+    // Bottom-right: Move, Rotate, Scale handles, pinned below the bottom-right corner.
     if (tagsRef.current) {
       const t = tagsRef.current
       const x = Math.max(Math.min(b.x + b.w, W - EDGE), t.offsetWidth + EDGE)
       const y = Math.max(Math.min(b.y + b.h + GAP, H - t.offsetHeight - EDGE), EDGE)
       t.style.transform = `translate(${x}px, ${y}px) translateX(-100%)`
-      // Waiting in the corner, the menu can cover the output it is moving.
-      const under = menuDragRef.current && b.x < x && b.x + b.w > x - t.offsetWidth && b.y < y + t.offsetHeight && b.y + b.h > y
-      t.style.opacity = under ? MENU_FADE : ''
     }
   }, [])
 
@@ -904,6 +923,7 @@ export default function MapView({
           map.easeTo({ bearing: wantBearingRef.current, around: c ? [c.lng, c.lat] : undefined, duration: 0 })
         },
         syncBearing: () => applyOutputBearingRef.current(),
+        startDrag: (e, cursorEl) => startDragRef.current?.(e, cursorEl),
       }
     }
 
@@ -1008,15 +1028,6 @@ export default function MapView({
     const id = requestAnimationFrame(restyle)
     return () => cancelAnimationFrame(id)
   }, [themeId])
-
-  // A new drawing closes the transform menu, so it is seen whole. The same one
-  // shown again (the output back where it was drawn) leaves the menu be.
-  const shownRef = useRef(null)
-  useEffect(() => {
-    if (!drawing || drawing === shownRef.current) return
-    shownRef.current = drawing
-    setMenu(false)
-  }, [drawing])
 
   // The rectangle lives on the map's render tick; recompute once after any
   // change that does not itself trigger a map render (sidebar edits, resize).
@@ -1144,6 +1155,7 @@ export default function MapView({
    * an edge may stay out there, and is held in once it comes in; one bigger
    * than the map is held covering it.
    */
+  const startDragRef = useRef(null)
   const startDrag = (e, cursorEl) => {
     const map = mapRef.current
     const from = outputRef.current
@@ -1197,6 +1209,7 @@ export default function MapView({
       cursorEl,
     )
   }
+  startDragRef.current = startDrag
 
   const scaleKey = (v) => `1:${Math.round(Math.min(MAX_SCALE, Math.max(MIN_SCALE, v)))}`
 
@@ -1288,18 +1301,6 @@ export default function MapView({
           ▸ {statusWord(load)}
         </Tag>
       )}
-      {(tiles || planned) && (
-        <Tag
-          title={`OpenFreeMap vector tiles (Web Mercator z/x/y, OpenMapTiles · © OpenStreetMap)${
-            tiles ? '' : ` — planned z${planned.zoom}, ${planned.ids.length / 3} tiles`
-          }`}
-          aria-pressed={tilesOn}
-          className={`cursor-pointer ${RAISED}`}
-          onClick={() => setTilesOn((v) => !v)}
-        >
-          {tilesOn ? 'hide tiles' : 'show tiles'}
-        </Tag>
-      )}
     </>
   )
 
@@ -1346,18 +1347,92 @@ export default function MapView({
         {output && <Guides output={output} showMargins={!drawing?.preview} />}
       </div>
 
+      {/* Top-left of postcard: style preset dropdown */}
       {output && (
-        <span
+        <div
           ref={labelRef}
-          className="map-chip pointer-events-none absolute left-0 top-0 z-10 px-1.5 py-0.5 font-mono text-[10px] whitespace-nowrap"
-          style={{ display: 'none' }}
-        />
+          className="absolute left-0 top-0 z-[26]"
+          style={{ display: 'none', willChange: 'transform' }}
+        >
+          <StylePresetPicker doc={doc} setDoc={setDoc} onPlaceMap={onPlaceMap} />
+        </div>
       )}
 
+      {/* Top-right of postcard: DRAW / REGEN / STOP */}
+      {output && (
+        <div
+          ref={topRightRef}
+          className="absolute left-0 top-0 z-[26] flex items-center gap-1"
+          style={{ display: 'none', willChange: 'transform' }}
+        >
+          <span
+            role="button"
+            tabIndex={0}
+            title={busy ? 'Stop the draw' : drawing ? 'Draw the selection again' : 'Draw the selection'}
+            aria-label={busy ? 'Stop the draw' : 'Draw the selection'}
+            onClick={busy ? onStop : onDraw}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                ;(busy ? onStop : onDraw)?.()
+              }
+            }}
+            className={`chrome-border inline-flex cursor-pointer items-center gap-[0.6ch] border px-2 py-0.5 font-mono text-[11px] font-bold whitespace-nowrap select-none ${
+              busy ? 'map-chip' : 'map-chip-strong'
+            } ${RAISED}`}
+          >
+            {busy ? (
+              <svg aria-hidden viewBox="0 0 12 12" className="h-[0.95em] w-[0.95em] shrink-0" fill="currentColor">
+                <rect x="2" y="2" width="8" height="8" />
+              </svg>
+            ) : drawing ? (
+              <svg aria-hidden viewBox="0 0 12 12" className="h-[0.95em] w-[0.95em] shrink-0">
+                <path d="M10 6A4 4 0 1 1 8 2.54" fill="none" stroke="currentColor" strokeWidth="1.5" />
+                <path d="M9.56 3.44L6.68 3.62L8.28 0.85z" fill="currentColor" />
+              </svg>
+            ) : (
+              <svg aria-hidden viewBox="0 0 12 12" className="h-[0.95em] w-[0.95em] shrink-0" fill="currentColor">
+                <path d="M2.5 1.5v9l8-4.5z" />
+              </svg>
+            )}
+            {busy ? 'STOP' : drawing ? 'REGEN' : 'DRAW'}
+          </span>
+        </div>
+      )}
+
+      {/* Bottom-left of postcard: Download button (when drawn) */}
+      {output && (
+        <div
+          ref={bottomLeftRef}
+          className="absolute left-0 top-0 z-[25] flex items-center gap-1"
+          style={{ display: 'none', willChange: 'transform' }}
+        >
+          {drawing?.svg && (
+            <span
+              role="button"
+              tabIndex={0}
+              title="Export SVG, PNG, or G-code"
+              aria-label="Download the output"
+              onClick={onDownload}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault()
+                  onDownload?.()
+                }
+              }}
+              className={`map-chip-strong chrome-border inline-flex cursor-pointer items-center gap-[0.6ch] border px-2 py-0.5 font-mono text-[11px] font-bold whitespace-nowrap select-none ${RAISED}`}
+            >
+              ↓ download
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Bottom-right of postcard: Move, Rotate, Scale drag handles */}
       {output && (
         <div
           ref={tagsRef}
-          className="absolute left-0 top-0 z-[25] flex flex-col items-end transition-opacity duration-150"
+          className="absolute left-0 top-0 z-[25] flex items-center gap-1"
           style={{ display: 'none', willChange: 'transform' }}
         >
           {output.computed ? (
@@ -1365,54 +1440,72 @@ export default function MapView({
               output computed by the script
             </Tag>
           ) : (
-            <Tag
-              title="Click for the full menu. Drag to move; Shift+drag to rotate (1° steps); Alt+drag to change scale (paper size stays put)"
-              aria-label="Transform the output"
-              aria-expanded={menu}
-              className={`cursor-pointer ${menu ? 'map-chip-strong' : ''}`}
-              onPointerDown={onTransformPointerDown}
-            >
-              transform {menu ? '▴' : '▾'}
-            </Tag>
-          )}
-          {menu && !output.computed && (
-            <div className={`chrome-surface mt-1 max-h-[70vh] overflow-y-auto p-1.5 ${RAISED}`} onPointerDownCapture={holdMenu}>
-              <OutputControls output={output} units={units} onEdit={onOutputKeys} onMove={startDrag} />
+            <div className={`flex items-center gap-1 ${RAISED}`}>
+              <span
+                role="button"
+                tabIndex={0}
+                title="Drag to move the selection across the map"
+                aria-label="Move selection"
+                onPointerDown={(e) => {
+                  if (e.button !== 0) return
+                  startDrag(e, e.currentTarget)
+                }}
+                className="map-chip chrome-border inline-flex h-[24px] w-[26px] cursor-grab items-center justify-center border font-mono select-none active:cursor-grabbing"
+              >
+                <svg aria-hidden viewBox="0 0 14 14" className="h-[13px] w-[13px]" fill="none" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M7 1.5v11M1.5 7h11" />
+                  <path d="M5 3.5L7 1.5l2 2M5 10.5L7 12.5l2-2M3.5 5L1.5 7l2 2M10.5 5l2 2-2 2" />
+                </svg>
+              </span>
+              <span
+                role="button"
+                tabIndex={0}
+                title="Drag left or right to rotate the map under the selection (1° steps)"
+                aria-label="Rotate selection"
+                onPointerDown={(e) => {
+                  if (e.button !== 0) return
+                  startRotate(e, e.currentTarget)
+                }}
+                className="map-chip chrome-border inline-flex h-[24px] w-[26px] cursor-ew-resize items-center justify-center border font-mono select-none"
+              >
+                <svg aria-hidden viewBox="0 0 14 14" className="h-[13px] w-[13px]" fill="none" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M11.5 7a4.5 4.5 0 1 1-1.3-3.2" />
+                  <path d="M11.5 1.8v2.4H9.1" />
+                </svg>
+              </span>
+              <span
+                role="button"
+                tabIndex={0}
+                title="Drag left or right to scale the selection (hold Shift for larger steps)"
+                aria-label="Scale selection"
+                onPointerDown={(e) => {
+                  if (e.button !== 0) return
+                  startScale(e, e.currentTarget)
+                }}
+                className="map-chip chrome-border inline-flex h-[24px] w-[26px] cursor-ew-resize items-center justify-center border font-mono select-none"
+              >
+                <svg aria-hidden viewBox="0 0 14 14" className="h-[13px] w-[13px]" fill="none" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M2.5 11.5l9-9" />
+                  <path d="M8 2.5h3.5V6M6 11.5H2.5V8" />
+                </svg>
+              </span>
             </div>
           )}
         </div>
       )}
 
       {output && (
-        <div className="absolute top-2 right-2 z-20 flex flex-wrap justify-end gap-1.5">
-          <span ref={awayRef} className="map-chip px-1.5 py-0.5 font-mono text-[10px] whitespace-nowrap opacity-60" style={{ display: 'none' }}>
-            The selection is out of view
+        <div className="absolute top-2 left-2 z-20 flex flex-wrap items-center gap-1.5">
+          <span ref={awayRef} className="map-chip chrome-border border px-1.5 py-0.5 font-mono text-[10px] whitespace-nowrap" style={{ display: 'none' }}>
+            The selection is out of view ·{' '}
+            <button type="button" className="underline cursor-pointer bg-transparent p-0 font-mono text-[10px]" onClick={onCentreOnOutput}>
+              map to selection
+            </button>
           </span>
-          {drawing?.svg && (
-            <Tag
-              title="Export SVG or PNG with options"
-              aria-label="Download the output"
-              className={`map-chip-strong cursor-pointer ${RAISED}`}
-              onClick={onDownload}
-            >
-              ↓ download
-            </Tag>
-          )}
-          {!output.computed && (
-            <Tag icon={ICONS.toMap} title="Move the selection to the middle of the map" className={`cursor-pointer ${RAISED}`} onClick={onOutputToCentre}>
-              selection to map
-            </Tag>
-          )}
-          <Tag icon={ICONS.toSelection} title="Move the map so the selection is in the middle" className={`cursor-pointer ${RAISED}`} onClick={onCentreOnOutput}>
-            map to selection
-          </Tag>
-          <Tag icon={ICONS.search} title="Find a place by address and move the selection there" className={`cursor-pointer ${RAISED}`} onClick={() => setSearch(true)}>
-            search
-          </Tag>
         </div>
       )}
 
-      <SearchModal open={search} onClose={() => setSearch(false)} onPick={onSearch} />
+      <SearchModal open={search} onClose={onCloseSearch} onPick={onSearch} />
 
       {/* The share sheet is a panel over the map, the same sheet search and
           load wear, centred on the drawing rather than on the script column. */}
@@ -1427,26 +1520,89 @@ export default function MapView({
           <LoadCard load={load} onMin={onLoadMin && (() => onLoadMin(true))} />
         </div>
       )}
-      {/* Tile toggle and draw report: left on mobile, right on desktop. Attribution in the sidebar. */}
-      <div
-        className="map-chrome-bottom map-chrome-left absolute z-30 flex max-w-[calc(100%-2*var(--map-edge)-8rem)] flex-row flex-wrap items-center gap-1.5 lg:hidden"
-      >
-        {mapStatusTags}
-      </div>
-      <div
-        className="map-chrome-bottom map-chrome-right absolute z-30 hidden flex-row flex-wrap items-center justify-end gap-1.5 lg:flex"
-      >
-        {mapStatusTags}
-      </div>
-      {onOpenControls && (
-        <TermKey
-          title="Script and draw controls"
-          className={`map-chrome-bottom map-chrome-right absolute z-35 lg:hidden ${RAISED}`}
-          onClick={onOpenControls}
+      {/* Center-right floating controls & < EDIT button when the full sidebar column is closed */}
+      {!sidebarOpen && output && (
+        <div
+          className="absolute top-1/2 right-3 z-30 flex -translate-y-1/2 flex-col items-end gap-2"
+          onPointerDownCapture={holdMenu}
         >
-          controls
-        </TermKey>
+          <div className={`chrome-surface chrome-border max-h-[78vh] w-[36ch] overflow-y-auto border p-2 font-mono text-[11px] ${RAISED}`}>
+            <div className="mb-1.5 flex flex-col gap-1">
+              <span
+                role="button"
+                tabIndex={0}
+                title="Find a place by address and move the selection there"
+                className="chrome-field flex w-full cursor-pointer items-center justify-start gap-[1ch] px-1.5 py-0.5 text-left select-none hover:bg-[var(--foreground0)] hover:text-[var(--background0)]"
+                onClick={onOpenSearch}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault()
+                    onOpenSearch?.()
+                  }
+                }}
+              >
+                <span aria-hidden className="opacity-60">{ICONS.search}</span>
+                <span className="opacity-70">search</span>
+              </span>
+              {!output.computed && (
+                <span
+                  role="button"
+                  tabIndex={0}
+                  title="Move the selection to the middle of the map"
+                  className="chrome-surface chrome-border flex w-full cursor-pointer items-center justify-center gap-[0.75ch] border px-1.5 py-0.5 select-none hover:bg-[var(--foreground0)] hover:text-[var(--background0)]"
+                  onClick={onOutputToCentre}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault()
+                      onOutputToCentre?.()
+                    }
+                  }}
+                >
+                  <span aria-hidden>{ICONS.toMap}</span>
+                  <span>selection to map</span>
+                </span>
+              )}
+              <span
+                role="button"
+                tabIndex={0}
+                title="Move the map so the selection is in the middle"
+                className="chrome-surface chrome-border flex w-full cursor-pointer items-center justify-center gap-[0.75ch] border px-1.5 py-0.5 select-none hover:bg-[var(--foreground0)] hover:text-[var(--background0)]"
+                onClick={onCentreOnOutput}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault()
+                    onCentreOnOutput?.()
+                  }
+                }}
+              >
+                <span aria-hidden>{ICONS.toSelection}</span>
+                <span>map to selection</span>
+              </span>
+            </div>
+            {!output.computed ? (
+              <OutputControls output={output} units={units} onEdit={onOutputKeys} onMove={startDrag} />
+            ) : (
+              <p className="m-0 opacity-60">Output computed by the script.</p>
+            )}
+          </div>
+          {onOpenControls && (
+            <TermKey
+              title="Expand the script editor column"
+              className={RAISED}
+              onClick={onOpenControls}
+            >
+              {'< EDIT'}
+            </TermKey>
+          )}
+        </div>
       )}
+
+      {/* Draw report tag at bottom left */}
+      <div
+        className="map-chrome-bottom map-chrome-left absolute z-30 flex max-w-[calc(100%-2*var(--map-edge)-8rem)] flex-row flex-wrap items-center gap-1.5"
+      >
+        {mapStatusTags}
+      </div>
 
       {showBootScreen && (
         <div

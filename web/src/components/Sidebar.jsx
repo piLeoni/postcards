@@ -8,6 +8,7 @@ import { defineEditorThemes, editorFont, editorThemeName } from '../lib/editorTh
 import { registerProfileJavascriptTokenizer } from '../lib/profileJavascriptMonarch'
 import LIBRARY from '../../../crates/drawland-script/drawland.d.ts?raw'
 import Panel from './Panel'
+import OutputControls from './OutputControls'
 
 /** WebTUI button looks: a grey key, and one that only shows on hover. */
 const KEY = { 'size-': 'small', 'variant-': 'background1' }
@@ -68,7 +69,28 @@ const PRESET_STYLES = PRESETS.map((p) => [p, styleOf(p.doc)])
 /** A file name from a title: `Parks and buildings` → `parks-and-buildings`. */
 const slug = (s) => s.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
 
-export default function Sidebar({ open, onClose, doc, setDoc, check, output, status, drawing, busy, onDraw, onDrawAfterApply, onStop, onShare, onPlaceMap }) {
+export default function Sidebar({
+  open,
+  onClose,
+  doc,
+  setDoc,
+  check,
+  output,
+  units,
+  status,
+  drawing,
+  busy,
+  onDraw,
+  onDrawAfterApply,
+  onStop,
+  onShare,
+  onPlaceMap,
+  onOutputKeys,
+  onOutputToCentre,
+  onCentreOnOutput,
+  onOpenSearch,
+  onMoveDrag,
+}) {
   const [width, setWidth] = useAtom(sidebarWidthAtom)
   const [themeId] = useAtom(themeAtom)
   const readableEditor = themeId === 'silk' || themeId === 'abyss'
@@ -289,28 +311,80 @@ export default function Sidebar({ open, onClose, doc, setDoc, check, output, sta
 
   return (
     <aside
-      className={`fixed inset-x-0 bottom-0 z-40 flex h-[85vh] min-h-0 w-full min-w-0 flex-col border-t border-[color:var(--chrome-divider)] bg-[var(--background0)] px-[2ch] pb-[env(safe-area-inset-bottom,0px)] transition-transform duration-200 lg:relative lg:z-30 lg:h-full lg:pb-0 lg:shadow-[var(--chrome-panel-shadow)] lg:w-[var(--side-w)] lg:shrink-0 lg:translate-y-0 lg:pointer-events-auto lg:border-t-0 lg:border-l lg:border-[color:var(--chrome-divider)] ${
-        open ? 'translate-y-0' : 'pointer-events-none translate-y-full'
+      className={`fixed inset-x-0 bottom-0 z-40 flex h-[85vh] min-h-0 w-full min-w-0 flex-col border-t border-[color:var(--chrome-divider)] bg-[var(--background0)] px-[2ch] pb-[env(safe-area-inset-bottom,0px)] transition-transform duration-200 sm:relative sm:z-30 sm:h-full sm:pb-0 sm:shadow-[var(--chrome-panel-shadow)] sm:w-[var(--side-w)] sm:shrink-0 sm:translate-y-0 sm:pointer-events-auto sm:border-t-0 sm:border-l sm:border-[color:var(--chrome-divider)] ${
+        open ? 'translate-y-0' : 'pointer-events-none translate-y-full sm:hidden'
       }`}
       style={{ '--side-w': `${width}px` }}
     >
       <Panel
-        title={<span className="tracking-[0.2em]">DRAWLAND</span>}
-        className="shrink-0"
+        title="Selection"
+        className="shrink-0 py-[0.5lh]"
         aside={(
-          <button type="button" aria-label="Close" {...KEY} className="lg:hidden" onClick={onClose}>✕</button>
+          <button type="button" aria-label="Close" {...KEY} onClick={onClose}>✕</button>
         )}
       >
-        <p className="opacity-60">
-          Turn any place on Earth into a pen-and-ink drawing. Frame a view on
-          the map and draw.land produces a layered SVG, ready for a pen
-          plotter, a laser cutter or any vector editor. Fine-tune each layer below.
-        </p>
+        <div className="mb-[0.35lh] grid grid-cols-3 gap-1 font-mono text-[11px]">
+          <span
+            role="button"
+            tabIndex={0}
+            title="Find a place by address and move the selection there"
+            className="chrome-field flex cursor-pointer items-center justify-center gap-[0.6ch] px-1.5 py-0.5 select-none hover:bg-[var(--foreground0)] hover:text-[var(--background0)]"
+            onClick={onOpenSearch}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                onOpenSearch?.()
+              }
+            }}
+          >
+            <span aria-hidden>⌕</span>
+            <span>search</span>
+          </span>
+          {!output?.computed && (
+            <span
+              role="button"
+              tabIndex={0}
+              title="Move the selection to the middle of the map"
+              className="chrome-surface chrome-border flex cursor-pointer items-center justify-center gap-[0.5ch] border px-1.5 py-0.5 whitespace-nowrap select-none hover:bg-[var(--foreground0)] hover:text-[var(--background0)]"
+              onClick={onOutputToCentre}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault()
+                  onOutputToCentre?.()
+                }
+              }}
+            >
+              <span aria-hidden>✥</span>
+              <span className="truncate">selection to map</span>
+            </span>
+          )}
+          <span
+            role="button"
+            tabIndex={0}
+            title="Move the map so the selection is in the middle"
+            className="chrome-surface chrome-border flex cursor-pointer items-center justify-center gap-[0.5ch] border px-1.5 py-0.5 whitespace-nowrap select-none hover:bg-[var(--foreground0)] hover:text-[var(--background0)]"
+            onClick={onCentreOnOutput}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                onCentreOnOutput?.()
+              }
+            }}
+          >
+            <span aria-hidden>⌖</span>
+            <span className="truncate">map to selection</span>
+          </span>
+        </div>
+        {output && !output.computed ? (
+          <OutputControls output={output} units={units} onEdit={onOutputKeys} onMove={onMoveDrag} />
+        ) : output?.computed ? (
+          <p className="opacity-60">Output computed by the script.</p>
+        ) : null}
       </Panel>
 
       <Panel
         title={dirty ? 'Script ●' : 'Script'}
-        className="relative flex min-h-0 flex-1 flex-col"
+        className="relative flex min-h-0 flex-1 flex-col py-[0.5lh]"
         aside={(
           <span
             className={`min-w-0 truncate ${dirty || failed ? 'font-bold' : 'opacity-60'}`}

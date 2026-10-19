@@ -98,19 +98,11 @@ export default function App() {
   // the live download; `MapView` shows the plan until the download replaces
   // it, and the trace again once the download is done.
   const [planned, setPlanned] = useState(null)
-  const [menuOpen, setMenuOpen] = useState(false)
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [searchOpen, setSearchOpen] = useState(false)
   // The share sheet, a panel over the map rather than over the script column.
   const [sharing, setSharing] = useState(false)
   const [downloading, setDownloading] = useState(false)
-  // The sidebar is a column on a wide screen and a drawer on a narrow one.
-  // Read the width, not just `matchMedia`: an emulated or resized viewport
-  // does not always fire `change`, and the column would stay hidden.
-  const [isDesktop, setIsDesktop] = useState(() => window.innerWidth >= 1024)
-  useEffect(() => {
-    const on = () => setIsDesktop(window.innerWidth >= 1024)
-    window.addEventListener('resize', on)
-    return () => window.removeEventListener('resize', on)
-  }, [])
   const drawTokenRef = useRef(0)
   const drawAbortRef = useRef(null)
   // Handles into the map, for the two explicit centre actions. Nothing else
@@ -571,12 +563,17 @@ export default function App() {
   // tiles are on the same ground until the new plan says otherwise.
   const plannedOnMap = compileStale ? null : planned?.at && here && groundOf(planned.at) === groundOf(here) ? planned : null
 
+  const startSidebarMoveDrag = useCallback((e) => {
+    mapApiRef.current?.startDrag?.(e, e.currentTarget)
+  }, [])
+
   const sidebar = useMemo(
     () => ({
       doc,
       setDoc,
       check,
       output,
+      units,
       status,
       drawing: current,
       busy: status.phase === 'working',
@@ -585,8 +582,13 @@ export default function App() {
       onStop: stop,
       onShare: () => setSharing(true),
       onPlaceMap: placeMap,
+      onOutputKeys: editOutput,
+      onOutputToCentre: centreOutputOnMap,
+      onCentreOnOutput: centreMapOnOutput,
+      onOpenSearch: () => setSearchOpen(true),
+      onMoveDrag: startSidebarMoveDrag,
     }),
-    [doc, check, output, status, current, draw, drawAfterApply, stop, placeMap],
+    [doc, check, output, units, status, current, draw, drawAfterApply, stop, placeMap, editOutput, centreOutputOnMap, centreMapOnOutput, startSidebarMoveDrag],
   )
 
   if (engineError) {
@@ -603,9 +605,11 @@ export default function App() {
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
       <SiteHeader docs={docs} themeId={themeId} onTheme={setThemeId} />
-      <div className="relative flex min-h-0 w-full flex-1 flex-col lg:flex-row">
+      <div className="relative flex min-h-0 w-full flex-1 flex-col sm:flex-row">
         <main className="relative min-h-0 min-w-0 flex-1">
         <MapView
+          doc={doc}
+          setDoc={setDoc}
           output={output}
           units={units}
           drawing={current}
@@ -624,6 +628,12 @@ export default function App() {
           onOutputKeys={editOutput}
           onOutputToCentre={centreOutputOnMap}
           onCentreOnOutput={centreMapOnOutput}
+          onPlaceMap={placeMap}
+          onDraw={draw}
+          onStop={stop}
+          search={searchOpen}
+          onOpenSearch={() => setSearchOpen(true)}
+          onCloseSearch={() => setSearchOpen(false)}
           onSearch={searchOutput}
           share={sharing}
           shareDoc={doc}
@@ -631,20 +641,21 @@ export default function App() {
           download={downloading}
           downloadDoc={doc}
           onDownloadClose={() => setDownloading(false)}
-          onOpenControls={isDesktop ? undefined : () => setMenuOpen(true)}
+          sidebarOpen={sidebarOpen}
+          onOpenControls={() => setSidebarOpen(true)}
         />
       </main>
 
-      {menuOpen ? (
+      {sidebarOpen ? (
         <button
           type="button"
           aria-label="Close controls"
-          className="absolute inset-0 z-30 h-full w-full bg-[var(--overlay-scrim)] bg-none lg:hidden"
-          onClick={() => setMenuOpen(false)}
+          className="absolute inset-0 z-30 h-full w-full bg-[var(--overlay-scrim)] bg-none sm:hidden"
+          onClick={() => setSidebarOpen(false)}
         />
       ) : null}
 
-      <Sidebar open={menuOpen || isDesktop} onClose={() => setMenuOpen(false)} {...sidebar} />
+      <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} {...sidebar} />
       </div>
 
       {/* The documentation, over the page. Kept mounted behind, not unmounted:
