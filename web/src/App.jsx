@@ -609,6 +609,7 @@ export default function App() {
         <main className="relative min-h-0 min-w-0 flex-1">
         <MapView
           doc={doc}
+          appliedDoc={compiledDoc ?? doc}
           setDoc={setDoc}
           output={output}
           units={units}

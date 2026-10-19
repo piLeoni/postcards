@@ -257,8 +257,8 @@ function tileLabelPaintOf(c) {
 const GAP = 4
 /** Space between postcard transform handle buttons, and from the card edge to the nearest handle, px. */
 const HANDLE_GAP = GAP
-/** The output overlay's outline width (px), for lining chrome up with the visible card edge. */
-const CARD_OUTLINE = 1
+/** Extra px before corner chrome on opposite sides of the card would meet. */
+const CHROME_EDGE_PAD = 12
 /** Pixels the tags keep from the map's edges. */
 const EDGE = 8
 /**
@@ -557,6 +557,7 @@ function syncTileLabelLayout(map) {
 
 export default function MapView({
   doc,
+  appliedDoc,
   setDoc,
   output,
   units,
@@ -609,7 +610,7 @@ export default function MapView({
   const detailCanvasRef = useRef(null)
   const detailBitmapRef = useRef(null)
   const detailTimerRef = useRef(0)
-  const lastSizeRef = useRef({ w: -1, h: -1 })
+  const chromeSizeRef = useRef({ style: 0, draw: 0, download: 0, handles: 0 })
   const drawingRef = useRef(drawing)
   drawingRef.current = drawing
   const requestViewportRef = useRef(onRequestViewport)
@@ -810,6 +811,29 @@ export default function MapView({
       wrap.style.height = `${b.h}px`
       wrap.style.transform = ''
     }
+    const styleEl = labelRef.current
+    const drawEl = topRightRef.current
+    const downloadEl = bottomLeftRef.current
+    const handlesEl = tagsRef.current
+    const sizes = chromeSizeRef.current
+    if (styleEl?.offsetWidth) sizes.style = styleEl.offsetWidth
+    if (drawEl?.offsetWidth) sizes.draw = drawEl.offsetWidth
+    if (downloadEl?.offsetWidth) sizes.download = downloadEl.offsetWidth
+    if (handlesEl?.offsetWidth) sizes.handles = handlesEl.offsetWidth
+    const styleW = sizes.style || styleEl?.offsetWidth || 120
+    const drawW = sizes.draw || drawEl?.offsetWidth || 80
+    const downloadW = sizes.download || downloadEl?.offsetWidth || 100
+    const handlesW = sizes.handles || handlesEl?.offsetWidth || 92
+    const showTopChrome = b.w >= styleW + drawW + CHROME_EDGE_PAD
+    const showDownload = b.w >= downloadW + handlesW + CHROME_EDGE_PAD
+    const hide = (el, on) => {
+      if (!el) return
+      el.style.visibility = on ? '' : 'hidden'
+      el.style.pointerEvents = on ? '' : 'none'
+    }
+    hide(styleEl, showTopChrome)
+    hide(drawEl, showTopChrome)
+    hide(downloadEl, showDownload)
   }, [])
   const placeRef = useRef(place)
   placeRef.current = place
@@ -1410,7 +1434,7 @@ export default function MapView({
             ref={labelRef}
             className="pointer-events-auto absolute bottom-full left-0 z-[26] mb-[4px]"
           >
-            <StylePresetPicker doc={doc} setDoc={setDoc} onPlaceMap={onPlaceMap} />
+            <StylePresetPicker doc={doc} appliedDoc={appliedDoc} setDoc={setDoc} />
           </div>
         )}
 
@@ -1474,7 +1498,7 @@ export default function MapView({
                     onDownload?.()
                   }
                 }}
-                className={`map-chip-strong chrome-border inline-flex cursor-pointer items-center gap-[0.6ch] border px-2 py-0.5 font-mono text-[11px] font-bold whitespace-nowrap select-none ${RAISED}`}
+                className={`map-chip-strong chrome-border box-border inline-flex h-[28px] cursor-pointer items-center justify-center gap-[0.6ch] border px-2 py-0 font-mono text-[11px] font-bold whitespace-nowrap select-none ${RAISED}`}
               >
                 ↓ download
               </span>
