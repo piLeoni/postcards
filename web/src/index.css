@@ -97,6 +97,28 @@
   text-decoration: underline;
 }
 
+/* Postcard transform handles: stay lit for the whole pointer drag, not on hover under the cursor. */
+.map-transform-handles[data-dragging] .map-transform-handle:not(.map-transform-handle--active) {
+  pointer-events: none;
+}
+.map-transform-handle--active,
+.map-transform-handle--active:hover {
+  background-color: var(--foreground0);
+  color: var(--background0);
+}
+.map-transform-handle {
+  box-shadow: none !important;
+}
+.map-transform-handle__icon {
+  display: block;
+  font-size: 17px;
+  line-height: 1;
+  transform: translateY(-1px);
+}
+.map-transform-handles {
+  gap: var(--handle-gap, 4px);
+}
+
 @layer components {
   /* Solid keys on the palette: WebTUI's 3lh gradient bar reads as white on dark themes. */
   button:not([box-]),

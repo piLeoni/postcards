@@ -8,7 +8,7 @@ import 'maplibre-gl/dist/maplibre-gl.css'
 // us a URL to a copy Vite builds for this, in dev and in `dist`. (MapLibre
 // puts the pool together once, on the first style that loads.)
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url'
-import { outputBox, FIT_PAD, groundKm, hasLayout, lengthText, sheetsOf, sig3, zoomToFit } from '../lib/frame'
+import { groundWidthAt, outputBox, FIT_PAD, groundKm, hasLayout, lengthText, sheetsOf, sig3, zoomToFit } from '../lib/frame'
 import { mapViewAtom, themeAtom } from '../lib/store'
 import { defaultInkColor, mapColors } from '../lib/themes'
 import OutputControls from './OutputControls'
@@ -255,6 +255,10 @@ function tileLabelPaintOf(c) {
 
 /** Space between the output and the label above it or the tags below it, px. */
 const GAP = 4
+/** Space between postcard transform handle buttons, and from the card edge to the nearest handle, px. */
+const HANDLE_GAP = GAP
+/** The output overlay's outline width (px), for lining chrome up with the visible card edge. */
+const CARD_OUTLINE = 1
 /** Pixels the tags keep from the map's edges. */
 const EDGE = 8
 /**
@@ -266,8 +270,6 @@ const EDGE = 8
 const FIT_AIR = 2 * FIT_PAD
 /** The transform menu's opacity while one of its drags has the output under it. */
 const MENU_FADE = 0.2
-/** Drag farther than this on the transform tag to move; a shorter press toggles the menu. */
-const TRANSFORM_DRAG_PX = 4
 /** Pixels the output keeps from the map's edges while it is moved. */
 const KEEP = 16
 /** The band along the map's edges where the pointer moving the output pans the map, px. */
@@ -307,6 +309,34 @@ function TermKey({ title, onClick, className = '', children, ...rest }) {
       {...rest}
     >
       {children}
+    </span>
+  )
+}
+
+/**
+ * Move / rotate / scale on the postcard: pointer-down stays highlighted until
+ * release, even when the cursor leaves the button or passes over a sibling.
+ */
+const HANDLE_CURSOR = {
+  grab: 'cursor-grab active:cursor-grabbing',
+  ew: 'cursor-ew-resize',
+  nwse: 'cursor-nwse-resize',
+}
+
+function TransformHandle({ icon, title, label, active, onPointerDown, cursor = 'grab' }) {
+  return (
+    <span
+      role="button"
+      tabIndex={0}
+      title={title}
+      aria-label={label}
+      data-active={active || undefined}
+      className={`map-transform-handle map-chip chrome-border box-border inline-flex h-[28px] w-[28px] shrink-0 items-center justify-center border p-0 font-mono select-none ${HANDLE_CURSOR[cursor] ?? HANDLE_CURSOR.grab} ${
+        active ? 'map-transform-handle--active' : ''
+      }`}
+      onPointerDown={onPointerDown}
+    >
+      <span className="map-transform-handle__icon" aria-hidden>{icon}</span>
     </span>
   )
 }
@@ -590,6 +620,7 @@ export default function MapView({
   const tagsRef = useRef(null)
   const awayRef = useRef(null)
   const menuDragRef = useRef(false)
+  const [activeTransform, setActiveTransform] = useState(null)
   const readyRef = useRef(false)
   const lastFitRef = useRef('')
   const initialFitDoneRef = useRef(false)
@@ -643,12 +674,12 @@ export default function MapView({
   if (
     edit?.done &&
     output &&
-    Math.abs(output.lat - edit.lat) < 1e-6 &&
-    Math.abs(output.lng - edit.lng) < 1e-6 &&
-    Math.abs(output.scale - edit.scale) < 0.5 &&
-    Math.abs(norm(output.bearing ?? 0) - norm(edit.bearing ?? 0)) < 1e-6 &&
-    Math.abs(output.width_mm - edit.width_mm) < 0.01 &&
-    Math.abs(output.height_mm - edit.height_mm) < 0.01
+    Math.abs(output.lat - edit.lat) < 1e-5 &&
+    Math.abs(output.lng - edit.lng) < 1e-5 &&
+    Math.abs(output.scale - edit.scale) < 1 &&
+    Math.abs(norm(output.bearing ?? 0) - norm(edit.bearing ?? 0)) < 1e-4 &&
+    Math.abs(output.width_mm - edit.width_mm) < 0.5 &&
+    Math.abs(output.height_mm - edit.height_mm) < 0.5
   ) {
     editRef.current = null
   }
@@ -761,22 +792,14 @@ export default function MapView({
     const { clientWidth: W, clientHeight: H } = map.getContainer()
     const away = !b || b.x > W || b.y > H || b.x + b.w < 0 || b.y + b.h < 0
     if (awayRef.current) awayRef.current.style.display = outputRef.current && away ? '' : 'none'
-    const parts = [labelRef, topRightRef, bottomLeftRef, tagsRef]
     if (away || b.w < 4 || b.h < 4) {
       el.style.display = 'none'
-      for (const r of parts) if (r.current) r.current.style.display = 'none'
       return
     }
-    for (const r of parts) if (r.current) r.current.style.display = ''
     el.style.display = ''
     el.style.transform = `translate3d(${b.x}px, ${b.y}px, 0)`
-    const prev = lastSizeRef.current
-    if (Math.abs(b.w - prev.w) > 0.05 || Math.abs(b.h - prev.h) > 0.05) {
-      prev.w = b.w
-      prev.h = b.h
-      el.style.width = `${b.w}px`
-      el.style.height = `${b.h}px`
-    }
+    el.style.width = `${b.w}px`
+    el.style.height = `${b.h}px`
     const wrap = previewWrapRef.current
     const out = outputRef.current
     // Size the wrap to the card's screen pixels (no inner scale). Safari
@@ -787,35 +810,9 @@ export default function MapView({
       wrap.style.height = `${b.h}px`
       wrap.style.transform = ''
     }
-    // Top-left: style preset dropdown, pinned above the top-left corner.
-    if (labelRef.current) {
-      const l = labelRef.current
-      const x = Math.max(EDGE, Math.min(b.x, W - l.offsetWidth - EDGE))
-      const y = Math.max(l.offsetHeight + EDGE, Math.min(b.y - GAP, H - EDGE))
-      l.style.transform = `translate(${x}px, ${y}px) translateY(-100%)`
-    }
-    // Top-right: DRAW / REGEN / STOP, pinned above the top-right corner.
-    if (topRightRef.current) {
-      const tr = topRightRef.current
-      const x = Math.max(tr.offsetWidth + EDGE, Math.min(b.x + b.w, W - EDGE))
-      const y = Math.max(tr.offsetHeight + EDGE, Math.min(b.y - GAP, H - EDGE))
-      tr.style.transform = `translate(${x}px, ${y}px) translate(-100%, -100%)`
-    }
-    // Bottom-left: download button, pinned below the bottom-left corner.
-    if (bottomLeftRef.current) {
-      const bl = bottomLeftRef.current
-      const x = Math.max(EDGE, Math.min(b.x, W - bl.offsetWidth - EDGE))
-      const y = Math.max(EDGE, Math.min(b.y + b.h + GAP, H - bl.offsetHeight - EDGE))
-      bl.style.transform = `translate(${x}px, ${y}px)`
-    }
-    // Bottom-right: Move, Rotate, Scale handles, pinned below the bottom-right corner.
-    if (tagsRef.current) {
-      const t = tagsRef.current
-      const x = Math.max(Math.min(b.x + b.w, W - EDGE), t.offsetWidth + EDGE)
-      const y = Math.max(Math.min(b.y + b.h + GAP, H - t.offsetHeight - EDGE), EDGE)
-      t.style.transform = `translate(${x}px, ${y}px) translateX(-100%)`
-    }
   }, [])
+  const placeRef = useRef(place)
+  placeRef.current = place
 
   /**
    * A drag that starts in the menu fades it over the output until release (see
@@ -881,7 +878,7 @@ export default function MapView({
     map.on('load', () => {
       map.resize()
       readyRef.current = true
-      place()
+      placeRef.current()
       fitMapToOutputRef.current()
     })
 
@@ -937,7 +934,8 @@ export default function MapView({
     map.on('moveend', keep)
 
     // The map's render loop drives the overlay, so the two never disagree.
-    map.on('render', place)
+    const onRender = () => placeRef.current()
+    map.on('render', onRender)
 
     // The sidebar can be dragged wider: the canvas follows its container.
     // Resizing a canvas clears it, so it is drawn again at once, before the
@@ -953,7 +951,7 @@ export default function MapView({
 
     return () => {
       resized.disconnect()
-      map.off('render', place)
+      map.off('render', onRender)
       map.off('movestart', hideDetail)
       map.off('moveend', keep)
       map.off('zoomend', onZoomEnd)
@@ -1073,6 +1071,7 @@ export default function MapView({
     if (!map || !readyRef.current || !output || !groundKey) return
     if (lastFitRef.current === groundKey) return
     lastFitRef.current = groundKey
+    if (editRef.current) return
     const b = outputBox(map, output)
     const el = map.getContainer()
     if (b && b.w <= el.clientWidth - 2 * FIT_PAD && b.h <= el.clientHeight - 2 * FIT_PAD) return
@@ -1090,22 +1089,34 @@ export default function MapView({
    * release. A step that returns `again: true` is run the next frame too, the
    * pointer still or not.
    */
-  const follow = (e, step, write, cursorEl) => {
+  const follow = (e, step, write, cursorEl, onRelease) => {
     e.preventDefault()
     e.stopPropagation()
     const map = mapRef.current
     const from = outputRef.current
-    if (!map || !from) return
+    if (!map || !from) {
+      onRelease?.()
+      return
+    }
+    if (cursorEl instanceof Element) {
+      try {
+        cursorEl.setPointerCapture(e.pointerId)
+      } catch {
+        // Synthetic or released pointer.
+      }
+    }
     // A field being typed in would keep its text over the live value.
     if (document.activeElement instanceof HTMLInputElement) document.activeElement.blur()
     const start = { x: e.clientX, y: e.clientY }
     let at = null
     let frame = 0
     const apply = () => {
-      const { lat, lng, scale, bearing, width_mm, height_mm } = from
-      const { again, ...to } = step(map, from, at.clientX - start.x, at.clientY - start.y, at)
+      if (!at) return false
+      const base = outputRef.current ?? from
+      const { lat, lng, scale, bearing, width_mm, height_mm } = base
+      const { again, ...to } = step(map, base, at.clientX - start.x, at.clientY - start.y, at)
       editRef.current = { lat, lng, scale, bearing, width_mm, height_mm, ...to }
-      outputRef.current = { ...from, ...editRef.current }
+      outputRef.current = { ...base, ...editRef.current }
       place()
       return again
     }
@@ -1130,21 +1141,42 @@ export default function MapView({
       map.off('zoom', zoomed)
       window.removeEventListener('pointermove', move)
       window.removeEventListener('pointerup', up)
+      window.removeEventListener('pointercancel', up)
       document.body.style.cursor = ''
+      if (cursorEl instanceof Element) {
+        try {
+          cursorEl.releasePointerCapture(e.pointerId)
+        } catch {
+          // Already released.
+        }
+      }
       if (frame) {
         cancelAnimationFrame(frame)
         apply()
       }
       const to = editRef.current
-      if (!at || !to || to.done) return
-      to.done = true
-      write(to)
+      if (at && to && !to.done) {
+        to.done = true
+        write(to)
+      }
+      onRelease?.()
     }
     const el = cursorEl instanceof Element ? cursorEl : e.currentTarget
     const grab = el instanceof Element ? getComputedStyle(el).cursor : ''
     document.body.style.cursor = grab && grab !== 'auto' ? grab : 'grabbing'
     window.addEventListener('pointermove', move)
     window.addEventListener('pointerup', up)
+    window.addEventListener('pointercancel', up)
+  }
+
+  const releaseTransform = () => setActiveTransform(null)
+
+  const beginTransform = (kind, e, run) => {
+    if (e.button !== 0) return
+    e.preventDefault()
+    e.stopPropagation()
+    setActiveTransform(kind)
+    if (!run()) setActiveTransform(null)
   }
 
   /**
@@ -1160,7 +1192,7 @@ export default function MapView({
     const map = mapRef.current
     const from = outputRef.current
     const b0 = map && from ? outputBox(map, from) : null
-    if (!b0) return
+    if (!b0) return false
     const top = (labelRef.current?.offsetHeight ?? 0) + GAP
     const r0 = map.getContainer().getBoundingClientRect()
     const p0 = { x: e.clientX - r0.left, y: e.clientY - r0.top }
@@ -1207,7 +1239,9 @@ export default function MapView({
       },
       (to) => onMoveOutput?.({ lat: to.lat, lng: to.lng }),
       cursorEl,
+      releaseTransform,
     )
+    return true
   }
   startDragRef.current = startDrag
 
@@ -1216,7 +1250,7 @@ export default function MapView({
   /** Turn the map under the output; always whole degrees (menu ↻ still uses Shift for 15°). */
   const startRotate = (e, cursorEl) => {
     const from = outputRef.current
-    if (!from) return
+    if (!from) return false
     const start = norm(from.bearing ?? 0)
     follow(
       e,
@@ -1229,55 +1263,75 @@ export default function MapView({
       },
       (to) => onOutputKeys?.({ bearing: to.bearing }),
       cursorEl,
+      releaseTransform,
     )
+    return true
   }
 
-  /** Change scale with the paper size fixed (⤡ terrain mode in the menu); Shift steps 20%. */
+  /** Screen pixels along one axis → paper mm at the output's current scale. */
+  const pxToPaperMm = (map, output, px) => {
+    const kmPerPx = groundWidthAt(output.lat, map.getZoom(), 1)
+    return (px * kmPerPx * 1e6) / output.scale
+  }
+
+  /**
+   * Scale the selection: proportional from the centre (default); Shift changes
+   * width and height separately about the centre; Alt (Option) keeps the
+   * top-left corner fixed on the map while width and height follow dx/dy.
+   */
   const startScale = (e, cursorEl) => {
+    const map = mapRef.current
     const from = outputRef.current
-    if (!from) return
-    const start = from.scale
+    if (!from || !map) return false
+    const b0 = outputBox(map, from)
+    if (!b0) return false
+    const u = unitsRef.current
+    const anchor = map.unproject([b0.x, b0.y])
+    const initialMode = e.altKey ? 'topleft' : e.shiftKey ? 'axis-center' : null
+    const start = {
+      scale: from.scale,
+      width_mm: from.width_mm,
+      height_mm: from.height_mm,
+      lat: from.lat,
+      lng: from.lng,
+    }
     follow(
       e,
-      (_map, _from, dx, _dy, ev) => {
-        const n = Math.round(dx / PX_PER_STEP)
-        const scale = scaleModel.nudge(start, n, ev.shiftKey)
-        return { scale }
+      (map, _from, dx, dy, ev) => {
+        const mode = ev?.altKey ? 'topleft' : ev?.shiftKey ? 'axis-center' : (initialMode ?? 'proportional')
+        const probe = { lat: start.lat, scale: start.scale }
+        if (mode === 'proportional') {
+          const drag = Math.abs(dx) >= Math.abs(dy) ? dx : dy
+          const width_mm = Math.max(1, start.width_mm + pxToPaperMm(map, probe, drag))
+          const ratio = width_mm / start.width_mm
+          const height_mm = Math.max(1, start.height_mm * ratio)
+          return { width_mm, height_mm, lat: start.lat, lng: start.lng }
+        }
+        const width_mm = Math.max(1, start.width_mm + pxToPaperMm(map, probe, dx))
+        const height_mm = Math.max(1, start.height_mm + pxToPaperMm(map, probe, dy))
+        if (mode === 'axis-center') {
+          return { width_mm, height_mm, lat: start.lat, lng: start.lng }
+        }
+        const kmPerPx = groundWidthAt(start.lat, map.getZoom(), 1)
+        const wPx = ((width_mm * start.scale) / 1e6) / kmPerPx
+        const hPx = ((height_mm * start.scale) / 1e6) / kmPerPx
+        const anchorScreen = map.project([anchor.lng, anchor.lat])
+        const center = map.unproject([anchorScreen.x + wPx / 2, anchorScreen.y + hPx / 2])
+        return { width_mm, height_mm, lat: center.lat, lng: center.lng }
       },
-      (to) => onOutputKeys?.({ scale: scaleKey(to.scale) }),
+      (to) => {
+        const patch = {}
+        if (to.scale !== undefined) patch.scale = scaleKey(to.scale)
+        if (to.width_mm !== undefined) patch.width = lengthText(to.width_mm, u.width)
+        if (to.height_mm !== undefined) patch.height = lengthText(to.height_mm, u.height)
+        if (to.lat !== undefined) patch.lat = to.lat
+        if (to.lng !== undefined) patch.lng = to.lng
+        onOutputKeys?.(patch)
+      },
       cursorEl,
+      releaseTransform,
     )
-  }
-
-  /** Click toggles the menu; drag moves, Shift+drag rotates, Alt+drag scales. */
-  const onTransformPointerDown = (e) => {
-    if (e.button !== 0) return
-    e.preventDefault()
-    e.stopPropagation()
-    const down = { x: e.clientX, y: e.clientY }
-    const handle = e.currentTarget
-    let dragging = false
-    const move = (ev) => {
-      if (dragging) return
-      if (Math.hypot(ev.clientX - down.x, ev.clientY - down.y) < TRANSFORM_DRAG_PX) return
-      dragging = true
-      cleanup()
-      if (ev.shiftKey) startRotate(e, handle)
-      else if (ev.altKey) startScale(e, handle)
-      else startDrag(e, handle)
-    }
-    const up = () => {
-      cleanup()
-      if (!dragging) setMenu((m) => !m)
-    }
-    const cleanup = () => {
-      window.removeEventListener('pointermove', move)
-      window.removeEventListener('pointerup', up)
-      window.removeEventListener('pointercancel', up)
-    }
-    window.addEventListener('pointermove', move)
-    window.addEventListener('pointerup', up)
-    window.addEventListener('pointercancel', up)
+    return true
   }
 
   const showBootScreen = !appReady || !mapBooted
@@ -1310,189 +1364,169 @@ export default function MapView({
 
       {/*
         Positioned with a transform on the map's own render tick (see `place`),
-        so it can never be a frame behind the ground it sits on. Before the
-        first draw it is a see-through frame, so the map it covers stays
-        readable; once drawn it is a sheet of paper.
+        so it can never be a frame behind the ground it sits on. Its four corner
+        bars live inside the same wrapper so they share the exact same subpixel
+        transform and outer border edges without independent composite jitter.
       */}
       <div
         ref={overlayRef}
-        className={`pointer-events-none absolute left-0 top-0 overflow-hidden outline outline-[color:var(--chrome-divider)] ${RAISED} ${
-          paperBg ? 'bg-[var(--background0)]' : 'bg-[color-mix(in_srgb,var(--background0)_20%,transparent)]'
-        }`}
+        className="pointer-events-none absolute left-0 top-0 z-[25]"
         style={{ display: 'none', willChange: 'transform' }}
       >
-        <div ref={previewWrapRef} className="relative h-full w-full origin-top-left">
-          {drawing?.preview ? (
-            <>
-              <canvas
-                ref={previewCanvasRef}
-                className={`block h-full w-full select-none ${previewDim}`}
-              />
-              <canvas
-                ref={detailCanvasRef}
-                className={`pointer-events-none absolute bg-[var(--background0)] select-none ${previewDim}`}
-                style={{ display: 'none' }}
-              />
-            </>
-          ) : drawing?.svg && svgUrl ? (
-            <img
-              className={`block h-full w-full select-none object-fill ${previewDim}`}
-              src={svgUrl}
-              alt=""
-              draggable={false}
-              decoding="async"
-            />
-          ) : null}
-        </div>
-        {output && <Guides output={output} showMargins={!drawing?.preview} />}
-      </div>
-
-      {/* Top-left of postcard: style preset dropdown */}
-      {output && (
         <div
-          ref={labelRef}
-          className="absolute left-0 top-0 z-[26]"
-          style={{ display: 'none', willChange: 'transform' }}
+          className={`pointer-events-none absolute inset-0 overflow-hidden border border-[color:var(--chrome-divider)] ${RAISED} ${
+            paperBg ? 'bg-[var(--background0)]' : 'bg-[color-mix(in_srgb,var(--background0)_20%,transparent)]'
+          }`}
         >
-          <StylePresetPicker doc={doc} setDoc={setDoc} onPlaceMap={onPlaceMap} />
+          <div ref={previewWrapRef} className="relative h-full w-full origin-top-left">
+            {drawing?.preview ? (
+              <>
+                <canvas
+                  ref={previewCanvasRef}
+                  className={`block h-full w-full select-none ${previewDim}`}
+                />
+                <canvas
+                  ref={detailCanvasRef}
+                  className={`pointer-events-none absolute bg-[var(--background0)] select-none ${previewDim}`}
+                  style={{ display: 'none' }}
+                />
+              </>
+            ) : drawing?.svg && svgUrl ? (
+              <img
+                className={`block h-full w-full select-none object-fill ${previewDim}`}
+                src={svgUrl}
+                alt=""
+                draggable={false}
+                decoding="async"
+              />
+            ) : null}
+          </div>
+          {output && <Guides output={output} showMargins={!drawing?.preview} />}
         </div>
-      )}
 
-      {/* Top-right of postcard: DRAW / REGEN / STOP */}
-      {output && (
-        <div
-          ref={topRightRef}
-          className="absolute left-0 top-0 z-[26] flex items-center gap-1"
-          style={{ display: 'none', willChange: 'transform' }}
-        >
-          <span
-            role="button"
-            tabIndex={0}
-            title={busy ? 'Stop the draw' : drawing ? 'Draw the selection again' : 'Draw the selection'}
-            aria-label={busy ? 'Stop the draw' : 'Draw the selection'}
-            onClick={busy ? onStop : onDraw}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault()
-                ;(busy ? onStop : onDraw)?.()
-              }
-            }}
-            className={`chrome-border inline-flex cursor-pointer items-center gap-[0.6ch] border px-2 py-0.5 font-mono text-[11px] font-bold whitespace-nowrap select-none ${
-              busy ? 'map-chip' : 'map-chip-strong'
-            } ${RAISED}`}
+        {/* Top-left of postcard: style preset dropdown */}
+        {output && (
+          <div
+            ref={labelRef}
+            className="pointer-events-auto absolute bottom-full left-0 z-[26] mb-[4px]"
           >
-            {busy ? (
-              <svg aria-hidden viewBox="0 0 12 12" className="h-[0.95em] w-[0.95em] shrink-0" fill="currentColor">
-                <rect x="2" y="2" width="8" height="8" />
-              </svg>
-            ) : drawing ? (
-              <svg aria-hidden viewBox="0 0 12 12" className="h-[0.95em] w-[0.95em] shrink-0">
-                <path d="M10 6A4 4 0 1 1 8 2.54" fill="none" stroke="currentColor" strokeWidth="1.5" />
-                <path d="M9.56 3.44L6.68 3.62L8.28 0.85z" fill="currentColor" />
-              </svg>
-            ) : (
-              <svg aria-hidden viewBox="0 0 12 12" className="h-[0.95em] w-[0.95em] shrink-0" fill="currentColor">
-                <path d="M2.5 1.5v9l8-4.5z" />
-              </svg>
-            )}
-            {busy ? 'STOP' : drawing ? 'REGEN' : 'DRAW'}
-          </span>
-        </div>
-      )}
+            <StylePresetPicker doc={doc} setDoc={setDoc} onPlaceMap={onPlaceMap} />
+          </div>
+        )}
 
-      {/* Bottom-left of postcard: Download button (when drawn) */}
-      {output && (
-        <div
-          ref={bottomLeftRef}
-          className="absolute left-0 top-0 z-[25] flex items-center gap-1"
-          style={{ display: 'none', willChange: 'transform' }}
-        >
-          {drawing?.svg && (
+        {/* Top-right of postcard: DRAW / REGEN / STOP */}
+        {output && (
+          <div
+            ref={topRightRef}
+            className="pointer-events-auto absolute right-0 bottom-full z-[26] mb-[4px] flex items-center gap-1"
+          >
             <span
               role="button"
               tabIndex={0}
-              title="Export SVG, PNG, or G-code"
-              aria-label="Download the output"
-              onClick={onDownload}
+              title={busy ? 'Stop the draw' : drawing ? 'Draw the selection again' : 'Draw the selection'}
+              aria-label={busy ? 'Stop the draw' : 'Draw the selection'}
+              onClick={busy ? onStop : onDraw}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' || e.key === ' ') {
                   e.preventDefault()
-                  onDownload?.()
+                  ;(busy ? onStop : onDraw)?.()
                 }
               }}
-              className={`map-chip-strong chrome-border inline-flex cursor-pointer items-center gap-[0.6ch] border px-2 py-0.5 font-mono text-[11px] font-bold whitespace-nowrap select-none ${RAISED}`}
+              className={`chrome-border inline-flex cursor-pointer items-center gap-[0.6ch] border px-2 py-0.5 font-mono text-[11px] font-bold whitespace-nowrap select-none ${
+                busy ? 'map-chip' : 'map-chip-strong'
+              } ${RAISED}`}
             >
-              ↓ download
+              {busy ? (
+                <svg aria-hidden viewBox="0 0 12 12" className="h-[0.95em] w-[0.95em] shrink-0" fill="currentColor">
+                  <rect x="2" y="2" width="8" height="8" />
+                </svg>
+              ) : drawing ? (
+                <svg aria-hidden viewBox="0 0 12 12" className="h-[0.95em] w-[0.95em] shrink-0">
+                  <path d="M10 6A4 4 0 1 1 8 2.54" fill="none" stroke="currentColor" strokeWidth="1.5" />
+                  <path d="M9.56 3.44L6.68 3.62L8.28 0.85z" fill="currentColor" />
+                </svg>
+              ) : (
+                <svg aria-hidden viewBox="0 0 12 12" className="h-[0.95em] w-[0.95em] shrink-0" fill="currentColor">
+                  <path d="M2.5 1.5v9l8-4.5z" />
+                </svg>
+              )}
+              {busy ? 'STOP' : drawing ? 'REGEN' : 'DRAW'}
             </span>
-          )}
-        </div>
-      )}
+          </div>
+        )}
 
-      {/* Bottom-right of postcard: Move, Rotate, Scale drag handles */}
-      {output && (
-        <div
-          ref={tagsRef}
-          className="absolute left-0 top-0 z-[25] flex items-center gap-1"
-          style={{ display: 'none', willChange: 'transform' }}
-        >
-          {output.computed ? (
-            <Tag title="The script computes its output, so it is moved and resized in the script">
-              output computed by the script
-            </Tag>
-          ) : (
-            <div className={`flex items-center gap-1 ${RAISED}`}>
+        {/* Bottom-left of postcard: Download button (when drawn) */}
+        {output && (
+          <div
+            ref={bottomLeftRef}
+            className="pointer-events-auto absolute top-full left-0 z-[25] mt-[4px] flex items-center gap-1"
+          >
+            {drawing?.svg && (
               <span
                 role="button"
                 tabIndex={0}
-                title="Drag to move the selection across the map"
-                aria-label="Move selection"
-                onPointerDown={(e) => {
-                  if (e.button !== 0) return
-                  startDrag(e, e.currentTarget)
+                title="Export SVG, PNG, or G-code"
+                aria-label="Download the output"
+                onClick={onDownload}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault()
+                    onDownload?.()
+                  }
                 }}
-                className="map-chip chrome-border inline-flex h-[24px] w-[26px] cursor-grab items-center justify-center border font-mono select-none active:cursor-grabbing"
+                className={`map-chip-strong chrome-border inline-flex cursor-pointer items-center gap-[0.6ch] border px-2 py-0.5 font-mono text-[11px] font-bold whitespace-nowrap select-none ${RAISED}`}
               >
-                <svg aria-hidden viewBox="0 0 14 14" className="h-[13px] w-[13px]" fill="none" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M7 1.5v11M1.5 7h11" />
-                  <path d="M5 3.5L7 1.5l2 2M5 10.5L7 12.5l2-2M3.5 5L1.5 7l2 2M10.5 5l2 2-2 2" />
-                </svg>
+                ↓ download
               </span>
-              <span
-                role="button"
-                tabIndex={0}
-                title="Drag left or right to rotate the map under the selection (1° steps)"
-                aria-label="Rotate selection"
-                onPointerDown={(e) => {
-                  if (e.button !== 0) return
-                  startRotate(e, e.currentTarget)
-                }}
-                className="map-chip chrome-border inline-flex h-[24px] w-[26px] cursor-ew-resize items-center justify-center border font-mono select-none"
+            )}
+          </div>
+        )}
+
+        {/* Bottom-right of postcard: Move, Rotate, Scale drag handles */}
+        {output && (
+          <div
+            ref={tagsRef}
+            className="pointer-events-auto absolute top-full right-0 z-[25] mt-[4px]"
+            style={{ '--handle-gap': `${HANDLE_GAP}px` }}
+          >
+            {output.computed ? (
+              <Tag title="The script computes its output, so it is moved and resized in the script">
+                output computed by the script
+              </Tag>
+            ) : (
+              <div
+                className="map-transform-handles flex items-center"
+                data-dragging={activeTransform ? '' : undefined}
               >
-                <svg aria-hidden viewBox="0 0 14 14" className="h-[13px] w-[13px]" fill="none" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M11.5 7a4.5 4.5 0 1 1-1.3-3.2" />
-                  <path d="M11.5 1.8v2.4H9.1" />
-                </svg>
-              </span>
-              <span
-                role="button"
-                tabIndex={0}
-                title="Drag left or right to scale the selection (hold Shift for larger steps)"
-                aria-label="Scale selection"
-                onPointerDown={(e) => {
-                  if (e.button !== 0) return
-                  startScale(e, e.currentTarget)
-                }}
-                className="map-chip chrome-border inline-flex h-[24px] w-[26px] cursor-ew-resize items-center justify-center border font-mono select-none"
-              >
-                <svg aria-hidden viewBox="0 0 14 14" className="h-[13px] w-[13px]" fill="none" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M2.5 11.5l9-9" />
-                  <path d="M8 2.5h3.5V6M6 11.5H2.5V8" />
-                </svg>
-              </span>
-            </div>
-          )}
-        </div>
-      )}
+                <TransformHandle
+                  icon="✥"
+                  label="Move selection"
+                  title="Drag to move the selection across the map"
+                  active={activeTransform === 'move'}
+                  cursor="grab"
+                  onPointerDown={(e) => beginTransform('move', e, () => startDrag(e, e.currentTarget))}
+                />
+                <TransformHandle
+                  icon="↻"
+                  label="Rotate selection"
+                  title="Drag left or right to rotate the map under the selection (1° steps)"
+                  active={activeTransform === 'rotate'}
+                  cursor="ew"
+                  onPointerDown={(e) => beginTransform('rotate', e, () => startRotate(e, e.currentTarget))}
+                />
+                <TransformHandle
+                  icon="⤡"
+                  label="Scale selection"
+                  title="Drag to scale proportionally from centre · Shift+drag: width & height from centre · Alt/Option+drag: width & height from top-left"
+                  active={activeTransform === 'scale'}
+                  cursor="nwse"
+                  onPointerDown={(e) => beginTransform('scale', e, () => startScale(e, e.currentTarget))}
+                />
+              </div>
+            )}
+          </div>
+        )}
+      </div>
 
       {output && (
         <div className="absolute top-2 left-2 z-20 flex flex-wrap items-center gap-1.5">
