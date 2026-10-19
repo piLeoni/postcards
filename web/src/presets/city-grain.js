@@ -114,23 +114,38 @@ const FILL_COURT     = { pattern: "dots", lattice: "square", spacing: "0.55mm", 
 /** @type {Omit<FillOptions, "in">} */
 const FILL_TRACK     = { ...FILL_COURT, spacing: "0.45mm" }
 
-// 1e. 3D Foliage Canopy Tiers (`isoline-stack`, lit from top-left `light_angle: 225`)
+// 1e. 3D Foliage Canopy Tiers (`pattern: "isoline-stack"`)
+// Messiness knobs (shared look — change in CANOPY_BASE):
+//   jitter     contour wobble (0 smooth … ~2+ spiky; penfill default ~0.88)
+//   lobes      bough clefts / compound lobes (0–2.5; default 1.0)
+//   elongation wind-swept oval crowns (0–1)
+//   light      shadow-side hatching strength (0 off … 1 heavy); light_angle / light_elevation aim the sun
+//   bubble     leaf-tuft scale in mm (omit → ~0.28× spacing; larger often reads calmer)
+// Distribution knobs (per tier — spacing, coverage, slices):
+//   spacing    typical crown radius (mm); larger → fewer, bigger trees
+//   coverage   how patchy crowns are (0–1); lower → more clearings between trees
+//   slices     contour rings per crown; fewer → simpler silhouettes
+//   edge/overflow  dense forest only: overflow bulge past polygon edge
 /** @type {Omit<FillOptions, "in">} */
 const CANOPY_BASE = {
   pattern: "isoline-stack",
   seed: 7,
-  slices: 5,
-  jitter: 4,
-  light: 0.85,
+  jitter: 1.25,
+  light: 0.7,
   light_angle: 225,
+  light_elevation: 38,
   edge: "inside",
+  lobes: 1.0,
+  elongation: 0.12,
+  spacing:"3.0mm",
+  slices: 5
 }
 /** @type {Omit<FillOptions, "in">} */
-const CANOPY_DENSE_SPEC = { ...CANOPY_BASE, edge: "overflow", overflow: "0.40mm", spacing: "2.00mm", slices: 6, coverage: 0.85, bubble: "1.00mm" }
+const CANOPY_DENSE_SPEC = { ...CANOPY_BASE, edge: "overflow", overflow: "0.34mm",spacing:"3.0mm",  coverage: 0.82 }
 /** @type {Omit<FillOptions, "in">} */
-const CANOPY_PARK_SPEC  = { ...CANOPY_BASE, spacing: "1.15mm", slices: 3, coverage: 0.60, bubble: "0.58mm" }
+const CANOPY_PARK_SPEC  = { ...CANOPY_BASE,  spacing:"2.5mm", coverage: 0.58 }
 /** @type {Omit<FillOptions, "in">} */
-const CANOPY_SHRUB_SPEC = { ...CANOPY_BASE, spacing: "0.75mm", slices: 2, coverage: 0.55, bubble: "0.40mm" }
+const CANOPY_SHRUB_SPEC = { ...CANOPY_BASE, spacing:"2.0mm", coverage: 0.52 }
 
 // 1f. Terrain Slope Hatching (Burin)
 const BURIN_URBAN_FADE = {

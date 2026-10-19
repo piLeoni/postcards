@@ -122,17 +122,17 @@ fn to_lines(strokes: penfill::Strokes) -> Lines {
         .collect()
 }
 
-struct Opts<'a> {
+pub(crate) struct Opts<'a> {
     generator: &'a str,
     options: &'a BTreeMap<String, Value>,
 }
 
 impl Opts<'_> {
-    fn bad(&self, key: &str, msg: impl Into<String>) -> FillError {
+    pub(crate) fn bad(&self, key: &str, msg: impl Into<String>) -> FillError {
         FillError::BadOption { generator: self.generator.into(), key: key.into(), msg: msg.into() }
     }
 
-    fn mm(&self, key: &str) -> Result<Option<f64>, FillError> {
+    pub(crate) fn mm(&self, key: &str) -> Result<Option<f64>, FillError> {
         match self.options.get(key) {
             None | Some(Value::Null) => Ok(None),
             Some(Value::Number(n)) => Ok(n.as_f64()),
@@ -141,7 +141,7 @@ impl Opts<'_> {
         }
     }
 
-    fn num(&self, key: &str) -> Result<Option<f64>, FillError> {
+    pub(crate) fn num(&self, key: &str) -> Result<Option<f64>, FillError> {
         match self.options.get(key) {
             None | Some(Value::Null) => Ok(None),
             Some(Value::Number(n)) => Ok(n.as_f64()),
@@ -149,7 +149,7 @@ impl Opts<'_> {
         }
     }
 
-    fn str(&self, key: &str) -> Result<Option<&str>, FillError> {
+    pub(crate) fn str(&self, key: &str) -> Result<Option<&str>, FillError> {
         match self.options.get(key) {
             None | Some(Value::Null) => Ok(None),
             Some(Value::String(s)) => Ok(Some(s)),
@@ -180,7 +180,7 @@ fn default_angle(generator: &str) -> f64 {
 /// Where the pattern's lattice sits. Global by default: one lattice for the
 /// whole output, so neighbouring areas filled alike (wood next to grass) don't
 /// show where one ends. A sunburst is the one pattern centred on its shape.
-fn anchor(o: &Opts) -> Result<penfill::Anchor, FillError> {
+pub(crate) fn anchor(o: &Opts) -> Result<penfill::Anchor, FillError> {
     use penfill::{Anchor, Origin};
     let (x, y) = o.point("shift")?.unwrap_or((0.0, 0.0));
     if let Some(c) = o.point("centre")?.or(o.point("center")?) {
@@ -257,62 +257,19 @@ fn run_generator_into(region: &Region, generator: &str, spec: &FillSpec, sink: &
             return Ok(());
         }
     }
-    let natively_frayed = matches!(
-        generator,
-        "cell-net" | "tufts" | "eddies" | "twigs" | "ripples" | "vines" | "swells"
-    );
+    if let Some(whole) = crate::fill_penfill::try_fill_by_name(r, generator, spec, &o)? {
+        sink.batch(whole);
+        return Ok(());
+    }
     let mut whole = match generator {
-        "rectilinear" => rectilinear::fill_rectilinear(r, s, a, inset, at),
-        "lines" => grid::fill_lines(r, s, a, at),
-        "grid" => grid::fill_grid(r, s, a, at),
-        "dots" => {
-            let lattice = match o.str("lattice")?.unwrap_or("square") {
-                "square" => Lattice::Square,
-                "hex" | "hexagonal" => Lattice::Hexagonal,
-                other => return Err(o.bad("lattice", format!("{other:?}: use square or hexagonal"))),
-            };
-            dotswaves::fill_dots_with_lattice(r, s, a, mark(0.2), lattice, at)
-        }
-        "waves" => {
-            if fray > 0.0 {
-                dotswaves::fill_waves_frayed(r, s, a, at, fray, seed)
-            } else {
-                dotswaves::fill_waves(r, s, a, at)
-            }
-        }
-        "zigzag" => zigzag::fill_zigzag_inset(r, s, a, inset, at),
-        "triangles" => grid::fill_triangles(r, s, a, at),
         "honeycomb" => honeycomb::fill_honeycomb(r, s, a, o.mm("line_width")?.unwrap_or(0.0), at),
-        "wave_grid" => dotswaves::fill_wave_grid(r, s, a, at),
-        "scales" => scales::fill_scales(r, s, a, at),
-        "sunburst" => radial::fill_sunburst(r, s, a, at),
-        "spiral" => spiral::fill_spiral(r, s),
-        "concentric" => concentric::fill_concentric(r, s, inset),
-        "hilbert" => hilbert::fill_hilbert(r, s, inset),
-        "stipple" => stipple::fill_stipple(r, s, mark(0.2), seed),
-        "grass" => grass::fill_grass(r, s, a, seed, at),
-        "gravel" => gravel::fill_gravel(r, s, seed),
-        "scribble" => scribble::fill_scribble(r, s, a, seed),
-        "truchet" => truchet::fill_truchet(r, s, a, seed, at),
-        "isoline-blobs" | "isoline-stack" | "isoline-stack-hatched" | "growth" => covering(r, spec, true)?.strokes,
-        "marble" => textures::fill_marble(r, s, a, seed, at),
-        "wood" => textures::fill_wood(r, s, a, seed, at),
-        "cracks" => textures::fill_cracks(r, s, seed),
         "terrazzo" => terrazzo::fill_terrazzo(r, s, o.mm("hatch")?.unwrap_or(s / 6.0), seed),
         "chess" => chess::fill_chess(r, o.mm("cell")?.unwrap_or(s * 8.0), s, a, at),
-        "pat" => {
-            let name = o.str("name")?.ok_or_else(|| o.bad("name", "pat needs a pattern name"))?;
-            let pattern = pat::builtin(name)
-                .ok_or_else(|| o.bad("name", format!("{name:?}: known {}", pat::BUILTIN.join(", "))))?;
-            pat::fill_pat(r, &pattern, o.mm("scale")?.unwrap_or(s), a, at)
-        }
+        "isoline-blobs" | "isoline-stack" | "isoline-stack-hatched" | "growth" => covering(r, spec, true)?.strokes,
         "none" | "solid" => vec![],
-        other => match crate::fill_extra::run(other, r, s, a, seed, at, fray) {
-            Some(whole) => whole,
-            None => return Err(FillError::UnknownGenerator(other.into())),
-        },
+        other => return Err(FillError::UnknownGenerator(other.into())),
     };
-    if fray > 0.0 && !natively_frayed && !matches!(generator, "waves") {
+    if fray > 0.0 {
         whole = penfill::fray::fray_strokes(r, whole, s, fray, seed);
     }
     sink.batch(whole);
@@ -360,6 +317,8 @@ fn covering(r: &Region, spec: &FillSpec, take: bool) -> Result<penfill::FillWith
     let seed = spec.seed.unwrap_or(0);
     let run = match generator {
         "isoline-blobs" => {
+            let edge = crate::fill_penfill::parse_edge(&o, s)?;
+            let fray = o.mm("fray")?.unwrap_or(0.0);
             let params = penfill::IsolineFieldParams {
                 seed,
                 source: penfill::FieldSource::Noise,
@@ -367,6 +326,8 @@ fn covering(r: &Region, spec: &FillSpec, take: bool) -> Result<penfill::FillWith
                 contour_spacing: o.mm("contour")?.unwrap_or(s * 0.045),
                 warp: o.num("warp")?.unwrap_or(0.45),
                 threshold: o.num("threshold")?.unwrap_or(0.25),
+                edge,
+                fray,
             };
             penfill::fill_isoline_blobs_with_coverage(r, &params)
         }
@@ -378,6 +339,8 @@ fn covering(r: &Region, spec: &FillSpec, take: bool) -> Result<penfill::FillWith
                 Some(n) => RootSource::Generate(n.max(0.0) as usize),
                 None => RootSource::Every(o.mm("root_spacing")?.unwrap_or(s * 12.0)),
             };
+            let edge = crate::fill_penfill::parse_edge(&o, s)?;
+            let fray = o.mm("fray")?.unwrap_or(0.0);
             let params = GrowthParams {
                 seed,
                 roots,
@@ -391,42 +354,45 @@ fn covering(r: &Region, spec: &FillSpec, take: bool) -> Result<penfill::FillWith
                 max_passes: o.num("trunk")?.map_or(3, |n| n.max(0.0) as usize),
                 coverage: o.num("coverage")?.unwrap_or(1.0),
                 variation: o.num("variation")?.unwrap_or(GrowthParams::default().variation),
+                edge,
+                fray,
                 ..GrowthParams::default()
             };
             fill_growth_with_coverage(r, &params)
         }
         "isoline-stack" | "isoline-stack-hatched" => {
-            use penfill::isoline_stack::{fill_isoline_stack_with_coverage, CrownSource, EdgeMode, IsolineStackParams};
+            use penfill::isoline_stack::{fill_isoline_stack_with_coverage, IsolineStackParams};
             let is_hatched = generator == "isoline-stack-hatched";
-            let edge = match o.str("edge")?.unwrap_or("clip") {
-                "clip" => EdgeMode::Clip,
-                "inside" => EdgeMode::Inside,
-                "overflow" => EdgeMode::Overflow(o.mm("overflow")?.unwrap_or(s * 0.4)),
-                other => return Err(o.bad("edge", format!("{other:?}: use clip, inside or overflow"))),
-            };
-            let light_strength = o.num("light")?.or_else(|| is_hatched.then_some(0.85)).filter(|s| *s > 0.0);
-            let light = match light_strength {
-                Some(strength) => Some(penfill::isoline_stack::Light {
+            let mut fill = crate::fill_penfill::fill_params(generator, spec, &o)?;
+            if o.num("light")?.is_none() && is_hatched {
+                fill = fill.custom("light", 0.85);
+            }
+            if o.num("slices")?.is_none() {
+                let default_slices = if is_hatched { 4.0 } else { 14.0 };
+                fill = fill.custom("slices", default_slices);
+            }
+            if o.num("jitter")?.is_none() {
+                fill = fill.custom("jitter", if is_hatched { 1.8 } else { 0.8 });
+            }
+            if is_hatched && o.mm("hatch")?.is_none() {
+                fill = fill.custom("hatch", 0.45);
+            }
+            if o.num("light_angle")?.is_none() && fill.get_custom("light", 0.0) > 0.0 {
+                fill = fill.custom("light_angle", 0.0);
+            }
+            let params = IsolineStackParams::from_fill_params(&fill, s);
+            let mut stack = params;
+            if let Some(strength) = o.num("light")?.or_else(|| is_hatched.then_some(0.85)).filter(|v| *v > 0.0) {
+                stack.light = Some(penfill::isoline_stack::Light {
                     from_deg: o.num("light_angle")?.unwrap_or(0.0),
                     strength,
                     elevation_deg: o.num("light_elevation")?.unwrap_or(35.0),
                     hatch: o.mm("hatch")?.unwrap_or(if is_hatched { 0.45 } else { 0.0 }),
-                }),
-                None => None,
-            };
-            let default_slices = if is_hatched { 4.0 } else { 14.0 };
-            let params = IsolineStackParams {
-                seed,
-                crowns: CrownSource::Generate,
-                crown: s,
-                bubble: o.mm("bubble")?.unwrap_or(s * 0.3),
-                coverage: o.num("coverage")?.unwrap_or(0.6),
-                slices: o.num("slices")?.unwrap_or(default_slices).clamp(1.0, 64.0) as usize,
-                jitter: o.num("jitter")?.unwrap_or(if is_hatched { 1.8 } else { 0.8 }),
-                edge,
-                light,
-            };
-            fill_isoline_stack_with_coverage(r, &params)
+                });
+            } else if !is_hatched && o.num("light")?.is_some_and(|v| v <= 0.0) {
+                stack.light = None;
+            }
+            fill_isoline_stack_with_coverage(r, &stack)
         }
         other => unreachable!("{other} does not report coverage"),
     };

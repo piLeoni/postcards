@@ -116,8 +116,12 @@ interface FillOptions {
   bubble?: Length
   /** `isoline-stack`: horizontal slices through the stack; more rings. Default 14. */
   slices?: number
-  /** `isoline-stack`: outline wobble (0–1+). `growth`: steering wobble (0–1ish). Default 0.8 for `isoline-stack`, 0.1 for `growth`. */
+  /** `isoline-stack`: contour jaggedness (`jaggedness`, 0–2+). `growth`: steering wobble (0–1ish). Default 0.88 for `isoline-stack`, 0.1 for `growth`. */
   jitter?: number
+  /** `isoline-stack`: crown elliptical elongation / wind sweep (0–1). Default 0.15. */
+  elongation?: number
+  /** `isoline-stack`: bough cleft depth and compound sub-crown lobing (0–2.5). Default 1.0. */
+  lobes?: number
   /**
    * `isoline-stack`: a sun from one direction (0–1, off by default). The
    * stack's top surface is lit with cast shadows; the shadow side is hatched

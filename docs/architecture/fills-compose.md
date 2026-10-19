@@ -7,8 +7,8 @@ Turn areas into pen paths (patterns or outlines) and emit grouped SVG in millime
 ## Fills (`fill.rs`)
 
 - Input: `FillSpec` from profile + `MultiPolygon` region in mm.
-- Backed by **penfill** (`Region`, generators, optional SVG `source`).
-- Generator names in `GENERATORS` (must stay in sync with d.ts / penfill). Optional `fray` (mm) uses `penfill::fray` for perimeter-aware edge fade; cell-net, tufts, eddies, twigs, ripples, vines, and swells fray inside penfill; other generators get `fray_strokes` when `fray > 0`.
+- Backed by **penfill** (`Region`, `fill_by_name` / `FillParams`, optional SVG `source`). Profile options map in `fill_penfill.rs` (draw.land hyphen names → registry names, gallery spacing scales).
+- Generator names in `GENERATORS` (must stay in sync with d.ts / penfill). `edge`, `fray`, and pattern-specific keys become `FillParams` + `custom`; canopy / growth / isoline-blobs still use coverage-aware paths in `fill.rs`.
 - Output: `geom::Lines` (same type as hand-drawn linework).
 
 Per-feature fills (`per: "feature"`) iterate features for placement.
