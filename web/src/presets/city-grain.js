@@ -49,6 +49,14 @@ const FILL_ORIENT      = "tl-br"    // preferred stroke direction for fills to p
 // - Individual entries can also use `{ ground: m }` or `{ paper: mm }` to mix both
 // - `multiplyByLanes`: multiplies each class's width by lane count (`lanes` tag or class `lanes`)
 // - `singleLine: true`: drawn as a single stroke on `roads.trails` / `roads.rails` with mask `clearance`
+// - Centre dashes: engine emits them only when total carriageway width ≥ `centerlineMinWidth`
+//   (lanes × per-lane ground × `widthMultiplier`, plus OSM width tags). `centerline: true`
+//   would force dashes even on narrow bits — avoid it. `centerline: false` on minor classes
+//   blocks dashes even when OSM width is large. Arterials use `ARTERIAL_WIDTH` so real
+//   boulevards clear the threshold; skinny links stay outline-only.
+const CENTERLINE_MIN_GROUND_M = 11.0
+const ARTERIAL_WIDTH = 1.5
+const arterialLane = (groundM, lanes) => ({ ground: groundM * ARTERIAL_WIDTH, lanes })
 /** @type {Omit<RoadOptions, "from">} */
 const ROAD_OPTIONS = {
   widthMode: "ground",
@@ -56,26 +64,26 @@ const ROAD_OPTIONS = {
   useWidthTag: true,
   multiplyByLanes: true,
   inferLanesByClass: true,
-  centerlineMinWidth: { ground: 7.0 },
+  centerlineMinWidth: { ground: CENTERLINE_MIN_GROUND_M },
   jointClose: { ground: 3.0 },
   clearance: 1,
   classes: {
-    motorway:       { ground: 3.75, lanes: 4, centerline: true },
-    motorway_link:  { ground: 4.5,  lanes: 1 },
-    trunk:          { ground: 3.5,  lanes: 4, centerline: true },
-    trunk_link:     { ground: 4.5,  lanes: 1 },
-    primary:        { ground: 3.5,  lanes: 2, centerline: true },
-    primary_link:   { ground: 4.0,  lanes: 1 },
-    secondary:      { ground: 3.0,  lanes: 2, centerline: true },
-    secondary_link: { ground: 3.5,  lanes: 1 },
-    tertiary:       { ground: 3.0,  lanes: 2 },
-    tertiary_link:  { ground: 3.5,  lanes: 1 },
-    residential:    { ground: 2.5,  lanes: 2 },
-    unclassified:   { ground: 2.5,  lanes: 2 },
-    living_street:  { ground: 4.0,  lanes: 1 },
-    service:        { ground: 3.0,  lanes: 1 },
-    pedestrian:     { ground: 4.0,  lanes: 1 },
-    default:        { ground: 3.0,  lanes: 2 },
+    motorway:       arterialLane(3.75, 4),
+    motorway_link:  { ground: 4.5,  lanes: 1, centerline: false },
+    trunk:          arterialLane(3.5, 4),
+    trunk_link:     { ground: 4.5,  lanes: 1, centerline: false },
+    primary:        arterialLane(3.5, 2),
+    primary_link:   { ground: 4.0,  lanes: 1, centerline: false },
+    secondary:      arterialLane(3.0, 2),
+    secondary_link: { ground: 3.5,  lanes: 1, centerline: false },
+    tertiary:       { ground: 3.0,  lanes: 2, centerline: false },
+    tertiary_link:  { ground: 3.5,  lanes: 1, centerline: false },
+    residential:    { ground: 2.5,  lanes: 2, centerline: false },
+    unclassified:   { ground: 2.5,  lanes: 2, centerline: false },
+    living_street:  { ground: 4.0,  lanes: 1, centerline: false },
+    service:        { ground: 3.0,  lanes: 1, centerline: false },
+    pedestrian:     { ground: 4.0,  lanes: 1, centerline: false },
+    default:        { ground: 3.0,  lanes: 2, centerline: false },
     track:          { singleLine: true, clearance: { ground: 1.0 } },
     footway:        { singleLine: true, clearance: { ground: 1.0 } },
     path:           { singleLine: true, clearance: { ground: 1.0 } },
