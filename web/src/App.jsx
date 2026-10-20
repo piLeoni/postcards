@@ -99,6 +99,8 @@ export default function App() {
   // it, and the trace again once the download is done.
   const [planned, setPlanned] = useState(null)
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  /** True while the user is dragging the script column seam or toggle (hide the map float card). */
+  const [sidebarColumnDrag, setSidebarColumnDrag] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
   // The share sheet, a panel over the map rather than over the script column.
   const [sharing, setSharing] = useState(false)
@@ -642,7 +644,7 @@ export default function App() {
           downloadDoc={doc}
           onDownloadClose={() => setDownloading(false)}
           sidebarOpen={sidebarOpen}
-          onOpenControls={() => setSidebarOpen(true)}
+          sidebarColumnDrag={sidebarColumnDrag}
         />
       </main>
 
@@ -655,7 +657,13 @@ export default function App() {
         />
       ) : null}
 
-      <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} {...sidebar} />
+      <Sidebar
+        open={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+        onOpen={() => setSidebarOpen(true)}
+        onColumnDragChange={setSidebarColumnDrag}
+        {...sidebar}
+      />
       </div>
 
       {/* The documentation, over the page. Kept mounted behind, not unmounted:

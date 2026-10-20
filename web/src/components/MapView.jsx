@@ -293,28 +293,6 @@ const ICONS = {
   search: '⌕',
 }
 
-/** A map key styled like the terminal UI (not a native `button`; WebTUI adds 3lh bars). */
-function TermKey({ title, onClick, className = '', children, ...rest }) {
-  return (
-    <span
-      role="button"
-      tabIndex={0}
-      title={title}
-      className={`map-term-key ${className}`}
-      onClick={onClick}
-      onKeyDown={(e) => {
-        if (onClick && (e.key === 'Enter' || e.key === ' ')) {
-          e.preventDefault()
-          onClick(e)
-        }
-      }}
-      {...rest}
-    >
-      {children}
-    </span>
-  )
-}
-
 /**
  * Move / rotate / scale on the postcard: pointer-down stays highlighted until
  * release, even when the cursor leaves the button or passes over a sibling.
@@ -591,7 +569,7 @@ export default function MapView({
   downloadDoc,
   onDownloadClose,
   sidebarOpen = false,
-  onOpenControls,
+  sidebarColumnDrag = false,
   busy = false,
   appReady = true,
 }) {
@@ -1568,11 +1546,14 @@ export default function MapView({
           <LoadCard load={load} onMin={onLoadMin && (() => onLoadMin(true))} />
         </div>
       )}
-      {/* Center-right floating controls & < EDIT button when the full sidebar column is closed */}
+      {/* Floating controls only when the script column is fully collapsed (not while dragging it open). */}
       {!sidebarOpen && output && (
         <div
-          className="absolute top-1/2 right-3 z-30 flex -translate-y-1/2 flex-col items-end gap-2"
+          className={`absolute top-1/2 right-10 z-30 flex -translate-y-1/2 flex-col items-end transition-opacity duration-200 ${
+            sidebarColumnDrag ? 'pointer-events-none opacity-0' : 'opacity-100'
+          }`}
           onPointerDownCapture={holdMenu}
+          aria-hidden={sidebarColumnDrag}
         >
           <div
             ref={floatPanelRef}
@@ -1622,15 +1603,6 @@ export default function MapView({
               )}
             </PlaceSearchPanel>
           </div>
-          {onOpenControls && (
-            <TermKey
-              title="Expand the script editor column"
-              className={RAISED}
-              onClick={onOpenControls}
-            >
-              {'< EDIT'}
-            </TermKey>
-          )}
         </div>
       )}
 

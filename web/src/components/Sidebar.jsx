@@ -21,7 +21,12 @@ const KEY = { 'size-': 'small', 'variant-': 'background1' }
 /** The column's width on a wide screen, in px: dragged by its left edge, kept. */
 const DEFAULT_WIDTH = 448
 const MIN_WIDTH = 320
-const clampWidth = (w) => Math.round(Math.min(Math.max(w, MIN_WIDTH), window.innerWidth * 0.7))
+/** Narrow hint strip always visible at the map edge when the column is collapsed. */
+const RAIL_PX = 12
+const maxWidth = () => Math.round(window.innerWidth * 0.7)
+const clampOpenWidth = (w) => Math.round(Math.min(Math.max(w, MIN_WIDTH), maxWidth()))
+const pointerWidth = (clientX) =>
+  Math.round(Math.min(Math.max(RAIL_PX, window.innerWidth - clientX), maxWidth()))
 /** The site's pages, opened in place rather than fetched (see `App.jsx`). */
 const go = (e, path) => {
   e.preventDefault()
@@ -73,6 +78,8 @@ const slug = (s) => s.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerC
 export default function Sidebar({
   open,
   onClose,
+  onOpen,
+  onColumnDragChange,
   doc,
   setDoc,
   check,
@@ -92,6 +99,8 @@ export default function Sidebar({
   onMoveDrag,
 }) {
   const [width, setWidth] = useAtom(sidebarWidthAtom)
+  const [dragW, setDragW] = useState(null)
+  const dragWRef = useRef(null)
   const [themeId] = useAtom(themeAtom)
   const readableEditor = themeId === 'silk' || themeId === 'abyss'
   const [selectionOpen, setSelectionOpen] = useState(true)
@@ -274,20 +283,68 @@ export default function Sidebar({
     }
   }
 
-  const resize = (e) => {
+  const startResize = (fromButton) => (e) => {
+    if (e.button !== 0) return
     e.preventDefault()
-    const move = (ev) => setWidth(clampWidth(window.innerWidth - ev.clientX))
+    e.stopPropagation()
+    onColumnDragChange?.(true)
+    const startOpen = open
+    const startW = startOpen ? width : RAIL_PX
+    const startX = e.clientX
+    let lastX = startX
+    let moved = false
+    let closing = null
+
+    const move = (ev) => {
+      if (!moved && Math.abs(ev.clientX - startX) < 4) return
+      moved = true
+      const dx = ev.clientX - lastX
+      if (Math.abs(dx) >= 1) {
+        closing = dx > 0
+        lastX = ev.clientX
+      }
+      const w = pointerWidth(ev.clientX)
+      dragWRef.current = w
+      setDragW(w)
+    }
     const up = () => {
       window.removeEventListener('pointermove', move)
       window.removeEventListener('pointerup', up)
       document.body.style.cursor = ''
       document.body.style.userSelect = ''
+      onColumnDragChange?.(false)
+      if (!moved) {
+        dragWRef.current = null
+        setDragW(null)
+        if (fromButton) {
+          if (startOpen) onClose()
+          else onOpen?.()
+        }
+        return
+      }
+      const lastW = dragWRef.current ?? startW
+      dragWRef.current = null
+      setDragW(null)
+      if (lastW < MIN_WIDTH) {
+        const shouldClose = closing ?? startOpen
+        if (shouldClose) onClose()
+        else {
+          onOpen?.()
+          setWidth(MIN_WIDTH)
+        }
+      } else {
+        if (!startOpen) onOpen?.()
+        setWidth(clampOpenWidth(lastW))
+      }
     }
     document.body.style.cursor = 'col-resize'
     document.body.style.userSelect = 'none'
     window.addEventListener('pointermove', move)
     window.addEventListener('pointerup', up)
   }
+
+  const shellW = dragW ?? (open ? width : RAIL_PX)
+  const contentHidden = shellW <= RAIL_PX
 
   const groups = drawing?.groups ?? []
   const strokes = useMemo(() => groups.reduce((n, [, s]) => n + s, 0), [groups])
@@ -306,11 +363,36 @@ export default function Sidebar({
 
   return (
     <aside
-      className={`fixed inset-x-0 bottom-0 z-40 flex h-[85vh] min-h-0 w-full min-w-0 flex-col border-t border-[color:var(--chrome-divider)] bg-[var(--background0)] px-[2ch] pb-[env(safe-area-inset-bottom,0px)] transition-transform duration-200 sm:relative sm:z-30 sm:h-full sm:pb-0 sm:shadow-[var(--chrome-panel-shadow)] sm:w-[var(--side-w)] sm:shrink-0 sm:translate-y-0 sm:pointer-events-auto sm:border-t-0 sm:border-l sm:border-[color:var(--chrome-divider)] ${
-        open ? 'translate-y-0' : 'pointer-events-none translate-y-full sm:hidden'
-      }`}
-      style={{ '--side-w': `${width}px` }}
+      className={`fixed inset-x-0 bottom-0 z-40 flex h-[85vh] min-h-0 w-full min-w-0 flex-col border-t border-[color:var(--chrome-divider)] bg-[var(--background0)] px-[2ch] pb-[env(safe-area-inset-bottom,0px)] transition-transform duration-200 sm:relative sm:z-30 sm:h-full sm:px-0 sm:pb-0 sm:shadow-[var(--chrome-panel-shadow)] sm:w-[var(--side-w)] sm:shrink-0 sm:translate-y-0 sm:pointer-events-auto sm:border-t-0 sm:border-l sm:border-[color:var(--chrome-divider)] ${
+        open ? 'translate-y-0' : 'pointer-events-none translate-y-full sm:pointer-events-auto sm:translate-y-0'
+      } ${dragW == null ? 'sm:transition-[width] sm:duration-200' : ''}`}
+      style={{ '--side-w': `${shellW}px` }}
     >
+      <span
+        role="button"
+        tabIndex={0}
+        aria-label={open ? 'Collapse script column' : 'Expand script column'}
+        title={open ? 'Collapse script column · drag to resize' : 'Expand script column · drag to resize'}
+        className="chrome-surface chrome-border absolute top-1/2 left-0 z-50 hidden h-9 w-9 -translate-x-[80%] -translate-y-1/2 cursor-pointer items-center justify-center border font-mono text-[15px] font-bold leading-none shadow-[var(--chrome-elevate)] select-none hover:bg-[var(--foreground0)] hover:text-[var(--background0)] sm:flex"
+        onPointerDown={startResize(true)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            if (open) onClose()
+            else onOpen?.()
+          }
+        }}
+      >
+        {open ? '>' : '<'}
+      </span>
+
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+        <div
+          className={`flex min-h-0 flex-1 flex-col overflow-hidden pl-[max(2ch,14px)] pr-[2ch] pb-[env(safe-area-inset-bottom,0px)] sm:pb-0 ${
+            contentHidden ? 'pointer-events-none max-sm:hidden' : ''
+          }`}
+          style={{ width: `max(100%, ${MIN_WIDTH}px)` }}
+        >
       <Panel
         title="Selection"
         collapsible
@@ -318,7 +400,7 @@ export default function Sidebar({
         onOpenChange={setSelectionOpen}
         className="shrink-0"
         aside={(
-          <button type="button" aria-label="Close" {...KEY} onClick={onClose}>✕</button>
+          <button type="button" aria-label="Close" className="sm:hidden" {...KEY} onClick={onClose}>✕</button>
         )}
       >
         <div
@@ -583,15 +665,19 @@ export default function Sidebar({
           </li>
         </ul>
       </details>
+        </div>
+      </div>
 
       <div
         role="separator"
         aria-orientation="vertical"
         aria-label="Resize the column"
         title="Drag to resize · double-click to reset"
-        className="absolute inset-y-0 left-0 z-10 hidden w-[7px] -translate-x-1/2 cursor-col-resize hover:bg-black/10 lg:block"
-        onPointerDown={resize}
-        onDoubleClick={() => setWidth(DEFAULT_WIDTH)}
+        className="absolute inset-y-0 left-0 z-40 hidden w-[7px] -translate-x-1/2 cursor-col-resize hover:bg-black/10 sm:block"
+        onPointerDown={startResize(false)}
+        onDoubleClick={() => {
+          if (open) setWidth(DEFAULT_WIDTH)
+        }}
       />
     </aside>
   )
