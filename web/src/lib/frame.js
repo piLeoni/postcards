@@ -72,11 +72,11 @@ export function zoomToFit(map, output, pad = FIT_PAD) {
   const g = groundKm(output)
   if (!g) return 0
   const el = map.getContainer()
+  const inset = map.getPadding?.() ?? { top: 0, bottom: 0, left: 0, right: 0 }
+  const innerW = el.clientWidth - (inset.left ?? 0) - (inset.right ?? 0) - 2 * pad
+  const innerH = el.clientHeight - (inset.top ?? 0) - (inset.bottom ?? 0) - 2 * pad
   const kmPerPx = groundWidthAt(output.lat, map.getZoom(), 1)
-  const k = Math.min(
-    (el.clientWidth - 2 * pad) / (g[0] / kmPerPx),
-    (el.clientHeight - 2 * pad) / (g[1] / kmPerPx),
-  )
+  const k = Math.min(innerW / (g[0] / kmPerPx), innerH / (g[1] / kmPerPx))
   return k > 0 ? Math.log2(k) : 0
 }
 

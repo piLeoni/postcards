@@ -283,8 +283,68 @@ const ZONE = 40
  */
 const PUSH = 6
 const PUSH_MAX = 1500
+/** Animated pan when the selection should clear the floating panel (zoom unchanged). */
+const FLOAT_RECENTER_MS = 480
 /** What floats over the map: the output, its menu, the buttons in the corner. */
 const RAISED = 'chrome-raised'
+
+function outputClientRect(map, b) {
+  const r = map.getContainer().getBoundingClientRect()
+  return {
+    left: r.left + b.x,
+    top: r.top + b.y,
+    right: r.left + b.x + b.w,
+    bottom: r.top + b.y + b.h,
+  }
+}
+
+function clientRectsOverlap(a, b) {
+  return a.right > b.left && a.left < b.right && a.bottom > b.top && a.top < b.bottom
+}
+
+function outputOverlapsEl(map, b, el) {
+  if (!map || !b || !el) return false
+  return clientRectsOverlap(outputClientRect(map, b), el.getBoundingClientRect())
+}
+
+/** Ease the map centre onto the selection; zoom and bearing stay as they are. */
+function easeMapOntoSelection(map, output) {
+  if (!map || !output) return
+  map.easeTo({
+    center: [output.lng, output.lat],
+    duration: FLOAT_RECENTER_MS,
+  })
+}
+
+/** MapLibre padding for chrome over the canvas (shifts the logical centre). */
+function zeroPadding() {
+  return { top: 0, bottom: 0, left: 0, right: 0 }
+}
+
+function paddingEqual(a, b) {
+  return (
+    (a.top ?? 0) === (b.top ?? 0) &&
+    (a.bottom ?? 0) === (b.bottom ?? 0) &&
+    (a.left ?? 0) === (b.left ?? 0) &&
+    (a.right ?? 0) === (b.right ?? 0)
+  )
+}
+
+/**
+ * Insets for MapLibre `setPadding`: the float card on the right, and room below
+ * the postcard for the move / rotate / scale handles while dragging.
+ */
+function mapChromePadding(mapEl, floatEl, sidebarOpen, bottomPx) {
+  const pad = { top: 0, bottom: Math.max(0, Math.round(bottomPx)), left: 0, right: 0 }
+  if (!sidebarOpen && mapEl && floatEl) {
+    const mr = mapEl.getBoundingClientRect()
+    const pr = floatEl.getBoundingClientRect()
+    if (pr.left < mr.right - 1) {
+      pad.right = Math.round(Math.max(0, mr.right - pr.left))
+    }
+  }
+  return pad
+}
 
 /** The marks on the map tags, the same plain glyphs the transform menu wears. */
 const ICONS = {
@@ -601,7 +661,11 @@ export default function MapView({
   const bottomLeftRef = useRef(null)
   const tagsRef = useRef(null)
   const awayRef = useRef(null)
-  const menuDragRef = useRef(false)
+  const floatPanelWrapRef = useRef(null)
+  const sidebarOpenRef = useRef(sidebarOpen)
+  sidebarOpenRef.current = sidebarOpen
+  const sidebarColumnDragRef = useRef(sidebarColumnDrag)
+  sidebarColumnDragRef.current = sidebarColumnDrag
   const [activeTransform, setActiveTransform] = useState(null)
   const readyRef = useRef(false)
   const lastFitRef = useRef('')
@@ -770,12 +834,16 @@ export default function MapView({
     const map = mapRef.current
     const el = overlayRef.current
     if (!map || !el) return
+    const mapEl = map.getContainer()
+    const floatWrap = floatPanelWrapRef.current
     const b = outputRef.current ? outputBox(map, outputRef.current) : null
     const { clientWidth: W, clientHeight: H } = map.getContainer()
     const away = !b || b.x > W || b.y > H || b.x + b.w < 0 || b.y + b.h < 0
     if (awayRef.current) awayRef.current.style.display = outputRef.current && away ? '' : 'none'
     if (away || b.w < 4 || b.h < 4) {
       el.style.display = 'none'
+      const hiddenPad = mapChromePadding(mapEl, floatWrap, sidebarOpenRef.current, 0)
+      if (!paddingEqual(map.getPadding(), hiddenPad)) map.setPadding(hiddenPad)
       return
     }
     el.style.display = ''
@@ -815,6 +883,26 @@ export default function MapView({
     hide(styleEl, showTopChrome)
     hide(drawEl, showTopChrome)
     hide(downloadEl, showDownload)
+    const handlesH = handlesEl?.offsetHeight ?? 0
+    const bottomPad =
+      outputRef.current && el.style.display !== 'none' && handlesH > 0
+        ? handlesH + HANDLE_GAP + KEEP
+        : 0
+    const nextPad = mapChromePadding(mapEl, floatWrap, sidebarOpenRef.current, bottomPad)
+    if (!paddingEqual(map.getPadding(), nextPad)) map.setPadding(nextPad)
+    if (floatWrap && !sidebarOpenRef.current) {
+      const under = b && outputOverlapsEl(map, b, floatWrap)
+      if (sidebarColumnDragRef.current) {
+        floatWrap.style.opacity = '0'
+        floatWrap.style.pointerEvents = 'none'
+      } else if (under) {
+        floatWrap.style.opacity = String(MENU_FADE)
+        floatWrap.style.pointerEvents = 'none'
+      } else {
+        floatWrap.style.opacity = ''
+        floatWrap.style.pointerEvents = ''
+      }
+    }
   }, [])
   const placeRef = useRef(place)
   placeRef.current = place
@@ -827,7 +915,6 @@ export default function MapView({
    */
   const holdMenu = (e) => {
     if (!e.target.closest?.('[data-drag]')) return
-    menuDragRef.current = true
     const wheel = (ev) => {
       const map = mapRef.current
       if (!map || map.getCanvasContainer().contains(ev.target)) return
@@ -839,7 +926,6 @@ export default function MapView({
       )
     }
     const release = () => {
-      menuDragRef.current = false
       window.removeEventListener('pointerup', release)
       window.removeEventListener('pointercancel', release)
       window.removeEventListener('wheel', wheel, { capture: true })
@@ -1038,6 +1124,10 @@ export default function MapView({
     place()
   })
 
+  useEffect(() => {
+    place()
+  }, [sidebarOpen, sidebarColumnDrag, place])
+
   // The script compiles after the map may already be up; fit once both exist.
   useEffect(() => {
     fitMapToOutputRef.current()
@@ -1079,7 +1169,10 @@ export default function MapView({
     if (editRef.current) return
     const b = outputBox(map, output)
     const el = map.getContainer()
-    if (b && b.w <= el.clientWidth - 2 * FIT_PAD && b.h <= el.clientHeight - 2 * FIT_PAD) return
+    const inset = map.getPadding()
+    const innerW = el.clientWidth - (inset.left ?? 0) - (inset.right ?? 0)
+    const innerH = el.clientHeight - (inset.top ?? 0) - (inset.bottom ?? 0)
+    if (b && b.w <= innerW - 2 * FIT_PAD && b.h <= innerH - 2 * FIT_PAD) return
     map.jumpTo({
       center: [output.lng, output.lat],
       zoom: map.getZoom() + zoomToFit(map, output),
@@ -1094,7 +1187,7 @@ export default function MapView({
    * release. A step that returns `again: true` is run the next frame too, the
    * pointer still or not.
    */
-  const follow = (e, step, write, cursorEl, onRelease) => {
+  const follow = (e, step, write, cursorEl, onRelease, afterWrite) => {
     e.preventDefault()
     e.stopPropagation()
     const map = mapRef.current
@@ -1165,6 +1258,7 @@ export default function MapView({
         write(to)
       }
       onRelease?.()
+      if (at && editRef.current) afterWrite?.(map, editRef.current)
     }
     const el = cursorEl instanceof Element ? cursorEl : e.currentTarget
     const grab = el instanceof Element ? getComputedStyle(el).cursor : ''
@@ -1211,6 +1305,7 @@ export default function MapView({
       return f
     }
     let t = performance.now()
+    let mapFollowedSelection = false
     follow(
       e,
       (map, from, dx, dy, ev) => {
@@ -1219,32 +1314,48 @@ export default function MapView({
         t = now
         const el = map.getContainer()
         const { clientWidth: W, clientHeight: H } = el
+        const inset = map.getPadding()
+        const padL = inset.left ?? 0
+        const padR = inset.right ?? 0
+        const padT = inset.top ?? 0
+        const padB = inset.bottom ?? 0
         const r = el.getBoundingClientRect()
         const { w, h } = outputBox(map, outputRef.current) ?? b0
         // The box stops at the fence; the pointer it is pushed with may reach
         // the screen's edge first (the handle can sit far from the box's), so
         // the last `ZONE` px before the map's edge pan too.
-        const hold = (k, want, size, view, near, start, p, p0) => {
-          const lo = Math.min(near, view - KEEP - size)
-          const hi = Math.max(near, view - KEEP - size)
+        const hold = (k, want, size, view, near, start, p, p0, insetStart, insetEnd) => {
+          const lo = Math.min(near + insetStart, view - KEEP - size - insetEnd)
+          const hi = Math.max(near + insetStart, view - KEEP - size - insetEnd)
           const f = range(fence, k, lo, hi, start, want)
           const got = Math.min(Math.max(want, f[0]), f[1])
           const push = want - got
-          const z = range(zone, k, ZONE, view - ZONE, p0, p)
+          const z = range(zone, k, ZONE + insetStart, view - ZONE - insetEnd, p0, p)
           const past = p < z[0] ? p - z[0] : p > z[1] ? p - z[1] : 0
           const speeds = [Math.min(Math.abs(push) * PUSH, PUSH_MAX), Math.min(Math.abs(past) / ZONE, 1) * PUSH_MAX]
           return { got, pan: Math.sign(push || past) * Math.max(...speeds) * dt }
         }
-        const x = hold('x', b0.x + b0.w / 2 + dx - w / 2, w, W, KEEP, b0.x, ev.clientX - r.left, p0.x)
-        const y = hold('y', b0.y + b0.h / 2 + dy - h / 2, h, H, KEEP + top, b0.y, ev.clientY - r.top, p0.y)
+        const x = hold('x', b0.x + b0.w / 2 + dx - w / 2, w, W, KEEP, b0.x, ev.clientX - r.left, p0.x, padL, padR)
+        const y = hold('y', b0.y + b0.h / 2 + dy - h / 2, h, H, KEEP + top, b0.y, ev.clientY - r.top, p0.y, padT, padB)
         const again = x.pan !== 0 || y.pan !== 0
-        if (again) map.panBy([x.pan, y.pan], { animate: false })
+        if (again) {
+          mapFollowedSelection = true
+          map.panBy([x.pan, y.pan], { animate: false })
+        }
         const next = map.unproject([x.got + w / 2, y.got + h / 2])
         return { lat: next.lat, lng: next.lng, again }
       },
       (to) => onMoveOutput?.({ lat: to.lat, lng: to.lng }),
       cursorEl,
-      releaseTransform,
+      () => {
+        releaseTransform()
+        place()
+      },
+      (map) => {
+        if (!mapFollowedSelection) return
+        const out = outputRef.current
+        if (out) easeMapOntoSelection(map, out)
+      },
     )
     return true
   }
@@ -1522,11 +1633,26 @@ export default function MapView({
 
       {output && (
         <div className="absolute top-2 left-2 z-20 flex flex-wrap items-center gap-1.5">
-          <span ref={awayRef} className="map-chip chrome-border border px-1.5 py-0.5 font-mono text-[10px] whitespace-nowrap" style={{ display: 'none' }}>
-            The selection is out of view ·{' '}
-            <button type="button" className="underline cursor-pointer bg-transparent p-0 font-mono text-[10px]" onClick={onCentreOnOutput}>
+          <span
+            ref={awayRef}
+            className="map-chip chrome-border inline-flex items-center gap-[0.35ch] border px-2 py-1 font-mono text-[10px] leading-normal whitespace-nowrap"
+            style={{ display: 'none' }}
+          >
+            <span>The selection is out of view ·</span>
+            <span
+              role="button"
+              tabIndex={0}
+              className="cursor-pointer underline select-none"
+              onClick={onCentreOnOutput}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault()
+                  onCentreOnOutput?.()
+                }
+              }}
+            >
               map to selection
-            </button>
+            </span>
           </span>
         </div>
       )}
@@ -1549,9 +1675,8 @@ export default function MapView({
       {/* Floating controls only when the script column is fully collapsed (not while dragging it open). */}
       {!sidebarOpen && output && (
         <div
-          className={`absolute top-1/2 right-10 z-30 flex -translate-y-1/2 flex-col items-end transition-opacity duration-200 ${
-            sidebarColumnDrag ? 'pointer-events-none opacity-0' : 'opacity-100'
-          }`}
+          ref={floatPanelWrapRef}
+          className="absolute top-1/2 right-10 z-30 flex -translate-y-1/2 flex-col items-end transition-opacity duration-200"
           onPointerDownCapture={holdMenu}
           aria-hidden={sidebarColumnDrag}
         >
