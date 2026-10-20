@@ -580,7 +580,6 @@ export default function App() {
       onDraw: draw,
       onDrawAfterApply: drawAfterApply,
       onStop: stop,
-      onShare: () => setSharing(true),
       onPlaceMap: placeMap,
       onOutputKeys: editOutput,
       onOutputToCentre: centreOutputOnMap,
@@ -625,6 +624,7 @@ export default function App() {
           planned={plannedOnMap}
           onEditOutput={() => setDrawing(null)}
           onDownload={() => setDownloading(true)}
+          onShare={() => setSharing(true)}
           onMoveOutput={moveOutput}
           onOutputKeys={editOutput}
           onOutputToCentre={centreOutputOnMap}

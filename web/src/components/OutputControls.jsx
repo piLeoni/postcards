@@ -43,7 +43,11 @@ function slicesKey({ columns, rows, gutter }) {
  * `onMove`, when given, is the pointer-down of a drag that moves the output on
  * the map; the move label uses it.
  */
-export default function OutputControls({ output, units, onEdit, onMove, compact = false }) {
+/** Side-by-side place and paper only when each half can fit the label + value grid (~32ch). */
+export const SIDEBAR_WIDE_PX = 560
+
+export default function OutputControls({ output, units, onEdit, onMove, compact = false, sidebarWidth }) {
+  const wide = compact || (sidebarWidth != null && sidebarWidth >= SIDEBAR_WIDE_PX)
   const u = { width: 'mm', height: 'mm', padding: 'mm', gutter: 'mm', terrain: 'km', ...units }
   const width = { mm: output.width_mm, unit: u.width }
   const height = { mm: output.height_mm, unit: u.height }
@@ -119,7 +123,11 @@ export default function OutputControls({ output, units, onEdit, onMove, compact 
   const both = (model) => ({ nudge: (v, n, shift) => ({ x: model.nudge(v.x, n, shift), y: model.nudge(v.y, n, shift) }) })
 
   return (
-    <div className={`w-full font-mono text-[11px] ${compact ? 'grid grid-cols-1 gap-x-3 gap-y-1 xl:grid-cols-2' : 'min-w-[32ch]'}`}>
+    <div
+      className={`w-full font-mono text-[11px] ${
+        wide ? 'grid grid-cols-2 items-start gap-x-4 gap-y-1' : 'min-w-[32ch]'
+      }`}
+    >
       <Section title="place" cols={COLS} first>
         <Scrub icon="✥" label="move" title="Drag to move the output across the map" onPointerDown={onMove} />
         <Field label="latitude" title="Latitude of the output's centre" model={lat} value={output.lat} onChange={(v) => onEdit({ lat: v })} />
@@ -213,7 +221,7 @@ export default function OutputControls({ output, units, onEdit, onMove, compact 
         />
       </Section>
 
-      <Section title="paper" cols={COLS} first={compact}>
+      <Section title="paper" cols={COLS} first={wide}>
         <Scrub icon="□" label="size" title="Drag to grow or shrink the paper at the same scale: the terrain follows" model={paperW} value={width} onChange={growPaper} />
         <Field label="width" title="The paper's width: mm, cm or in; the terrain follows" model={paperW} value={width} onChange={setWidth} />
         <Field label="height" title="The paper's height: mm, cm or in; the terrain follows" model={paperH} value={height} onChange={setHeight} />

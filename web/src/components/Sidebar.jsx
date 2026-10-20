@@ -8,7 +8,8 @@ import { defineEditorThemes, editorFont, editorThemeName } from '../lib/editorTh
 import { registerProfileJavascriptTokenizer } from '../lib/profileJavascriptMonarch'
 import LIBRARY from '../../../crates/drawland-script/drawland.d.ts?raw'
 import Panel from './Panel'
-import OutputControls from './OutputControls'
+import OutputControls, { SIDEBAR_WIDE_PX } from './OutputControls'
+import DrawActionButton from './DrawActionButton'
 
 /** WebTUI button looks: a grey key, and one that only shows on hover. */
 const KEY = { 'size-': 'small', 'variant-': 'background1' }
@@ -83,7 +84,6 @@ export default function Sidebar({
   onDraw,
   onDrawAfterApply,
   onStop,
-  onShare,
   onPlaceMap,
   onOutputKeys,
   onOutputToCentre,
@@ -94,6 +94,8 @@ export default function Sidebar({
   const [width, setWidth] = useAtom(sidebarWidthAtom)
   const [themeId] = useAtom(themeAtom)
   const readableEditor = themeId === 'silk' || themeId === 'abyss'
+  const [selectionOpen, setSelectionOpen] = useState(true)
+  const [scriptOpen, setScriptOpen] = useState(true)
   const [draft, setDraft] = useState(null)   // text typed but not applied yet
   const [notice, setNotice] = useState(null)   // { text, error? }
   const [problem, setProblem] = useState(null)   // { kind: 'apply' | 'draw', title, text }
@@ -272,13 +274,6 @@ export default function Sidebar({
     }
   }
 
-  /**
-   * Open the share sheet for the applied document. The two transports it
-   * offers — the script in the URL, and the stored short link — are resolved
-   * there, where the choice is explained; this only opens it. The sheet itself
-   * is a panel over the map (see `App.jsx`), not over this column.
-   */
-
   const resize = (e) => {
     e.preventDefault()
     const move = (ev) => setWidth(clampWidth(window.innerWidth - ev.clientX))
@@ -318,17 +313,24 @@ export default function Sidebar({
     >
       <Panel
         title="Selection"
-        className="shrink-0 py-[0.5lh]"
+        collapsible
+        open={selectionOpen}
+        onOpenChange={setSelectionOpen}
+        className="shrink-0"
         aside={(
           <button type="button" aria-label="Close" {...KEY} onClick={onClose}>✕</button>
         )}
       >
-        <div className="mb-[0.35lh] grid grid-cols-3 gap-1 font-mono text-[11px]">
+        <div
+          className={`mb-[0.35lh] grid gap-1 font-mono text-[11px] ${
+            width >= SIDEBAR_WIDE_PX ? 'grid-cols-3' : 'grid-cols-1'
+          }`}
+        >
           <span
             role="button"
             tabIndex={0}
             title="Find a place by address and move the selection there"
-            className="chrome-field flex cursor-pointer items-center justify-center gap-[0.6ch] px-1.5 py-0.5 select-none hover:bg-[var(--foreground0)] hover:text-[var(--background0)]"
+            className="chrome-field flex w-full cursor-pointer items-center justify-center gap-[0.6ch] px-1.5 py-0.5 select-none hover:bg-[var(--foreground0)] hover:text-[var(--background0)]"
             onClick={onOpenSearch}
             onKeyDown={(e) => {
               if (e.key === 'Enter' || e.key === ' ') {
@@ -345,7 +347,7 @@ export default function Sidebar({
               role="button"
               tabIndex={0}
               title="Move the selection to the middle of the map"
-              className="chrome-surface chrome-border flex cursor-pointer items-center justify-center gap-[0.5ch] border px-1.5 py-0.5 whitespace-nowrap select-none hover:bg-[var(--foreground0)] hover:text-[var(--background0)]"
+              className="chrome-surface chrome-border flex w-full cursor-pointer items-center justify-center gap-[0.5ch] border px-1.5 py-0.5 whitespace-nowrap select-none hover:bg-[var(--foreground0)] hover:text-[var(--background0)]"
               onClick={onOutputToCentre}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' || e.key === ' ') {
@@ -355,14 +357,14 @@ export default function Sidebar({
               }}
             >
               <span aria-hidden>✥</span>
-              <span className="truncate">selection to map</span>
+              <span>selection to map</span>
             </span>
           )}
           <span
             role="button"
             tabIndex={0}
             title="Move the map so the selection is in the middle"
-            className="chrome-surface chrome-border flex cursor-pointer items-center justify-center gap-[0.5ch] border px-1.5 py-0.5 whitespace-nowrap select-none hover:bg-[var(--foreground0)] hover:text-[var(--background0)]"
+            className="chrome-surface chrome-border flex w-full cursor-pointer items-center justify-center gap-[0.5ch] border px-1.5 py-0.5 whitespace-nowrap select-none hover:bg-[var(--foreground0)] hover:text-[var(--background0)]"
             onClick={onCentreOnOutput}
             onKeyDown={(e) => {
               if (e.key === 'Enter' || e.key === ' ') {
@@ -372,11 +374,11 @@ export default function Sidebar({
             }}
           >
             <span aria-hidden>⌖</span>
-            <span className="truncate">map to selection</span>
+            <span>map to selection</span>
           </span>
         </div>
         {output && !output.computed ? (
-          <OutputControls output={output} units={units} onEdit={onOutputKeys} onMove={onMoveDrag} />
+          <OutputControls output={output} units={units} sidebarWidth={width} onEdit={onOutputKeys} onMove={onMoveDrag} />
         ) : output?.computed ? (
           <p className="opacity-60">Output computed by the script.</p>
         ) : null}
@@ -384,7 +386,10 @@ export default function Sidebar({
 
       <Panel
         title={dirty ? 'Script ●' : 'Script'}
-        className="relative flex min-h-0 flex-1 flex-col py-[0.5lh]"
+        collapsible
+        open={scriptOpen}
+        onOpenChange={setScriptOpen}
+        className={scriptOpen ? 'relative flex min-h-0 flex-1 flex-col' : 'shrink-0'}
         aside={(
           <span
             className={`min-w-0 truncate ${dirty || failed ? 'font-bold' : 'opacity-60'}`}
@@ -442,42 +447,14 @@ export default function Sidebar({
               </ul>
             </div>
           </details>
-          <button
-            type="button"
-            {...KEY}
-            title="Share the applied script: a link that carries it, or a short link to it"
-            onClick={onShare}
-          >
-            share
-          </button>
-          {/* The run, in the shape every script tool has taught: play starts a
-              draw, stop (while one runs) gives it up. */}
-          <button
-            type="button"
-            size-="small"
-            variant-={busy ? 'background1' : 'foreground0'}
-            className="ml-auto inline-flex items-center gap-[0.75ch]"
-            title={busy ? 'Stop the draw' : drawing ? 'Apply the script, then draw it again' : 'Apply the script, then draw it'}
-            aria-label={busy ? 'Stop the draw' : 'Draw the script'}
+          <DrawActionButton
+            className="ml-auto"
+            busy={busy}
+            drawing={drawing}
             disabled={!output || (!busy && !onDraw)}
-            onClick={busy ? onStop : run}
-          >
-            {busy ? (
-              <svg aria-hidden viewBox="0 0 12 12" className="h-[1em] w-[1em] shrink-0" fill="currentColor">
-                <rect x="2" y="2" width="8" height="8" />
-              </svg>
-            ) : drawing ? (
-              <svg aria-hidden viewBox="0 0 12 12" className="h-[1em] w-[1em] shrink-0">
-                <path d="M10 6A4 4 0 1 1 8 2.54" fill="none" stroke="currentColor" strokeWidth="1.5" />
-                <path d="M9.56 3.44L6.68 3.62L8.28 0.85z" fill="currentColor" />
-              </svg>
-            ) : (
-              <svg aria-hidden viewBox="0 0 12 12" className="h-[1em] w-[1em] shrink-0" fill="currentColor">
-                <path d="M2.5 1.5v9l8-4.5z" />
-              </svg>
-            )}
-            {busy ? 'STOP' : drawing ? 'RERUN' : 'RUN'}
-          </button>
+            onDraw={run}
+            onStop={onStop}
+          />
           <input
             ref={fileRef}
             type="file"
@@ -572,12 +549,12 @@ export default function Sidebar({
       </Panel>
 
       <details className="chrome-border group shrink-0 border-t py-[0.5lh]">
-        <summary className="flex cursor-pointer list-none items-center gap-[1ch] select-none">
-          <span className="font-bold">Map data</span>
-          <span className="min-w-0 truncate opacity-60">
+        <summary className="flex min-w-0 cursor-pointer list-none items-center gap-[1ch] overflow-hidden select-none whitespace-nowrap">
+          <span className="shrink-0 font-bold">Map data</span>
+          <span className="min-w-0 flex-1 truncate opacity-60">
             OpenStreetMap · OpenFreeMap · Overpass · terramask · penfill · burin
           </span>
-          <span className="ml-auto transition-transform group-open:rotate-90">›</span>
+          <span className="shrink-0 transition-transform group-open:rotate-90" aria-hidden>›</span>
         </summary>
         <ul className="mt-[0.5lh] space-y-[0.35lh] opacity-60">
           <li>Features and sea: © OpenMapTiles © OpenStreetMap contributors, tiles from OpenFreeMap.</li>

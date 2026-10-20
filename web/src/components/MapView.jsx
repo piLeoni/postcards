@@ -19,6 +19,7 @@ import ShareModal from './ShareModal'
 import DownloadModal from './DownloadModal'
 import { angleModel, MAX_SCALE, MIN_SCALE, norm, PX_PER_DEG, PX_PER_STEP, scaleModel, terrainPair } from './controls'
 import LoadCard from './LoadCard'
+import DrawActionButton from './DrawActionButton'
 
 setWorkerUrl(workerUrl)
 
@@ -572,6 +573,7 @@ export default function MapView({
   planned,
   onEditOutput,
   onDownload,
+  onShare,
   onMoveOutput,
   onOutputKeys,
   onOutputToCentre,
@@ -1445,38 +1447,7 @@ export default function MapView({
             ref={topRightRef}
             className="pointer-events-auto absolute right-0 bottom-full z-[26] mb-[4px] flex items-center gap-1"
           >
-            <span
-              role="button"
-              tabIndex={0}
-              title={busy ? 'Stop the draw' : drawing ? 'Draw the selection again' : 'Draw the selection'}
-              aria-label={busy ? 'Stop the draw' : 'Draw the selection'}
-              onClick={busy ? onStop : onDraw}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault()
-                  ;(busy ? onStop : onDraw)?.()
-                }
-              }}
-              className={`chrome-border inline-flex cursor-pointer items-center gap-[0.6ch] border px-2 py-0.5 font-mono text-[11px] font-bold whitespace-nowrap select-none ${
-                busy ? 'map-chip' : 'map-chip-strong'
-              } ${RAISED}`}
-            >
-              {busy ? (
-                <svg aria-hidden viewBox="0 0 12 12" className="h-[0.95em] w-[0.95em] shrink-0" fill="currentColor">
-                  <rect x="2" y="2" width="8" height="8" />
-                </svg>
-              ) : drawing ? (
-                <svg aria-hidden viewBox="0 0 12 12" className="h-[0.95em] w-[0.95em] shrink-0">
-                  <path d="M10 6A4 4 0 1 1 8 2.54" fill="none" stroke="currentColor" strokeWidth="1.5" />
-                  <path d="M9.56 3.44L6.68 3.62L8.28 0.85z" fill="currentColor" />
-                </svg>
-              ) : (
-                <svg aria-hidden viewBox="0 0 12 12" className="h-[0.95em] w-[0.95em] shrink-0" fill="currentColor">
-                  <path d="M2.5 1.5v9l8-4.5z" />
-                </svg>
-              )}
-              {busy ? 'STOP' : drawing ? 'REGEN' : 'DRAW'}
-            </span>
+            <DrawActionButton busy={busy} drawing={drawing} onDraw={onDraw} onStop={onStop} />
           </div>
         )}
 
@@ -1487,22 +1458,40 @@ export default function MapView({
             className="pointer-events-auto absolute top-full left-0 z-[25] mt-[4px] flex items-center gap-1"
           >
             {drawing?.svg && (
-              <span
-                role="button"
-                tabIndex={0}
-                title="Export SVG, PNG, or G-code"
-                aria-label="Download the output"
-                onClick={onDownload}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault()
-                    onDownload?.()
-                  }
-                }}
-                className={`map-chip-strong chrome-border box-border inline-flex h-[28px] cursor-pointer items-center justify-center gap-[0.6ch] border px-2 py-0 font-mono text-[11px] font-bold whitespace-nowrap select-none ${RAISED}`}
-              >
-                ↓ download
-              </span>
+              <>
+                <span
+                  role="button"
+                  tabIndex={0}
+                  title="Export SVG, PNG, or G-code"
+                  aria-label="Download the output"
+                  onClick={onDownload}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault()
+                      onDownload?.()
+                    }
+                  }}
+                  className={`map-chip-strong chrome-border box-border inline-flex h-[28px] cursor-pointer items-center justify-center gap-[0.6ch] border px-2 py-0 font-mono text-[11px] font-bold whitespace-nowrap select-none ${RAISED}`}
+                >
+                  ↓ download
+                </span>
+                <span
+                  role="button"
+                  tabIndex={0}
+                  title="Share the script: a link that carries it, or a short link to it"
+                  aria-label="Share the script"
+                  onClick={onShare}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault()
+                      onShare?.()
+                    }
+                  }}
+                  className={`map-chip chrome-border box-border inline-flex h-[28px] cursor-pointer items-center justify-center gap-[0.6ch] border px-2 py-0 font-mono text-[11px] font-bold whitespace-nowrap select-none ${RAISED}`}
+                >
+                  share
+                </span>
+              </>
             )}
           </div>
         )}
