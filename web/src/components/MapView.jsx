@@ -14,6 +14,7 @@ import { defaultInkColor, mapColors } from '../lib/themes'
 import OutputControls from './OutputControls'
 import StylePresetPicker from './StylePresetPicker'
 import SearchModal from './SearchModal'
+import { PlaceSearchPanel } from './PlaceSearch'
 import ShareModal from './ShareModal'
 import DownloadModal from './DownloadModal'
 import { angleModel, MAX_SCALE, MIN_SCALE, norm, PX_PER_DEG, PX_PER_STEP, scaleModel, terrainPair } from './controls'
@@ -579,7 +580,6 @@ export default function MapView({
   onDraw,
   onStop,
   search,
-  onOpenSearch,
   onCloseSearch,
   onSearch,
   share,
@@ -611,6 +611,7 @@ export default function MapView({
   const detailBitmapRef = useRef(null)
   const detailTimerRef = useRef(0)
   const chromeSizeRef = useRef({ style: 0, draw: 0, download: 0, handles: 0 })
+  const floatPanelRef = useRef(null)
   const drawingRef = useRef(drawing)
   drawingRef.current = drawing
   const requestViewportRef = useRef(onRequestViewport)
@@ -1563,7 +1564,7 @@ export default function MapView({
         </div>
       )}
 
-      <SearchModal open={search} onClose={onCloseSearch} onPick={onSearch} />
+      <SearchModal open={search && sidebarOpen} onClose={onCloseSearch} onPick={onSearch} />
 
       {/* The share sheet is a panel over the map, the same sheet search and
           load wear, centred on the drawing rather than on the script column. */}
@@ -1584,64 +1585,53 @@ export default function MapView({
           className="absolute top-1/2 right-3 z-30 flex -translate-y-1/2 flex-col items-end gap-2"
           onPointerDownCapture={holdMenu}
         >
-          <div className={`chrome-surface chrome-border max-h-[78vh] w-[36ch] overflow-y-auto border p-2 font-mono text-[11px] ${RAISED}`}>
-            <div className="mb-1.5 flex flex-col gap-1">
-              <span
-                role="button"
-                tabIndex={0}
-                title="Find a place by address and move the selection there"
-                className="chrome-field flex w-full cursor-pointer items-center justify-start gap-[1ch] px-1.5 py-0.5 text-left select-none hover:bg-[var(--foreground0)] hover:text-[var(--background0)]"
-                onClick={onOpenSearch}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault()
-                    onOpenSearch?.()
-                  }
-                }}
-              >
-                <span aria-hidden className="opacity-60">{ICONS.search}</span>
-                <span className="opacity-70">search</span>
-              </span>
-              {!output.computed && (
+          <div
+            ref={floatPanelRef}
+            className={`chrome-surface chrome-border flex max-h-[78vh] w-[46ch] min-h-0 flex-col overflow-hidden border p-2 font-mono text-[11px] ${RAISED}`}
+          >
+            <PlaceSearchPanel lockSizeRef={floatPanelRef} onPick={onSearch}>
+              <div className="mb-1.5 flex flex-col gap-1">
+                {!output.computed && (
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    title="Move the selection to the middle of the map"
+                    className="chrome-surface chrome-border flex w-full cursor-pointer items-center justify-center gap-[0.75ch] border px-1.5 py-0.5 select-none hover:bg-[var(--foreground0)] hover:text-[var(--background0)]"
+                    onClick={onOutputToCentre}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault()
+                        onOutputToCentre?.()
+                      }
+                    }}
+                  >
+                    <span aria-hidden>{ICONS.toMap}</span>
+                    <span>selection to map</span>
+                  </span>
+                )}
                 <span
                   role="button"
                   tabIndex={0}
-                  title="Move the selection to the middle of the map"
+                  title="Move the map so the selection is in the middle"
                   className="chrome-surface chrome-border flex w-full cursor-pointer items-center justify-center gap-[0.75ch] border px-1.5 py-0.5 select-none hover:bg-[var(--foreground0)] hover:text-[var(--background0)]"
-                  onClick={onOutputToCentre}
+                  onClick={onCentreOnOutput}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' || e.key === ' ') {
                       e.preventDefault()
-                      onOutputToCentre?.()
+                      onCentreOnOutput?.()
                     }
                   }}
                 >
-                  <span aria-hidden>{ICONS.toMap}</span>
-                  <span>selection to map</span>
+                  <span aria-hidden>{ICONS.toSelection}</span>
+                  <span>map to selection</span>
                 </span>
+              </div>
+              {!output.computed ? (
+                <OutputControls output={output} units={units} onEdit={onOutputKeys} onMove={startDrag} />
+              ) : (
+                <p className="m-0 opacity-60">Output computed by the script.</p>
               )}
-              <span
-                role="button"
-                tabIndex={0}
-                title="Move the map so the selection is in the middle"
-                className="chrome-surface chrome-border flex w-full cursor-pointer items-center justify-center gap-[0.75ch] border px-1.5 py-0.5 select-none hover:bg-[var(--foreground0)] hover:text-[var(--background0)]"
-                onClick={onCentreOnOutput}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault()
-                    onCentreOnOutput?.()
-                  }
-                }}
-              >
-                <span aria-hidden>{ICONS.toSelection}</span>
-                <span>map to selection</span>
-              </span>
-            </div>
-            {!output.computed ? (
-              <OutputControls output={output} units={units} onEdit={onOutputKeys} onMove={startDrag} />
-            ) : (
-              <p className="m-0 opacity-60">Output computed by the script.</p>
-            )}
+            </PlaceSearchPanel>
           </div>
           {onOpenControls && (
             <TermKey

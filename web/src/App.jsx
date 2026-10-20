@@ -633,7 +633,6 @@ export default function App() {
           onDraw={draw}
           onStop={stop}
           search={searchOpen}
-          onOpenSearch={() => setSearchOpen(true)}
           onCloseSearch={() => setSearchOpen(false)}
           onSearch={searchOutput}
           share={sharing}
