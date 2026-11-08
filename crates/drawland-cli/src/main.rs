@@ -201,7 +201,11 @@ fn read_terrain(download: &Task, grammar: &Grammar, output: &Output) -> Result<O
     let bounds = drawland_core::terrain::bounds_of(output);
     let grid = terramask::Grid::with_width(bounds, width);
     let task = download.child("terrain", "terrain", 0, "tiles");
-    let e = terramask::Fetcher::with_source(terramask::TERRARIUM)
+    // Read terrain as deep as the web page does (`ZoomLimits::default()`, no
+    // cap at Terrarium's zoom 10), so a coast traced from it is as fine.
+    let mut fetcher = terramask::Fetcher::with_source(terramask::TERRARIUM);
+    fetcher.elevation_max_zoom = terramask::TERRARIUM_MAX_ZOOM;
+    let e = fetcher
         .elevation_for(&grid, &terramask::ZoomLimits::default(), |done, total| {
             if done == 1 {
                 task.set_total(total as u64);

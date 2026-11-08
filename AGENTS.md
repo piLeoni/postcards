@@ -41,6 +41,15 @@ When you change responsibilities, interfaces, data flow, or invariants:
 
 Skip doc updates for trivial fixes. Follow `.cursor/rules/knowledge-base.mdc`.
 
+## Working style: MVP first
+
+Try new ideas end to end on the **CLI first**: change the Rust engine (penfill
+and/or `drawland-core`), write or tweak a profile in `configs/`, and render it
+with `drawland map <profile>` (or `./generate.sh`) to look at the SVG. Only
+once the result looks right do we carry it through `drawland-wasm`, the web
+presets / UI, and penfill's Python / Node / wasm bindings. Don't widen a
+change to every surface in the same step unless asked.
+
 ## Build & test
 
 ```bash

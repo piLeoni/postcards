@@ -269,6 +269,9 @@ pub struct Burin {
     pub in_area: Option<Name>,
     /// Regions batches name in `within` / `outside`, by name, in output mm.
     pub regions: std::collections::BTreeMap<String, Name>,
+    /// Where the water is, in output mm: burin's water mask. `None` lets burin
+    /// guess it from the elevation (at or below 0.5 m).
+    pub water: Option<Name>,
     /// What to call the layer; `burin` without one.
     pub layer: Option<String>,
 }
@@ -477,6 +480,7 @@ impl Op {
                 .iter()
                 .cloned()
                 .chain(b.regions.values().cloned())
+                .chain(b.water.iter().cloned())
                 .collect(),
             Op::Labels(l) => l.from.iter().chain(l.in_area.iter()).cloned().collect(),
             Op::LabelLines(p) | Op::LabelArea(p) => vec![p.of.clone()],
@@ -1279,6 +1283,8 @@ fn parse_op(raw: RawOp, section: Section) -> Result<Op, GrammarError> {
                 #[serde(default)]
                 regions: std::collections::BTreeMap<String, String>,
                 #[serde(default)]
+                water: Option<String>,
+                #[serde(default)]
                 layer: Option<String>,
             }
             let raw: Raw = json(&value, "tools_burin")?;
@@ -1308,6 +1314,7 @@ fn parse_op(raw: RawOp, section: Section) -> Result<Op, GrammarError> {
                 atlas,
                 in_area: raw.in_area.as_deref().map(refname).transpose()?,
                 regions,
+                water: raw.water.as_deref().map(refname).transpose()?,
                 layer: raw.layer,
             })
         }
@@ -1768,6 +1775,9 @@ pub fn op_to_json(op: &Op) -> Value {
                             .collect(),
                     ),
                 );
+            }
+            if let Some(w) = &b.water {
+                body.insert("water".into(), Value::String(w.to_string()));
             }
             if let Some(l) = &b.layer {
                 body.insert("layer".into(), Value::String(l.clone()));

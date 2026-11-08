@@ -66,6 +66,10 @@ fn litho_alias(generator: &str) -> Option<&'static str> {
         "cell-net" => "cell_net",
         "fluid-grass" => "fluid_grass",
         "lily-pads" => "lily_pads",
+        "doodle-trees" => "doodle_trees",
+        "curl-waves" => "curl_waves",
+        "flow-waves" => "flow_waves",
+        "scallop-waves" => "scallop_waves",
         "gravel-clipped" => "gravel_clipped",
         "stipple-noise" => "stipple_noise",
         "stipple-edge" => "stipple_edge",
@@ -198,6 +202,17 @@ pub fn fill_params(generator: &str, spec: &FillSpec, o: &Opts) -> Result<FillPar
     }
     if let Some(v) = o.num("light_elevation")? {
         params = params.custom("light_elevation", v);
+    }
+    for key in ["wavelength", "curl", "turns", "stagger", "flip", "amplitude", "drift", "breaks", "depth", "round"] {
+        if let Some(v) = o.num(key)? {
+            params = params.custom(key, v);
+        }
+    }
+    if let Some(v) = o.num("loops")? {
+        params = params.custom("loops", v);
+    }
+    if let Some(v) = o.num("shadow")? {
+        params = params.custom("shadow", v);
     }
     if let Some(v) = o.mm("hatch")? {
         params = params.custom("hatch", v);

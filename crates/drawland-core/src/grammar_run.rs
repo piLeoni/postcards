@@ -564,7 +564,11 @@ fn eval_op<'a>(
                 .iter()
                 .map(|(name, a)| Ok((name.as_str(), crate::terrain::region_from_area(area(a)?, &placed))))
                 .collect::<Result<_, String>>()?;
-            let drawing = crate::terrain::draw_burin(grid, b, &regions)?;
+            let water = match &b.water {
+                Some(n) => Some(crate::terrain::coverage_of(area(n)?, grid, &placed)),
+                None => None,
+            };
+            let drawing = crate::terrain::draw_burin(grid, b, &regions, water.as_deref())?;
             let drawn = crate::terrain::lines(&drawing, &placed);
             Value::Lines(match &b.in_area {
                 Some(n) => geom::clip_lines(&drawn, area(n)?, false),

@@ -550,7 +550,9 @@ export default function Sidebar({
             {notice.error ? `✗ ${sentence(notice.text)}` : sentence(notice.text)}
           </p>
         )}
-        <div className="chrome-border relative mt-[0.5lh] min-h-0 flex-1 overflow-hidden border pt-[0.5lh]">
+        {/* `overflow: clip` with a margin, not `hidden`: the editor still cannot spill,
+            but Monaco's tooltips over the find widget may paint just past the edge. */}
+        <div className="chrome-border relative mt-[0.5lh] min-h-0 flex-1 overflow-clip border pt-[0.5lh] [overflow-clip-margin:2.5rem]">
           <div className="absolute top-[0.5lh] right-[2ch] z-10 flex gap-[1ch]">
             {dirty && (
               <>
@@ -596,6 +598,10 @@ export default function Sidebar({
               wordWrap: 'off',
               // Follows the column as it is resized.
               automaticLayout: true,
+              // Hovers and tooltips (find widget's "Close (Escape)", …) escape
+              // the column's overflow clip instead of being cut and pushed over
+              // the very button they label.
+              fixedOverflowWidgets: true,
               tabSize: 2,
               insertSpaces: true,
               detectIndentation: false,

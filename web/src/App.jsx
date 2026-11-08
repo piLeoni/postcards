@@ -526,9 +526,18 @@ export default function App() {
   // draw. Compiling the document is asynchronous, so the draw waits until the
   // graph and output on screen were built from the very script just applied.
   const afterApplyRef = useRef(null)
-  const drawAfterApply = useCallback((text) => {
-    afterApplyRef.current = text
-  }, [])
+  const drawAfterApply = useCallback(
+    (text) => {
+      // Already compiled (the same script again): nothing will change to wait for.
+      if (compiledDoc === text && output) {
+        afterApplyRef.current = null
+        draw()
+        return
+      }
+      afterApplyRef.current = text
+    },
+    [compiledDoc, output, draw],
+  )
   useEffect(() => {
     if (!afterApplyRef.current || compiledDoc !== afterApplyRef.current || !output) return
     afterApplyRef.current = null
@@ -633,6 +642,7 @@ export default function App() {
           onCentreOnOutput={centreMapOnOutput}
           onPlaceMap={placeMap}
           onDraw={draw}
+          onDrawAfterApply={drawAfterApply}
           onStop={stop}
           search={searchOpen}
           onCloseSearch={() => setSearchOpen(false)}

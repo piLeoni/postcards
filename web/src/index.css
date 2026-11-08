@@ -199,6 +199,20 @@ aside :is(h1, h2, h3, p, div, header, section) {
   color: var(--syntax-dim) !important;
 }
 
+/* Monaco's widget tooltips ("Close (Escape)" on the find widget, …) live in a
+   context view inside the editor's clipped column. Squeezed against its edge
+   they wrapped, grew taller than Monaco measured, and hung over the very
+   button they label: the pointer left the button, the tooltip hid, came back,
+   and the click landed on the tooltip, so find could not be closed. One line,
+   and the pointer passes through them. */
+.context-view:has(.workbench-hover),
+.context-view:has(.workbench-hover) * {
+  pointer-events: none !important;
+}
+.context-view .workbench-hover .hover-contents {
+  white-space: nowrap !important;
+}
+
 /* Map chrome: full-bleed map; keys sit above the safe area on phones. */
 :root {
   --map-edge: 8px;

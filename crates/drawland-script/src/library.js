@@ -386,7 +386,7 @@
         fail(`burin.terrain expects a function: burin.terrain((b) => { … }), got ${describe(build)}`);
       }
       object(options, "burin.terrain options");
-      const { in: area, regions } = options;
+      const { in: area, regions, water } = options;
       const op = { tools_burin: { atlas: dl.burin(build) } };
       // `in` clips the drawing to an area, like `lines.terrain`.
       if (area !== undefined) op.tools_burin.in_area = need(area, Area, "burin.terrain in");
@@ -398,6 +398,9 @@
         }
         op.tools_burin.regions = named;
       }
+      // `water` tells burin where the sea and lakes are, instead of guessing
+      // from the elevation (which misses the sea in detailed terrain tiles).
+      if (water !== undefined) op.tools_burin.water = need(water, Area, "burin.terrain water");
       return make(Lines, "lines", op);
     },
   };
@@ -731,6 +734,22 @@
     },
     reloop(a, b) {
       parseOptimize("reloop", a, b, null, {});
+    },
+    hand(a, b) {
+      parseOptimize("hand", a, b, "preset", {
+        preset: "preset",
+        wobble: "wobble",
+        wavelength: "wavelength",
+        tremor: "tremor",
+        bow: "bow",
+        overshoot: "overshoot",
+        close: "close",
+        reach: "reach",
+        corners: "corners",
+        retrace: "retrace",
+        retraceOffset: "retrace_offset",
+        seed: "seed",
+      }, (v) => v === "steady" || v === "sketch");
     },
     orient(a, b) {
       parseOptimize("orient", a, b, "direction", {

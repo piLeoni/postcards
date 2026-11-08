@@ -134,7 +134,7 @@ pub fn atlas_of(spec: &Spec) -> Result<Atlas, String> {
 
 /// Draw `spec` over the whole of `grid`.
 pub fn draw(grid: &Grid, spec: &Spec) -> Result<Drawing, String> {
-    run(&atlas_of(spec)?, grid, &[])
+    run(&atlas_of(spec)?, grid, &[], None)
 }
 
 /// Draw a whole burin document (`spec.atlas`: the JSON `burin.json()` writes)
@@ -145,13 +145,61 @@ pub fn draw(grid: &Grid, spec: &Spec) -> Result<Drawing, String> {
 ///
 /// `regions` maps each name batches may use in `within` / `outside` to an area
 /// in output millimetres, rasterised onto the elevation grid.
-pub fn draw_burin(grid: &Grid, spec: &crate::grammar::Burin, regions: &[(&str, Region)]) -> Result<Drawing, String> {
-    run(&script::atlas_from(&spec.atlas)?, grid, regions)
+///
+/// `water`, when given, is burin's water mask (0…1 per grid pixel, see
+/// [`coverage_of`]); without it burin takes the sea from the elevation.
+pub fn draw_burin(
+    grid: &Grid,
+    spec: &crate::grammar::Burin,
+    regions: &[(&str, Region)],
+    water: Option<&[f32]>,
+) -> Result<Drawing, String> {
+    run(&script::atlas_from(&spec.atlas)?, grid, regions, water)
 }
 
-fn run(atlas: &Atlas, grid: &Grid, regions: &[(&str, Region)]) -> Result<Drawing, String> {
+fn run(atlas: &Atlas, grid: &Grid, regions: &[(&str, Region)], water: Option<&[f32]>) -> Result<Drawing, String> {
     let surface = Surface::new(&grid.elev, grid.width, grid.height, grid.px_m as f32).regions(regions);
-    atlas.draw(&surface, None)
+    atlas.draw(&surface, water)
+}
+
+/// An output area rasterised onto the elevation grid: 1 at pixels whose
+/// centre is inside it, 0 elsewhere (even-odd, so holes stay dry). Scanline
+/// fill, row by row, so a detailed coast costs its edges, not edges × pixels.
+pub fn coverage_of(area: &MultiPolygon<f64>, grid: &Grid, at: &Placed) -> Vec<f32> {
+    let (w, h) = (grid.width, grid.height);
+    let mut cov = vec![0.0f32; w * h];
+    // Every edge in grid pixels.
+    let mut edges: Vec<([f64; 2], [f64; 2])> = Vec::new();
+    for poly in &area.0 {
+        for ring in std::iter::once(poly.exterior()).chain(poly.interiors()) {
+            let pts: Vec<[f64; 2]> = ring.coords().map(|c| [(c.x - at.x0) / at.kx, (c.y - at.y0) / at.ky]).collect();
+            for p in pts.windows(2) {
+                if p[0][1] != p[1][1] {
+                    edges.push((p[0], p[1]));
+                }
+            }
+        }
+    }
+    let mut xs: Vec<f64> = Vec::new();
+    for row in 0..h {
+        let y = row as f64 + 0.5;
+        xs.clear();
+        for (a, b) in &edges {
+            let (lo, hi) = if a[1] < b[1] { (a, b) } else { (b, a) };
+            if y >= lo[1] && y < hi[1] {
+                xs.push(lo[0] + (y - lo[1]) / (hi[1] - lo[1]) * (hi[0] - lo[0]));
+            }
+        }
+        xs.sort_by(f64::total_cmp);
+        for pair in xs.chunks_exact(2) {
+            let x0 = (pair[0] - 0.5).ceil().max(0.0) as usize;
+            let x1 = ((pair[1] - 0.5).floor() + 1.0).clamp(0.0, w as f64) as usize;
+            for x in x0..x1.min(w) {
+                cov[row * w + x] = 1.0;
+            }
+        }
+    }
+    cov
 }
 
 /// An output area as burin regions on the elevation grid.

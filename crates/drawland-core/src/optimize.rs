@@ -1,5 +1,6 @@
 //! Plotter path optimization (`compose.deoverlap`, `compose.linemerge`,
-//! `compose.simplify`, `compose.filter`, `compose.reloop`, `compose.linesort`).
+//! `compose.simplify`, `compose.filter`, `compose.reloop`, `compose.linesort`)
+//! and the hand-drawn look (`compose.hand`, via `penfill::hand`).
 //!
 //! Runs on composed layer strokes after occlusion masks and card-frame
 //! clipping, in the exact sequence the profile script calls them.
@@ -247,6 +248,90 @@ impl Default for LinesortSpec {
 #[serde(deny_unknown_fields)]
 pub struct ReloopSpec {}
 
+/// Starting point for `compose.hand`; individual keys override it.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum HandPreset {
+    /// Steady hand: tremble, bowed edges, loose ends.
+    #[default]
+    Steady,
+    /// Loose sketch: crossing corners and long lines in several strokes.
+    Sketch,
+}
+
+/// `compose.hand`: redraw strokes as if by hand (see `penfill::HandParams`).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct HandSpec {
+    #[serde(default)]
+    pub preset: HandPreset,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wobble: Option<Mm>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wavelength: Option<Mm>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tremor: Option<Mm>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bow: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub overshoot: Option<Mm>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub close: Option<Mm>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reach: Option<Mm>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub corners: Option<Mm>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retrace: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retrace_offset: Option<Mm>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub seed: Option<u64>,
+}
+
+impl HandSpec {
+    pub fn params(&self) -> penfill::HandParams {
+        let mut p = match self.preset {
+            HandPreset::Steady => penfill::HandParams::default(),
+            HandPreset::Sketch => penfill::HandParams::sketch(),
+        };
+        let set = |dst: &mut f64, v: Option<Mm>| {
+            if let Some(Mm(x)) = v {
+                *dst = x;
+            }
+        };
+        set(&mut p.wobble, self.wobble);
+        set(&mut p.wavelength, self.wavelength);
+        set(&mut p.tremor, self.tremor);
+        set(&mut p.overshoot, self.overshoot);
+        set(&mut p.close, self.close);
+        set(&mut p.reach, self.reach);
+        set(&mut p.corners, self.corners);
+        set(&mut p.retrace_offset, self.retrace_offset);
+        if let Some(r) = self.retrace {
+            p.retrace = r;
+        }
+        if let Some(b) = self.bow {
+            p.bow = b;
+        }
+        if let Some(s) = self.seed {
+            p.seed = s;
+        }
+        p
+    }
+}
+
+/// Redraw `lines` by hand. The tremble field is shared across layers (same
+/// seed), so strokes that meet in different layers still meet.
+pub fn hand_lines(lines: &[LineString<f64>], spec: &HandSpec) -> Lines {
+    let strokes: penfill::Strokes = lines.iter().map(|l| l.0.iter().map(|c| (c.x, c.y)).collect()).collect();
+    penfill::hand(&strokes, &spec.params())
+        .into_iter()
+        .filter(|s| s.len() >= 2)
+        .map(|s| LineString(s.into_iter().map(|(x, y)| Coord { x, y }).collect()))
+        .collect()
+}
+
 /// One optimization operation in `compose.optimize`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -256,6 +341,7 @@ pub enum OptimizeOp {
     Simplify(SimplifySpec),
     Filter(FilterSpec),
     Reloop(ReloopSpec),
+    Hand(HandSpec),
     Orient(OrientSpec),
     Linesort(LinesortSpec),
 }
@@ -272,6 +358,7 @@ impl OptimizeOp {
             OptimizeOp::Simplify(_) => "simplify",
             OptimizeOp::Filter(_) => "filter",
             OptimizeOp::Reloop(_) => "reloop",
+            OptimizeOp::Hand(_) => "hand",
             OptimizeOp::Orient(_) => "orient",
             OptimizeOp::Linesort(_) => "linesort",
         }
@@ -422,6 +509,19 @@ pub fn run_pipeline(
                     .par_iter()
                     .map(|&idx| {
                         let out = reloop_lines(&groups[idx].1);
+                        step_task.tick();
+                        (idx, out)
+                    })
+                    .collect();
+                for (idx, out) in results {
+                    groups[idx].1 = out;
+                }
+            }
+            OptimizeOp::Hand(spec) => {
+                let results: Vec<(usize, Lines)> = indices
+                    .par_iter()
+                    .map(|&idx| {
+                        let out = hand_lines(&groups[idx].1, spec);
                         step_task.tick();
                         (idx, out)
                     })

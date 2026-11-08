@@ -626,6 +626,7 @@ export default function MapView({
   onCentreOnOutput,
   onPlaceMap,
   onDraw,
+  onDrawAfterApply,
   onStop,
   search,
   onCloseSearch,
@@ -1546,7 +1547,7 @@ export default function MapView({
             ref={labelRef}
             className="pointer-events-auto absolute bottom-full left-0 z-[26] mb-[4px]"
           >
-            <StylePresetPicker doc={doc} appliedDoc={appliedDoc} setDoc={setDoc} />
+            <StylePresetPicker doc={doc} appliedDoc={appliedDoc} setDoc={setDoc} onApplied={onDrawAfterApply} />
           </div>
         )}
 

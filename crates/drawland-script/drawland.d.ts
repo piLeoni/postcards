@@ -44,12 +44,12 @@ type TilePreset =
 type Pattern =
   | "amphibolite" | "arena" | "beds" | "bentonite" | "brackets" | "breccia" | "breccia-blobs" | "canopy" | "cell-net" | "chalky-soil"
   | "chess" | "clay-soil" | "coal" | "coarse-stone" | "compacted-soil" | "concentric" | "conglomerate"
-  | "conglomerate-flat" | "coquina" | "cracked-earth" | "cracks" | "dacite" | "debris-soil" | "diabase" | "diatom"
-  | "diorite" | "dots" | "drift" | "dry-cracked-soil" | "eddies" | "erosion-lines" | "feldspar" | "ferrous" | "fill" | "fine-gravel"
+  | "conglomerate-flat" | "coquina" | "cracked-earth" | "cracks" | "curl-waves" | "dacite" | "debris-soil" | "diabase" | "diatom"
+  | "diorite" | "doodle-trees" | "dots" | "drift" | "dry-cracked-soil" | "eddies" | "erosion-lines" | "feldspar" | "ferrous" | "fill" | "fine-gravel" | "flow-waves"
   | "fluid-grass" | "gabbro" | "gneiss" | "grainy-soil" | "granite" | "granite-x" | "grass" | "gravel" | "gravel-clipped"
   | "gravelly-soil" | "grid" | "growth" | "hilbert" | "honeycomb" | "hornblende" | "isoline-blobs" | "isoline-stack" | "isoline-stack-hatched" | "laminae" | "lava" | "layered-soil" | "lily-pads"
   | "lines" | "loose-soil" | "marble" | "masonry" | "mixed-rocks" | "mulch" | "mulched-soil" | "none" | "ophitic"
-  | "organic-topsoil" | "pat" | "pebble-scatter" | "pebbled-soil" | "pebbles" | "rectilinear" | "ripples" | "sandy-soil" | "scales"
+  | "organic-topsoil" | "pat" | "pebble-scatter" | "pebbled-soil" | "pebbles" | "rectilinear" | "ripples" | "sandy-soil" | "scales" | "scallop-waves"
   | "scribble" | "shards" | "silty-soil" | "solid" | "spiral" | "sprouts" | "stipple" | "stipple-edge" | "stipple-noise"
   | "stone-cluster" | "sunburst" | "swells" | "terrazzo" | "triangles" | "truchet" | "tufts" | "twigs" | "vines" | "wave-grid" | "wave_grid" | "waves" | "wood"
   | "zigzag"
@@ -142,8 +142,32 @@ interface FillOptions {
    * shadow-side density; use `ticks` for cross-contour hachures.
    */
   light?: number
-  /** `isoline-stack` with `light`: degrees the light comes *from* (0 = +x, 90 = +y). Default -45. */
+  /** `isoline-stack` with `light`: degrees the light comes *from* (0 = +x, 90 = +y). Default -45. `doodle-trees`: side the shadow scribble avoids. Default 225. */
   light_angle?: number
+  /** `doodle-trees` (`spacing` = crown diameter): curls round each crown's rim, as a multiple of the default. Default 1. */
+  loops?: number
+  /** `doodle-trees`: share of crowns (0–1) with a shade crescent. Default 0.8. */
+  shadow?: number
+  /** `curl-waves` (`spacing` = gap between rows): distance between waves along a row, × `spacing`. Default 1.35. `flow-waves` (`spacing` = gap between lines): length of one swell, × `spacing`. Default 13. */
+  wavelength?: number
+  /** `flow-waves`: swell height, × `spacing`. Default 2.6. */
+  amplitude?: number
+  /** `flow-waves`: how fast the swell's height and phase change across the sea. Default 1. */
+  drift?: number
+  /** `flow-waves`: how broken the lines are (0–1, 0 = unbroken). Default 0.5. */
+  breaks?: number
+  /** `scallop-waves` (`spacing` = gap between rows; `wavelength` = scallop width × spacing, default 1.35): how far each scallop dips, × `spacing`. Default 0.35. */
+  depth?: number
+  /** `scallop-waves`: arc shape, below 1 rounder, above 1 more pointed. Default 0.8. */
+  round?: number
+  /** `curl-waves`: radius of each curl, × the wavelength. Default 0.2. */
+  curl?: number
+  /** `curl-waves`: how far each curl winds in (1 = one full turn). Default 0.95. */
+  turns?: number
+  /** `curl-waves`: shift every other row by this share of a wave (0–1). Default 0. */
+  stagger?: number
+  /** `curl-waves`: 1 mirrors the waves so they break the other way. Default 0. */
+  flip?: number
   /** `isoline-stack` with `light`: sun height in degrees; lower casts longer shadows. Default 35. */
   light_elevation?: number
   /** `isoline-blobs`: distance between contour lines in mm. Default ~0.045× `spacing`. */
@@ -445,6 +469,12 @@ type BurinTerrainOptions = {
    * `mask_*` easing as burin-map's engraved sea at the coast.
    */
   regions?: Record<string, Area>
+  /**
+   * Where the water is (sea, lakes): burin's water mask, so `burin.shore` and
+   * `burin.water` follow this outline. Without it burin takes the sea from the
+   * elevation (at or below 0.5 m), which detailed terrain tiles can miss.
+   */
+  water?: Area
 }
 
 /**
@@ -748,6 +778,38 @@ interface ReloopOptimizeOptions {
   except?: string[]
 }
 
+/** Starting point for `compose.hand`; any key below overrides it. */
+type HandPreset = "steady" | "sketch"
+
+interface HandOptions {
+  /** `"steady"` (default): tremble, bowed edges, loose ends. `"sketch"`: also crossing corners and long lines in several strokes. */
+  preset?: HandPreset
+  /** Slow tremble shared by every stroke, so joins stay joined. Default `"0.25mm"` (sketch `"0.35mm"`). */
+  wobble?: Length
+  /** Wavelength of that tremble. Default `"15mm"`. */
+  wavelength?: Length
+  /** Fine tremor along each stroke. Default `"0.04mm"`. */
+  tremor?: Length
+  /** Sideways sag of straight runs, as a fraction of their length (capped at 0.9mm). Default `0.012`. */
+  bow?: number
+  /** Open strokes overshoot (or stop short of) their ends by up to this. Default `"0.3mm"`. */
+  overshoot?: Length
+  /** Closed rings miss closing by up to this (gap or drifting overlap). Default `"0.7mm"`. */
+  close?: Length
+  /** Longest single pen stroke; longer lines are drawn in several. `0` = off (default; sketch `"40mm"`). */
+  reach?: Length
+  /** Sharp corners drawn as crossing lines running past by up to this. `0` = off (default; sketch `"0.8mm"`). */
+  corners?: Length
+  /** Share (0–1) of strokes gone over a second time with their own bows and ends. Default `0` (sketch `0.3`). */
+  retrace?: number
+  /** How far apart a second pass is set down, at most. Default `"0.25mm"`. */
+  retraceOffset?: Length
+  /** Seed for the hand's randomness. Default `1`. */
+  seed?: number
+  /** Exclude these layer ids when `layers` is omitted. */
+  except?: string[]
+}
+
 /**
  * Preferred drawing direction for pen strokes:
  * - A compass preset (`"lr"`, `"rl"`, `"tb"`, `"bt"`, `"tl-br"`, `"tr-bl"`, `"bl-tr"`, `"br-tl"`, `"e"`, `"se"`, `"s"`, `"sw"`, `"w"`, `"nw"`, `"n"`, `"ne"`)
@@ -814,6 +876,8 @@ declare const compose: {
   filter(layers?: LayerTargets | Length | FilterOptimizeOptions, options?: Length | FilterOptimizeOptions): void
   /** Randomize seam vertex on closed loops to avoid ink blobs. */
   reloop(layers?: LayerTargets | ReloopOptimizeOptions): void
+  /** Redraw strokes as if by hand: tremble, bowed edges, loose ends, unclosed rings. Runs where it is called in the sequence — usually after `linemerge`, before `simplify`/`linesort`. */
+  hand(layers?: LayerTargets | HandPreset | HandOptions, options?: HandPreset | HandOptions): void
   /** Flip open strokes so they flow toward a preferred direction (e.g. `"tl-br"` or `45` degrees) to avoid pen skipping on reversals. */
   orient(layers?: LayerTargets | OrientDirection | OrientOptions, options?: OrientDirection | OrientOptions): void
   /** Nearest-neighbour + 2-opt stroke ordering to minimize pen-up travel. */

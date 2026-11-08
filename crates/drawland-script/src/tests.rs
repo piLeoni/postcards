@@ -548,11 +548,22 @@ fn compose_optimize_steps_round_trip_and_execute() {
          compose.simplify([...solid, ...dashed], '0.05mm')\n\
          compose.filter(solid, '0.05mm')\n\
          compose.reloop(solid)\n\
+         compose.hand(solid, { preset: 'sketch', wobble: '0.3mm', bow: 0.02, seed: 4 })\n\
+         compose.hand('sketch')\n\
          compose.orient(solid, 'tl-br')\n\
          compose.linesort([...solid, ...dashed], { direction: 45, splitReversals: true })\n",
     )
     .unwrap();
-    assert_eq!(g.compose.optimize.len(), 7);
+    assert_eq!(g.compose.optimize.len(), 9);
+    match &g.compose.optimize[5].op {
+        drawland_core::optimize::OptimizeOp::Hand(h) => {
+            let p = h.params();
+            assert_eq!((p.wobble, p.bow, p.seed), (0.3, 0.02, 4));
+            assert_eq!(p.corners, penfill::HandParams::sketch().corners);
+        }
+        op => panic!("expected hand, got {op:?}"),
+    }
+    assert!(g.compose.optimize[6].layers.is_empty());
     let back = drawland_core::grammar::Grammar::from_json(&g.to_json().to_string()).unwrap();
     assert_eq!(back, g);
     let out = run(

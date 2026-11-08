@@ -6,9 +6,10 @@ const PRESET_STYLES = PRESETS.map((p) => [p, styleOf(p.doc)])
 
 /**
  * The profile's style on the map: applied script title (with · mod when it no
- * longer matches a preset verbatim). Choosing a preset injects its style here.
+ * longer matches a preset verbatim). Choosing a preset injects its style here
+ * and draws it (`onApplied`) once it has compiled.
  */
-export default function StylePresetPicker({ doc, appliedDoc, setDoc, onNotice }) {
+export default function StylePresetPicker({ doc, appliedDoc, setDoc, onNotice, onApplied }) {
   const menuRef = useRef(null)
   const shown = appliedDoc ?? doc
   const style = useMemo(() => styleOf(shown), [shown])
@@ -26,6 +27,8 @@ export default function StylePresetPicker({ doc, appliedDoc, setDoc, onNotice })
     menuRef.current?.removeAttribute('open')
     const text = injectStyleAtPlace(doc, p.doc)
     setDoc(text)
+    // Draw the new style as soon as it has compiled: no REGEN to press.
+    onApplied?.(text)
     flash(p.name)
   }
 
