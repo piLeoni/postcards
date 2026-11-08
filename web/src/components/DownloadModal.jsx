@@ -80,12 +80,13 @@ export default function DownloadModal({ open, onClose, doc, drawing, output }) {
   }, [open, onClose])
 
   const gcodeExt = gcodeConfig?.ext === 'gcode' ? 'gcode' : 'gco'
-  const ext = options.format === 'png' ? 'png' : options.format === 'gcode' ? gcodeExt : 'svg'
+  const ext =
+    options.format === 'png' ? 'png' : options.format === 'gcode' ? gcodeExt : options.format === 'dxf' ? 'dxf' : 'svg'
   const cleanBase = useMemo(() => sanitizeBasename(basename), [basename])
 
   const namePreview = useMemo(() => {
     const useSlices = options.sliceMode === 'slices' && hasSlices
-    const useLayers = (options.format === 'svg' || options.format === 'gcode') && options.perLayer && canSplitLayers
+    const useLayers = ['svg', 'gcode', 'dxf'].includes(options.format) && options.perLayer && canSplitLayers
     const stem = useSlices ? joinNameParts(cleanBase, 'r1c1') : cleanBase
     if (useLayers) {
       const count = (useSlices ? drawnSlices : 1) * layerCount
@@ -172,7 +173,7 @@ export default function DownloadModal({ open, onClose, doc, drawing, output }) {
           <fieldset className="m-0 mb-[1.5lh] border-0 p-0">
             <legend className="mb-[0.5lh] font-bold">Format</legend>
             <div className="flex flex-wrap gap-[1ch]">
-              {['svg', 'png', 'gcode'].map((f) => (
+              {['svg', 'png', 'gcode', 'dxf'].map((f) => (
                 <button
                   key={f}
                   type="button"
@@ -246,6 +247,22 @@ export default function DownloadModal({ open, onClose, doc, drawing, output }) {
                 )}
               </fieldset>
             </>
+          ) : options.format === 'dxf' ? (
+            <fieldset className="m-0 border-0 p-0">
+              <legend className="mb-[0.5lh] font-bold">Layers</legend>
+              <p className="m-0 mb-[0.75lh] opacity-60">
+                AutoCAD R12 DXF in millimetres; each drawing layer becomes a DXF layer.
+              </p>
+              <Pick
+                selected={options.perLayer}
+                disabled={!canSplitLayers}
+                title={canSplitLayers ? 'Write one DXF file per layer' : 'Only one layer in this drawing'}
+                onClick={() => set({ perLayer: !options.perLayer })}
+              >
+                One file per layer
+              </Pick>
+              {canSplitLayers && <p className="m-0 mt-[0.5lh] opacity-60">{layerCount} layers in this draw.</p>}
+            </fieldset>
           ) : options.format === 'gcode' ? (
             <div className="flex flex-col gap-[1.5lh]">
               <GcodeConfig svgSample={svgSample} />

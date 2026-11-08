@@ -163,6 +163,7 @@ function calm(map, themeId) {
   // Every id we style is Positron's, and we style by id. If upstream renames
   // or drops one the layer would quietly keep its warm tint rather than fail,
   // so say so, once, naming only what we meant to change.
+  if (!layers?.length) return
   const ids = new Set(layers.map((l) => l.id))
   const missing = POSITRON.filter((id) => !ids.has(id))
   if (missing.length) console.warn('map: Positron no longer has', missing.join(', '), '— those keep their own colour')
@@ -328,6 +329,13 @@ function paddingEqual(a, b) {
     (a.left ?? 0) === (b.left ?? 0) &&
     (a.right ?? 0) === (b.right ?? 0)
   )
+}
+
+/** `setPadding` recentres via `jumpTo`; skip persisting that move to `mapViewAtom`. */
+function applyMapPadding(map, nextPad, skipViewPersistRef) {
+  if (paddingEqual(map.getPadding(), nextPad)) return
+  skipViewPersistRef.current = true
+  map.setPadding(nextPad)
 }
 
 /**
@@ -636,6 +644,8 @@ export default function MapView({
   const [mapBooted, setMapBooted] = useState(false)
   const [tilesOn] = useState(true)
   const [mapView, setMapView] = useAtom(mapViewAtom)
+  const mapViewRef = useRef(mapView)
+  mapViewRef.current = mapView
   const [themeId] = useAtom(themeAtom)
   const themeIdRef = useRef(themeId)
   themeIdRef.current = themeId
@@ -644,13 +654,14 @@ export default function MapView({
   const savedViewRef = useRef(mapView)
   const containerRef = useRef(null)
   const mapRef = useRef(null)
+  const skipViewPersistRef = useRef(false)
   const overlayRef = useRef(null)
   const previewWrapRef = useRef(null)
   const previewCanvasRef = useRef(null)
   const detailCanvasRef = useRef(null)
   const detailBitmapRef = useRef(null)
   const detailTimerRef = useRef(0)
-  const chromeSizeRef = useRef({ style: 0, draw: 0, download: 0, handles: 0 })
+  const chromeSizeRef = useRef({ style: 0, draw: 0, download: 0, handles: 0, handlesH: 0 })
   const floatPanelRef = useRef(null)
   const drawingRef = useRef(drawing)
   drawingRef.current = drawing
@@ -836,14 +847,24 @@ export default function MapView({
     if (!map || !el) return
     const mapEl = map.getContainer()
     const floatWrap = floatPanelWrapRef.current
+    const handlesEl = tagsRef.current
+    const sizes = chromeSizeRef.current
+    if (handlesEl?.offsetHeight) sizes.handlesH = handlesEl.offsetHeight
+    const handlesH = sizes.handlesH || handlesEl?.offsetHeight || 26
+    const bottomPad = outputRef.current ? handlesH + HANDLE_GAP + KEEP : 0
+    const nextPad = mapChromePadding(mapEl, floatWrap, sidebarOpenRef.current, bottomPad)
+    applyMapPadding(map, nextPad, skipViewPersistRef)
+
     const b = outputRef.current ? outputBox(map, outputRef.current) : null
-    const { clientWidth: W, clientHeight: H } = map.getContainer()
+    const { clientWidth: W, clientHeight: H } = mapEl
     const away = !b || b.x > W || b.y > H || b.x + b.w < 0 || b.y + b.h < 0
     if (awayRef.current) awayRef.current.style.display = outputRef.current && away ? '' : 'none'
     if (away || b.w < 4 || b.h < 4) {
       el.style.display = 'none'
-      const hiddenPad = mapChromePadding(mapEl, floatWrap, sidebarOpenRef.current, 0)
-      if (!paddingEqual(map.getPadding(), hiddenPad)) map.setPadding(hiddenPad)
+      if (floatWrap && !sidebarOpenRef.current) {
+        floatWrap.style.opacity = sidebarColumnDragRef.current ? '0' : ''
+        floatWrap.style.pointerEvents = sidebarColumnDragRef.current ? 'none' : ''
+      }
       return
     }
     el.style.display = ''
@@ -863,12 +884,11 @@ export default function MapView({
     const styleEl = labelRef.current
     const drawEl = topRightRef.current
     const downloadEl = bottomLeftRef.current
-    const handlesEl = tagsRef.current
-    const sizes = chromeSizeRef.current
     if (styleEl?.offsetWidth) sizes.style = styleEl.offsetWidth
     if (drawEl?.offsetWidth) sizes.draw = drawEl.offsetWidth
     if (downloadEl?.offsetWidth) sizes.download = downloadEl.offsetWidth
     if (handlesEl?.offsetWidth) sizes.handles = handlesEl.offsetWidth
+    if (handlesEl?.offsetHeight) sizes.handlesH = handlesEl.offsetHeight
     const styleW = sizes.style || styleEl?.offsetWidth || 120
     const drawW = sizes.draw || drawEl?.offsetWidth || 80
     const downloadW = sizes.download || downloadEl?.offsetWidth || 100
@@ -883,13 +903,6 @@ export default function MapView({
     hide(styleEl, showTopChrome)
     hide(drawEl, showTopChrome)
     hide(downloadEl, showDownload)
-    const handlesH = handlesEl?.offsetHeight ?? 0
-    const bottomPad =
-      outputRef.current && el.style.display !== 'none' && handlesH > 0
-        ? handlesH + HANDLE_GAP + KEEP
-        : 0
-    const nextPad = mapChromePadding(mapEl, floatWrap, sidebarOpenRef.current, bottomPad)
-    if (!paddingEqual(map.getPadding(), nextPad)) map.setPadding(nextPad)
     if (floatWrap && !sidebarOpenRef.current) {
       const under = b && outputOverlapsEl(map, b, floatWrap)
       if (sidebarColumnDragRef.current) {
@@ -1018,8 +1031,20 @@ export default function MapView({
     // Where the map was last left is kept, so a reload comes back to it. Runs
     // on every settled move: a pan, a zoom, the wheel, not the drag between.
     const keep = () => {
-      setMapView({ lng: +map.getCenter().lng.toFixed(6), lat: +map.getCenter().lat.toFixed(6), zoom: +map.getZoom().toFixed(3) })
       scheduleDetail()
+      if (skipViewPersistRef.current) {
+        skipViewPersistRef.current = false
+        return
+      }
+      const next = {
+        lng: +map.getCenter().lng.toFixed(6),
+        lat: +map.getCenter().lat.toFixed(6),
+        zoom: +map.getZoom().toFixed(3),
+      }
+      const prev = mapViewRef.current
+      if (prev && prev.lng === next.lng && prev.lat === next.lat && prev.zoom === next.zoom) return
+      savedViewRef.current = next
+      setMapView(next)
     }
     map.on('movestart', hideDetail)
     map.on('moveend', keep)
@@ -1111,18 +1136,13 @@ export default function MapView({
     const map = mapRef.current
     if (!map) return
     const restyle = () => {
+      if (!map.getStyle()?.layers) return
       calm(map, themeId)
       showTiles(map, tilesToShow(), themeId)
     }
     const id = requestAnimationFrame(restyle)
     return () => cancelAnimationFrame(id)
   }, [themeId])
-
-  // The rectangle lives on the map's render tick; recompute once after any
-  // change that does not itself trigger a map render (sidebar edits, resize).
-  useEffect(() => {
-    place()
-  })
 
   useEffect(() => {
     place()
@@ -1682,7 +1702,7 @@ export default function MapView({
         >
           <div
             ref={floatPanelRef}
-            className={`chrome-surface chrome-border flex max-h-[78vh] w-[46ch] min-h-0 flex-col overflow-hidden border p-2 font-mono text-[11px] ${RAISED}`}
+            className={`chrome-surface chrome-border flex max-h-[78vh] w-[40ch] min-h-0 flex-col overflow-hidden border p-2 font-mono text-[11px] ${RAISED}`}
           >
             <PlaceSearchPanel lockSizeRef={floatPanelRef} onPick={onSearch}>
               <div className="mb-1.5 flex flex-col gap-1">

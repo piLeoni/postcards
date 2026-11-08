@@ -167,26 +167,26 @@ export default function OutputControls({ output, units, onEdit, onMove, compact 
         />
         <Choice
           label="a new scale changes"
-          title="What a new scale changes: the terrain on the same paper, or the paper around the same terrain"
+          title="What a new scale changes: the world on the same paper, or the paper around the same world"
           options={[
-            ['terrain', 'terrain'],
+            ['terrain', 'world'],
             ['paper', 'paper'],
           ]}
           value={scaleChanges}
           onChange={chooseScaleChanges}
         />
 
-        <Scrub icon="▭" label="terrain" title="Drag to take in more or less terrain on the same paper: the scale follows" model={terrain} value={terrainW} sign={-1} onChange={growTerrain} />
+        <Scrub icon="▭" label="world" title="Drag to take in more or less world on the same paper: the scale follows" model={terrain} value={terrainW} sign={-1} onChange={growTerrain} />
         <Field
-          label="terrain width"
-          title="The terrain across the output: m, km, mi or ft; the paper follows, the other side stays put"
+          label="world width"
+          title="The world across the output: m, km, mi or ft; the paper follows, the other side stays put"
           model={terrain}
           value={terrainW}
           onChange={growTerrainWidth}
         />
         <Field
-          label="terrain height"
-          title="The terrain down the output: m, km, mi or ft; the paper follows, the other side stays put"
+          label="world height"
+          title="The world down the output: m, km, mi or ft; the paper follows, the other side stays put"
           model={terrain}
           value={terrainH}
           onChange={growTerrainHeight}

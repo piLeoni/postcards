@@ -183,7 +183,7 @@ export function Scrub({ icon, label, title, model, value, onChange, sign, px, on
  */
 export function Choice({ label, title, options, value, onChange, isOptionDisabled }) {
   return (
-    <span role="radiogroup" aria-label={label} title={title} className="chrome-surface chrome-border flex min-w-0 border text-[0.9em] leading-[1.75] select-none">
+    <span role="radiogroup" aria-label={label} title={title} className="chrome-surface chrome-border flex min-w-0 overflow-hidden border text-[0.9em] leading-[1.75] select-none">
       {options.map(([v, text], i) => {
         const off = isOptionDisabled?.(v)
         const on = v === value
@@ -194,7 +194,7 @@ export function Choice({ label, title, options, value, onChange, isOptionDisable
             aria-checked={on}
             aria-disabled={off || undefined}
             tabIndex={off ? -1 : on ? 0 : -1}
-            className={`min-w-0 flex-1 text-center ${i ? 'border-l border-[color:var(--chrome-divider)]' : ''} ${
+            className={`min-w-0 flex-1 overflow-hidden px-0.5 text-center ${i ? 'border-l border-[color:var(--chrome-divider)]' : ''} ${
               off
                 ? 'cursor-not-allowed opacity-45'
                 : `cursor-pointer ${on ? 'bg-[var(--foreground0)] text-[var(--background0)]' : 'hover:bg-[color-mix(in_srgb,var(--foreground0)_12%,transparent)]'}`
@@ -209,7 +209,7 @@ export function Choice({ label, title, options, value, onChange, isOptionDisable
               e.preventDefault()
             }}
           >
-            {text}
+            <span className="block truncate">{text}</span>
           </span>
         )
       })}

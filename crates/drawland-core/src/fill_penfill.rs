@@ -172,6 +172,15 @@ pub fn fill_params(generator: &str, spec: &FillSpec, o: &Opts) -> Result<FillPar
     if let Some(v) = o.num("jitter")? {
         params = params.custom("jitter", v);
     }
+    if let Some(v) = match o.num("jitter_period")? {
+        Some(v) => Some(v),
+        None => o.num("period")?,
+    } {
+        params = params.custom("jitter_period", v);
+    }
+    if let Some(v) = o.num("ticks")? {
+        params = params.custom("ticks", v);
+    }
     if let Some(v) = o.mm("bubble")? {
         params = params.custom("bubble", v);
     }

@@ -8,7 +8,7 @@ import { loadDrawland } from './lib/drawland'
 import { loadGoogleFontsForGraph } from './lib/googleFonts'
 import { loadStrokeFontsForGraph } from './lib/strokeFonts'
 import { applyTheme, defaultInkColor, normalizeThemeId } from './lib/themes'
-import { docAtom, themeAtom } from './lib/store'
+import { docAtom, sidebarOpenAtom, themeAtom } from './lib/store'
 import { outputComment, outputUnit, setOutputComment, setOutputKeys } from './lib/doc'
 import { compile, literalOutputInfo } from './lib/graph'
 import { inlineShare, readFragment, sharedScript } from './lib/share'
@@ -98,7 +98,7 @@ export default function App() {
   // the live download; `MapView` shows the plan until the download replaces
   // it, and the trace again once the download is done.
   const [planned, setPlanned] = useState(null)
-  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [sidebarOpen, setSidebarOpen] = useAtom(sidebarOpenAtom)
   /** True while the user is dragging the script column seam or toggle (hide the map float card). */
   const [sidebarColumnDrag, setSidebarColumnDrag] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)

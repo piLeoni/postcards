@@ -14,34 +14,51 @@ output({
 // ═══════════════════════════════════════════════════════════════════════════
 // 1. PARAMETERS & STYLE PALETTE (All visual knobs in one place)
 // ═══════════════════════════════════════════════════════════════════════════
+/** Master pen nib width (mm). Every paper length below is `pen(k)` = k × PEN. */
 const PEN = 0.2
-const penStroke = (stroke) => ({ ...stroke, width: PEN, cap: "round" })
+/**
+ * Paper length in mm (numeric `Length` / `RoadMeasure`).
+ * @param {number} k
+ * @returns {number}
+ */
+const pen = (k) => PEN * k
+/** @param {Exclude<Stroke, string>} stroke @returns {Stroke} */
+const penStroke = (stroke) => /** @type {Stroke} */ ({ ...stroke, width: pen(1), cap: "round" })
 
 // 1a. Line & Stroke Styles
 // Solid lines are reserved strictly for hard physical edges (buildings, road
 // carriageways, runways, water shoreline, piers). Facilities & soft boundaries
 // use `STROKE_DOTTED_RING`.
+/** @type {Stroke} */
 const STROKE_SOLID         = penStroke({ style: "solid" })
-const STROKE_DOTTED_RING   = penStroke({ style: "dotted", mark: "0.30mm", gap: "1.30mm" })
-const STROKE_GARDEN_PATH   = penStroke({ style: "dotted", mark: "0.35mm", gap: "0.50mm" })
-const STROKE_ROAD_CENTER   = penStroke({ style: "dash",   dash: "0.35mm", gap: "0.80mm" })
-const STROKE_RAIL          = penStroke({ style: "dash",   dash: "0.80mm", gap: "0.50mm" })
-const STROKE_RUNWAY_CENTER = penStroke({ style: "dash",   dash: "1.20mm", gap: "0.90mm" })
-const STROKE_AERIALWAY     = penStroke({ style: "dash",   dash: "0.60mm", gap: "0.50mm" })
-const STROKE_FERRY         = penStroke({ style: "dash",   dash: "0.45mm", gap: "0.40mm" })
+/** @type {Stroke} */
+const STROKE_DOTTED_RING   = penStroke({ style: "dotted", mark: pen(1.5), gap: pen(6.5) })
+/** @type {Stroke} */
+const STROKE_GARDEN_PATH   = penStroke({ style: "dotted", mark: pen(1.75), gap: pen(2.5) })
+/** @type {Stroke} */
+const STROKE_ROAD_CENTER   = penStroke({ style: "dash",   dash: pen(1.75), gap: pen(4) })
+/** @type {Stroke} */
+const STROKE_RAIL          = penStroke({ style: "dash",   dash: pen(4), gap: pen(2.5) })
+/** @type {Stroke} */
+const STROKE_RUNWAY_CENTER = penStroke({ style: "dash",   dash: pen(6), gap: pen(4.5) })
+/** @type {Stroke} */
+const STROKE_AERIALWAY     = penStroke({ style: "dash",   dash: pen(3), gap: pen(2.5) })
+/** @type {Stroke} */
+const STROKE_FERRY         = penStroke({ style: "dash",   dash: pen(2.25), gap: pen(2) })
 
 // 1b. Geometry Buffers & Clearances
-const OCEAN_SEAM_GROW  = "0.35mm"
-const FRAME_CLIP_INSET = "-0.25mm"
-const RUNWAY_HALF_W    = "2.00mm"
-const TAXIWAY_HALF_W   = "0.65mm"
-const PIER_HALF_W      = "0.25mm"
-const FERRY_CLEAR_W    = "0.35mm"
-const TRAIL_CLEAR_W    = "0.45mm"
-const LABEL_CLEAR_W    = "0.65mm"
-const NATURE_MERGE_GAP = "0.15mm"
-const SIMPLIFY_TOL     = "0.03mm"
-const FILTER_MIN_LEN   = "0.25mm"   // urban outlines only (buildings/roads); never on trees, gardens, or dotted routes
+const OCEAN_SEAM_GROW  = pen(1.75)
+const FRAME_CLIP_INSET = pen(-1.25)
+const RUNWAY_HALF_W    = pen(10)
+const TAXIWAY_HALF_W   = pen(3.25)
+const PIER_HALF_W      = pen(1.25)
+const FERRY_CLEAR_W    = pen(1.75)
+const TRAIL_CLEAR_W    = pen(2.25)
+const LABEL_CLEAR_W    = pen(3.25)
+const NATURE_MERGE_GAP = pen(0.75)
+const NATURE_RING_CLIP = pen(-0.25)
+const SIMPLIFY_TOL     = pen(0.15)
+const FILTER_MIN_LEN   = pen(1.25)   // urban outlines only (buildings/roads); never on trees, gardens, or dotted routes
 const FILL_ORIENT      = "tl-br"    // preferred stroke direction for fills to prevent pen skipping on reversals
 
 // 1c. Road Widths, Lanes & Mask Clearances (`modules.roads`)
@@ -66,7 +83,7 @@ const ROAD_OPTIONS = {
   inferLanesByClass: true,
   centerlineMinWidth: { ground: CENTERLINE_MIN_GROUND_M },
   jointClose: { ground: 3.0 },
-  clearance: 1,
+  clearance: pen(5),
   classes: {
     motorway:       arterialLane(3.75, 4),
     motorway_link:  { ground: 4.5,  lanes: 1, centerline: false },
@@ -98,54 +115,94 @@ const ROAD_OPTIONS = {
 // Note: no `inset` on nature/garden/court fills so adjacent patches (e.g.
 // garden beds inside a park) meet seamlessly without a white exclusion halo.
 /** @type {Omit<FillOptions, "in">} */
-const FILL_BUILDINGS = { per: "feature", pattern: "lines", inset: PEN * 1.3, spacing: "0.50mm", angle: 45 }
+const FILL_BUILDINGS = { per: "feature", pattern: "lines", inset: pen(1.3), spacing: pen(2.5), angle: 45 }
 /** @type {Omit<FillOptions, "in">} */
-const FILL_WATER     = { pattern: "waves", spacing: "0.75mm" }
+const FILL_WATER     = { pattern: "waves", spacing: pen(3.75) }
 /** @type {Omit<FillOptions, "in">} */
-const FILL_DOTS      = { pattern: "dots", spacing: "0.75mm", mark: "0.22mm", angle: 30 }
+const FILL_DOTS      = { pattern: "dots", spacing: pen(3.75), mark: pen(1.1), angle: 30 }
 /** @type {Omit<FillOptions, "in">} */
-const FILL_LAWN      = { ...FILL_DOTS, spacing: "0.60mm" }
+const FILL_LAWN      = { ...FILL_DOTS, spacing: pen(3) }
 /** @type {Omit<FillOptions, "in">} */
-const FILL_FLOWERBED = { ...FILL_DOTS, spacing: "0.45mm" }
+const FILL_FLOWERBED = { ...FILL_DOTS, spacing: pen(2.25) }
 /** @type {Omit<FillOptions, "in">} */
 const FILL_STIPPLE   = { ...FILL_DOTS, pattern: "stipple-edge" }
 /** @type {Omit<FillOptions, "in">} */
-const FILL_COURT     = { pattern: "dots", lattice: "square", spacing: "0.55mm", mark: "0.20mm", angle: 0 }
+const FILL_COURT     = { pattern: "dots", lattice: "square", spacing: pen(2.75), mark: pen(1), angle: 0 }
 /** @type {Omit<FillOptions, "in">} */
-const FILL_TRACK     = { ...FILL_COURT, spacing: "0.45mm" }
+const FILL_TRACK     = { ...FILL_COURT, spacing: pen(2.25) }
 
-// 1e. 3D Foliage Canopy Tiers (`pattern: "isoline-stack"`)
-// Messiness knobs (shared look — change in CANOPY_BASE):
-//   jitter     contour wobble (0 smooth … ~2+ spiky; penfill default ~0.88)
-//   lobes      bough clefts / compound lobes (0–2.5; default 1.0)
-//   elongation wind-swept oval crowns (0–1)
-//   light      shadow-side hatching strength (0 off … 1 heavy); light_angle / light_elevation aim the sun
-//   bubble     leaf-tuft scale in mm (omit → ~0.28× spacing; larger often reads calmer)
-// Distribution knobs (per tier — spacing, coverage, slices):
-//   spacing    typical crown radius (mm); larger → fewer, bigger trees
-//   coverage   how patchy crowns are (0–1); lower → more clearings between trees
-//   slices     contour rings per crown; fewer → simpler silhouettes
-//   edge/overflow  dense forest only: overflow bulge past polygon edge
+// 1e. 3D Foliage Canopy Tiers (`pattern: "isoline-stack"`, penfill isoline_stack)
+// Requires current penfill in `../penfill` — after penfill changes run `npm run wasm` from `web/`.
+// Shape knobs (shared — CANOPY_BASE):
+//   jitter          displacement intensity along each contour (default 1.1)
+//   jitter_period   how many points jitter per ring — lower = finer teeth (default 0.68)
+//   lobes           bough clefts / compound lobes (0–2.5)
+//   elongation      wind-swept oval crowns (0–1)
+//   ticks           cross-contour slope ticks at clefts & shadow tiers (0–1.5)
+//   light           sun strength; light_angle / light_elevation aim the sun
+//   bubble          leaf-tuft scale in mm (omit → ~0.3× crown)
+// Distribution (per tier — spacing, coverage, slices):
+//   spacing    typical crown radius (mm)
+//   coverage   grove density (0–1); lower → more clearings
+//   slices     vertical tiers per crown (default 9)
+//   edge/overflow  dense forest: overflow bulge past polygon edge
 /** @type {Omit<FillOptions, "in">} */
 const CANOPY_BASE = {
   pattern: "isoline-stack",
   seed: 7,
-  jitter: 1.25,
-  light: 0.7,
+  jitter: 1.1,
+  jitter_period: 0.68,
+  ticks: 0.42,
+  light: 0.82,
   light_angle: 225,
   light_elevation: 38,
   edge: "inside",
   lobes: 1.0,
-  elongation: 0.12,
-  spacing:"3.0mm",
-  slices: 5
+  elongation: 0.18,
+  spacing: pen(15),
+  slices: 9,
+}
+// Short period + high intensity (penfill `isoline_blobs_demo` panel 3C).
+/** @type {Omit<FillOptions, "in">} */
+const CANOPY_SHORT_PERIOD = {
+  ...CANOPY_BASE,
+  seed: 27,
+  jitter: 1.55,
+  jitter_period: 0.45,
+  lobes: 0.85,
+  elongation: 0.14,
+  slices: 10,
+  coverage: 0.62,
+  // bubble ≈ 0.19× crown (demo: 1.15 mm @ 6.0 mm crown); scales with `spacing` below.
+  bubble: pen(2.9),
 }
 /** @type {Omit<FillOptions, "in">} */
-const CANOPY_DENSE_SPEC = { ...CANOPY_BASE, edge: "overflow", overflow: "0.34mm",spacing:"3.0mm",  coverage: 0.82 }
+const CANOPY_DENSE_SPEC = {
+  ...CANOPY_SHORT_PERIOD,
+  edge: "overflow",
+  overflow: pen(1.7),
+  spacing: pen(15),
+  coverage: 0.82,
+  bubble: pen(2.9),
+}
 /** @type {Omit<FillOptions, "in">} */
-const CANOPY_PARK_SPEC  = { ...CANOPY_BASE,  spacing:"2.5mm", coverage: 0.58 }
+const CANOPY_PARK_SPEC = {
+  ...CANOPY_BASE,
+  spacing: pen(12.5),
+  coverage: 0.58,
+  jitter_period: 0.78,
+  ticks: 0.32,
+}
 /** @type {Omit<FillOptions, "in">} */
-const CANOPY_SHRUB_SPEC = { ...CANOPY_BASE, spacing:"2.0mm", coverage: 0.52 }
+const CANOPY_SHRUB_SPEC = {
+  ...CANOPY_BASE,
+  spacing: pen(10),
+  coverage: 0.52,
+  slices: 7,
+  jitter_period: 0.85,
+  lobes: 0.85,
+  ticks: 0.28,
+}
 
 // 1f. Terrain Slope Hatching (Burin)
 const BURIN_URBAN_FADE = {
@@ -169,7 +226,7 @@ const BURIN_NATURE_STYLE = {
 }
 
 // 1g. Typography & Label Rules (draw.land monoline `futural` only; one cap height)
-const LABEL_SIZE = "2.2mm"
+const LABEL_SIZE = pen(11)
 /** @type {LabelRule[]} */
 const LABEL_RULES = [
   { id: "park",      tags: { "tiles:layer": "park" } },
@@ -233,6 +290,19 @@ const NATURE = [
   { id: "pitch",      tiles: ["landuse:pitch"],                                               relief: false, canopy: "open",      ring: true, fill: FILL_COURT },
 ]
 
+/** @param {typeof NATURE[number]} k @returns {Area} */
+const natureArea = (k) => {
+  const a = k.area
+  if (!a) throw new Error(`nature.${k.id}: missing area`)
+  return a
+}
+/** @param {typeof NATURE[number]} k @returns {Area} */
+const natureVisible = (k) => {
+  const v = k.visible
+  if (!v) throw new Error(`nature.${k.id}: missing visible`)
+  return v
+}
+
 // Built-up / paved `landuse` classes (stay white paper; ground burin eases out before them)
 const PAVED_LANDUSE_TILES =
   "landuse:residential,commercial,industrial,retail,garages,railway,bus_station,military,school,university,kindergarten,college,library,hospital,stadium,dam,parking"
@@ -294,16 +364,16 @@ const ferryCorridor = areas.intersect(areas.buffer(ferryRoutes, FERRY_CLEAR_W), 
 for (const kind of NATURE) {
   const selectors = Array.isArray(kind.tiles) ? kind.tiles : [kind.tiles]
   const raw = areas.polygons(features.tiles(...selectors))
-  kind.area = areas.grow(areas.grow(raw, NATURE_MERGE_GAP), `-${NATURE_MERGE_GAP}`)
+  kind.area = areas.grow(areas.grow(raw, NATURE_MERGE_GAP), -NATURE_MERGE_GAP)
 }
 let covered = areas.union(water, aerowayPaved)
 for (const kind of [...NATURE].reverse()) {
-  kind.visible = areas.difference(kind.area, covered)
-  covered = areas.union(covered, kind.area)
+  kind.visible = areas.difference(natureArea(kind), covered)
+  covered = areas.union(covered, natureArea(kind))
 }
 const nature = areas.difference(covered, water, aerowayPaved)
 const openGround = areas.difference(frame, covered)
-const facilityRingArea = areas.union(...NATURE.filter((k) => k.ring).map((k) => k.visible))
+const facilityRingArea = areas.union(...NATURE.filter((k) => k.ring).map(natureVisible))
 const ridgeLines = lines.of(features.tiles("mountain_peak:cliff,ridge,arete"))
 
 // Park paths only: clipped strictly to true municipal parks (`landcover:park,recreation_ground,village_green`)
@@ -315,9 +385,9 @@ const trailLines = lines.clip(lines.of(features.tiles("paths")), parkFootprint)
 const trailClear = areas.buffer(trailLines, TRAIL_CLEAR_W)
 
 // 2d. Terrain Hatching & 3D Foliage Regions
-const noRelief = areas.union(...NATURE.filter((k) => !k.relief).map((k) => k.area))
+const noRelief = areas.union(...NATURE.filter((k) => !k.relief).map(natureArea))
 const reliefArea = areas.difference(
-  areas.union(...NATURE.filter((k) => k.relief).map((k) => k.area)),
+  areas.union(...NATURE.filter((k) => k.relief).map(natureArea)),
   noRelief,
 )
 const groundBurin = burin.terrain(
@@ -329,20 +399,20 @@ const natureBurin = burin.terrain(
   { in: reliefArea, regions: { relief: reliefArea, urban } },
 )
 
-const denseCanopyArea = areas.union(...NATURE.filter((k) => k.canopy === "dense").map((k) => k.visible))
+const denseCanopyArea = areas.union(...NATURE.filter((k) => k.canopy === "dense").map(natureVisible))
 const openCanopyClear = areas.union(
   water,
   aerowayPaved,
   buildings,
   denseCanopyArea,
-  ...NATURE.filter((k) => k.canopy === "open").map((k) => k.area),
+  ...NATURE.filter((k) => k.canopy === "open").map(natureArea),
 )
 const scatteredCanopyArea = areas.difference(
-  areas.union(...NATURE.filter((k) => k.canopy === "scattered").map((k) => k.area)),
+  areas.union(...NATURE.filter((k) => k.canopy === "scattered").map(natureArea)),
   openCanopyClear,
 )
 const shrubCanopyArea = areas.difference(
-  areas.union(...NATURE.filter((k) => k.canopy === "shrub").map((k) => k.visible)),
+  areas.union(...NATURE.filter((k) => k.canopy === "shrub").map(natureVisible)),
   buildings,
   aerowayPaved,
 )
@@ -353,6 +423,13 @@ const FOLIAGE_DENSE = { in: denseCanopyArea,     ...CANOPY_DENSE_SPEC }
 const FOLIAGE_PARK  = { in: scatteredCanopyArea, ...CANOPY_PARK_SPEC }
 /** @type {FillOptions} */
 const FOLIAGE_SHRUB = { in: shrubCanopyArea,     ...CANOPY_SHRUB_SPEC }
+
+// Closed crown-footprint union from isoline-stack (`fills.cover`); same generator run as the fills.
+const canopyCover = areas.union(
+  fills.cover(FOLIAGE_DENSE),
+  fills.cover(FOLIAGE_PARK),
+  fills.cover(FOLIAGE_SHRUB),
+)
 
 // 2e. Labels
 const labels = modules.labels({
@@ -378,19 +455,20 @@ const groundDraws = [
 ]
 
 const natureFills = NATURE.map((k) =>
-  draw({ id: `fill_nature_${k.id}`, from: fills.fill({ in: k.visible, ...k.fill }), stroke: STROKE_SOLID }),
+  draw({ id: `fill_nature_${k.id}`, from: fills.fill({ in: natureVisible(k), ...k.fill }), stroke: STROKE_SOLID }),
 )
 const natureDraws = [
   draw({ id: "lines_nature_terrain", from: natureBurin, stroke: STROKE_SOLID }),
   ...natureFills,
   draw({ id: "lines_nature_ring", from: lines.rings(nature), stroke: STROKE_DOTTED_RING }),
-  draw({ id: "lines_courts_ring", from: lines.clip(lines.rings(facilityRingArea), areas.grow(nature, "-0.05mm")), stroke: STROKE_DOTTED_RING }),
+  draw({ id: "lines_courts_ring", from: lines.clip(lines.rings(facilityRingArea), areas.grow(nature, NATURE_RING_CLIP)), stroke: STROKE_DOTTED_RING }),
 ]
 
 const canopyDraws = [
   draw({ id: "fill_wood_foliage",  from: fills.fill(FOLIAGE_DENSE), stroke: STROKE_SOLID }),
   draw({ id: "fill_park_foliage",  from: fills.fill(FOLIAGE_PARK),  stroke: STROKE_SOLID }),
   draw({ id: "fill_shrub_foliage", from: fills.fill(FOLIAGE_SHRUB), stroke: STROKE_SOLID }),
+  draw({ id: "lines_canopy_cover", from: lines.rings(canopyCover),   stroke: STROKE_DOTTED_RING }),
 ]
 
 const pathDraws = [
@@ -428,11 +506,6 @@ draw({ id: "lines_labels", from: labels.lines, stroke: STROKE_SOLID })
 // 4. OCCLUSION MASKS & LAYER ORDER
 // ═══════════════════════════════════════════════════════════════════════════
 const underRoads = [...groundDraws, ...natureDraws, ...waterDraws]
-const canopyCover = areas.union(
-  fills.cover(FOLIAGE_DENSE),
-  fills.cover(FOLIAGE_PARK),
-  fills.cover(FOLIAGE_SHRUB),
-)
 const labelClear = areas.union(labels.area, areas.buffer(labels.lines, LABEL_CLEAR_W))
 
 compose.mask({ name: "mask_clear_trails",   from: trailClear,    occludes: ["lines_nature_terrain", ...natureFills] })
@@ -475,6 +548,7 @@ compose.order(
   "fill_wood_foliage",
   "fill_park_foliage",
   "fill_shrub_foliage",
+  "lines_canopy_cover",
   "fill_water",
   ...[...NATURE].reverse().map((k) => `fill_nature_${k.id}`),
 )
@@ -505,6 +579,7 @@ const routeLines = [
   "lines_ferry",
   "lines_garden_paths",
   "lines_nature_ring",
+  "lines_canopy_cover",
   "lines_courts_ring",
   "lines_apron_ring",
   "lines_ridges",
@@ -520,8 +595,8 @@ const fillLayers = [
   "lines_nature_terrain",
 ]
 
-compose.deoverlap(cityLines, { tolerance: PEN * 1.2, selfOverlap: true, acrossLayers: true })
-compose.linemerge(cityLines, PEN * 2)
+compose.deoverlap(cityLines, { tolerance: pen(1.2), selfOverlap: true, acrossLayers: true })
+compose.linemerge(cityLines, pen(2))
 compose.filter(["lines_buildings_ring", "lines_roads_outlines", "lines_roads_seams", "lines_aeroway", "lines_piers", "lines_dock_ring"], { minLength: FILTER_MIN_LEN })
 compose.simplify(cityAndRoutes, SIMPLIFY_TOL)
 compose.orient(fillLayers, { direction: FILL_ORIENT, splitReversals: true })

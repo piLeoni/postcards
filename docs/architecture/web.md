@@ -47,9 +47,9 @@ Share URLs: `lib/share.js` (fragments `#js=`, etc.).
 
 `compile()` underlines errors using wasm-reported line/column. Literal `output({…})` can be parsed for map framing without full graph (`literalOutputInfo`).
 
-## Export & G-code (`lib/download.js`, `lib/gcode.js`)
+## Export, G-code & DXF (`lib/download.js`, `lib/gcode.js`, `lib/dxf.js`)
 
-`DownloadModal.jsx` exports the drawn SVG as `.svg`, `.png`, or plotter G-code (`.gco` / `.gcode`), whole or per-slice, combined or one file per top-level `<g id>` layer. `lib/gcode.js` implements `vpype-gcode` (`[gwrite.<profile>]` and `[gwrite.<profile>.default_values]`) TOML parsing, Python-style `{var}` / `{var:.3f}` template formatting, coordinate transforms (`vertical_flip`, `bed_width`, `bed_height`, optional fit-to-bed margin), and live bed bounds diagnostics (`components/GcodeConfig.jsx`, persisted in `gcodeConfigAtom` in `lib/store.js`).
+`DownloadModal.jsx` exports the drawn SVG as `.svg`, `.png`, or plotter G-code (`.gco` / `.gcode`), or `.dxf`, whole or per-slice, combined or one file per top-level `<g id>` layer. `lib/gcode.js` implements `vpype-gcode` (`[gwrite.<profile>]` and `[gwrite.<profile>.default_values]`) TOML parsing, Python-style `{var}` / `{var:.3f}` template formatting, coordinate transforms (`vertical_flip`, `bed_width`, `bed_height`, optional fit-to-bed margin), and live bed bounds diagnostics (`components/GcodeConfig.jsx`, persisted in `gcodeConfigAtom` in `lib/store.js`). `lib/dxf.js` writes AutoCAD R12 ASCII DXF (mm, Y flipped upright) from the same `extractSvgGeometry` strokes; each top-level layer becomes a DXF layer.
 
 ## Deploy
 

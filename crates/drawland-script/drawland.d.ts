@@ -114,21 +114,35 @@ interface FillOptions {
   coverage?: number
   /** `isoline-stack`: typical bubble radius in mm; smaller is lumpier. Default ~0.3× `spacing`. */
   bubble?: Length
-  /** `isoline-stack`: horizontal slices through the stack; more rings. Default 14. */
+  /** `isoline-stack`: horizontal slices through the stack; more rings. Default 9. */
   slices?: number
-  /** `isoline-stack`: contour jaggedness (`jaggedness`, 0–2+). `growth`: steering wobble (0–1ish). Default 0.88 for `isoline-stack`, 0.1 for `growth`. */
+  /**
+   * `isoline-stack`: contour displacement intensity (`jaggedness`, 0–2.5).
+   * `growth`: steering wobble (0–1ish). Default 1.1 for `isoline-stack`, 0.1 for `growth`.
+   */
   jitter?: number
-  /** `isoline-stack`: crown elliptical elongation / wind sweep (0–1). Default 0.15. */
+  /**
+   * `isoline-stack`: jitter wavelength — how many control points sit on each contour
+   * (0.2–4; lower = finer serration). Alias: `period`. Default 0.68.
+   */
+  jitter_period?: number
+  /** Alias for `jitter_period`. */
+  period?: number
+  /**
+   * `isoline-stack`: short cross-contour slope ticks at bough clefts and shadowed
+   * tiers (0–1.5). Default 0.42.
+   */
+  ticks?: number
+  /** `isoline-stack`: crown elliptical elongation / wind sweep (0–1). Default 0.18. */
   elongation?: number
   /** `isoline-stack`: bough cleft depth and compound sub-crown lobing (0–2.5). Default 1.0. */
   lobes?: number
   /**
-   * `isoline-stack`: a sun from one direction (0–1, off by default). The
-   * stack's top surface is lit with cast shadows; the shadow side is hatched
-   * (crossed where darkest) and outlines break where the sun hits full on.
+   * `isoline-stack`: directional sun strength (0–1). Default 0.82. Lit-side arcs,
+   * shadow-side density; use `ticks` for cross-contour hachures.
    */
   light?: number
-  /** `isoline-stack` with `light`: degrees the light comes *from* (0 = +x, 90 = +y). Default 0. */
+  /** `isoline-stack` with `light`: degrees the light comes *from* (0 = +x, 90 = +y). Default -45. */
   light_angle?: number
   /** `isoline-stack` with `light`: sun height in degrees; lower casts longer shadows. Default 35. */
   light_elevation?: number

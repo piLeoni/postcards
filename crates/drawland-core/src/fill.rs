@@ -325,6 +325,7 @@ fn covering(r: &Region, spec: &FillSpec, take: bool) -> Result<penfill::FillWith
                 feature_size: s,
                 contour_spacing: o.mm("contour")?.unwrap_or(s * 0.045),
                 warp: o.num("warp")?.unwrap_or(0.45),
+                warp_period: o.num("warp_period")?.unwrap_or(1.0),
                 threshold: o.num("threshold")?.unwrap_or(0.25),
                 edge,
                 fray,
@@ -367,24 +368,14 @@ fn covering(r: &Region, spec: &FillSpec, take: bool) -> Result<penfill::FillWith
             if o.num("light")?.is_none() && is_hatched {
                 fill = fill.custom("light", 0.85);
             }
-            if o.num("slices")?.is_none() {
-                let default_slices = if is_hatched { 4.0 } else { 14.0 };
-                fill = fill.custom("slices", default_slices);
-            }
-            if o.num("jitter")?.is_none() {
-                fill = fill.custom("jitter", if is_hatched { 1.8 } else { 0.8 });
-            }
             if is_hatched && o.mm("hatch")?.is_none() {
                 fill = fill.custom("hatch", 0.45);
-            }
-            if o.num("light_angle")?.is_none() && fill.get_custom("light", 0.0) > 0.0 {
-                fill = fill.custom("light_angle", 0.0);
             }
             let params = IsolineStackParams::from_fill_params(&fill, s);
             let mut stack = params;
             if let Some(strength) = o.num("light")?.or_else(|| is_hatched.then_some(0.85)).filter(|v| *v > 0.0) {
                 stack.light = Some(penfill::isoline_stack::Light {
-                    from_deg: o.num("light_angle")?.unwrap_or(0.0),
+                    from_deg: o.num("light_angle")?.unwrap_or(-45.0),
                     strength,
                     elevation_deg: o.num("light_elevation")?.unwrap_or(35.0),
                     hatch: o.mm("hatch")?.unwrap_or(if is_hatched { 0.45 } else { 0.0 }),
@@ -688,6 +679,34 @@ mod tests {
         assert_eq!(fill(&sq, &spec, &Sources::new()).unwrap(), fresh);
         let dots = FillSpec { generator: Some("dots".into()), ..FillSpec::spacing(1.0) };
         assert_eq!(cover(&sq, &dots).unwrap(), sq);
+    }
+
+    #[test]
+    fn isoline_stack_jitter_period_reaches_penfill() {
+        let sq = MultiPolygon::new(vec![polygon![(x: 0.0, y: 0.0), (x: 60.0, y: 0.0), (x: 60.0, y: 60.0), (x: 0.0, y: 60.0)]]);
+        let spec = |jitter_period: f64| {
+            let mut spec = FillSpec {
+                generator: Some("isoline-stack".into()),
+                seed: Some(27),
+                ..FillSpec::spacing(6.0)
+            };
+            spec.options.insert("edge".into(), "inside".into());
+            spec.options.insert("coverage".into(), serde_json::json!(0.62));
+            spec.options.insert("jitter".into(), serde_json::json!(1.55));
+            spec.options.insert("jitter_period".into(), serde_json::json!(jitter_period));
+            spec.options.insert("bubble".into(), serde_json::json!(1.15));
+            spec.options.insert("lobes".into(), serde_json::json!(0.85));
+            spec
+        };
+        let short = fill(&sq, &spec(0.45), &Sources::new()).unwrap();
+        let long = fill(&sq, &spec(1.75), &Sources::new()).unwrap();
+        let segs = |lines: &Lines| lines.iter().map(|l| l.0.len()).sum::<usize>();
+        assert!(
+            segs(&short) > segs(&long),
+            "short jitter_period should add more contour detail ({} vs {} vertices)",
+            segs(&short),
+            segs(&long)
+        );
     }
 
     #[test]

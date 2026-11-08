@@ -44,7 +44,7 @@ const initialDoc = shared ? shared.text : START_DOC
 
 /**
  * What the page keeps between visits, in one place: the script, where the map
- * was, and how wide the column was. Each is a Jotai atom stored in
+ * was, whether the script column was open, and how wide it was. Each is a Jotai atom stored in
  * `localStorage` under a `drawland.` key, so a reload — or a closed tab
  * reopened tomorrow — comes back where it was left. A page with no
  * `localStorage` (private mode) still works; the atoms just start at their
@@ -66,6 +66,9 @@ export const docAtom = atomWithStorage('drawland.doc', initialDoc, undefined, ON
 
 /** Where the map was looking: the centre and zoom, not the bearing (that is the output's). */
 export const mapViewAtom = atomWithStorage('drawland.mapView', null, undefined, ON_INIT)
+
+/** Whether the right script column is expanded (false = narrow rail only). */
+export const sidebarOpenAtom = atomWithStorage('drawland.sidebarOpen', false, undefined, ON_INIT)
 
 /** The right column's width, in px. */
 export const sidebarWidthAtom = atomWithStorage('drawland.sidebarWidth', 448, undefined, ON_INIT)

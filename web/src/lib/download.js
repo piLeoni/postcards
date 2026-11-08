@@ -2,6 +2,7 @@
  * Export the drawn SVG (and raster fallbacks) from the browser.
  */
 import { svgToGcode } from './gcode.js'
+import { svgToDxf } from './dxf.js'
 import { svgTextToPngBlob } from './preview.js'
 
 const slugToken = (s) =>
@@ -136,7 +137,7 @@ export function pxPerMmFromDpi(dpi) {
  * @param {object} drawing `{ svg, slices?, groups? }`
  * @param {object} options
  * @param {string} options.basename file stem without extension (user-edited)
- * @param {'svg'|'png'} options.format
+ * @param {'svg'|'png'|'gcode'|'dxf'} options.format
  * @param {number|string|null|undefined} options.svgDecimals `null`/empty = full precision
  * @param {boolean} options.perLayer one SVG per grammar layer
  * @param {'whole'|'slices'} [options.sliceMode] `'whole'` (all together) or `'slices'` (one file per slice)
@@ -166,6 +167,18 @@ export async function prepareDownloads(drawing, options) {
         background: options.pngBackground,
       })
       if (png) files.push({ name: `${stem}.png`, blob: png })
+      continue
+    }
+
+    if (options.format === 'dxf') {
+      // One DXF holds every grammar layer as a DXF layer; optionally split files too.
+      const layers = options.perLayer ? splitSvgByTopLevelGroups(text) : []
+      const parts = layers.length > 1 ? layers.map(([id, svg]) => [joinNameParts(stem, safeLayer(id)), svg]) : [[stem, text]]
+      for (const [name, svg] of parts) {
+        const { dxf, lineCount } = svgToDxf(svg)
+        if (parts.length > 1 && lineCount === 0) continue
+        files.push({ name: `${name}.dxf`, blob: new Blob([dxf], { type: 'application/dxf' }) })
+      }
       continue
     }
 
