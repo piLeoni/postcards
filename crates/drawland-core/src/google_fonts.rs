@@ -32,6 +32,41 @@ pub fn decode_font_bytes(bytes: &[u8]) -> Result<Vec<u8>, String> {
     Ok(bytes.to_vec())
 }
 
+/// Marks several font files for one face: Google Fonts serves a family in
+/// subsets (latin, latin-ext, cyrillic, greek, vietnamese…), each its own
+/// file, so `İstanbul`, `Łódź` or `Москва` need more than the latin one.
+pub const BUNDLE_MAGIC: &[u8; 4] = b"DLFB";
+
+/// Several font files as one: [`BUNDLE_MAGIC`], then each file as a
+/// little-endian `u32` length and its bytes. The first file wins a character.
+pub fn bundle(files: &[Vec<u8>]) -> Vec<u8> {
+    let mut out = BUNDLE_MAGIC.to_vec();
+    for f in files {
+        out.extend_from_slice(&(f.len() as u32).to_le_bytes());
+        out.extend_from_slice(f);
+    }
+    out
+}
+
+/// The font files in `bytes` — a bundle, or a single file — each as TTF/OTF.
+pub fn faces_of(bytes: &[u8]) -> Result<Vec<Vec<u8>>, String> {
+    if !bytes.starts_with(BUNDLE_MAGIC) {
+        return Ok(vec![decode_font_bytes(bytes)?]);
+    }
+    let mut out = Vec::new();
+    let mut rest = &bytes[4..];
+    while rest.len() >= 4 {
+        let n = u32::from_le_bytes([rest[0], rest[1], rest[2], rest[3]]) as usize;
+        let body = rest.get(4..4 + n).ok_or("font bundle: truncated")?;
+        out.push(decode_font_bytes(body)?);
+        rest = &rest[4 + n..];
+    }
+    if out.is_empty() {
+        return Err("font bundle: empty".into());
+    }
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

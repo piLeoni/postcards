@@ -38,6 +38,14 @@ export async function fetchTerrain(job, signal, download) {
   }
   try {
     await Promise.all(Array.from({ length: Math.min(PARALLEL, n) }, worker))
+    // Deep tiles flatten the sea to 0 m: its floor comes from the zoom-10
+    // tiles around it, as on the command line, so depth bands still show.
+    const sea = job.terrainSeaTiles?.() ?? []
+    for (let i = 0; i < sea.length; i += 3) {
+      const [z, x, y] = sea.slice(i, i + 3)
+      const bytes = await tile(TERRARIUM.replace('{z}', z).replace('{x}', x).replace('{y}', y), signal)
+      if (bytes) job.addTerrainSea(z, x, y, bytes)
+    }
   } catch (e) {
     row.fail(e?.name === 'AbortError' ? '' : 'download failed')
     throw e

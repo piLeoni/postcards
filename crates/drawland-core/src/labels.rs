@@ -58,6 +58,9 @@ pub struct Style {
     pub buffer_step: Mm,
     /// When `buffer` > 0, keep the letters' own strokes as well as the outlines.
     pub keep_centerline: bool,
+    /// A dot this big (radius, mm) at a place's point, its name set beside it
+    /// rather than on it; the dot is part of the label's area. 0 = no dot.
+    pub marker: Mm,
     /// The first rule whose `tags` match wins; its fields override the ones above.
     pub rules: Vec<LabelRule>,
 }
@@ -76,6 +79,7 @@ impl Default for Style {
             buffer: 0,
             buffer_step: Mm(0.1),
             keep_centerline: true,
+            marker: Mm(0.0),
             rules: Vec::new(),
         }
     }
@@ -112,6 +116,8 @@ pub struct LabelRule {
     pub buffer_step: Option<Mm>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub keep_centerline: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub marker: Option<Mm>,
 }
 
 fn tags_in<'de, D: Deserializer<'de>>(d: D) -> Result<Vec<(String, TagTest)>, D::Error> {
@@ -137,6 +143,7 @@ struct Look {
     buffer: u32,
     buffer_step: Mm,
     keep_centerline: bool,
+    marker: Mm,
 }
 
 impl Style {
@@ -155,6 +162,7 @@ impl Style {
             buffer: r.buffer.unwrap_or(self.buffer),
             buffer_step: r.buffer_step.unwrap_or(self.buffer_step),
             keep_centerline: r.keep_centerline.unwrap_or(self.keep_centerline),
+            marker: r.marker.unwrap_or(self.marker),
         };
         let bucket = if self.rules.iter().any(|rule| select::passes(&rule.tags, f)) {
             r.id.clone()
@@ -326,6 +334,18 @@ fn pin_rank(f: &Feature) -> f64 {
     let layer = f.tag("tiles:layer").unwrap_or("");
     let class = f.tag("class").unwrap_or("");
     if layer == "place" {
+        // OpenMapTiles ranks places (1 the most important): a regional capital
+        // like Milan is 3, a provincial one like Pavia 11, towns 12–18. That,
+        // and a capital's standing, beat the class alone, which makes every
+        // city equal.
+        if let Some(rank) = f.tag("rank").and_then(|r| r.parse::<f64>().ok()) {
+            let bonus = match f.tag("capital") {
+                Some("2") => 0.25,
+                Some("3") | Some("4") => 0.1,
+                _ => 0.0,
+            };
+            return (((18.0 - rank) / 15.0).clamp(0.05, 1.0) + bonus).min(1.0);
+        }
         return match class {
             "city" => 1.0,
             "town" => 0.85,
@@ -568,15 +588,15 @@ pub fn place(
 ) -> Result<Placed, String> {
     validate_style(style)?;
     // Each font file decoded once, not once per label.
-    let mut faces: HashMap<String, Vec<u8>> = HashMap::new();
+    let mut faces: HashMap<String, Vec<Vec<u8>>> = HashMap::new();
     for key in style.fonts().filter_map(LabelFont::google_key) {
         if let Some(bytes) = google_fonts.get(&key) {
-            faces.insert(key, crate::google_fonts::decode_font_bytes(bytes)?);
+            faces.insert(key, crate::google_fonts::faces_of(bytes)?);
         }
     }
     let mut cached_faces: HashMap<String, text::CachedGoogleFont<'_>> = HashMap::new();
-    for (k, bytes) in &faces {
-        cached_faces.insert(k.clone(), text::CachedGoogleFont::parse(bytes)?);
+    for (k, files) in &faces {
+        cached_faces.insert(k.clone(), text::CachedGoogleFont::parse_all(files)?);
     }
     let page = frame.unsigned_area().max(1.0);
     let mut candidates = Vec::new();
@@ -767,9 +787,44 @@ pub fn place(
                 if !pt_in_frame(*at) || !far(*at, &named) {
                     continue;
                 }
-                let poses = horizontal_label(&layout, *at, width, k);
-                if clear(&poses, &taken) {
-                    keep(poses, *at, &mut taken, &mut out, &mut named);
+                if look.marker.0 <= 0.0 {
+                    let poses = horizontal_label(&layout, *at, width, k);
+                    if clear(&poses, &taken) {
+                        keep(poses, *at, &mut taken, &mut out, &mut named);
+                    }
+                    continue;
+                }
+                // A dot at the place, bigger the more it matters, and the name
+                // beside it: right, left, the four diagonals, above, below —
+                // the first spot clear of every label already set down.
+                let r = look.marker.0 * (0.6 + 0.4 * c.rank.clamp(0.0, 1.0));
+                let pad = look.padding.0;
+                let dot = Quad([
+                    Coord { x: at.x - r - pad, y: at.y - r - pad },
+                    Coord { x: at.x + r + pad, y: at.y - r - pad },
+                    Coord { x: at.x + r + pad, y: at.y + r + pad },
+                    Coord { x: at.x - r - pad, y: at.y + r + pad },
+                ]);
+                if taken.hits(&dot) || !inside(&dot) {
+                    continue;
+                }
+                let (half, gap, rise) = (width / 2.0, r + size * 0.45, size * 0.8);
+                let side = gap + half;
+                let diag = gap * 0.6 + half;
+                let spots = [(side, 0.0), (-side, 0.0), (diag, -rise), (diag, rise), (-diag, -rise), (-diag, rise), (0.0, -(r + size * 1.1)), (0.0, r + size * 1.1)];
+                for (dx, dy) in spots {
+                    let poses = horizontal_label(&layout, Coord { x: at.x + dx, y: at.y + dy }, width, k);
+                    if clear(&poses, &taken) {
+                        keep(poses, *at, &mut taken, &mut out, &mut named);
+                        taken.add(dot);
+                        let disc = geom::disc(*at, r);
+                        out.shapes.push(disc.clone());
+                        out.mask.push(disc.clone());
+                        if let Some(id) = &bucket {
+                            out.buckets.entry(id.clone()).or_default().shapes.push(disc);
+                        }
+                        break;
+                    }
                 }
             }
         }

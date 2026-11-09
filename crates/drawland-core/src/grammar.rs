@@ -389,6 +389,9 @@ pub enum Op {
     Text(Text),
     /// Pen-and-ink terrain, drawn by burin from the elevation.
     Terrain(Terrain),
+    /// A height or depth band of the elevation, as an area (`areas.band`): the
+    /// fill burin would draw for `draw: "fill"`, closed into polygons.
+    TerrainBand(Terrain),
     /// A whole burin document, drawn from the elevation.
     Burin(Burin),
     /// Names on the map, as pen strokes.
@@ -428,7 +431,8 @@ impl Op {
             | Op::LabelArea(_)
             | Op::FillCover(_)
             | Op::Frame
-            | Op::ExtendToFrame(_) => Section::Areas,
+            | Op::ExtendToFrame(_)
+            | Op::TerrainBand(_) => Section::Areas,
             Op::Path(_)
             | Op::Text(_)
             | Op::Rings(_)
@@ -474,7 +478,7 @@ impl Op {
             Op::Where(w) => vec![w.of.clone()],
             Op::Rings(r) => vec![r.of.clone()],
             Op::ClipLines(c) => vec![c.lines.clone(), c.within.clone()],
-            Op::Terrain(t) => t.in_area.iter().cloned().collect(),
+            Op::Terrain(t) | Op::TerrainBand(t) => t.in_area.iter().cloned().collect(),
             Op::Burin(b) => b
                 .in_area
                 .iter()
@@ -630,7 +634,7 @@ impl Grammar {
     pub fn terrains(&self) -> Vec<&Terrain> {
         self.all_defs()
             .filter_map(|d| match &d.op {
-                Op::Terrain(t) => Some(t),
+                Op::Terrain(t) | Op::TerrainBand(t) => Some(t),
                 _ => None,
             })
             .collect()
@@ -1066,7 +1070,7 @@ fn parse_op(raw: RawOp, section: Section) -> Result<Op, GrammarError> {
     let target = match key.as_str() {
         "osm_select" | "tiles_select" | "tools_where" => Section::Features,
         "tools_polygons" | "tools_union" | "tools_difference" | "tools_intersect" | "tools_fill_holes"
-        | "tools_fill_cover" | "tools_grow" | "tools_around" | "tools_shape" | "tools_text_area" | "tools_buffer_lines" | "tools_label_area" | "tools_extend_to_frame" | "engine_frame" => {
+        | "tools_fill_cover" | "tools_grow" | "tools_around" | "tools_shape" | "tools_text_area" | "tools_buffer_lines" | "tools_label_area" | "tools_extend_to_frame" | "tools_terrain_band" | "engine_frame" => {
             Section::Areas
         }
         "tools_rings" | "tools_lines" | "tools_segments" | "tools_dedupe" | "tools_merge" | "tools_join"
@@ -1226,7 +1230,7 @@ fn parse_op(raw: RawOp, section: Section) -> Result<Op, GrammarError> {
                 gap_mm: raw.gap_mm,
             })
         }
-        "tools_terrain" => {
+        "tools_terrain" | "tools_terrain_band" => {
             #[derive(Deserialize)]
             #[serde(deny_unknown_fields)]
             struct Raw {
@@ -1250,7 +1254,8 @@ fn parse_op(raw: RawOp, section: Section) -> Result<Op, GrammarError> {
                 draw: Option<String>,
             }
             let raw: Raw = json(&value, "tools_terrain")?;
-            Op::Terrain(Terrain {
+            let band = key.as_str() == "tools_terrain_band";
+            let t = Terrain {
                 in_area: raw.in_area.as_deref().map(refname).transpose()?,
                 color: raw.color,
                 width: raw.width,
@@ -1269,7 +1274,12 @@ fn parse_op(raw: RawOp, section: Section) -> Result<Op, GrammarError> {
                         )))
                     }
                 },
-            })
+            };
+            if band {
+                Op::TerrainBand(Terrain { draw: TerrainDraw::Fill, ..t })
+            } else {
+                Op::Terrain(t)
+            }
         }
         "tools_burin" => {
             #[derive(Deserialize)]
@@ -1722,7 +1732,7 @@ pub fn op_to_json(op: &Op) -> Value {
         Op::FillHoles(n) => ("tools_fill_holes", Value::String(n.to_string())),
         Op::LabelArea(p) => ("tools_label_area", label_pick_json(p)),
         Op::LabelLines(p) => ("tools_label_lines", label_pick_json(p)),
-        Op::Terrain(t) => {
+        Op::Terrain(t) | Op::TerrainBand(t) => {
             let mut body = serde_json::Map::new();
             if let Some(a) = &t.in_area {
                 body.insert("in_area".into(), Value::String(a.to_string()));
@@ -1757,7 +1767,7 @@ pub fn op_to_json(op: &Op) -> Value {
                     body.insert("draw".into(), Value::String("dots".into()));
                 }
             }
-            ("tools_terrain", Value::Object(body))
+            (if matches!(op, Op::TerrainBand(_)) { "tools_terrain_band" } else { "tools_terrain" }, Value::Object(body))
         }
         Op::Burin(b) => {
             let mut body = serde_json::Map::new();

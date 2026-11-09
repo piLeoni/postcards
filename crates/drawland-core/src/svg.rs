@@ -143,34 +143,6 @@ pub fn fill_color(stroke_spec: Option<&crate::profile::StrokeSpec>) -> String {
         .to_string()
 }
 
-fn path_ring(s: &mut String, ring: &LineString<f64>, fill: Option<&str>, decimals: u8) {
-    let pts = &ring.0;
-    if pts.len() < 4 {
-        return;
-    }
-    let n = pts.len();
-    let closed = pts.first() == pts.last();
-    let end = if closed { n - 1 } else { n };
-    if end < 3 {
-        return;
-    }
-    s.push_str("\n<path d=\"");
-    for (i, c) in pts[..end].iter().enumerate() {
-        if i == 0 {
-            s.push('M');
-        } else {
-            s.push('L');
-        }
-        num_with(s, c.x, decimals);
-        s.push(' ');
-        num_with(s, c.y, decimals);
-    }
-    s.push_str(" Z\"");
-    if let Some(color) = fill {
-        let _ = write!(s, " fill=\"{color}\"");
-    }
-    s.push_str(" />");
-}
 
 /// One multipolygon as filled paths (exterior and holes per polygon).
 pub fn multipolygon(s: &mut String, mp: &MultiPolygon<f64>) {
@@ -184,12 +156,46 @@ pub fn multipolygon_filled(s: &mut String, mp: &MultiPolygon<f64>, fill: Option<
 }
 
 pub fn multipolygon_filled_with_decimals(s: &mut String, mp: &MultiPolygon<f64>, fill: Option<&str>, decimals: u8) {
+    // One path per polygon, holes as its subpaths: `fill-rule: evenodd` only
+    // opens a hole inside the same path. Holes as paths of their own were
+    // painted solid (a letter's counter, a lake in a band).
     for poly in &mp.0 {
-        path_ring(s, poly.exterior(), fill, decimals);
-        for hole in poly.interiors() {
-            path_ring(s, hole, fill, decimals);
+        let start = s.len();
+        s.push_str("\n<path d=\"");
+        let body = s.len();
+        for ring in std::iter::once(poly.exterior()).chain(poly.interiors()) {
+            ring_subpath(s, ring, decimals);
         }
+        if s.len() == body {
+            s.truncate(start);
+            continue;
+        }
+        s.push('"');
+        if let Some(color) = fill {
+            let _ = write!(s, " fill=\"{color}\"");
+        }
+        s.push_str(" />");
     }
+}
+
+/// One closed ring as an `M … Z` subpath; nothing for fewer than three points.
+fn ring_subpath(s: &mut String, ring: &LineString<f64>, decimals: u8) {
+    let pts = &ring.0;
+    let n = pts.len();
+    let end = if n > 0 && pts.first() == pts.last() { n - 1 } else { n };
+    if end < 3 {
+        return;
+    }
+    if !s.ends_with('"') {
+        s.push(' ');
+    }
+    for (i, c) in pts[..end].iter().enumerate() {
+        s.push(if i == 0 { 'M' } else { 'L' });
+        num_with(s, c.x, decimals);
+        s.push(' ');
+        num_with(s, c.y, decimals);
+    }
+    s.push_str(" Z");
 }
 
 /// One line; nothing for a line of fewer than two points.

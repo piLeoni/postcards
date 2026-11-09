@@ -296,6 +296,14 @@ declare const ink: {
 
 /** Polygons, and what can be done with them. */
 declare const areas: {
+  /**
+   * A band of the elevation as an area: between two heights (`elevMin`,
+   * `elevMax`), or two depths below the sea (`depthMin`, `depthMax`), in
+   * metres; unset limits are open. The belts an atlas tints — fill it with
+   * `pattern: "solid"`. `blur` (px, default 4) smooths the heights before the cut — raise it (15–20) for the sea floor, whose coarse source data otherwise shows as rows of specks; `in`
+   * keeps it to an area.
+   */
+  band(where: TerrainWhere, options?: { in?: Area; blur?: number }): Area
   /** The features' polygons, merged into one area. */
   polygons(of: Features): Area
   /** Everything in any of the areas. */
@@ -645,6 +653,13 @@ interface LabelOptions {
   /** With `buffer` > 0, keep the letters' own strokes. Default `true`; `false` = outlines only. */
   keepCenterline?: boolean
   /**
+   * A dot at each place's point (radius, scaled 60–100 % by the place's
+   * importance), its name set beside it — right, left, the diagonals, above or
+   * below, whichever is free. The dot is part of the label's `area`. Default 0
+   * (no dot, name centred on the point).
+   */
+  marker?: Length
+  /**
    * Overrides for features that match `tags` (same syntax as `features.where`).
    * First matching rule wins; unset fields keep the defaults above.
    */
@@ -670,6 +685,7 @@ interface LabelRule {
   buffer?: number
   bufferStep?: Length
   keepCenterline?: boolean
+  marker?: Length
 }
 
 /**

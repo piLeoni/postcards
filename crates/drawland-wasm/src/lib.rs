@@ -257,6 +257,8 @@ pub struct Job {
     /// The elevation tiles handed over, then the grid they fold into; read
     /// only when a def draws terrain.
     elevation: Option<terramask::Elevation>,
+    /// Zoom-10 tiles for the sea floor that deeper tiles flatten to 0 m.
+    sea_floor: Option<terramask::Elevation>,
     terrain: Option<drawland_core::terrain::Grid>,
     /// What the filling may use at most, in bytes; `None` for no ceiling.
     memory_budget: Option<u64>,
@@ -282,6 +284,7 @@ impl Default for Job {
             tiles: None,
             tile_features: Vec::new(),
             elevation: None,
+            sea_floor: None,
             terrain: None,
             memory_budget: None,
             google_fonts: std::collections::BTreeMap::new(),
@@ -309,6 +312,7 @@ impl Job {
             tiles: None,
             tile_features: Vec::new(),
             elevation: None,
+            sea_floor: None,
             terrain: None,
             memory_budget: None,
             google_fonts: std::collections::BTreeMap::new(),
@@ -388,6 +392,31 @@ impl Job {
         Ok(())
     }
 
+    /// Past zoom 10 Terrarium flattens the sea to 0 m: the zoom-10 tiles
+    /// those flat tiles sit in, as `[z, x, y, …]`, to take the sea floor from
+    /// (`addTerrainSea`) — as terramask's fetcher does on the command line, so
+    /// depth bands come out the same on the page. Empty when none is needed.
+    #[wasm_bindgen(js_name = terrainSeaTiles)]
+    pub fn terrain_sea_tiles(&self) -> Vec<u32> {
+        let Some(e) = &self.elevation else { return Vec::new() };
+        if e.zoom() <= terramask::TERRARIUM_ZOOM {
+            return Vec::new();
+        }
+        let mut up: Vec<TileId> = e.flat_sea_tiles().iter().map(|t| t.ancestor(terramask::TERRARIUM_ZOOM)).collect();
+        up.sort();
+        up.dedup();
+        up.iter().flat_map(|t| [t.z as u32, t.x, t.y]).collect()
+    }
+
+    /// One zoom-10 elevation tile for the sea floor (see `terrainSeaTiles`).
+    #[wasm_bindgen(js_name = addTerrainSea)]
+    pub fn add_terrain_sea(&mut self, z: u8, x: u32, y: u32, bytes: &[u8]) -> Result<(), JsValue> {
+        let mut e = self.sea_floor.take().unwrap_or_else(terramask::Elevation::new);
+        e.add_tile(TileId::new(z, x, y), bytes).map_err(err)?;
+        self.sea_floor = Some(e);
+        Ok(())
+    }
+
     /// Fold the elevation tiles into the grid, as the `terrain` row.
     #[wasm_bindgen(js_name = readTerrain)]
     pub fn read_terrain(&mut self, on_event: js_sys::Function) -> Result<(), JsValue> {
@@ -399,7 +428,10 @@ impl Job {
         let bounds = drawland_core::terrain::bounds_of(&self.doc.output);
         let width = drawland_core::terrain::width_px(&self.doc.output);
         let grid = terramask::Grid::with_width(bounds, width);
-        let e = self.elevation.take().ok_or_else(|| err("no elevation tiles were handed over"))?;
+        let mut e = self.elevation.take().ok_or_else(|| err("no elevation tiles were handed over"))?;
+        if let Some(floor) = self.sea_floor.take() {
+            e.fill_sea(&floor);
+        }
         let elev = e.on(&grid);
         let note = format!("zoom {} · {}×{} px", e.zoom(), grid.width, grid.height);
         self.terrain = Some(drawland_core::terrain::Grid::new(bounds, grid.merc, elev, width));

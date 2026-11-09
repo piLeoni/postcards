@@ -211,7 +211,9 @@ pub fn run_into(grammar: &Grammar, output: &Output, inputs: Inputs, draw: &Task,
     )]);
     let mut decompressed_fonts: BTreeMap<String, Vec<u8>> = BTreeMap::new();
     for (k, raw) in &inputs.google_fonts {
-        let decoded = crate::google_fonts::decode_font_bytes(raw).map_err(RunError::Plan)?;
+        // Every file of the face (subsets) decoded once, kept as a bundle.
+        let faces = crate::google_fonts::faces_of(raw).map_err(RunError::Plan)?;
+        let decoded = if faces.len() == 1 { faces.into_iter().next().unwrap() } else { crate::google_fonts::bundle(&faces) };
         decompressed_fonts.insert(k.clone(), decoded);
     }
     let spec = &grammar.output;
@@ -554,6 +556,19 @@ fn eval_op<'a>(
                 Some(n) => geom::clip_lines(&drawn, area(n)?, false),
                 None => geom::clip_lines(&drawn, &engine.output, false),
             })
+        }
+        Op::TerrainBand(t) => {
+            let grid = engine.terrain.ok_or("areas.band needs the elevation, which was not read")?;
+            // Cut the band from the heights smoothed by `blur` (px).
+            let blur = t.style.get("input_blur").and_then(|v| v.as_f64()).unwrap_or(0.0);
+            let smooth = crate::terrain::smoothed(grid, blur);
+            let drawing = crate::terrain::draw(&smooth, t)?;
+            let band = crate::terrain::fill_area(&drawing, &grid.placed(engine.projector));
+            let keep = match &t.in_area {
+                Some(n) => area(n)?.clone(),
+                None => engine.output.clone(),
+            };
+            Value::Area(geo::BooleanOps::intersection(&band, &keep))
         }
         Op::Burin(b) => {
             use burin_map_core::Region;

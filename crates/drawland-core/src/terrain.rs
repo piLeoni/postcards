@@ -19,6 +19,7 @@ use burin_map_core::{Drawing, Region, Ring, Surface};
 use geo::{BoundingRect, Coord, LineString, MultiPolygon, Polygon};
 
 /// The elevation grid burin draws on, and the transform back to millimetres.
+#[derive(Clone)]
 pub struct Grid {
     /// Heights in metres, row 0 north.
     pub elev: Vec<f32>,
@@ -265,6 +266,59 @@ pub fn lines(d: &Drawing, at: &Placed) -> Lines {
         .collect();
     for f in &d.fills {
         out.extend(f.rings.iter().filter(|r| r.len() >= 2).map(|r| placed_line(r, at)));
+    }
+    out
+}
+
+/// The same grid with its heights smoothed over about `radius` px (three box
+/// passes each way, close to a Gaussian). A band cut from coarse source data —
+/// the sea floor is far coarser than the land — otherwise traces that data's
+/// cells as rows of little islands wherever the floor is flat near the cut.
+pub fn smoothed(grid: &Grid, radius: f64) -> Grid {
+    let r = radius.round() as usize;
+    let mut out = grid.clone();
+    if r == 0 || grid.width == 0 || grid.height == 0 {
+        return out;
+    }
+    let (w, h) = (grid.width, grid.height);
+    let mut tmp = vec![0.0f32; w * h];
+    let pass = |src: &[f32], dst: &mut [f32], horizontal: bool| {
+        let (n, lines) = if horizontal { (w, h) } else { (h, w) };
+        let at = |line: usize, i: usize| if horizontal { line * w + i } else { i * w + line };
+        for line in 0..lines {
+            let mut sum = 0.0f64;
+            // Window [i - r, i + r], edges clamped.
+            for k in 0..=r.min(n - 1) {
+                sum += src[at(line, k)] as f64;
+            }
+            sum += src[at(line, 0)] as f64 * r as f64;
+            for i in 0..n {
+                dst[at(line, i)] = (sum / (2 * r + 1) as f64) as f32;
+                let add = src[at(line, (i + r + 1).min(n - 1))] as f64;
+                let drop = src[at(line, i.saturating_sub(r))] as f64;
+                sum += add - drop;
+            }
+        }
+    };
+    for _ in 0..3 {
+        pass(&out.elev, &mut tmp, true);
+        pass(&tmp, &mut out.elev, false);
+    }
+    out
+}
+
+/// A drawing's fills as one area, in output millimetres: every ring of every
+/// fill, even-odd, so a band's holes (a hilltop above it, a lake) stay open.
+pub fn fill_area(d: &Drawing, at: &Placed) -> MultiPolygon<f64> {
+    use geo::BooleanOps;
+    let mut out = MultiPolygon::new(vec![]);
+    for f in &d.fills {
+        for r in f.rings.iter().filter(|r| r.len() >= 3) {
+            let mut ring = placed_line(r, at);
+            ring.close();
+            let poly = MultiPolygon::new(vec![Polygon::new(ring, vec![])]);
+            out = out.xor(&poly);
+        }
     }
     out
 }

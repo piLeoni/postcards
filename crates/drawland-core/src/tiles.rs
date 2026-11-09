@@ -195,6 +195,9 @@ impl Tiles {
     pub fn add_features(&mut self, features: Features) {
         self.data.areas.extend(features.areas);
         self.data.lines.extend(features.lines);
+        // Points too (places, POIs, water names): without them the command
+        // line labelled none of what the page labels.
+        self.data.pins.extend(features.pins);
     }
 
     /// What `tiles_select` can pick from, in lon/lat: each feature whole

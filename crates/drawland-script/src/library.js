@@ -193,6 +193,32 @@
   };
 
   const areas = {
+    // A band of the elevation as an area: everything between two heights, or
+    // two depths below the sea — the belts an atlas tints. Fill it `solid`.
+    //   areas.band({ elevMin: 200, elevMax: 500 })
+    //   areas.band({ depthMin: 50 }, { water })
+    band(where = {}, options = {}) {
+      object(where, "areas.band");
+      object(options, "areas.band options");
+      const w = {};
+      for (const k of ["elevMin", "elevMax", "depthMin", "depthMax"]) {
+        if (where[k] !== undefined) {
+          if (typeof where[k] !== "number" || !isFinite(where[k])) {
+            throw new Error(`areas.band ${k} must be a number of metres`);
+          }
+          w[k] = where[k];
+        }
+      }
+      const extra = Object.keys(where).filter((k) => !(k in w));
+      if (extra.length) throw new Error(`areas.band: unknown key ${extra[0]} (elevMin, elevMax, depthMin, depthMax)`);
+      const op = { tools_terrain_band: { where: w } };
+      if (options.in !== undefined) op.tools_terrain_band.in_area = need(options.in, Area, "areas.band in");
+      // Smoother edges than a hatching pass reads: belts, not pixels.
+      op.tools_terrain_band.style = { input_blur: options.blur ?? 4, mod_wobble: 0 };
+      // A depth band is a fill of the sea: burin fills land unless told so.
+      if (w.depthMin !== undefined || w.depthMax !== undefined) op.tools_terrain_band.style.ground = "sea";
+      return make(Area, "areas", op);
+    },
     polygons(of) {
       return make(Area, "areas", { tools_polygons: need(of, Features, "areas.polygons") });
     },
@@ -590,7 +616,7 @@
 
   // What a label looks like, as `modules.labels` and each of its rules write
   // it, in the graph's names.
-  const LOOK = { size: "size", minSize: "min_size", padding: "padding", spacing: "spacing", curved: "curved", upper: "upper", font: "font", buffer: "buffer", bufferStep: "buffer_step", keepCenterline: "keep_centerline" };
+  const LOOK = { size: "size", minSize: "min_size", padding: "padding", spacing: "spacing", curved: "curved", upper: "upper", font: "font", buffer: "buffer", bufferStep: "buffer_step", keepCenterline: "keep_centerline", marker: "marker" };
   function labelLook(look, where, what, others) {
     const out = {};
     for (const [k, v] of Object.entries(look)) {

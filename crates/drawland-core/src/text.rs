@@ -451,6 +451,9 @@ impl ttf_parser::OutlineBuilder for OutlineCollector {
 /// Pre-parsed outline font face that caches tessellated glyph contours per character.
 pub struct CachedGoogleFont<'a> {
     face: ttf_parser::Face<'a>,
+    /// More files of the same face (other subsets), tried in order for a
+    /// character the first lacks.
+    more: Vec<ttf_parser::Face<'a>>,
     cap_height: f64,
     top: f64,
     bottom: f64,
@@ -475,8 +478,19 @@ impl<'a> CachedGoogleFont<'a> {
             cap_height,
             missing,
             face,
+            more: Vec::new(),
             glyphs: std::collections::HashMap::new(),
         })
+    }
+
+    /// The first file sets the metrics; the rest fill in characters it lacks.
+    pub fn parse_all(files: &'a [Vec<u8>]) -> Result<Self, String> {
+        let (first, rest) = files.split_first().ok_or("labels: google font has no file")?;
+        let mut font = Self::parse(first)?;
+        for f in rest {
+            font.more.push(ttf_parser::Face::parse(f, 0).map_err(|e| format!("labels: google font did not parse ({e})"))?);
+        }
+        Ok(font)
     }
 
     pub fn layout(&mut self, text: &str) -> LabelLayout {
@@ -487,10 +501,14 @@ impl<'a> CachedGoogleFont<'a> {
                 .glyphs
                 .entry(c)
                 .or_insert_with(|| {
-                    let gid = self.face.glyph_index(c).unwrap_or(self.missing);
-                    let advance = self.face.glyph_hor_advance(gid).unwrap_or(0) as f64;
+                    // The first file that has the character; else `?`.
+                    let (face, gid) = std::iter::once(&self.face)
+                        .chain(self.more.iter())
+                        .find_map(|f| f.glyph_index(c).map(|g| (f, g)))
+                        .unwrap_or((&self.face, self.missing));
+                    let advance = face.glyph_hor_advance(gid).unwrap_or(0) as f64;
                     let mut col = OutlineCollector::new();
-                    if self.face.outline_glyph(gid, &mut col).is_none() && !c.is_whitespace() {
+                    if face.outline_glyph(gid, &mut col).is_none() && !c.is_whitespace() {
                         col = OutlineCollector::new();
                         self.face.outline_glyph(self.missing, &mut col);
                     }
@@ -513,7 +531,8 @@ impl<'a> CachedGoogleFont<'a> {
 }
 
 fn layout_google(bytes: &[u8], text: &str) -> Result<LabelLayout, String> {
-    let mut cached = CachedGoogleFont::parse(bytes)?;
+    let files = crate::google_fonts::faces_of(bytes)?;
+    let mut cached = CachedGoogleFont::parse_all(&files)?;
     Ok(cached.layout(text))
 }
 

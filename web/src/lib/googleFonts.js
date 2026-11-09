@@ -53,14 +53,52 @@ export async function fetchGoogleFontKey(key, signal) {
   const vals = italic ? `1,${weight}` : String(weight)
   const cssUrl = `https://fonts.googleapis.com/css2?family=${familyQ}:${axis}@${vals}&display=swap`
   const css = await fetchChecked(cssUrl, signal, `Google Fonts CSS for "${family}"`).then((r) => r.text())
-  const url = pickUrl(css)
-  if (!url) {
-    throw new Error(
-      `Google font "${family}" (${key}): no font file found in stylesheet — check the family name and weight (e.g. weight: 400).`,
-    )
+  // A browser gets the face in subsets, a file each (latin, latin-ext,
+  // cyrillic, greek…): all of them, latin first, so `İstanbul` or `Łódź`
+  // find their letters. Bundled for the engine (`google_fonts::bundle`).
+  const urls = subsetUrls(css)
+  if (!urls.length) {
+    const url = pickUrl(css)
+    if (!url) {
+      throw new Error(
+        `Google font "${family}" (${key}): no font file found in stylesheet — check the family name and weight (e.g. weight: 400).`,
+      )
+    }
+    urls.push(url)
   }
-  const buf = await fetchChecked(url, signal, `Google font file for "${family}"`).then((r) => r.arrayBuffer())
-  return new Uint8Array(buf)
+  const files = []
+  for (const url of urls) {
+    const buf = await fetchChecked(url, signal, `Google font file for "${family}"`).then((r) => r.arrayBuffer())
+    files.push(new Uint8Array(buf))
+  }
+  return files.length === 1 ? files[0] : bundle(files)
+}
+
+/** Every subset's font URL in a stylesheet, latin first, then latin-ext, then the rest. */
+function subsetUrls(css) {
+  const found = []
+  for (const block of css.split('/* ').slice(1)) {
+    const name = block.slice(0, block.indexOf(' */'))
+    const url = firstGstaticUrl(block, ['woff2', 'woff', 'ttf'])
+    if (url) found.push([name, url])
+  }
+  const order = (n) => (n === 'latin' ? 0 : n === 'latin-ext' ? 1 : 2)
+  return found.sort((a, b) => order(a[0]) - order(b[0])).map(([, u]) => u)
+}
+
+/** `DLFB`, then each file as a little-endian u32 length and its bytes. */
+function bundle(files) {
+  const total = 4 + files.reduce((n, f) => n + 4 + f.length, 0)
+  const out = new Uint8Array(total)
+  out.set([0x44, 0x4c, 0x46, 0x42], 0)
+  const view = new DataView(out.buffer)
+  let at = 4
+  for (const f of files) {
+    view.setUint32(at, f.length, true)
+    out.set(f, at + 4)
+    at += 4 + f.length
+  }
+  return out
 }
 
 /** Every key from `engine.googleFontKeys(graph)`, for the main thread to pass into the draw worker. */

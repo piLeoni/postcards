@@ -18,6 +18,7 @@ import flatColor from '../presets/flat-color.js?raw'
 import cityGrain from '../presets/city-grain.js?raw'
 import sketchbook from '../presets/sketchbook.js?raw'
 import saltAndStone from '../presets/salt-and-stone.js?raw'
+import atlas from '../presets/atlas.js?raw'
 import labelFontsDemo from '../presets/label-fonts-demo.js?raw'
 import { styleOf, titleOf } from './doc'
 
@@ -25,6 +26,7 @@ export const PRESETS = [
   { id: 'city-grain', hint: 'burin ground, nature patterns, isoline-stack tree crowns', doc: cityGrain },
   { id: 'sketchbook', hint: 'hand-drawn: loose streets, hatched blocks, curling waves, doodled trees', doc: sketchbook },
   { id: 'salt-and-stone', hint: 'pure nature in burin: hand-drawn contours, a soft concentric coast, swirling currents', doc: saltAndStone },
+  { id: 'atlas', hint: 'a classic coloured physical map: hypsometric tints, sea depths, relief shading, roads and names (for print, not the pen)', doc: atlas },
   { id: 'label-fonts-demo', hint: 'single-stroke fonts: futural, EMS, URL load', doc: labelFontsDemo },
   { id: 'flat-color', hint: 'solid fills for water, parks and buildings (screen-style)', doc: flatColor },
   { id: 'full', hint: 'roads, trails, parks, water, buildings; all from OpenFreeMap', doc: full },

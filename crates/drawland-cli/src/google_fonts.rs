@@ -3,9 +3,10 @@
 use drawland_core::google_fonts::pick_url_from_css;
 use drawland_core::text::parse_google_font_key;
 
-/// Same user-agent Google Fonts uses to serve `woff2` with a `/* latin */` face.
-const CSS_UA: &str =
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+/// Asked without a browser's user-agent, Google Fonts serves one TrueType file
+/// with every character of the face (`İ`, `ł`, Cyrillic, Greek…), rather
+/// than a file per subset.
+const CSS_UA: &str = "drawland";
 
 pub fn fetch(key: &str) -> Result<Vec<u8>, String> {
     let (family, weight, italic) = parse_google_font_key(key).ok_or_else(|| format!("bad google font key {:?}", key))?;

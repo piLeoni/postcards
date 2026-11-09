@@ -108,6 +108,9 @@ export default function Sidebar({
   const [notice, setNotice] = useState(null)   // { text, error? }
   const [problem, setProblem] = useState(null)   // { kind: 'apply' | 'draw', title, text }
   const monacoRef = useRef(null)   // { editor, monaco }
+  // The editor's problems (type errors, warnings), kept current so they can be
+  // copied in one go.
+  const [markers, setMarkers] = useState([])
   const syncingRef = useRef(false)   // the editor is being brought to `shown`, not typed in
   const fileRef = useRef(null)
   const presetMenuRef = useRef(null)
@@ -284,6 +287,21 @@ export default function Sidebar({
     try {
       await navigator.clipboard.writeText(shown)
       flash('Script copied')
+    } catch {
+      flash('The browser blocked the clipboard', true)
+    }
+  }
+
+  /** Every problem the editor marks, one per line: `Line 102:30 error: …`. */
+  const copyProblems = async () => {
+    const m = monacoRef.current?.monaco
+    const word = (s) => (m && s === m.MarkerSeverity.Error ? 'error' : m && s === m.MarkerSeverity.Warning ? 'warning' : 'info')
+    const text = markers
+      .map((k) => `Line ${k.startLineNumber}:${k.startColumn} ${word(k.severity)}: ${String(k.message).replace(/\s+/g, ' ')}`)
+      .join('\n')
+    try {
+      await navigator.clipboard.writeText(text)
+      flash(`${markers.length} problem${markers.length === 1 ? '' : 's'} copied`)
     } catch {
       flash('The browser blocked the clipboard', true)
     }
@@ -570,6 +588,11 @@ export default function Sidebar({
                 </button>
               </>
             )}
+            {markers.length > 0 && (
+              <button type="button" {...KEY} title="Copy every error and warning the editor marks, with its line" onClick={copyProblems}>
+                copy {markers.length} problem{markers.length === 1 ? '' : 's'}
+              </button>
+            )}
             <button type="button" {...KEY} title="Copy the script" onClick={copy}>
               copy
             </button>
@@ -588,6 +611,15 @@ export default function Sidebar({
             beforeMount={setUpEditor}
             onMount={(editor, monaco) => {
               monacoRef.current = { editor, monaco }
+              // Errors and warnings only (not hints), for "copy N problems".
+              const readMarkers = () => {
+                const model = editor.getModel()
+                if (!model) return
+                const all = monaco.editor.getModelMarkers({ resource: model.uri })
+                setMarkers(all.filter((k) => k.severity >= monaco.MarkerSeverity.Warning).sort((a, b) => a.startLineNumber - b.startLineNumber || a.startColumn - b.startColumn))
+              }
+              monaco.editor.onDidChangeMarkers(readMarkers)
+              readMarkers()
               if (editor.getValue() !== shownRef.current) editor.setValue(shownRef.current)
               editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => applyDraftRef.current())
               // Monaco measures glyphs once; a web font that lands later
@@ -604,10 +636,6 @@ export default function Sidebar({
               wordWrap: 'off',
               // Follows the column as it is resized.
               automaticLayout: true,
-              // Hovers and tooltips (find widget's "Close (Escape)", …) escape
-              // the column's overflow clip instead of being cut and pushed over
-              // the very button they label.
-              fixedOverflowWidgets: true,
               tabSize: 2,
               insertSpaces: true,
               detectIndentation: false,

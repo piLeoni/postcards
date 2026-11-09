@@ -156,7 +156,9 @@ test('the preset outputs are multi-line with an explicit tileZoom', async () => 
     const text = readFileSync(join(dir, f), 'utf8')
     const o = outputOf(text)
     assert.equal(o.kind, 'literal', f)
-    assert.equal(o.value.tileZoom, 14, f)
+    // Explicit, and a zoom the tile source has: 14 for city sheets, lower for
+    // regional maps (Atlas reads zoom 9 at 1:750000).
+    assert.ok(Number.isInteger(o.value.tileZoom) && o.value.tileZoom >= 0 && o.value.tileZoom <= 14, `${f}: tileZoom ${o.value.tileZoom}`)
     assert.ok(text.includes('output({\n  '), `${f}: output is multi-line`)
   }
 })
