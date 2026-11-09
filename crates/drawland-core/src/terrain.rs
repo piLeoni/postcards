@@ -162,10 +162,13 @@ fn run(atlas: &Atlas, grid: &Grid, regions: &[(&str, Region)], water: Option<&[f
     atlas.draw(&surface, water)
 }
 
-/// An output area rasterised onto the elevation grid: 1 at pixels whose
-/// centre is inside it, 0 elsewhere (even-odd, so holes stay dry). Scanline
-/// fill, row by row, so a detailed coast costs its edges, not edges × pixels.
+/// An output area rasterised onto the elevation grid as a coverage (0…1 per
+/// pixel, even-odd, so holes stay dry). Anti-aliased: each pixel row is
+/// sampled on `SUB` scanlines and every span adds the exact share of each
+/// pixel it covers, so a coast traced from it is smooth, not a staircase.
+/// Scanline fill, so a detailed coast costs its edges, not edges × pixels.
 pub fn coverage_of(area: &MultiPolygon<f64>, grid: &Grid, at: &Placed) -> Vec<f32> {
+    const SUB: usize = 4;
     let (w, h) = (grid.width, grid.height);
     let mut cov = vec![0.0f32; w * h];
     // Every edge in grid pixels.
@@ -180,24 +183,34 @@ pub fn coverage_of(area: &MultiPolygon<f64>, grid: &Grid, at: &Placed) -> Vec<f3
             }
         }
     }
+    let share = 1.0 / SUB as f32;
     let mut xs: Vec<f64> = Vec::new();
     for row in 0..h {
-        let y = row as f64 + 0.5;
-        xs.clear();
-        for (a, b) in &edges {
-            let (lo, hi) = if a[1] < b[1] { (a, b) } else { (b, a) };
-            if y >= lo[1] && y < hi[1] {
-                xs.push(lo[0] + (y - lo[1]) / (hi[1] - lo[1]) * (hi[0] - lo[0]));
+        for sub in 0..SUB {
+            let y = row as f64 + (sub as f64 + 0.5) / SUB as f64;
+            xs.clear();
+            for (a, b) in &edges {
+                let (lo, hi) = if a[1] < b[1] { (a, b) } else { (b, a) };
+                if y >= lo[1] && y < hi[1] {
+                    xs.push(lo[0] + (y - lo[1]) / (hi[1] - lo[1]) * (hi[0] - lo[0]));
+                }
+            }
+            xs.sort_by(f64::total_cmp);
+            for pair in xs.chunks_exact(2) {
+                let (x0, x1) = (pair[0].clamp(0.0, w as f64), pair[1].clamp(0.0, w as f64));
+                if x1 <= x0 {
+                    continue;
+                }
+                let (c0, c1) = (x0.floor() as usize, (x1.ceil() as usize).min(w));
+                for x in c0..c1 {
+                    let covered = (x1.min(x as f64 + 1.0) - x0.max(x as f64)).max(0.0) as f32;
+                    cov[row * w + x] += covered * share;
+                }
             }
         }
-        xs.sort_by(f64::total_cmp);
-        for pair in xs.chunks_exact(2) {
-            let x0 = (pair[0] - 0.5).ceil().max(0.0) as usize;
-            let x1 = ((pair[1] - 0.5).floor() + 1.0).clamp(0.0, w as f64) as usize;
-            for x in x0..x1.min(w) {
-                cov[row * w + x] = 1.0;
-            }
-        }
+    }
+    for v in &mut cov {
+        *v = v.min(1.0);
     }
     cov
 }

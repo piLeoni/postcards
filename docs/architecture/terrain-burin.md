@@ -21,7 +21,7 @@ Pen-and-ink relief and related linework from elevation under the output, integra
 
 Batches may name regions in `within` / `outside` with burin's `mask_*` parameters. Pass the polygons at draw time: `burin.terrain((b) => { … }, { regions: { urban: $areas.urban } })`. draw.land rasterises each area onto the elevation grid; a hard `in` clip is still available for a clean outer edge.
 
-**Water mask.** `burin.terrain(cb, { water: area })` hands burin a water coverage (`terrain::coverage_of`, scanline-rasterised onto the grid; `Burin.water` in the grammar) so `b.shore` / `b.water` follow that outline. Without it burin calls water whatever sits at or below 0.5 m, which misses the sea in deep Terrarium tiles at places like Big Sur (no shore, no water lines). Pass the vector-tile ocean + water for any preset that draws the sea at detail.
+**Water mask.** `burin.terrain(cb, { water: area })` hands burin a water coverage (`terrain::coverage_of`, scanline-rasterised onto the grid with 4× vertical supersampling and exact horizontal coverage, so traced coasts are smooth; `Burin.water` in the grammar) so `b.shore` / `b.water` follow that outline. Without it burin calls water whatever sits at or below 0.5 m, which misses the sea in deep Terrarium tiles at places like Big Sur (no shore, no water lines). Pass the vector-tile ocean + water for any preset that draws the sea at detail.
 
 ## Profile API
 
@@ -35,4 +35,4 @@ Implementation details and land-edge behaviour: `../burin-map` docs. draw.land d
 
 ## Related presets
 
-Examples: `web/src/presets/city-grain.js` (`burin.terrain` on relief areas), `ink-by-elevation.js`, `engraved-sea.js`, `wild-coast.js` (land + shore + water lines with a tile `water` mask, then `compose.hand`).
+Examples: `web/src/presets/city-grain.js` (`burin.terrain` on relief areas), `ink-by-elevation.js`, `engraved-sea.js`, `currents.js` (land strokes, concentric shore, swirling `follow: "map"` currents, with a tile `water` mask).

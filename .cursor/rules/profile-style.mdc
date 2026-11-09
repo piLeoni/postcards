@@ -1,0 +1,31 @@
+---
+description: Authoring structure and commenting conventions for draw.land profile scripts (presets and configs)
+globs: web/src/presets/*.js,configs/*.js
+alwaysApply: false
+---
+
+# Profile script conventions (`web/src/presets/*.js`, `configs/*.js`)
+
+Keep profile scripts declarative, scannable, and organized so every visual parameter is defined at the top and all geometry/drawing logic flows linearly below without magic numbers.
+
+## 1. Five-Section Linear Structure
+
+Organize substantial profiles into numbered top-level sections in this order:
+
+1. **`1. PARAMETERS & STYLE PALETTE`** — All visual knobs, stroke styles (`STROKE_*`), geometry buffers/clearances (`*_W`), fill patterns (`FILL_*`), foliage/terrain specs, typography rules (`LABEL_RULES`), and data-driven taxonomy tables (`NATURE`). **No geometry nodes (`areas.*`, `lines.*`, `fills.*`, `draw`) are executed here.**
+2. **`2. FEATURE EXTRACTION & GEOMETRY PIPELINE`** — Pure geometry construction (`features.tiles`, `modules.roads`, `areas.*`, `lines.*`, `burin.terrain`, `modules.labels`) consuming the constants from Section 1.
+3. **`3. DRAW LAYERS`** — `draw({ id, from, stroke })` calls grouped by domain (`groundDraws`, `natureDraws`, `canopyDraws`, `pathDraws`, `waterDraws`, `roadDraws`, `buildingDraws`) using the named `STROKE_*` and `FILL_*` constants.
+4. **`4. OCCLUSION MASKS & LAYER ORDER`** — `compose.mask(...)` declarations followed by `compose.order(...)`.
+5. **`5. PLOTTER OPTIMIZATION`** — `compose.deoverlap`, `compose.linemerge`, `compose.simplify`, and `compose.linesort` (keeping stippled/dot fills and dotted rings out of `deoverlap`).
+
+## 2. Commenting & Data-Table Best Practices
+
+- **Table-driven taxonomies**: When mapping many OpenMapTiles classes/subclasses (e.g. `NATURE`), declare a single ordered array of objects in Section 1 with explicit columns (`id`, `tiles`, `relief`, `canopy`, `ring`, `fill`) and resolve `.area` / `.visible` in a short loop in Section 2.
+- **Document *why* and *contracts*, not syntax**:
+  - State ordering invariants (e.g. "Ordered bottom to top: higher rows carve out of lower rows so patterns never double-stack").
+  - State visual hierarchy rules (e.g. "Solid strokes are reserved for hard physical structures; facilities and soft boundaries use `STROKE_DOTTED_RING`").
+- **Prefer vector tiles (`features.tiles(...)`)**: Do not add `features.osm(...)` to tile-based presets unless Overpass-only tags are strictly required, as any `features.osm` call triggers an Overpass network query on every draw.
+- After editing a preset in `web/src/presets/*.js`, sync `web/src/presets/graphs.json` with:
+  ```bash
+  cargo run -q --example check_web_presets -- --write
+  ```
