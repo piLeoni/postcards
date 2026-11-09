@@ -374,7 +374,7 @@ impl Job {
             return Vec::new();
         }
         let bounds = drawland_core::terrain::bounds_of(&self.doc.output);
-        let grid = terramask::Grid::with_width(bounds, drawland_core::terrain::WIDTH_PX);
+        let grid = terramask::Grid::with_width(bounds, drawland_core::terrain::width_px(&self.doc.output));
         let z = grid.zoom(&terramask::ZoomLimits::default());
         terramask::tiles_for(&bounds, z).iter().flat_map(|t| [t.z as u32, t.x, t.y]).collect()
     }
@@ -397,7 +397,7 @@ impl Job {
         let progress = JsProgress(on_event);
         let task = Task::begin(&progress, "read-terrain", Some("download"), "read terrain", 0, "");
         let bounds = drawland_core::terrain::bounds_of(&self.doc.output);
-        let width = drawland_core::terrain::WIDTH_PX;
+        let width = drawland_core::terrain::width_px(&self.doc.output);
         let grid = terramask::Grid::with_width(bounds, width);
         let e = self.elevation.take().ok_or_else(|| err("no elevation tiles were handed over"))?;
         let elev = e.on(&grid);

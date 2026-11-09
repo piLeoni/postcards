@@ -60,7 +60,7 @@ fn read_terrain(grammar: &drawland_core::grammar::Grammar, output: &Output) -> R
     if !grammar.draws_terrain() {
         return Ok(None);
     }
-    let width = drawland_core::terrain::WIDTH_PX;
+    let width = drawland_core::terrain::width_px(&output);
     let bounds = drawland_core::terrain::bounds_of(output);
     let grid = terramask::Grid::with_width(bounds, width);
     let e = terramask::Fetcher::with_source(terramask::TERRARIUM)

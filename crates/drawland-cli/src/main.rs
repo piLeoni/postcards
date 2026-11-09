@@ -197,7 +197,7 @@ fn read_terrain(download: &Task, grammar: &Grammar, output: &Output) -> Result<O
     if !grammar.draws_terrain() {
         return Ok(None);
     }
-    let width = drawland_core::terrain::WIDTH_PX;
+    let width = drawland_core::terrain::width_px(output);
     let bounds = drawland_core::terrain::bounds_of(output);
     let grid = terramask::Grid::with_width(bounds, width);
     let task = download.child("terrain", "terrain", 0, "tiles");

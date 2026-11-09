@@ -34,9 +34,21 @@ pub struct Grid {
     pub deg_per_px_lat: f64,
 }
 
-/// How many pixels across the elevation grid is: burin's own default, so the
-/// same script draws the same hatching whichever front end runs it.
-pub const WIDTH_PX: usize = 1024;
+/// Paper millimetres per elevation-grid pixel. Burin's settings are in grid
+/// pixels (line spacing, wobble, blur), so tying the pixel to the paper keeps a
+/// style the same physical size on any sheet — as burin-map does for paper
+/// (pen ÷ `batch_stroke`; 0.18 mm pen ÷ 1.2). A 6 in card gets ~1016 px, about
+/// the 1024 every sheet used to get whatever its size.
+pub const MM_PER_PX: f64 = 0.15;
+
+/// How many pixels across the elevation grid is for `output`: the paper width
+/// of the area it covers (frame, any rotation's corners, and the margin) at
+/// [`MM_PER_PX`], kept between 256 and 4096.
+pub fn width_px(output: &Output) -> usize {
+    let (s, c) = output.bearing.to_radians().sin_cos();
+    let across_mm = output.width_mm * c.abs() + output.height_mm * s.abs();
+    ((across_mm * (1.0 + 2.0 * TERRAIN_MARGIN)) / MM_PER_PX).round().clamp(256.0, 4096.0) as usize
+}
 
 /// Where grid (0, 0) sits in output millimetres, and the scale from pixels.
 pub struct Placed {

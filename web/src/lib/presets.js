@@ -17,14 +17,14 @@ import inkByElevation from '../presets/ink-by-elevation.js?raw'
 import flatColor from '../presets/flat-color.js?raw'
 import cityGrain from '../presets/city-grain.js?raw'
 import sketchbook from '../presets/sketchbook.js?raw'
-import currents from '../presets/currents.js?raw'
+import saltAndStone from '../presets/salt-and-stone.js?raw'
 import labelFontsDemo from '../presets/label-fonts-demo.js?raw'
 import { titleOf } from './doc'
 
 export const PRESETS = [
   { id: 'city-grain', hint: 'burin ground, nature patterns, isoline-stack tree crowns', doc: cityGrain },
   { id: 'sketchbook', hint: 'hand-drawn: loose streets, hatched blocks, curling waves, doodled trees', doc: sketchbook },
-  { id: 'currents', hint: 'pure nature in burin: wandering land strokes, concentric coast, swirling currents', doc: currents },
+  { id: 'salt-and-stone', hint: 'pure nature in burin: hand-drawn contours, a soft concentric coast, swirling currents', doc: saltAndStone },
   { id: 'label-fonts-demo', hint: 'single-stroke fonts: futural, EMS, URL load', doc: labelFontsDemo },
   { id: 'flat-color', hint: 'solid fills for water, parks and buildings (screen-style)', doc: flatColor },
   { id: 'full', hint: 'roads, trails, parks, water, buildings; all from OpenFreeMap', doc: full },

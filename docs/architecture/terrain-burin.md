@@ -16,7 +16,7 @@ Pen-and-ink relief and related linework from elevation under the output, integra
 
 1. Terramask supplies elevation grid (Terrarium) for output bounds, at the zoom that matches the grid (up to 14). The CLI sets `Fetcher::elevation_max_zoom` to `TERRARIUM_MAX_ZOOM` so it reads as deep as the web page (`ZoomLimits::default()` in `drawland-wasm`); at zoom 10 coasts come out as pixel staircases.
 2. Profile builds a burin atlas (batch style, water, coast, etc.) via JS callback.
-3. `terrain.rs` maps burin pixels to output mm (`Grid`, `Placed`, default width `WIDTH_PX`) and calls `Atlas::draw` on a [`Surface`](../../burin-map/docs/regions.md) (elevation, `px_m`, optional named regions).
+3. `terrain.rs` maps burin pixels to output mm (`Grid`, `Placed`; grid width `width_px(output)` = paper width of the covered area at `MM_PER_PX` 0.15 mm/px, so a burin style is the same physical size on any sheet, as burin-map does for paper) and calls `Atlas::draw` on a [`Surface`](../../burin-map/docs/regions.md) (elevation, `px_m`, optional named regions).
 4. Result is exposed as line geometry; clipped and masked like roads or fills.
 
 Batches may name regions in `within` / `outside` with burin's `mask_*` parameters. Pass the polygons at draw time: `burin.terrain((b) => { … }, { regions: { urban: $areas.urban } })`. draw.land rasterises each area onto the elevation grid; a hard `in` clip is still available for a clean outer edge.
@@ -35,4 +35,4 @@ Implementation details and land-edge behaviour: `../burin-map` docs. draw.land d
 
 ## Related presets
 
-Examples: `web/src/presets/city-grain.js` (`burin.terrain` on relief areas), `ink-by-elevation.js`, `engraved-sea.js`, `currents.js` (land strokes, concentric shore, swirling `follow: "map"` currents, with a tile `water` mask).
+Examples: `web/src/presets/city-grain.js` (`burin.terrain` on relief areas), `ink-by-elevation.js`, `engraved-sea.js`, `salt-and-stone.js` (land strokes, concentric shore, swirling `follow: "map"` currents, with a tile `water` mask).
