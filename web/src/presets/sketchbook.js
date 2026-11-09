@@ -35,7 +35,7 @@ const HAND = { preset: "sketch", wobble: pen(2.5), bow: 0.025, overshoot: pen(3.
 /** @type {HandOptions} */
 const HAND_HATCH = { preset: "steady", wobble: pen(2.5), overshoot: pen(3), seed: 5 }
 /** @type {HandOptions} */
-const HAND_WAVES = { preset: "steady", wobble: pen(5), wavelength: pen(45), tremor: pen(0.55), bow: 0.045, overshoot: pen(2.5), close: 0, retrace: 0.12, retraceOffset: pen(1.2), seed: 5 }
+const HAND_WAVES = { preset: "steady", wobble: pen(5), wavelength: pen(45), tremor: pen(0.55), bow: 0.045, overshoot: pen(2.5), close: 0, seed: 5 }
 /** @type {HandOptions} */
 const HAND_RELIEF = { preset: "steady", wobble: pen(4), wavelength: pen(50), tremor: pen(0.5), bow: 0.05, overshoot: pen(3), reach: pen(60), retrace: 0.25, retraceOffset: pen(1.5), seed: 5 }
 /** @type {HandOptions} */
@@ -126,27 +126,24 @@ draw({ id: "lines_shore", from: lines.clip(lines.rings(water), inFrame), stroke:
 // cut out of it, and the waves fray toward them as they do toward the shore.
 // It is filled past the sheet (compose clips it back), so the fray stays off
 // the paper's edge.
-const decks = areas.intersect(
-  areas.union(
-    majorArea,
-    areas.buffer(streets, pen(2.5)),
-    areas.polygons(features.tiles("transportation:pier")),
-    areas.buffer(lines.of(features.tiles("transportation:pier")), pen(1.5)),
-  ),
-  water,
-)
+// Only what is drawn is cut out: a gap in the waves always has its pier or
+// road on paper. Pier decks only — the marina's finger docks (lines) are too
+// fussy for a sketch, so the waves simply run through them.
+const piers = areas.polygons(features.tiles("transportation:pier"))
+const decks = areas.intersect(areas.union(majorArea, areas.buffer(streets, pen(2.5)), piers), water)
 const seaArea = areas.difference(areas.grow(frame, pen(25)), land, areas.grow(decks, pen(2)))
 draw({ id: "fill_sea", from: fills.fill({ in: seaArea, ...SEA }), stroke: SOLID })
 draw({ id: "lines_major",   from: lines.rings(majorArea), stroke: SOLID })
 draw({ id: "lines_streets", from: streets, stroke: SOLID })
 draw({ id: "lines_blocks",  from: lines.rings(blocks), stroke: SOLID })
+draw({ id: "lines_piers",   from: lines.rings(piers), stroke: SOLID })
 draw({ id: "fill_blocks",   from: fills.fill({ in: blocks, per: "feature", pattern: "scribble", inset: pen(3), spacing: pen(8), angle: 40 }), stroke: SOLID })
 draw({ id: "fill_trees",    from: fills.fill({ in: greens, pattern: "doodle-trees", spacing: pen(20), coverage: 0.8, edge: "inside", seed: 9 }), stroke: SOLID })
 
 compose.mask({ name: "mask_major", from: majorArea, occludes: ["lines_streets", "fill_trees", "lines_relief"] })
 compose.mask({ name: "mask_built", from: areas.union(blocks, greens), occludes: ["lines_relief"] })
 
-const outlines = ["lines_shore", "lines_major", "lines_streets", "lines_blocks"]
+const outlines = ["lines_shore", "lines_major", "lines_streets", "lines_blocks", "lines_piers"]
 compose.linemerge(outlines, pen(2))
 compose.filter(outlines, { minLength: pen(8) })
 compose.simplify(outlines, pen(0.3))
