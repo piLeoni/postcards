@@ -101,7 +101,7 @@ fn a_script_draws_contours_in_a_loop_over_elevation_bands() {
     let out = run(
         &g,
         &output,
-        Inputs { features: vec![], tiles: vec![], sources: &BTreeMap::new(), terrain: Some(terrain), memory_budget: None, google_fonts: BTreeMap::new(), stroke_fonts: BTreeMap::new() },
+        Inputs { features: vec![], tiles: vec![], sources: &BTreeMap::new(), terrain: Some(terrain), memory_budget: None, google_fonts: BTreeMap::new(), stroke_fonts: BTreeMap::new(), data: BTreeMap::new() },
     )
     .unwrap();
     assert_eq!(out.groups.len(), 3, "three contour belts");
@@ -130,7 +130,7 @@ fn the_postcard_script_renders_without_osm_data() {
     let back = Grammar::from_json(&g.to_json().to_string()).unwrap();
     assert_eq!(back, g, "the graph survives JSON");
     let output = Output::new(&g.output, (-122.256196, 37.8771145));
-    let out = run(&g, &output, Inputs { features: vec![], tiles: vec![], sources: &BTreeMap::new(), terrain: None, memory_budget: None, google_fonts: BTreeMap::new(), stroke_fonts: BTreeMap::new() }).unwrap();
+    let out = run(&g, &output, Inputs { features: vec![], tiles: vec![], sources: &BTreeMap::new(), terrain: None, memory_budget: None, google_fonts: BTreeMap::new(), stroke_fonts: BTreeMap::new(), data: BTreeMap::new() }).unwrap();
     assert!(!out.svg.is_empty());
     assert_eq!(out.groups.len(), 15);
 }
@@ -167,7 +167,7 @@ fn a_script_draws_terrain_from_the_elevation() {
     let out = run(
         &g,
         &output,
-        Inputs { features: vec![], tiles: vec![], sources: &BTreeMap::new(), terrain: Some(terrain), memory_budget: None, google_fonts: BTreeMap::new(), stroke_fonts: BTreeMap::new() },
+        Inputs { features: vec![], tiles: vec![], sources: &BTreeMap::new(), terrain: Some(terrain), memory_budget: None, google_fonts: BTreeMap::new(), stroke_fonts: BTreeMap::new(), data: BTreeMap::new() },
     )
     .unwrap();
     assert_eq!(out.groups.len(), 2, "two terrain groups");
@@ -216,7 +216,7 @@ fn a_burin_document_runs_inside_a_profile() {
     let out = run(
         &g,
         &output,
-        Inputs { features: vec![], tiles: vec![], sources: &BTreeMap::new(), terrain: Some(terrain), memory_budget: None, google_fonts: BTreeMap::new(), stroke_fonts: BTreeMap::new() },
+        Inputs { features: vec![], tiles: vec![], sources: &BTreeMap::new(), terrain: Some(terrain), memory_budget: None, google_fonts: BTreeMap::new(), stroke_fonts: BTreeMap::new(), data: BTreeMap::new() },
     )
     .unwrap();
     assert_eq!(out.groups.len(), 1);
@@ -569,7 +569,7 @@ fn compose_optimize_steps_round_trip_and_execute() {
     let out = run(
         &g,
         &Output::new(&g.output, (0.0, 0.0)),
-        Inputs { features: vec![], tiles: vec![], sources: &BTreeMap::new(), terrain: None, memory_budget: None, google_fonts: BTreeMap::new(), stroke_fonts: BTreeMap::new() },
+        Inputs { features: vec![], tiles: vec![], sources: &BTreeMap::new(), terrain: None, memory_budget: None, google_fonts: BTreeMap::new(), stroke_fonts: BTreeMap::new(), data: BTreeMap::new() },
     )
     .unwrap();
     assert!(out.groups.iter().any(|(id, n)| id == "ring_a" && *n >= 1));
@@ -581,4 +581,58 @@ fn compose_optimize_steps_round_trip_and_execute() {
     );
     assert!(e.message.contains("missing_layer"), "{e}");
     assert_eq!(e.at, Some(At(2, 18)));
+}
+
+#[test]
+fn geojson_datasets_draw_from_a_url_and_from_the_profile() {
+    let g = evaluate(
+        "output({ width: '100mm', height: '100mm', scale: '1:1000000', lat: 0, lng: 0 })\n\
+         const quakes = features.geojson('https://example.org/q.geojson')\n\
+         const deep = features.where(quakes, { mag: { min: 5 }, 'geom:z': { min: 300 } })\n\
+         draw({ id: 'deep', from: lines.rings(areas.around(deep, '1mm')) })\n\
+         const box = features.geojson({ type: 'Polygon', coordinates: [[[-0.1, -0.1], [0.1, -0.1], [0.1, 0.1], [-0.1, 0.1], [-0.1, -0.1]]] })\n\
+         draw({ id: 'box', from: lines.rings(areas.polygons(box)) })\n",
+    )
+    .unwrap();
+    assert_eq!(g.datasets(), ["https://example.org/q.geojson"], "inline GeoJSON needs no host");
+    assert_eq!(Grammar::from_json(&g.to_json().to_string()).unwrap(), g, "the graph survives JSON");
+    let quakes = r#"{"type":"FeatureCollection","features":[
+        {"type":"Feature","properties":{"mag":6.1},"geometry":{"type":"Point","coordinates":[0.05,0.05,450]}},
+        {"type":"Feature","properties":{"mag":6.3},"geometry":{"type":"Point","coordinates":[-0.05,0,12]}},
+        {"type":"Feature","properties":{"mag":4.2},"geometry":{"type":"Point","coordinates":[0,-0.05,500]}}]}"#;
+    let output = Output::new(&g.output, (0.0, 0.0));
+    let render = |data: BTreeMap<String, String>| {
+        run(&g, &output, Inputs { features: vec![], tiles: vec![], sources: &BTreeMap::new(), terrain: None, memory_budget: None, google_fonts: BTreeMap::new(), stroke_fonts: BTreeMap::new(), data })
+    };
+    assert!(render(BTreeMap::new()).is_err(), "a dataset the host never read is an error");
+    let out = render([("https://example.org/q.geojson".to_string(), quakes.to_string())].into()).unwrap();
+    let strokes: BTreeMap<_, _> = out.groups.into_iter().collect();
+    assert_eq!(strokes["deep"], 1, "only the deep, strong quake");
+    assert_eq!(strokes["box"], 1);
+}
+
+#[test]
+fn geojson_takes_a_source_or_an_object() {
+    assert!(err("features.geojson('')").to_string().contains("URL"));
+    assert!(err("features.geojson({ coordinates: [] })").to_string().contains("type"));
+}
+
+#[test]
+fn a_fill_another_def_reads_is_made_for_it() {
+    // A clearance round a hatch: the hatch is a fill, buffered into an area
+    // that masks the layer under it.
+    let g = evaluate(
+        "output({ width: '40mm', height: '40mm', scale: '1:1000', lat: 0, lng: 0 })\n\
+         const box = areas.shape({ at: ['50%', '50%'], rect: [30, 30] })\n\
+         const hatch = fills.fill({ in: box, pattern: 'lines', spacing: '4mm', angle: 90 })\n\
+         const under = draw({ id: 'under', from: lines.shape({ at: ['50%', '50%'], points: [[-15, 0], [15, 0]], closed: false }) })\n\
+         draw({ id: 'hatch', from: hatch })\n\
+         compose.mask({ from: areas.buffer(hatch, '0.5mm'), occludes: [under] })\n",
+    )
+    .unwrap();
+    let output = Output::new(&g.output, (0.0, 0.0));
+    let out = run(&g, &output, Inputs { features: vec![], tiles: vec![], sources: &BTreeMap::new(), terrain: None, memory_budget: None, google_fonts: BTreeMap::new(), stroke_fonts: BTreeMap::new(), data: BTreeMap::new() }).unwrap();
+    let strokes: BTreeMap<_, _> = out.groups.into_iter().collect();
+    assert!(strokes["hatch"] > 0);
+    assert!(strokes["under"] > 1, "the line under the hatch is cut where hatch lines cross it, got {}", strokes["under"]);
 }

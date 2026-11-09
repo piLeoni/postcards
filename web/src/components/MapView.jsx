@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useAtom } from 'jotai'
-import { MapLibreMap, setWorkerUrl } from 'maplibre-gl'
+import { LngLat, MapLibreMap, setWorkerUrl } from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 // A worker, not a script: Vite serves the pre-bundled `maplibre-gl` from
 // `node_modules/.vite/deps`, where MapLibre's own `import.meta.url` probe
@@ -627,6 +627,7 @@ export default function MapView({
   onPlaceMap,
   onDraw,
   onDrawAfterApply,
+  onLoadDoc,
   onStop,
   search,
   onCloseSearch,
@@ -959,7 +960,8 @@ export default function MapView({
       center: saved ? [saved.lng, saved.lat] : output ? [output.lng, output.lat] : [-122.256196, 37.8771145],
       bearing: output?.bearing ?? 0,
       zoom: saved?.zoom ?? 14,
-      minZoom: 2,
+      // 0, so a world map (`earthquakes`) fits its card on screen.
+      minZoom: 0,
       pitch: 0,
       maxPitch: 0,
       dragRotate: false,
@@ -968,6 +970,14 @@ export default function MapView({
       // pans included; the bearing is the output's, never snapped.
       bearingSnap: 0,
       renderWorldCopies: false,
+      // MapLibre's own rule keeps the world at least as wide as the window
+      // when copies are off, so a world-sized card (`earthquakes`) could never
+      // be zoomed out to fit beside the panel. Any zoom down to `minZoom`;
+      // only the centre's latitude is kept on the map.
+      transformConstrain: (lngLat, zoom) => ({
+        center: new LngLat(lngLat.lng, Math.max(-85, Math.min(85, lngLat.lat))),
+        zoom: Math.max(0, zoom),
+      }),
       attributionControl: false,
     })
     mapRef.current = map
@@ -1550,7 +1560,7 @@ export default function MapView({
             ref={labelRef}
             className="pointer-events-auto absolute bottom-full left-0 z-[26] mb-[4px]"
           >
-            <StylePresetPicker doc={doc} appliedDoc={appliedDoc} setDoc={setDoc} onApplied={onDrawAfterApply} />
+            <StylePresetPicker doc={doc} appliedDoc={appliedDoc} setDoc={setDoc} onApplied={onDrawAfterApply} onLoadDoc={onLoadDoc} />
           </div>
         )}
 

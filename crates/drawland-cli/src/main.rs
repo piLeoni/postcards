@@ -360,6 +360,8 @@ fn map_v3(
     // front ends use, cached a tile at a time like everything else.
     let (features, tiles, terrain) = fetch(http, download, &output, &needs, &grammar)?;
 
+    let data = read_datasets(term, http, &grammar, base)?;
+
     let mut google_fonts = BTreeMap::new();
     for key in drawland_core::labels::google_font_keys_in_grammar(&grammar) {
         google_fonts.insert(key.clone(), google_fonts::fetch(&key)?);
@@ -373,10 +375,51 @@ fn map_v3(
     let rendered = drawland_core::grammar_run::run_with(
         &grammar,
         &output,
-        drawland_core::grammar_run::Inputs { features, tiles, sources: &sources, terrain, memory_budget: None, google_fonts, stroke_fonts },
+        drawland_core::grammar_run::Inputs { features, tiles, sources: &sources, terrain, memory_budget: None, google_fonts, stroke_fonts, data },
         &draw,
     )
     .map_err(|e| e.to_string())?;
     save(draw, out, &rendered.svg, &rendered.slices, export)?;
     Ok(rendered.groups)
+}
+
+/// The GeoJSON of every `features.geojson` source: a URL downloaded (and
+/// cached), anything else a file read beside the profile.
+fn read_datasets(term: &Term, http: &osm_http::Http, grammar: &Grammar, base: &Path) -> Result<BTreeMap<String, String>, String> {
+    let sources = grammar.datasets();
+    let mut out = BTreeMap::new();
+    if sources.is_empty() {
+        return Ok(out);
+    }
+    let all = Task::begin(term, "data", None, "datasets", 0, "");
+    for (i, src) in sources.iter().enumerate() {
+        let task = all.child(&format!("data-{i}"), &short(src), 0, "");
+        let text = if src.starts_with("http://") || src.starts_with("https://") {
+            http.dataset(src)
+        } else {
+            let file = src.strip_prefix("file://").unwrap_or(src);
+            let path = if Path::new(file).is_absolute() { PathBuf::from(file) } else { base.join(file) };
+            read(&path).map(|t| {
+                let note = format!("{:.1} MB · {}", t.len() as f64 / 1e6, path.display());
+                (t, note)
+            })
+        };
+        match text {
+            Ok((t, note)) => {
+                task.ok(&note);
+                out.insert(src.clone(), t);
+            }
+            Err(e) => {
+                task.fail(&e);
+                return Err(e);
+            }
+        }
+    }
+    all.ok(&format!("{} datasets", sources.len()));
+    Ok(out)
+}
+
+/// A source's last path segment, for its row.
+fn short(src: &str) -> String {
+    src.trim_end_matches('/').rsplit('/').next().unwrap_or(src).to_string()
 }

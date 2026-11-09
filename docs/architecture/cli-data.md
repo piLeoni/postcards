@@ -35,6 +35,15 @@ CLI HTTP: `drawland-cli/src/osm_http.rs`. Policy constants (endpoints, timeouts)
 
 CLI downloads via terramask's fetcher; web uses `web/src/lib/tiles.js` + `Job.readTiles`.
 
+## GeoJSON datasets
+
+`features.geojson(source)` compiles to `data_select`. A string source (URL or file path) is listed by `Grammar::datasets()`; the host reads each one and passes the text as `Inputs::data`, keyed as written. An inline object (`{ geojson: {…} }`) lives in the graph and needs no host.
+
+- Core: `geojson.rs` turns GeoJSON into `Feature`s (`Element::Data`) in lon/lat: `properties` become tags (numbers written out, `null` dropped), and a point's third coordinate becomes the tag `geom:z` (a quake's depth). The runner projects them like the tiles; a missing dataset is a plan error.
+- CLI: `read_datasets` in `main.rs`. URLs go through `Http::dataset` and are cached in `<cache>/data/<sha1>.geojson` for `DATA_MAX_AGE_S` (15 min, so live feeds stay current); `--refresh` re-downloads and `--offline` takes any age. Other sources are files relative to the profile.
+- Web/WASM: `Job.datasets` lists the sources, `Job.addDataset` takes the text. The worker (`web/src/lib/datasets.js`) fetches URLs (CORS needed) into Cache Storage with the same 15 min freshness; any other source must be a file dropped on the page (see [web.md](web.md)).
+- Web mercator clamps latitude to ±85.05°, so a world dataset (Antarctica) projects. World maps use a PROJ string (`+proj=moll`); proj4rs has no Equal Earth.
+
 ## Terrain tiles
 
 Terrarium PNGs for elevation — terramask; web `terrain.js`, CLI/wasm `readTerrain` on `Job`. Consumed by `terrain.rs` / burin.

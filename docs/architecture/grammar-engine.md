@@ -18,7 +18,7 @@
 
 Sections (typed namespaces):
 
-- `$features` — feature sets (`osm_select`, `tiles_select`, …)
+- `$features` — feature sets (`osm_select`, `tiles_select`, `data_select`, …)
 - `$areas` — `MultiPolygon<f64>` in mm (`tools_polygons`, `tools_union`, `tools_difference`, …)
 - `$lines` — `geom::Lines` (`tools_rings`, `tools_clip`, module outputs, …)
 - `$fills` — penfill output as lines (`tools_fill`, …)
@@ -36,7 +36,7 @@ Waves over the dependency DAG. Each def yields a `Value`:
 - `Features`, `Area`, `Lines`, `Labels` (strokes + coverage from `labels.rs`)
 - `Module` — roads bundle: `area`, `outlines`, `details`, `trails`, `centerlines`, `seams`, `rails` (`themes/roads.rs`; trails and rails are single lines whose strip joins `area`, present only when the input features include them)
 
-Fills run when their input areas are known. Terrain/burin defs produce lines like any other line set.
+Fills run when their input areas are known, normally in their own group during compose (streamed, a batch at a time). A fill that another def reads — `areas.buffer(hatch, …)` for a clearance round a pattern — is also made whole in the def waves (`eval_op`, `Op::Fill`), so that def can use its strokes; the group still draws it as usual. Terrain/burin defs produce lines like any other line set.
 
 ## Modules
 

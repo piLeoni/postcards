@@ -77,6 +77,8 @@ impl Utm {
 }
 
 fn merc_forward(lon: f64, lat: f64) -> (f64, f64) {
+    // The web map's edge: a pole (a world dataset's Antarctica) is infinitely far.
+    let lat = lat.clamp(-85.051_128_78, 85.051_128_78);
     let x = WGS84_A * lon.to_radians();
     let y = WGS84_A * (std::f64::consts::FRAC_PI_4 + lat.to_radians() / 2.0).tan().ln();
     (x, y)

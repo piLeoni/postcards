@@ -250,6 +250,7 @@ export default function Sidebar({
   /** The preset's style and title, keeping the output already on the map. */
   const injectPreset = (p) => {
     presetMenuRef.current?.removeAttribute('open')
+    if (p.ownPlace) return loadPreset(p)
     const text = injectStyleAtPlace(shown, p.doc)
     setDoc(text)
     setDraft(null)

@@ -275,6 +275,21 @@ declare const features: {
   /** Features from OpenFreeMap's vector tiles: presets (`"buildings"`) or rules (`"landcover:park,garden"`). No Overpass. */
   tiles(...items: (TilePreset | TilePreset[])[]): Features
   /**
+   * Every feature of a GeoJSON dataset: a URL (fetched and cached; `--refresh`
+   * fetches again) or a file path beside the profile. Each feature's
+   * `properties` become its tags, so `features.where` bands it by a number
+   * and `modules.labels({ keys })` names it:
+   *
+   *   const quakes = features.geojson("https://earthquake.usgs.gov/…/2.5_week.geojson")
+   *   features.where(quakes, { mag: { min: 6 } })
+   *
+   * Or a GeoJSON object written in the profile (a graticule, a route, points
+   * of its own). Coordinates are lon/lat (RFC 7946); a point's third
+   * coordinate (a quake's depth) is the tag `geom:z`. In the browser a URL
+   * must allow CORS, and a file is one dropped on the page (by its name).
+   */
+  geojson(source: string | { type: string; [key: string]: unknown }): Features
+  /**
    * The features whose tags pass every test: a value, a list of them, `true`
    * or `false` for present or absent, or a numeric range, `min` included and
    * `max` not. Ranges side by side split a set into bands, each drawn with

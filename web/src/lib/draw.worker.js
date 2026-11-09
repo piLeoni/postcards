@@ -15,6 +15,7 @@ import { fetchTiles } from './tiles'
 import { fetchTerrain } from './terrain'
 import { fetchGoogleFonts } from './googleFonts'
 import { fetchStrokeFonts } from './strokeFonts'
+import { fetchDatasets } from './datasets'
 import { createPreviewPainter } from './preview'
 import { Task } from './progress'
 
@@ -48,7 +49,7 @@ self.onmessage = ({ data }) => {
   }
 }
 
-async function run({ token, graph, lat, lng, googleFonts, strokeFonts, defaultInk }) {
+async function run({ token, graph, lat, lng, googleFonts, strokeFonts, datasets, defaultInk }) {
   current?.abort()
   const ac = new AbortController()
   current = ac
@@ -86,6 +87,9 @@ async function run({ token, graph, lat, lng, googleFonts, strokeFonts, defaultIn
       await fetchTerrain(job, ac.signal, download)
       if (ac.signal.aborted) return
       job.readTerrain(emit)
+      // GeoJSON for `features.geojson`: URLs fetched, dropped files as given.
+      bytes += await fetchDatasets(job, ac.signal, download, datasets ?? {})
+      if (ac.signal.aborted) return
       if (googleFonts && Object.keys(googleFonts).length) {
         const row = download.child('google-fonts', 'google-fonts', Object.keys(googleFonts).length, 'google fonts')
         let n = 0

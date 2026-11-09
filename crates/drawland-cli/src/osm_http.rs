@@ -182,7 +182,47 @@ impl Http {
         };
         Ok((coord("lon")?, coord("lat")?))
     }
+
+    /// A GeoJSON dataset by URL (`features.geojson`), cached in
+    /// `<cache>/data/<sha1 of the url>.geojson`. Live feeds go stale, so a
+    /// stored copy is used for [`DATA_MAX_AGE_S`] only (`--offline`: any age;
+    /// `--refresh`: never). Returns the text and a note saying which.
+    pub fn dataset(&self, url: &str) -> Result<(String, String), String> {
+        let dir = self.cache.join("data");
+        let path = dir.join(format!("{}.geojson", sha1_smol::Sha1::from(url).digest()));
+        let age = std::fs::metadata(&path)
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|t| SystemTime::now().duration_since(t).ok())
+            .map(|d| d.as_secs());
+        if let Some(age) = age.filter(|&a| !self.refresh && (self.offline || a < DATA_MAX_AGE_S)) {
+            if let Ok(text) = std::fs::read_to_string(&path) {
+                let note = format!("{:.1} MB · cached, {}", text.len() as f64 / 1e6, age_words(age));
+                return Ok((text, note));
+            }
+        }
+        if self.offline {
+            return Err(format!("{url}: not in {} and --offline is set", display(&dir)));
+        }
+        let text = self
+            .agent
+            .get(url)
+            .header("User-Agent", USER_AGENT)
+            .call()
+            .and_then(|mut r| r.body_mut().with_config().limit(DATA_MAX_BYTES).read_to_string())
+            .map_err(|e| format!("{url}: {e}"))?;
+        std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+        std::fs::write(&path, &text).map_err(|e| format!("{}: {e}", path.display()))?;
+        let note = format!("{:.1} MB · {}", text.len() as f64 / 1e6, host(url));
+        Ok((text, note))
+    }
 }
+
+/// How long a downloaded dataset is reused: long enough to iterate on a
+/// profile, short enough that a live feed (earthquakes) stays current.
+pub const DATA_MAX_AGE_S: u64 = 15 * 60;
+/// The largest dataset read.
+const DATA_MAX_BYTES: u64 = 512 * 1024 * 1024;
 
 /// One POST to one server, counting the reply's bytes as they arrive on
 /// its `row` and on the `download` it is part of.

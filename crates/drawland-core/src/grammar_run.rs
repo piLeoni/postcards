@@ -111,6 +111,9 @@ pub struct Inputs<'a> {
     pub google_fonts: BTreeMap<String, Vec<u8>>,
     /// SVG/JHF bytes for single-stroke fonts, keyed by URL (see `text::LabelFont::stroke_font_key`).
     pub stroke_fonts: BTreeMap<String, Vec<u8>>,
+    /// GeoJSON text of every `data_select` source, keyed as written
+    /// (`Grammar::datasets`).
+    pub data: BTreeMap<String, String>,
 }
 
 /// Evaluate `grammar` against `inputs`, project to `output`, compose and write.
@@ -181,7 +184,14 @@ pub fn run_into(grammar: &Grammar, output: &Output, inputs: Inputs, draw: &Task,
         sources.insert(file.clone(), drawing);
     }
 
-    let project = draw.child("project", "project", (inputs.features.len() + inputs.tiles.len()) as u64, "features");
+    let mut data: BTreeMap<String, Vec<Feature>> = BTreeMap::new();
+    for src in grammar.datasets() {
+        let text = inputs.data.get(&src).ok_or_else(|| RunError::Plan(format!("dataset {src:?} was not given")))?;
+        let found = crate::geojson::features(text).map_err(|e| RunError::Plan(format!("dataset {src:?}: {e}")))?;
+        data.insert(src, found);
+    }
+    let data_n: usize = data.values().map(Vec::len).sum();
+    let project = draw.child("project", "project", (inputs.features.len() + inputs.tiles.len() + data_n) as u64, "features");
     let projector = crate::projection::Projector::new(output);
     probe(draw, "start");
     let warp = &grammar.output.warp;
@@ -198,6 +208,7 @@ pub fn run_into(grammar: &Grammar, output: &Output, inputs: Inputs, draw: &Task,
     };
     let features = projected(inputs.features);
     let tiles = projected(inputs.tiles);
+    let data: BTreeMap<String, Vec<Feature>> = data.into_iter().map(|(k, v)| (k, projected(v))).collect();
     probe(draw, "projected");
     let frame = MultiPolygon::new(vec![Polygon::new(
         LineString::new(vec![
@@ -226,12 +237,14 @@ pub fn run_into(grammar: &Grammar, output: &Output, inputs: Inputs, draw: &Task,
         projector: &projector,
         google_fonts: &decompressed_fonts,
         stroke_fonts: &inputs.stroke_fonts,
+        warp,
+        sources: &sources,
     };
     project.ok("");
 
     crate::fill::clear_cover_cache();
     let _cover_guard = CoverCacheGuard;
-    let values = evaluate(grammar, &Found { osm: &features, tiles: &tiles }, &engine, draw)?;
+    let values = evaluate(grammar, &Found { osm: &features, tiles: &tiles, data: &data }, &engine, draw)?;
     probe(draw, "areas+lines");
 
     // Fills are not made here but in their group, as it is written: one
@@ -265,6 +278,8 @@ pub fn run_into(grammar: &Grammar, output: &Output, inputs: Inputs, draw: &Task,
 struct Found<'a> {
     osm: &'a [Feature],
     tiles: &'a [Feature],
+    /// Each dataset's features, by source.
+    data: &'a BTreeMap<String, Vec<Feature>>,
 }
 
 /// The output, and the `engine_*` areas in output millimetres like everything
@@ -281,6 +296,17 @@ struct Engine<'a> {
     projector: &'a crate::projection::Projector,
     google_fonts: &'a crate::labels::GoogleFonts,
     stroke_fonts: &'a crate::labels::StrokeFonts,
+    /// The output's warp, for features read after projecting (inline GeoJSON).
+    warp: &'a crate::warp::Warps,
+    /// The SVG files fills may draw from, for a fill made early.
+    sources: &'a Sources,
+}
+
+impl Engine<'_> {
+    /// lon/lat → output mm, warped: what every host feature went through.
+    fn warp_project(&self, g: &geo::Geometry<f64>) -> geo::Geometry<f64> {
+        self.warp.bend(self.of.width_mm, self.of.height_mm, &self.projector.project_geometry(g))
+    }
 }
 
 /// A profile's shape on the page, in output mm.
@@ -344,9 +370,12 @@ fn evaluate(
     draw: &Task,
 ) -> Result<BTreeMap<Name, Value>, RunError> {
     let mut done: BTreeMap<Name, Value> = BTreeMap::new();
+    // Fills are made later, in their group, a batch at a time; only a fill
+    // another def reads (a clearance buffered round a hatch) is made here too.
+    let read: Vec<Name> = grammar.all_defs().flat_map(|d| d.op.refs()).collect();
     let mut pending: Vec<Name> = grammar
         .all_defs()
-        .filter(|d| d.op.section() != Section::Fills)
+        .filter(|d| d.op.section() != Section::Fills || read.contains(&d.reference()))
         .map(|d| d.reference())
         .collect();
     let task = draw.child("evaluate", "evaluate", pending.len() as u64, "defs");
@@ -447,6 +476,14 @@ fn eval_op<'a>(
         Op::Select(sel) => Value::Features(select(sel, features.osm)),
         Op::TileSelect(t) => {
             Value::Features(features.tiles.iter().filter(|f| crate::tiles::keeps(&t.filter, f)).cloned().collect())
+        }
+        Op::DataSelect(crate::grammar::DataSource::Url(src)) => Value::Features(features.data.get(src).cloned().unwrap_or_default()),
+        Op::DataSelect(crate::grammar::DataSource::Inline(gj)) => {
+            let found = crate::geojson::features_of(gj).map_err(|e| format!("inline GeoJSON: {e}"))?;
+            Value::Features(found.into_iter().map(|mut f| {
+                f.geometry = engine.warp_project(&f.geometry);
+                f
+            }).collect())
         }
         Op::Where(w) => Value::Features(
             feats(&w.of)?.iter().filter(|f| crate::select::passes(&w.tags, f)).cloned().collect(),
@@ -601,7 +638,23 @@ fn eval_op<'a>(
             };
             Value::Labels(crate::labels::place(&named, &bounds, &l.style, engine.google_fonts, engine.stroke_fonts)?)
         }
-        Op::Fill(_) => return Err("tools_fill is evaluated in the fill pass".into()),
+        // A fill another def reads, made whole (see `evaluate`).
+        Op::Fill(f) => {
+            let region = area(&f.in_area)?;
+            let made = if let Some(content) = &f.content {
+                Ok(fill::fill_with(region, lines(content)?))
+            } else if f.per_feature {
+                region
+                    .0
+                    .par_iter()
+                    .map(|p| fill::fill_polygon(p, &f.spec, engine.sources))
+                    .collect::<Result<Vec<Lines>, _>>()
+                    .map(|v| v.into_iter().flatten().collect())
+            } else {
+                fill::fill(region, &f.spec, engine.sources)
+            };
+            Value::Lines(made.map_err(|e| e.to_string())?)
+        }
         Op::Module(m) => match &m.from {
             Some(from) => eval_module(m, feats(from)?, engine.of)?,
             None => eval_module(m, features.osm, engine.of)?,
@@ -1215,7 +1268,7 @@ mod tests {
         run(
             &grammar,
             &output(),
-            Inputs { features: vec![], tiles: vec![], sources: &BTreeMap::new(), terrain: None, memory_budget: None, google_fonts: BTreeMap::new(), stroke_fonts: BTreeMap::new() },
+            Inputs { features: vec![], tiles: vec![], sources: &BTreeMap::new(), terrain: None, memory_budget: None, google_fonts: BTreeMap::new(), stroke_fonts: BTreeMap::new(), data: BTreeMap::new() },
         )
     }
 
@@ -1249,7 +1302,7 @@ mod tests {
         let out = run(
             &grammar,
             &output(),
-            Inputs { features: vec![park], tiles: vec![], sources: &BTreeMap::new(), terrain: None, memory_budget: None, google_fonts: fonts, stroke_fonts: BTreeMap::new() },
+            Inputs { features: vec![park], tiles: vec![], sources: &BTreeMap::new(), terrain: None, memory_budget: None, google_fonts: fonts, stroke_fonts: BTreeMap::new(), data: BTreeMap::new() },
         )
         .unwrap();
         let count = |id: &str| out.groups.iter().find(|(g, _)| g == id).map_or(0, |(_, n)| *n);

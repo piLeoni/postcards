@@ -312,7 +312,7 @@ export function terrainModel(unit) {
 
 /** Scales the scale reaches, `1:N`. */
 export const MIN_SCALE = 500
-export const MAX_SCALE = 2_000_000
+export const MAX_SCALE = 300_000_000
 
 /** A scale denominator: "1:8000" or "8000"; each step is 2% (Shift 20%). */
 export const scaleModel = {

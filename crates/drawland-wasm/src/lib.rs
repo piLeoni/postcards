@@ -264,6 +264,8 @@ pub struct Job {
     memory_budget: Option<u64>,
     google_fonts: std::collections::BTreeMap<String, Vec<u8>>,
     stroke_fonts: std::collections::BTreeMap<String, Vec<u8>>,
+    /// GeoJSON text for each `datasets` entry, as the page fetched it.
+    data: BTreeMap<String, String>,
     /// Set when a draw failed in a way that may have left the wasm heap
     /// unusable. Every later call refuses, and `free` is left to the
     /// finalizer, so a broken job cannot throw on drop and hide the real
@@ -289,6 +291,7 @@ impl Default for Job {
             memory_budget: None,
             google_fonts: std::collections::BTreeMap::new(),
             stroke_fonts: std::collections::BTreeMap::new(),
+            data: BTreeMap::new(),
             poisoned: false,
         }
     }
@@ -317,6 +320,7 @@ impl Job {
             memory_budget: None,
             google_fonts: std::collections::BTreeMap::new(),
             stroke_fonts: std::collections::BTreeMap::new(),
+            data: BTreeMap::new(),
             poisoned: false,
         })
     }
@@ -485,6 +489,21 @@ impl Job {
         Ok(())
     }
 
+    /// The GeoJSON sources the document reads (`features.geojson` with a URL
+    /// or a path), for the page to fetch and hand over with `addDataset`.
+    #[wasm_bindgen(getter)]
+    pub fn datasets(&self) -> Vec<String> {
+        self.doc.body.grammar().map(|g| g.datasets()).unwrap_or_default()
+    }
+
+    /// The GeoJSON text of a `datasets` entry.
+    #[wasm_bindgen(js_name = addDataset)]
+    pub fn add_dataset(&mut self, source: &str, text: String) -> Result<(), JsValue> {
+        self.check_alive()?;
+        self.data.insert(source.to_string(), text);
+        Ok(())
+    }
+
     /// One of the `tiles`, as downloaded (raw or gzipped protobuf).
     #[wasm_bindgen(js_name = addTile)]
     pub fn add_tile(&mut self, z: u8, x: u32, y: u32, bytes: &[u8]) -> Result<(), JsValue> {
@@ -546,6 +565,7 @@ impl Job {
                     memory_budget: self.memory_budget,
                     google_fonts: std::mem::take(&mut self.google_fonts),
                     stroke_fonts: std::mem::take(&mut self.stroke_fonts),
+                    data: std::mem::take(&mut self.data),
                 },
                 &draw,
                 &mut |part, text| {
@@ -786,6 +806,7 @@ impl Doc {
                         memory_budget: inputs.memory_budget,
                         google_fonts: inputs.google_fonts,
                         stroke_fonts: inputs.stroke_fonts,
+                        data: inputs.data,
                     },
                     draw,
                     out,
@@ -806,6 +827,7 @@ struct RenderInputs {
     memory_budget: Option<u64>,
     google_fonts: BTreeMap<String, Vec<u8>>,
     stroke_fonts: BTreeMap<String, Vec<u8>>,
+    data: BTreeMap<String, String>,
 }
 
 fn default_center(map: &drawland_core::profile::OutputSpec) -> (f64, f64) {

@@ -113,6 +113,15 @@ pub struct TileSelect {
     pub filter: terramask::Filter,
 }
 
+/// Where a `data_select` reads its GeoJSON.
+#[derive(Debug, Clone, PartialEq)]
+pub enum DataSource {
+    /// A URL or a file path, for the host to read.
+    Url(String),
+    /// GeoJSON the profile wrote out itself.
+    Inline(Value),
+}
+
 /// `tools_where`: the features of `of` whose tags pass every test, as
 /// `{ of: $features.b, tags: { render_height: { min: 20, max: 40 } } }`.
 #[derive(Debug, Clone, PartialEq)]
@@ -351,6 +360,10 @@ pub enum Op {
     // ---- feature sets ----------------------------------------------------
     Select(Selector),
     TileSelect(TileSelect),
+    /// `data_select: "<url or path>"`, or `data_select: { geojson: {…} }`:
+    /// every feature of a GeoJSON dataset, read by the host (see
+    /// [`Grammar::datasets`]) or written in the profile.
+    DataSelect(DataSource),
     Where(Where),
 
     // ---- areas -----------------------------------------------------------
@@ -417,7 +430,7 @@ impl Op {
     /// What a def holding this operation defines.
     pub fn section(&self) -> Section {
         match self {
-            Op::Select(_) | Op::TileSelect(_) | Op::Where(_) => Section::Features,
+            Op::Select(_) | Op::TileSelect(_) | Op::DataSelect(_) | Op::Where(_) => Section::Features,
             Op::Polygons(_)
             | Op::Union(_)
             | Op::Difference(_)
@@ -456,7 +469,7 @@ impl Op {
     /// The names this operation reads.
     pub fn refs(&self) -> Vec<Name> {
         match self {
-            Op::Select(_) | Op::TileSelect(_) | Op::Frame | Op::Shape(_) | Op::Path(_) | Op::Text(_) | Op::TextArea(_) => vec![],
+            Op::Select(_) | Op::TileSelect(_) | Op::DataSelect(_) | Op::Frame | Op::Shape(_) | Op::Path(_) | Op::Text(_) | Op::TextArea(_) => vec![],
             Op::Module(m) => m.from.iter().cloned().collect(),
             Op::Polygons(n) | Op::FillHoles(n) | Op::Dedupe(n) | Op::Merge(n) | Op::Lines(n) | Op::Segments(n) => {
                 vec![n.clone()]
@@ -723,6 +736,20 @@ impl Grammar {
     /// Whether the profile reads open-sea polygons from the vector tiles.
     pub fn draws_ocean(&self) -> bool {
         self.tile_selectors().iter().any(|s| s == "ocean")
+    }
+
+    /// Every `data_select` source, a URL or a file path, in order: the
+    /// GeoJSON the host must read and pass as `Inputs::data`.
+    pub fn datasets(&self) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        for def in self.all_defs() {
+            if let Op::DataSelect(DataSource::Url(src)) = &def.op {
+                if !out.contains(src) {
+                    out.push(src.clone());
+                }
+            }
+        }
+        out
     }
 
     /// SVG files named by a fill `source`, for the host to read.
@@ -1068,7 +1095,7 @@ pub struct Target {
 fn parse_op(raw: RawOp, section: Section) -> Result<Op, GrammarError> {
     let (key, value) = only_op(raw).map_err(GrammarError::Invalid)?;
     let target = match key.as_str() {
-        "osm_select" | "tiles_select" | "tools_where" => Section::Features,
+        "osm_select" | "tiles_select" | "data_select" | "tools_where" => Section::Features,
         "tools_polygons" | "tools_union" | "tools_difference" | "tools_intersect" | "tools_fill_holes"
         | "tools_fill_cover" | "tools_grow" | "tools_around" | "tools_shape" | "tools_text_area" | "tools_buffer_lines" | "tools_label_area" | "tools_extend_to_frame" | "tools_terrain_band" | "engine_frame" => {
             Section::Areas
@@ -1113,6 +1140,15 @@ fn parse_op(raw: RawOp, section: Section) -> Result<Op, GrammarError> {
     let op = match key.as_str() {
         "osm_select" => Op::Select(parse_selector(&value)?),
         "tiles_select" => Op::TileSelect(parse_tile_select(&value)?),
+        "data_select" => match &value {
+            Value::String(s) if !s.trim().is_empty() => Op::DataSelect(DataSource::Url(s.trim().to_string())),
+            Value::Object(o) if o.len() == 1 && o.get("geojson").is_some_and(Value::is_object) => {
+                let gj = o["geojson"].clone();
+                crate::geojson::features_of(&gj).map_err(|e| GrammarError::Invalid(format!("data_select: {e}")))?;
+                Op::DataSelect(DataSource::Inline(gj))
+            }
+            _ => return Err(GrammarError::Invalid("data_select is a URL, a file path, or { geojson: {…} }".into())),
+        },
         "tools_where" => Op::Where(parse_where(&value)?),
         "engine_frame" => Op::Frame,
         "tools_polygons" => Op::Polygons(name_ref(&value, "tools_polygons")?),
@@ -1699,6 +1735,8 @@ pub fn op_to_json(op: &Op) -> Value {
             ("osm_select", Value::Object(body))
         }
         Op::TileSelect(t) => ("tiles_select", t.items.iter().cloned().map(Value::String).collect()),
+        Op::DataSelect(DataSource::Url(src)) => ("data_select", Value::String(src.clone())),
+        Op::DataSelect(DataSource::Inline(gj)) => ("data_select", json!({ "geojson": gj })),
         Op::Where(w) => {
             let tags: serde_json::Map<String, Value> = w
                 .tags

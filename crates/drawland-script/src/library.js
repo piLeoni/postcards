@@ -97,6 +97,18 @@
       if (!flat.length) fail("features.tiles needs a preset or a layer:class rule");
       return make(Features, "features", { tiles_select: flat });
     },
+    // Every feature of a GeoJSON dataset: a URL (fetched, cached) or a file
+    // path beside the profile. Properties become tags, for `features.where`
+    // and labels.
+    // Or GeoJSON written in the profile: a graticule, a route, points of its own.
+    geojson(source) {
+      if (source !== null && typeof source === "object" && !Array.isArray(source)) {
+        if (typeof source.type !== "string") fail("features.geojson: an inline object is GeoJSON, with a type");
+        return make(Features, "features", { data_select: { geojson: source } });
+      }
+      if (typeof source !== "string" || !source.trim()) fail(`features.geojson takes a URL, a file path, or a GeoJSON object, got ${describe(source)}`);
+      return make(Features, "features", { data_select: source.trim() });
+    },
     // The features whose tags pass every test: a value, a list, true/false,
     // or `{ min, max }` on a number (`min` included, `max` not).
     where(of, tags) {

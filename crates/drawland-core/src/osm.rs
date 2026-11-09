@@ -17,6 +17,8 @@ pub enum Element {
     Way,
     /// A feature of a vector tile (see [`crate::tiles`]), not an OSM element.
     Tile,
+    /// A feature of a GeoJSON dataset (see [`crate::geojson`]).
+    Data,
 }
 
 #[derive(Debug, Clone)]

@@ -38,3 +38,7 @@ Implementation details and land-edge behaviour: `../burin-map` docs. draw.land d
 ## Related presets
 
 Examples: `web/src/presets/city-grain.js` (`burin.terrain` on relief areas), `ink-by-elevation.js`, `engraved-sea.js`, `salt-and-stone.js` (land strokes, concentric shore, swirling `follow: "map"` currents, with a tile `water` mask).
+
+## Grid placement and bearing
+
+`Grid::placed` maps grid pixels to output mm as a full affine (`Placed { x0, y0, east, south }`, `to_mm` / `to_px`), fitted from three corners of the grid. An output with a `bearing` turns the grid with it; the older two-corner, axis-aligned scale squeezed a turned grid into a strip (`areas.band`, `lines.terrain` and burin regions all go through `Placed`).

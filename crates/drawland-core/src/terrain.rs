@@ -51,12 +51,29 @@ pub fn width_px(output: &Output) -> usize {
     ((across_mm * (1.0 + 2.0 * TERRAIN_MARGIN)) / MM_PER_PX).round().clamp(256.0, 4096.0) as usize
 }
 
-/// Where grid (0, 0) sits in output millimetres, and the scale from pixels.
+/// Where the grid lands in output millimetres: pixel (0, 0) at `(x0, y0)`,
+/// one pixel east `east`, one pixel south `south`. Both vectors, not two
+/// scales, so a turned output (`bearing`) turns the grid with it.
 pub struct Placed {
-    pub kx: f64,
-    pub ky: f64,
     pub x0: f64,
     pub y0: f64,
+    pub east: (f64, f64),
+    pub south: (f64, f64),
+}
+
+impl Placed {
+    /// Grid pixel → output mm.
+    pub fn to_mm(&self, px: f64, py: f64) -> (f64, f64) {
+        (self.x0 + px * self.east.0 + py * self.south.0, self.y0 + px * self.east.1 + py * self.south.1)
+    }
+
+    /// Output mm → grid pixel.
+    pub fn to_px(&self, x: f64, y: f64) -> [f64; 2] {
+        let (dx, dy) = (x - self.x0, y - self.y0);
+        let (a, b, c, d) = (self.east.0, self.south.0, self.east.1, self.south.1);
+        let det = a * d - b * c;
+        [(d * dx - b * dy) / det, (a * dy - c * dx) / det]
+    }
 }
 
 impl Grid {
@@ -82,18 +99,13 @@ impl Grid {
     /// Where the grid's pixels land in output millimetres, through the same
     /// projection the rest of the document uses.
     pub fn placed(&self, projector: &crate::projection::Projector) -> Placed {
-        // Two corners, so a non-square grid and a bearing both come out right.
+        // Three corners: the grid's east and south edges each land as a
+        // vector, so a non-square grid and a bearing both come out right.
         let (nx, ny) = projector.project(self.nw_lon, self.nw_lat);
-        let (sx, sy) = projector.project(
-            self.nw_lon + self.deg_per_px_lon * self.width as f64,
-            self.nw_lat - self.deg_per_px_lat * self.height as f64,
-        );
-        Placed {
-            kx: (sx - nx) / self.width as f64,
-            ky: (sy - ny) / self.height as f64,
-            x0: nx,
-            y0: ny,
-        }
+        let (ex, ey) = projector.project(self.nw_lon + self.deg_per_px_lon * self.width as f64, self.nw_lat);
+        let (sx, sy) = projector.project(self.nw_lon, self.nw_lat - self.deg_per_px_lat * self.height as f64);
+        let (w, h) = (self.width as f64, self.height as f64);
+        Placed { x0: nx, y0: ny, east: ((ex - nx) / w, (ey - ny) / w), south: ((sx - nx) / h, (sy - ny) / h) }
     }
 }
 
@@ -188,7 +200,7 @@ pub fn coverage_of(area: &MultiPolygon<f64>, grid: &Grid, at: &Placed) -> Vec<f3
     let mut edges: Vec<([f64; 2], [f64; 2])> = Vec::new();
     for poly in &area.0 {
         for ring in std::iter::once(poly.exterior()).chain(poly.interiors()) {
-            let pts: Vec<[f64; 2]> = ring.coords().map(|c| [(c.x - at.x0) / at.kx, (c.y - at.y0) / at.ky]).collect();
+            let pts: Vec<[f64; 2]> = ring.coords().map(|c| at.to_px(c.x, c.y)).collect();
             for p in pts.windows(2) {
                 if p[0][1] != p[1][1] {
                     edges.push((p[0], p[1]));
@@ -249,7 +261,7 @@ fn ring_from_line(ls: &LineString<f64>, exterior: bool, at: &Placed) -> Ring {
         exterior,
         points: ls
             .coords()
-            .map(|c| [(c.x - at.x0) / at.kx, (c.y - at.y0) / at.ky])
+            .map(|c| at.to_px(c.x, c.y))
             .collect(),
     }
 }
@@ -327,7 +339,10 @@ pub fn fill_area(d: &Drawing, at: &Placed) -> MultiPolygon<f64> {
 fn placed_line(l: &burin_map_core::Line, at: &Placed) -> LineString<f64> {
     LineString::new(
         l.iter()
-            .map(|p| Coord { x: at.x0 + p[0] as f64 * at.kx, y: at.y0 + p[1] as f64 * at.ky })
+            .map(|p| {
+                let (x, y) = at.to_mm(p[0] as f64, p[1] as f64);
+                Coord { x, y }
+            })
             .collect(),
     )
 }
@@ -420,6 +435,17 @@ pub fn clip_to(lines: &Lines, area: &MultiPolygon<f64>) -> Lines {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_turned_output_turns_the_grid_with_it() {
+        // At a bearing a grid pixel moves along a turned vector; an
+        // axis-aligned scale from two corners squeezed the grid into a strip.
+        let at = Placed { x0: 10.0, y0: 20.0, east: (0.6, -0.5), south: (0.5, 0.6) };
+        let (x, y) = at.to_mm(30.0, 40.0);
+        assert!((x - (10.0 + 18.0 + 20.0)).abs() < 1e-9 && (y - (20.0 - 15.0 + 24.0)).abs() < 1e-9);
+        let back = at.to_px(x, y);
+        assert!((back[0] - 30.0).abs() < 1e-9 && (back[1] - 40.0).abs() < 1e-9);
+    }
+
     use super::*;
     use crate::profile::ProjectionMode;
 

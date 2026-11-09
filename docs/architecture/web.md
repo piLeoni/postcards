@@ -27,9 +27,10 @@ Interactive map + profile editor; preview and download SVG using the same engine
 2. If `needsOsm` — `fetchOverpass` → `job.read`
 3. `fetchTiles` → `job.readTiles`
 4. `fetchTerrain` → `job.readTerrain`
-5. Google fonts (prefetched or `fetchGoogleFonts`)
-6. Stroke fonts for labels/`lines.text` — catalog ids and `{ origin: "stroke", url }` (`strokeFontKeys` / `loadStrokeFontsForGraph` on main thread, or `fetchStrokeFonts` in worker; `job.addStrokeFont`). Catalog GitLab URLs in the graph are fetched from bundled copies under `web/public/fonts/` (`strokeFontUrls.js`); CLI still downloads from GitLab.
-7. `job.draw` — SVG streamed via callbacks; result as Blob parts plus an overview `ImageBitmap` (`lib/preview.js`) rendered onto an `OffscreenCanvas` in the worker; when the map settles (`moveend`), the worker re-renders the visible viewport slice from its recorded vector coordinates at native device-pixel resolution so zoomed-in views stay vector-sharp without parsing large SVG DOMs on the main thread
+5. GeoJSON datasets (`features.geojson`): `fetchDatasets` (`lib/datasets.js`) reads `job.datasets`, fetches URLs (Cache Storage, 15 min) or takes dropped files posted with the draw, and calls `job.addDataset`
+6. Google fonts (prefetched or `fetchGoogleFonts`)
+7. Stroke fonts for labels/`lines.text` — catalog ids and `{ origin: "stroke", url }` (`strokeFontKeys` / `loadStrokeFontsForGraph` on main thread, or `fetchStrokeFonts` in worker; `job.addStrokeFont`). Catalog GitLab URLs in the graph are fetched from bundled copies under `web/public/fonts/` (`strokeFontUrls.js`); CLI still downloads from GitLab.
+8. `job.draw` — SVG streamed via callbacks; result as Blob parts plus an overview `ImageBitmap` (`lib/preview.js`) rendered onto an `OffscreenCanvas` in the worker; when the map settles (`moveend`), the worker re-renders the visible viewport slice from its recorded vector coordinates at native device-pixel resolution so zoomed-in views stay vector-sharp without parsing large SVG DOMs on the main thread
 
 Cancel via `AbortController`; WASM trap handling avoids leaving a borrowed `Job` (see worker comments).
 
@@ -41,7 +42,11 @@ Share URLs: `lib/share.js` (fragments `#js=`, etc.).
 
 ## Presets
 
-`lib/presets.js` lists built-in scripts. Highlighting tracks style keys from preset metadata. Saving uses `title:` from profile.
+`lib/presets.js` lists built-in scripts. A preset with `ownPlace: true` (`earthquakes`, `geojson-overlay`) carries its own place, paper and projection: the card's style picker and the sidebar load it whole (`loadDoc` in `App.jsx`) instead of injecting its style at the current place. The map's `minZoom` is 0 and `MapView` passes its own `transformConstrain` (any zoom, latitude kept within ±85°): MapLibre's default, with `renderWorldCopies` off, kept the world at least as wide as the window, so a world card (`earthquakes`) could never be zoomed out to fit.
+
+## GeoJSON import
+
+A `.geojson`/`.json` dropped anywhere on the page (`App.jsx`) is kept in memory by file name (`importedDatasets`, lost on reload) and posted to the worker with each draw. If the script already reads `features.geojson("<name>")` it is redrawn; otherwise the `geojson-overlay` preset opens with `DATA` set to the file, its output framed to the data's extent (`frameBounds`: centre, rounded scale, tile zoom). Highlighting tracks style keys from preset metadata. Saving uses `title:` from profile.
 
 ## Editor integration
 

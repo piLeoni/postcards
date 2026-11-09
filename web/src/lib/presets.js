@@ -21,6 +21,9 @@ import saltAndStone from '../presets/salt-and-stone.js?raw'
 import atlas from '../presets/atlas.js?raw'
 import brutalist from '../presets/brutalist.js?raw'
 import labelFontsDemo from '../presets/label-fonts-demo.js?raw'
+import earthquakes from '../presets/earthquakes.js?raw'
+import geojsonOverlay from '../presets/geojson-overlay.js?raw'
+import stateCut from '../presets/state-cut.js?raw'
 import { styleOf, titleOf } from './doc'
 
 export const PRESETS = [
@@ -29,6 +32,11 @@ export const PRESETS = [
   { id: 'sketchbook', hint: 'hand-drawn: loose streets, hatched blocks, curling waves, doodled trees', doc: sketchbook },
   { id: 'salt-and-stone', hint: 'pure nature in burin: hand-drawn contours, a soft concentric coast, swirling currents', doc: saltAndStone },
   { id: 'atlas', hint: 'a classic coloured physical map: hypsometric tints, sea depths, relief shading, roads and names (for print, not the pen)', doc: atlas },
+  // `ownPlace`: the preset's place and paper are part of it (a world map, a
+  // dataset's city), so choosing it loads it whole rather than at the map's place.
+  { id: 'earthquakes', hint: 'live data: the last 30 days of quakes (USGS) on a world map, sized by magnitude, inked by depth', doc: earthquakes, ownPlace: true },
+  { id: 'geojson-overlay', hint: 'a GeoJSON over a quiet base map; drop your own .geojson on the page', doc: geojsonOverlay, ownPlace: true },
+  { id: 'state-cut', hint: 'a state\'s silhouette as a 4×6 die-cut card: one ink, one hatch, closer with height, each level outlined', doc: stateCut, ownPlace: true },
   { id: 'label-fonts-demo', hint: 'single-stroke fonts: futural, EMS, URL load', doc: labelFontsDemo },
   { id: 'flat-color', hint: 'solid fills for water, parks and buildings (screen-style)', doc: flatColor },
   { id: 'full', hint: 'roads, trails, parks, water, buildings; all from OpenFreeMap', doc: full },

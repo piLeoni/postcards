@@ -9,7 +9,9 @@ import { loadGoogleFontsForGraph } from './lib/googleFonts'
 import { loadStrokeFontsForGraph } from './lib/strokeFonts'
 import { applyTheme, defaultInkColor, normalizeThemeId } from './lib/themes'
 import { docAtom, sidebarOpenAtom, themeAtom } from './lib/store'
-import { outputComment, outputUnit, setOutputComment, setOutputKeys } from './lib/doc'
+import { outputComment, outputOf, outputUnit, setOutputComment, setOutputKeys, setTitle } from './lib/doc'
+import { frameBounds, geojsonBounds, importedDatasets } from './lib/datasets'
+import { PRESETS } from './lib/presets'
 import { compile, literalOutputInfo } from './lib/graph'
 import { inlineShare, readFragment, sharedScript } from './lib/share'
 import { terrainPair } from './components/controls'
@@ -393,6 +395,7 @@ export default function App() {
           lng,
           googleFonts,
           strokeFonts,
+          datasets: Object.fromEntries(importedDatasets),
           defaultInk: defaultInkColor(themeIdRef.current),
         })
       })
@@ -564,6 +567,86 @@ export default function App() {
     mapApiRef.current?.fit?.(output.lng, output.lat, output.bearing)
   }, [compiledDoc, output])
 
+  /**
+   * A whole script that brings its own place (a preset with `ownPlace`, a
+   * dropped GeoJSON): the map goes there, is sized to the output once it has
+   * compiled, and the card is drawn.
+   */
+  const loadDoc = useCallback(
+    (text) => {
+      setDoc(text)
+      const o = outputOf(text)
+      if (o?.kind === 'literal' && Number.isFinite(o.value?.lat) && Number.isFinite(o.value?.lng)) {
+        mapApiRef.current?.fit?.(o.value.lng, o.value.lat, o.value.bearing)
+      }
+      fitAfterApply(text)
+      drawAfterApply(text)
+    },
+    [setDoc, fitAfterApply, drawAfterApply],
+  )
+
+  // A GeoJSON dropped anywhere on the page: kept by its file name for
+  // `features.geojson("name")`. A script that already reads it is drawn
+  // again; otherwise the overlay preset opens on it, framed to its extent.
+  const [dropping, setDropping] = useState(false)
+  useEffect(() => {
+    const isFile = (e) => [...(e.dataTransfer?.types ?? [])].includes('Files')
+    let depth = 0
+    const enter = (e) => {
+      if (!isFile(e)) return
+      depth += 1
+      setDropping(true)
+    }
+    const leave = (e) => {
+      if (!isFile(e)) return
+      depth = Math.max(0, depth - 1)
+      if (!depth) setDropping(false)
+    }
+    const over = (e) => {
+      if (isFile(e)) e.preventDefault()
+    }
+    const drop = async (e) => {
+      if (!isFile(e)) return
+      e.preventDefault()
+      depth = 0
+      setDropping(false)
+      const file = [...e.dataTransfer.files].find((f) => /\.(geo)?json$/i.test(f.name))
+      if (!file) return
+      try {
+        const text = await file.text()
+        const bounds = geojsonBounds(JSON.parse(text))
+        if (!bounds) throw new Error(`${file.name} has no coordinates: is it GeoJSON?`)
+        importedDatasets.set(file.name, text)
+        const current = docRef.current
+        if (current.includes(JSON.stringify(file.name)) || current.includes(`'${file.name}'`)) {
+          drawAfterApply(current)
+          return
+        }
+        const overlay = PRESETS.find((p) => p.id === 'geojson-overlay').doc
+        const literal = outputOf(overlay)?.value ?? {}
+        const inch = (v) => (typeof v === 'string' && v.endsWith('in') ? parseFloat(v) * 25.4 : parseFloat(v))
+        const pad = 2 * (inch(literal.padding) || 0)
+        const frame = frameBounds(bounds, inch(literal.width) - pad, inch(literal.height) - pad)
+        let text2 = overlay.replace(/^const DATA = .*$/m, `const DATA = ${JSON.stringify(file.name)}`)
+        text2 = setOutputKeys(text2, frame)
+        text2 = setTitle(text2, file.name.replace(/\.(geo)?json$/i, ''))
+        loadDoc(text2)
+      } catch (err) {
+        setStatus({ phase: 'error', detail: err instanceof SyntaxError ? `${file.name} is not JSON: ${err.message}` : err.message })
+      }
+    }
+    window.addEventListener('dragenter', enter)
+    window.addEventListener('dragleave', leave)
+    window.addEventListener('dragover', over)
+    window.addEventListener('drop', drop)
+    return () => {
+      window.removeEventListener('dragenter', enter)
+      window.removeEventListener('dragleave', leave)
+      window.removeEventListener('dragover', over)
+      window.removeEventListener('drop', drop)
+    }
+  }, [loadDoc, drawAfterApply])
+
   useEffect(() => {
     if (!autoDrawSharedRef.current || !output || compiledDoc !== doc) return
     autoDrawSharedRef.current = false
@@ -664,6 +747,7 @@ export default function App() {
           onPlaceMap={placeMap}
           onDraw={draw}
           onDrawAfterApply={drawAfterApply}
+          onLoadDoc={loadDoc}
           onStop={stop}
           search={searchOpen}
           onCloseSearch={() => setSearchOpen(false)}
@@ -677,6 +761,13 @@ export default function App() {
           sidebarOpen={sidebarOpen}
           sidebarColumnDrag={sidebarColumnDrag}
         />
+        {dropping && (
+          <div className="pointer-events-none absolute inset-0 z-[60] flex items-center justify-center bg-[color:var(--background0)]/70">
+            <div box-="square" className="chrome-surface px-[2ch] py-[1lh] font-mono text-sm font-bold">
+              Drop a GeoJSON to map it
+            </div>
+          </div>
+        )}
       </main>
 
       {sidebarOpen ? (
