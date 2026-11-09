@@ -296,6 +296,12 @@
     frame() { return make(Area, "areas", { engine_frame: {} }); },
     /** Open sea from vector tiles, grown to the card edge. Prefer explicit `features.tiles("ocean")` + `areas.extendToFrame`. */
     ocean() { return oceanFromTiles(); },
+    // The scale denominator of this script's `output` (10000 for "1:10000"):
+    // to size things on the ground, `metres * 1000 / engine.scale()` mm.
+    scale() {
+      if (outputScale == null) fail("engine.scale(): call output({ scale }) first");
+      return outputScale;
+    },
   };
 
   const lines = {
@@ -798,7 +804,15 @@
     },
   };
 
-  function output(spec) { dl.output(object(spec, "output")); }
+  // The scale the script's own `output` asked for, for sizes on the ground.
+  let outputScale = null;
+  function output(spec) {
+    object(spec, "output");
+    const s = spec.scale;
+    const n = typeof s === "number" ? s : typeof s === "string" ? Number(s.trim().replace(/^1\s*:\s*/, "")) : NaN;
+    if (isFinite(n) && n > 0) outputScale = n;
+    dl.output(spec);
+  }
   function title(text) {
     if (typeof text !== "string") fail(`title expects a string, got ${describe(text)}`);
     dl.title(text);

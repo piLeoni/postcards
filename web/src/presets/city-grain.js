@@ -22,6 +22,13 @@ const PEN = 0.2
  * @returns {number}
  */
 const pen = (k) => PEN * k
+/**
+ * Metres on the ground as millimetres on this output's paper, so things that
+ * have a real size (a tree's crown) keep it at every scale.
+ * @param {number} m
+ * @returns {number}
+ */
+const ground = (m) => (m * 1000) / engine.scale()
 /** @param {Exclude<Stroke, string>} stroke @returns {Stroke} */
 const penStroke = (stroke) => /** @type {Stroke} */ ({ ...stroke, width: pen(1), cap: "round" })
 
@@ -54,7 +61,7 @@ const TAXIWAY_HALF_W   = pen(3.25)
 const PIER_HALF_W      = pen(1.25)
 const FERRY_CLEAR_W    = pen(1.75)
 const TRAIL_CLEAR_W    = pen(2.25)
-const LABEL_CLEAR_W    = pen(3.25)
+const LABEL_CLEAR_W    = pen(4.5)   // paper kept clear around every name
 const NATURE_MERGE_GAP = pen(0.75)
 const NATURE_RING_CLIP = pen(-0.25)
 const SIMPLIFY_TOL     = pen(0.15)
@@ -142,7 +149,8 @@ const FILL_TRACK     = { ...FILL_COURT, spacing: pen(2.25) }
 //   light           sun strength; light_angle / light_elevation aim the sun
 //   bubble          leaf-tuft scale in mm (omit → ~0.3× crown)
 // Distribution (per tier — spacing, coverage, slices):
-//   spacing    typical crown radius (mm)
+//   spacing    typical crown size, on the ground (`ground(m)`), so crowns keep
+//              their real size at any scale
 //   coverage   grove density (0–1); lower → more clearings
 //   slices     vertical tiers per crown (default 9)
 //   edge/overflow  dense forest: overflow bulge past polygon edge
@@ -159,7 +167,7 @@ const CANOPY_BASE = {
   edge: "inside",
   lobes: 1.0,
   elongation: 0.18,
-  spacing: pen(15),
+  spacing: ground(30),
   slices: 9,
 }
 // Short period + high intensity (penfill `isoline_blobs_demo` panel 3C).
@@ -174,21 +182,21 @@ const CANOPY_SHORT_PERIOD = {
   slices: 10,
   coverage: 0.62,
   // bubble ≈ 0.19× crown (demo: 1.15 mm @ 6.0 mm crown); scales with `spacing` below.
-  bubble: pen(2.9),
+  bubble: ground(5.8),
 }
 /** @type {Omit<FillOptions, "in">} */
 const CANOPY_DENSE_SPEC = {
   ...CANOPY_SHORT_PERIOD,
   edge: "overflow",
-  overflow: pen(1.7),
-  spacing: pen(15),
+  overflow: ground(3.4),
+  spacing: ground(30),
   coverage: 0.82,
-  bubble: pen(2.9),
+  bubble: ground(5.8),
 }
 /** @type {Omit<FillOptions, "in">} */
 const CANOPY_PARK_SPEC = {
   ...CANOPY_BASE,
-  spacing: pen(12.5),
+  spacing: ground(25),
   coverage: 0.58,
   jitter_period: 0.78,
   ticks: 0.32,
@@ -196,7 +204,7 @@ const CANOPY_PARK_SPEC = {
 /** @type {Omit<FillOptions, "in">} */
 const CANOPY_SHRUB_SPEC = {
   ...CANOPY_BASE,
-  spacing: pen(10),
+  spacing: ground(20),
   coverage: 0.52,
   slices: 7,
   jitter_period: 0.85,
@@ -417,12 +425,17 @@ const shrubCanopyArea = areas.difference(
   aerowayPaved,
 )
 
+// Trees are drawn at their real size; once a crown would be under 1.2 mm on
+// paper (past about 1:25000) they are left out — the woods keep their dots.
+const SHOW_TREES = ground(30) >= 1.2
+/** @param {Area} a @returns {Area} */
+const ifTrees = (a) => (SHOW_TREES ? a : areas.difference(a, a))
 /** @type {FillOptions} */
-const FOLIAGE_DENSE = { in: denseCanopyArea,     ...CANOPY_DENSE_SPEC }
+const FOLIAGE_DENSE = { in: ifTrees(denseCanopyArea),     ...CANOPY_DENSE_SPEC }
 /** @type {FillOptions} */
-const FOLIAGE_PARK  = { in: scatteredCanopyArea, ...CANOPY_PARK_SPEC }
+const FOLIAGE_PARK  = { in: ifTrees(scatteredCanopyArea), ...CANOPY_PARK_SPEC }
 /** @type {FillOptions} */
-const FOLIAGE_SHRUB = { in: shrubCanopyArea,     ...CANOPY_SHRUB_SPEC }
+const FOLIAGE_SHRUB = { in: ifTrees(shrubCanopyArea),     ...CANOPY_SHRUB_SPEC }
 
 // Closed crown-footprint union from isoline-stack (`fills.cover`); same generator run as the fills.
 const canopyCover = areas.union(

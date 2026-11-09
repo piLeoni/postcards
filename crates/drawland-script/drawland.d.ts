@@ -338,6 +338,12 @@ declare const engine: {
   /** The paper's rectangle. */
   frame(): Area
   /**
+   * The scale denominator this script's `output` asked for (`10000` for
+   * `"1:10000"`), to size things on the ground: `metres * 1000 / engine.scale()`
+   * is millimetres on paper. Call `output` first.
+   */
+  scale(): number
+  /**
    * Open sea from `features.tiles("ocean")`, buffered and extended to the card.
    * Prefer building the same chain yourself with `areas.extendToFrame`.
    */
