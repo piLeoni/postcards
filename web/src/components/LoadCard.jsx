@@ -1,12 +1,14 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import DrawActionButton from './DrawActionButton'
 
 /**
  * The draw's progress, as a card laid over the map: the lines the engine's
  * `Board` lays out, the very ones the command line paints in the terminal.
  * It sits over the map, not on the card, so a redraw does not put anything
- * inside the drawing that is about to be replaced.
+ * inside the drawing that is about to be replaced. While the draw runs it
+ * carries the same STOP as the card's DRAW button and the script column.
  */
-export default function LoadCard({ load, onMin }) {
+export default function LoadCard({ load, onMin, onStop }) {
   const [now, setNow] = useState(() => performance.now())
   const scrollRef = useRef(null)
   const running = load.board.running()
@@ -30,8 +32,9 @@ export default function LoadCard({ load, onMin }) {
 
   return (
     <div className="chrome-surface pointer-events-auto w-full max-w-[48rem] p-[2ch] text-[11px] leading-snug chrome-modal-shadow">
-      <div className="chrome-border mb-[0.5lh] flex items-baseline gap-[1ch] border-b pb-[0.5lh]">
+      <div className="chrome-border mb-[0.5lh] flex items-center gap-[1ch] border-b pb-[0.5lh]">
         <span className="mr-auto font-bold">Drawing</span>
+        {running && onStop && <DrawActionButton busy onStop={onStop} className="shrink-0" />}
         {onMin && (
           <span
             role="button"

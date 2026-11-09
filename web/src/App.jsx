@@ -544,6 +544,26 @@ export default function App() {
     draw()
   }, [compiledDoc, output, draw])
 
+  // A preset loaded from the script column: once its output has compiled, the
+  // map is sized to it (its place, paper and scale), not just centred on it.
+  const fitAfterRef = useRef(null)
+  const fitAfterApply = useCallback(
+    (text) => {
+      if (compiledDoc === text && output) {
+        fitAfterRef.current = null
+        mapApiRef.current?.fit?.(output.lng, output.lat, output.bearing)
+        return
+      }
+      fitAfterRef.current = text
+    },
+    [compiledDoc, output],
+  )
+  useEffect(() => {
+    if (!fitAfterRef.current || compiledDoc !== fitAfterRef.current || !output) return
+    fitAfterRef.current = null
+    mapApiRef.current?.fit?.(output.lng, output.lat, output.bearing)
+  }, [compiledDoc, output])
+
   useEffect(() => {
     if (!autoDrawSharedRef.current || !output || compiledDoc !== doc) return
     autoDrawSharedRef.current = false
@@ -590,6 +610,7 @@ export default function App() {
       busy: status.phase === 'working',
       onDraw: draw,
       onDrawAfterApply: drawAfterApply,
+      onFitAfterApply: fitAfterApply,
       onStop: stop,
       onPlaceMap: placeMap,
       onOutputKeys: editOutput,
@@ -598,7 +619,7 @@ export default function App() {
       onOpenSearch: () => setSearchOpen(true),
       onMoveDrag: startSidebarMoveDrag,
     }),
-    [doc, check, output, units, status, current, draw, drawAfterApply, stop, placeMap, editOutput, centreOutputOnMap, centreMapOnOutput, startSidebarMoveDrag],
+    [doc, check, output, units, status, current, draw, drawAfterApply, fitAfterApply, stop, placeMap, editOutput, centreOutputOnMap, centreMapOnOutput, startSidebarMoveDrag],
   )
 
   if (engineError) {

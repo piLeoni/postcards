@@ -19,7 +19,7 @@ import cityGrain from '../presets/city-grain.js?raw'
 import sketchbook from '../presets/sketchbook.js?raw'
 import saltAndStone from '../presets/salt-and-stone.js?raw'
 import labelFontsDemo from '../presets/label-fonts-demo.js?raw'
-import { titleOf } from './doc'
+import { styleOf, titleOf } from './doc'
 
 export const PRESETS = [
   { id: 'city-grain', hint: 'burin ground, nature patterns, isoline-stack tree crowns', doc: cityGrain },
@@ -41,3 +41,21 @@ export const PRESETS = [
 
 /** The output the app opens on. */
 export const START_DOC = PRESETS.find((p) => p.id === 'city-grain').doc
+
+const PRESET_STYLES = PRESETS.map((p) => [p, styleOf(p.doc)])
+
+/**
+ * Which preset a script is, for every place that names it (the card's style
+ * picker and the script column's preset menu), so both always say the same:
+ * the preset whose style it has, whether it no longer matches that preset
+ * verbatim (`modified`), and the label to show (`Title` or `Title · mod`).
+ */
+export function presetState(doc) {
+  const style = styleOf(doc ?? '')
+  const preset = PRESET_STYLES.find(([, s]) => s === style)?.[0] ?? null
+  const scriptTitle = titleOf(doc ?? '')
+  const presetTitle = preset ? titleOf(preset.doc) : null
+  const modified = !preset || (scriptTitle != null && presetTitle != null && scriptTitle !== presetTitle)
+  const base = scriptTitle ?? preset?.name ?? 'style'
+  return { preset, modified, label: modified ? `${base} · mod` : base, inUse: (p) => preset === p && !modified }
+}

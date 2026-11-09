@@ -1,8 +1,6 @@
 import { useMemo, useRef } from 'react'
-import { PRESETS } from '../lib/presets'
-import { injectStyleAtPlace, styleOf, titleOf } from '../lib/doc'
-
-const PRESET_STYLES = PRESETS.map((p) => [p, styleOf(p.doc)])
+import { PRESETS, presetState } from '../lib/presets'
+import { injectStyleAtPlace } from '../lib/doc'
 
 /**
  * The profile's style on the map: applied script title (with · mod when it no
@@ -12,14 +10,7 @@ const PRESET_STYLES = PRESETS.map((p) => [p, styleOf(p.doc)])
 export default function StylePresetPicker({ doc, appliedDoc, setDoc, onNotice, onApplied }) {
   const menuRef = useRef(null)
   const shown = appliedDoc ?? doc
-  const style = useMemo(() => styleOf(shown), [shown])
-  const matchingPreset = PRESET_STYLES.find(([, s]) => s === style)?.[0] ?? null
-  const scriptTitle = titleOf(shown)
-  const presetTitle = matchingPreset ? titleOf(matchingPreset.doc) : null
-  const modified =
-    !matchingPreset || (scriptTitle != null && presetTitle != null && scriptTitle !== presetTitle)
-  const labelBase = scriptTitle ?? matchingPreset?.name ?? 'style'
-  const label = modified ? `${labelBase} · mod` : labelBase
+  const { label, inUse } = useMemo(() => presetState(shown), [shown])
 
   const flash = (text) => onNotice?.(text)
 
@@ -32,7 +23,7 @@ export default function StylePresetPicker({ doc, appliedDoc, setDoc, onNotice, o
     flash(p.name)
   }
 
-  const presetInUse = (p) => matchingPreset === p && !modified
+  const presetInUse = inUse
 
   return (
     <details ref={menuRef} is-="popover" className="relative">

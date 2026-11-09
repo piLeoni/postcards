@@ -1412,9 +1412,11 @@ export default function MapView({
   }
 
   /**
-   * Scale the selection: proportional from the centre (default); Shift changes
-   * width and height separately about the centre; Alt (Option) keeps the
-   * top-left corner fixed on the map while width and height follow dx/dy.
+   * Scale the selection. By default the paper stays the size it is and the map
+   * scale changes: dragging out takes in more ground (1:N grows), in takes in
+   * less, about the centre. Shift resizes the paper's width and height about the
+   * centre instead; Alt (Option) keeps the top-left corner fixed on the map while
+   * width and height follow dx/dy.
    */
   const startScale = (e, cursorEl) => {
     const map = mapRef.current
@@ -1438,11 +1440,12 @@ export default function MapView({
         const mode = ev?.altKey ? 'topleft' : ev?.shiftKey ? 'axis-center' : (initialMode ?? 'proportional')
         const probe = { lat: start.lat, scale: start.scale }
         if (mode === 'proportional') {
+          // The box on screen grows as if the paper did; the paper doesn't,
+          // so the same paper now holds that much more ground: a smaller scale.
           const drag = Math.abs(dx) >= Math.abs(dy) ? dx : dy
-          const width_mm = Math.max(1, start.width_mm + pxToPaperMm(map, probe, drag))
-          const ratio = width_mm / start.width_mm
-          const height_mm = Math.max(1, start.height_mm * ratio)
-          return { width_mm, height_mm, lat: start.lat, lng: start.lng }
+          const ratio = Math.max(0.02, (start.width_mm + pxToPaperMm(map, probe, drag)) / start.width_mm)
+          const scale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, start.scale * ratio))
+          return { scale, width_mm: start.width_mm, height_mm: start.height_mm, lat: start.lat, lng: start.lng }
         }
         const width_mm = Math.max(1, start.width_mm + pxToPaperMm(map, probe, dx))
         const height_mm = Math.max(1, start.height_mm + pxToPaperMm(map, probe, dy))
@@ -1641,7 +1644,7 @@ export default function MapView({
                 <TransformHandle
                   icon="⤡"
                   label="Scale selection"
-                  title="Drag to scale proportionally from centre · Shift+drag: width & height from centre · Alt/Option+drag: width & height from top-left"
+                  title="Drag to change the map scale (the paper keeps its size) · Shift+drag: paper width & height from centre · Alt/Option+drag: paper width & height from top-left"
                   active={activeTransform === 'scale'}
                   cursor="nwse"
                   onPointerDown={(e) => beginTransform('scale', e, () => startScale(e, e.currentTarget))}
@@ -1690,7 +1693,7 @@ export default function MapView({
           next draw, so a finished one can be read again; `—` puts it away. */}
       {load && !loadMin && (
         <div className="absolute inset-0 z-30 flex items-center justify-center p-6">
-          <LoadCard load={load} onMin={onLoadMin && (() => onLoadMin(true))} />
+          <LoadCard load={load} onMin={onLoadMin && (() => onLoadMin(true))} onStop={busy ? onStop : undefined} />
         </div>
       )}
       {/* Floating controls only when the script column is fully collapsed (not while dragging it open). */}

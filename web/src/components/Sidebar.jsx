@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useAtom } from 'jotai'
 import Editor from '@monaco-editor/react'
-import { PRESETS } from '../lib/presets'
-import { injectStyleAtPlace, outputOf, styleOf, titleOf } from '../lib/doc'
+import { PRESETS, presetState } from '../lib/presets'
+import { injectStyleAtPlace, outputOf, titleOf } from '../lib/doc'
 import { sidebarWidthAtom, themeAtom } from '../lib/store'
 import { defineEditorThemes, editorFont, editorThemeName } from '../lib/editorTheme'
 import { registerProfileJavascriptTokenizer } from '../lib/profileJavascriptMonarch'
@@ -70,8 +70,6 @@ function setUpEditor(monaco) {
   }
 }
 
-const PRESET_STYLES = PRESETS.map((p) => [p, styleOf(p.doc)])
-
 /** A file name from a title: `Parks and buildings` → `parks-and-buildings`. */
 const slug = (s) => s.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
 
@@ -90,6 +88,7 @@ export default function Sidebar({
   busy,
   onDraw,
   onDrawAfterApply,
+  onFitAfterApply,
   onStop,
   onPlaceMap,
   onOutputKeys,
@@ -126,8 +125,8 @@ export default function Sidebar({
   shownRef.current = shown
   const dirty = draft != null && draft !== doc
   const title = titleOf(shown) ?? ''
-  const style = useMemo(() => styleOf(shown), [shown])
-  const preset = PRESET_STYLES.find(([, s]) => s === style)?.[0] ?? null
+  // The same name and match the card's style picker shows (`presetState`).
+  const { label: presetLabel, inUse: presetInUse } = useMemo(() => presetState(shown), [shown])
   // A drag or a preset rewrites the document; an edit in progress stays.
   useEffect(() => {
     if (draft === doc) setDraft(null)
@@ -227,7 +226,11 @@ export default function Sidebar({
   }, [dirty, problem])
   applyDraftRef.current = applyDraft
 
-  /** A preset brings title, place, paper and style; the map follows its centre. */
+  /**
+   * A preset brings title, place, paper and style: the map goes to its place
+   * at once, then — once the new output has compiled — is sized to it, and the
+   * card is drawn, as a style picked on the card is.
+   */
   const loadPreset = (p) => {
     presetMenuRef.current?.removeAttribute('open')
     setDoc(p.doc)
@@ -236,6 +239,8 @@ export default function Sidebar({
     if (o?.kind === 'literal' && Number.isFinite(o.value?.lat) && Number.isFinite(o.value?.lng)) {
       onPlaceMap?.({ lat: o.value.lat, lng: o.value.lng, bearing: o.value.bearing })
     }
+    onFitAfterApply?.(p.doc)
+    onDrawAfterApply?.(p.doc)
     flash(`Loaded ${p.name}`)
   }
 
@@ -245,6 +250,7 @@ export default function Sidebar({
     const text = injectStyleAtPlace(shown, p.doc)
     setDoc(text)
     setDraft(null)
+    onDrawAfterApply?.(text)
     flash(`Injected ${p.name} here`)
   }
 
@@ -491,7 +497,7 @@ export default function Sidebar({
           {/* Static, so the menu opens under the whole row rather than this button. */}
           <details ref={presetMenuRef} is-="popover" className="static">
             <summary is-="button" {...KEY} title="Replace the profile with a ready-made one; the map centres on its place">
-              presets ▾
+              {presetLabel} ▾
             </summary>
             <div className="chrome-surface chrome-border z-30 w-full border">
               <ul className="editor-scroll max-h-[60vh] divide-y divide-[color:var(--chrome-divider)] overflow-y-auto">
@@ -501,14 +507,14 @@ export default function Sidebar({
                       type="button"
                       size-="small"
                       variant-="background0"
-                      aria-current={p === preset || undefined}
+                      aria-current={presetInUse(p) || undefined}
                       className={`h-auto min-w-0 flex-1 flex-col items-start justify-start px-[1ch] py-[0.5lh] text-left hover:bg-[var(--foreground0)] hover:text-[var(--background0)] hover:no-underline ${
-                        p === preset ? 'bg-[var(--foreground0)]! text-[var(--background0)]!' : ''
+                        presetInUse(p) ? 'bg-[var(--foreground0)]! text-[var(--background0)]!' : ''
                       }`}
                       onClick={() => loadPreset(p)}
                     >
-                      <span className="font-bold">{p === preset ? `● ${p.name}` : p.name}</span>
-                      <span className="opacity-60">{p === preset ? `the style in use · ${p.hint}` : p.hint}</span>
+                      <span className="font-bold">{presetInUse(p) ? `● ${p.name}` : p.name}</span>
+                      <span className="opacity-60">{presetInUse(p) ? `the style in use · ${p.hint}` : p.hint}</span>
                     </button>
                     <button
                       type="button"
