@@ -32,7 +32,7 @@ pub struct FillCost {
 /// that scale with `1 / spacing²`. Measured values, rounded up.
 fn coefficients(generator: &str) -> (f64, f64) {
     match generator {
-        "rectilinear" | "zigzag" | "lines" | "sunburst" | "concentric" | "none" => (5.0, 3.0),
+        "rectilinear" | "zigzag" | "lines" | "sunburst" | "concentric" | "offsets" | "none" => (5.0, 3.0),
         "spiral" => (24.0, 3.0),
         "chess" => (6.0, 60.0),
         "grid" => (7.0, 255.0),

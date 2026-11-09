@@ -36,7 +36,7 @@ pub const GENERATORS: &[&str] = &[
     "diorite", "doodle-trees", "dots", "drift", "dry-cracked-soil", "eddies", "erosion-lines", "feldspar", "ferrous", "fill", "fine-gravel", "flow-waves",
     "fluid-grass", "gabbro", "gneiss", "grainy-soil", "granite", "granite-x", "grass", "gravel", "gravel-clipped",
     "gravelly-soil", "grid", "growth", "hilbert", "honeycomb", "hornblende", "isoline-blobs", "isoline-stack", "isoline-stack-hatched", "laminae", "lava", "layered-soil", "lily-pads",
-    "lines", "loose-soil", "marble", "masonry", "mixed-rocks", "mulch", "mulched-soil", "none", "ophitic",
+    "lines", "loose-soil", "marble", "masonry", "mixed-rocks", "mulch", "mulched-soil", "none", "offsets", "ophitic",
     "organic-topsoil", "pat", "pebble-scatter", "pebbled-soil", "pebbles", "rectilinear", "ripples", "sandy-soil", "scales", "scallop-waves",
     "scribble", "shards", "silty-soil", "solid", "spiral", "sprouts", "stipple", "stipple-edge", "stipple-noise",
     "stone-cluster", "sunburst", "swells", "terrazzo", "triangles", "truchet", "tufts", "twigs", "vines", "wave-grid", "wave_grid", "waves", "wood",

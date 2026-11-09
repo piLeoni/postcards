@@ -14,7 +14,8 @@ output({
 // A map drawn quickly by hand in a sketchbook. Very little is drawn: streets
 // as single loose strokes (main roads doubled), buildings fused into block
 // masses and cross-hatched, the sea as rows of curling waves, and parks as
-// doodled trees, and the hills shaded in quick downhill strokes. No names.
+// doodled trees, and the hills shaded in quick downhill strokes. Names are
+// lettered in a geometric single-stroke face, loosened like the rest.
 // Everything goes through `compose.hand` at the end.
 
 const PEN = 0.2
@@ -38,8 +39,18 @@ const HAND_HATCH = { preset: "steady", wobble: pen(2.5), overshoot: pen(3), seed
 const HAND_WAVES = { preset: "steady", wobble: pen(5), wavelength: pen(45), tremor: pen(0.55), bow: 0.045, overshoot: pen(2.5), close: 0, seed: 5 }
 /** @type {HandOptions} */
 const HAND_RELIEF = { preset: "steady", wobble: pen(4), wavelength: pen(50), tremor: pen(0.5), bow: 0.05, overshoot: pen(3), reach: pen(60), retrace: 0.25, retraceOffset: pen(1.5), seed: 5 }
+/** Lettering: written, not typeset — bowed strokes, a tremble, loose ends, the odd retrace. */
+/** @type {HandOptions} */
+const HAND_LETTERS = { preset: "sketch", wobble: pen(2.2), tremor: pen(0.6), bow: 0.05, overshoot: pen(1.8), corners: pen(1.5), retrace: 0.25, retraceOffset: pen(0.8), close: 0, seed: 11 }
 /** @type {HandOptions} */
 const HAND_TREES = { preset: "steady", wobble: pen(2.5), tremor: pen(0.3), overshoot: 0, close: 0, seed: 5 }
+
+// Names: districts big, main roads small, in EMS Tech (geometric, mixed case).
+/** @type {LabelFont} */
+const LETTERS = "ems-tech"
+const NAME_BIG   = pen(16)   // 3.2 mm
+const NAME_SMALL = pen(9)    // 1.8 mm
+const NAME_CLEAR = pen(11)   // paper kept clear round every name (2.2 mm)
 
 const frame = engine.frame()
 
@@ -120,6 +131,18 @@ const relief = burin.terrain((b) => {
   })
 }, { in: land, regions: { built }, water })
 
+const names = modules.labels({
+  from: [
+    features.tiles("place:suburb,neighbourhood,quarter,island"),
+    features.tiles("transportation_name:motorway,trunk,primary,secondary"),
+  ],
+  font: LETTERS,
+  size: NAME_SMALL,
+  minSize: NAME_SMALL,
+  rules: [{ tags: { "tiles:layer": "place" }, size: NAME_BIG, minSize: NAME_BIG }],
+})
+const namesClear = areas.union(names.area, areas.buffer(names.lines, NAME_CLEAR))
+
 draw({ id: "lines_relief", from: relief, stroke: SOLID })
 draw({ id: "lines_shore", from: lines.clip(lines.rings(water), inFrame), stroke: SOLID })
 // The sea runs under bridges and piers: roads over water and pier decks are
@@ -140,8 +163,15 @@ draw({ id: "lines_piers",   from: lines.rings(piers), stroke: SOLID })
 draw({ id: "fill_blocks",   from: fills.fill({ in: blocks, per: "feature", pattern: "scribble", inset: pen(3), spacing: pen(8), angle: 40 }), stroke: SOLID })
 draw({ id: "fill_trees",    from: fills.fill({ in: greens, pattern: "doodle-trees", spacing: pen(20), coverage: 0.8, edge: "inside", seed: 9 }), stroke: SOLID })
 
+draw({ id: "lines_names", from: names.lines, stroke: SOLID })
+
 compose.mask({ name: "mask_major", from: majorArea, occludes: ["lines_streets", "fill_trees", "lines_relief"] })
 compose.mask({ name: "mask_built", from: areas.union(blocks, greens), occludes: ["lines_relief"] })
+compose.mask({
+  name: "mask_names",
+  from: namesClear,
+  occludes: ["lines_relief", "lines_shore", "fill_sea", "lines_major", "lines_streets", "lines_blocks", "lines_piers", "fill_blocks", "fill_trees"],
+})
 
 const outlines = ["lines_shore", "lines_major", "lines_streets", "lines_blocks", "lines_piers"]
 compose.linemerge(outlines, pen(2))
@@ -151,7 +181,8 @@ compose.hand(outlines, HAND)
 compose.hand("fill_sea", HAND_WAVES)
 compose.hand("fill_blocks", HAND_HATCH)
 compose.hand("fill_trees", HAND_TREES)
+compose.hand("lines_names", HAND_LETTERS)
 compose.filter("lines_relief", { minLength: pen(5) })
 compose.simplify("lines_relief", pen(0.15))
 compose.hand("lines_relief", HAND_RELIEF)
-compose.linesort()
+compose.linesort({ except: ["lines_names"] })
