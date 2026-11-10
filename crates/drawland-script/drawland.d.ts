@@ -423,6 +423,12 @@ interface TextSpec {
   size?: Length
   font?: LabelFont
   rotate?: number
+  /**
+   * `areas.text` with an outline (Google) font: `"open"` keeps the letters'
+   * counters (the holes in A, B, O) out of the area, to fill the letters with
+   * a pattern; `"closed"` (default) covers them, for a mask.
+   */
+  counters?: "open" | "closed"
 }
 
 /** Burin's terrain line styles: how the streamlines are drawn, and stippled. */
@@ -778,6 +784,7 @@ interface LabelBucket {
  */
 type Labels = {
   readonly lines: Lines
+  /** What every label covers, counters closed: to mask what is under the names. A rule's own `.area` keeps the counters open, to fill the letters. */
   readonly area: Area
 } & Record<string, LabelBucket>
 
@@ -930,3 +937,31 @@ declare function output(options: OutputOptions): void
 
 /** The profile's name. */
 declare function title(text: string): void
+
+/** Where a view goes on the page, and what place it shows. */
+interface ViewSpec {
+  /** A name for the view: `compose.mask({ occludes: [id] })` cuts it. */
+  id: string
+  /** Top-left corner on the page, in mm. */
+  at: [number, number]
+  /** Width and height on the page, in mm. */
+  size: [number, number]
+  lat?: number
+  lng?: number
+  scale?: string | number
+  bearing?: number
+  tileZoom?: number
+  projection?: OutputOptions["projection"]
+  /** One colour for every stroke of the view: it becomes one SVG group named `id`, a pen of its own. */
+  ink?: string
+}
+
+/**
+ * Another place, at its own scale, drawn into a rectangle of this page: a
+ * postcard of four corners of a city, an inset. The style is a built-in
+ * preset by name (`"city-grain"`) or a function whose calls build the view's
+ * own graph. The view is drawn under the page's own groups; a page mask that
+ * names it in `occludes` cuts it (a title knocked out of all four). Returns
+ * the view's id.
+ */
+declare function view(spec: ViewSpec, style: string | (() => void)): string

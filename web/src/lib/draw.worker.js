@@ -90,6 +90,10 @@ async function run({ token, graph, lat, lng, googleFonts, strokeFonts, datasets,
       // GeoJSON for `features.geojson`: URLs fetched, dropped files as given.
       bytes += await fetchDatasets(job, ac.signal, download, datasets ?? {})
       if (ac.signal.aborted) return
+      // Views: other places on this page, each downloaded as a job of its own
+      // and handed to this one.
+      bytes += await gatherViews(engine, graph, job, ac.signal, download, emit, datasets ?? {})
+      if (ac.signal.aborted) return
       if (googleFonts && Object.keys(googleFonts).length) {
         const row = download.child('google-fonts', 'google-fonts', Object.keys(googleFonts).length, 'google fonts')
         let n = 0
@@ -160,6 +164,54 @@ async function run({ token, graph, lat, lng, googleFonts, strokeFonts, datasets,
     // The page starts a fresh worker for the next draw.
     if (trapped) self.close()
   }
+}
+
+/**
+ * Every view of `graph` (`view(...)` in the script): a job made from the
+ * view's own graph at its own place, downloaded the way the page is (Overpass,
+ * tiles, terrain, datasets, fonts), then given to `job` with `addView`, in
+ * order. Each view's rows sit under a row of its own, their ids prefixed so
+ * they never meet the page's.
+ */
+async function gatherViews(engine, graph, job, signal, download, emit, datasets) {
+  const views = JSON.parse(graph).views ?? []
+  let bytes = 0
+  for (const v of views) {
+    const prefix = `view:${v.id}:`
+    const scoped = (e) => emit({ ...e, id: e.id && prefix + e.id, parent: e.parent && prefix + e.parent })
+    download.child(`${prefix}download`, `view ${v.id}`)
+    const row = new Task(scoped, 'download')
+    const viewGraph = JSON.stringify(v.graph)
+    const { lat, lng } = v.graph.output ?? {}
+    const sub = new engine.Job(viewGraph, lat, lng)
+    let given = false
+    try {
+      if (sub.needsOsm) {
+        const req = JSON.parse(engine.osmRequest(viewGraph, lat, lng))
+        const json = await fetchOverpass(engine, req, signal, row, engine.overpassPolicy())
+        if (signal.aborted) return bytes
+        sub.read(json, scoped)
+        bytes += json.length
+      }
+      await fetchTiles(engine, sub, signal, row, () => {})
+      if (signal.aborted) return bytes
+      sub.readTiles(scoped)
+      await fetchTerrain(sub, signal, row)
+      if (signal.aborted) return bytes
+      sub.readTerrain(scoped)
+      bytes += await fetchDatasets(sub, signal, row, datasets)
+      await fetchGoogleFonts(engine, viewGraph, sub, signal, row)
+      await fetchStrokeFonts(engine, viewGraph, sub, signal, row)
+      if (signal.aborted) return bytes
+      job.addView(sub)
+      given = true
+      row.ok()
+    } finally {
+      // `addView` used the sub-job up; one never handed over is freed here.
+      if (!given) sub.free()
+    }
+  }
+  return bytes
 }
 
 /** What a trap in the engine was: a panic's own message, or the heap full. */

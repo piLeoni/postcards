@@ -34,8 +34,7 @@ want it and press "generate card".
   read by terramask inside the engine): what `tiles_select` picks and the sea.
   A card is a handful of zoom-14 tiles; their URLs carry the build they come
   from and are cached by the browser for years, so a second draw nearby needs
-  no network. The presets read everything from tiles; "Everything · Overpass"
-  is the same card from Overpass, to compare.
+  no network. The presets read everything from tiles.
 - `src/lib/overpass.js` fetches the reply with the CLI's policy (servers,
   rounds, pauses, timeouts come from the engine). A browser cannot set
   `User-Agent` the way the CLI does, so the public mirrors sometimes answer a

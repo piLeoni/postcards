@@ -266,6 +266,9 @@ pub struct Job {
     stroke_fonts: std::collections::BTreeMap<String, Vec<u8>>,
     /// GeoJSON text for each `datasets` entry, as the page fetched it.
     data: BTreeMap<String, String>,
+    /// What each of the graph's views read, handed over by `addView` from a
+    /// job of its own (a view is another place, downloaded on its own).
+    views: Vec<ViewInputs>,
     /// Set when a draw failed in a way that may have left the wasm heap
     /// unusable. Every later call refuses, and `free` is left to the
     /// finalizer, so a broken job cannot throw on drop and hide the real
@@ -292,6 +295,7 @@ impl Default for Job {
             google_fonts: std::collections::BTreeMap::new(),
             stroke_fonts: std::collections::BTreeMap::new(),
             data: BTreeMap::new(),
+            views: Vec::new(),
             poisoned: false,
         }
     }
@@ -321,6 +325,7 @@ impl Job {
             google_fonts: std::collections::BTreeMap::new(),
             stroke_fonts: std::collections::BTreeMap::new(),
             data: BTreeMap::new(),
+            views: Vec::new(),
             poisoned: false,
         })
     }
@@ -504,6 +509,28 @@ impl Job {
         Ok(())
     }
 
+    /// A view's inputs: `view` is a job made from the view's graph (the
+    /// page's `views[i].graph`), downloaded the same way as any job, and is
+    /// used up here. Views are handed over in the graph's order.
+    #[wasm_bindgen(js_name = addView)]
+    pub fn add_view(&mut self, mut view: Job) -> Result<(), JsValue> {
+        self.check_alive()?;
+        let features = match view.features.take() {
+            Some(f) => f,
+            None if view.needs_osm() => return Err(err("the view's Overpass reply was never read")),
+            None => Vec::new(),
+        };
+        self.views.push(ViewInputs {
+            features,
+            tiles: std::mem::take(&mut view.tile_features),
+            terrain: view.terrain.take(),
+            google_fonts: std::mem::take(&mut view.google_fonts),
+            stroke_fonts: std::mem::take(&mut view.stroke_fonts),
+            data: std::mem::take(&mut view.data),
+        });
+        Ok(())
+    }
+
     /// One of the `tiles`, as downloaded (raw or gzipped protobuf).
     #[wasm_bindgen(js_name = addTile)]
     pub fn add_tile(&mut self, z: u8, x: u32, y: u32, bytes: &[u8]) -> Result<(), JsValue> {
@@ -566,6 +593,7 @@ impl Job {
                     google_fonts: std::mem::take(&mut self.google_fonts),
                     stroke_fonts: std::mem::take(&mut self.stroke_fonts),
                     data: std::mem::take(&mut self.data),
+                    views: std::mem::take(&mut self.views),
                 },
                 &draw,
                 &mut |part, text| {
@@ -792,6 +820,7 @@ impl Doc {
     /// The drawing, its steps as rows under `draw`.
     fn render(&self, inputs: RenderInputs, draw: &Task, out: &mut drawland_core::sheets::Out) -> Result<Out, String> {
         let error = |_: ()| "this graph was never loaded".to_string();
+        let no_sources = BTreeMap::new();
         match &self.body {
             Body::Empty => Err(error(())),
             Body::Grammar(g) => {
@@ -807,6 +836,21 @@ impl Doc {
                         google_fonts: inputs.google_fonts,
                         stroke_fonts: inputs.stroke_fonts,
                         data: inputs.data,
+                        views: inputs
+                            .views
+                            .into_iter()
+                            .map(|v| drawland_core::grammar_run::Inputs {
+                                features: v.features,
+                                tiles: v.tiles,
+                                sources: &no_sources,
+                                terrain: v.terrain,
+                                memory_budget: inputs.memory_budget,
+                                google_fonts: v.google_fonts,
+                                stroke_fonts: v.stroke_fonts,
+                                data: v.data,
+                                views: Vec::new(),
+                            })
+                            .collect(),
                     },
                     draw,
                     out,
@@ -825,6 +869,17 @@ struct RenderInputs {
     terrain: Option<drawland_core::terrain::Grid>,
     sources: BTreeMap<String, String>,
     memory_budget: Option<u64>,
+    google_fonts: BTreeMap<String, Vec<u8>>,
+    stroke_fonts: BTreeMap<String, Vec<u8>>,
+    data: BTreeMap<String, String>,
+    views: Vec<ViewInputs>,
+}
+
+/// What one view read: a [`RenderInputs`] for another place, without sources.
+struct ViewInputs {
+    features: Vec<Feature>,
+    tiles: Vec<Feature>,
+    terrain: Option<drawland_core::terrain::Grid>,
     google_fonts: BTreeMap<String, Vec<u8>>,
     stroke_fonts: BTreeMap<String, Vec<u8>>,
     data: BTreeMap<String, String>,

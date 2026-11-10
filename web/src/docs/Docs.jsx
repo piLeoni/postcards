@@ -238,7 +238,7 @@ let svg = grammar_run::run(&grammar, &output, inputs)?;         // SVG text`}</C
       <H id="language-cli">Command line</H>
       <P>The <C>drawland</C> binary runs a profile, fetches what it reads, and writes the SVG.</P>
       <Code lang="bash">{`# A profile, and where to put it on the map.
-cargo run --release -p drawland-cli -- map web/src/presets/parks.js --lat 37.8771 --lng -122.2562 -o map.svg
+cargo run --release -p drawland-cli -- map web/src/presets/city-grain.js --lat 37.8771 --lng -122.2562 -o map.svg
 
 # An address, looked up with Nominatim.
 cargo run --release -p drawland-cli -- map --address "Piazza Maggiore, Bologna" -o map.svg
@@ -591,8 +591,7 @@ engine.frame()                                   // the paper's rectangle
 engine.ocean()                                   // shorthand for ocean tiles + grow + extendToFrame`}</Code>
       <P>
         <C>areas.grow</C> is the workhorse of cheap effects: a grown area minus itself is a ring, a grown river
-        gives distance bands, a shrunk area insets a fill. Look at the <T>ink by distance</T> preset in the
-        index for the second one.
+        gives distance bands, a shrunk area insets a fill.
       </P>
 
       <H id="lines">lines</H>

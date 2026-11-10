@@ -28,6 +28,11 @@ use std::fmt;
 
 const LIBRARY: &str = include_str!("library.js");
 
+include!(concat!(env!("OUT_DIR"), "/presets.rs"));
+
+/// How deep views may nest (a view drawing a preset that has views of its own).
+const VIEW_DEPTH: usize = 4;
+
 /// The name scripts run under; positions in other sources (the library) are
 /// not the user's.
 pub const SCRIPT_PATH: &str = "profile.js";
@@ -57,9 +62,11 @@ impl std::error::Error for ScriptError {}
 
 /// Run `source` and return the graph it built, validated.
 pub fn evaluate(source: &str) -> Result<Grammar, ScriptError> {
-    BUILDER.with(|b| *b.borrow_mut() = Some(Builder::default()));
+    BUILDER.with(|b| b.borrow_mut().clear());
+    BUILDER.with(|b| b.borrow_mut().push(Builder::default()));
     let result = run(source);
-    let builder = BUILDER.with(|b| b.borrow_mut().take()).unwrap_or_default();
+    let builder = BUILDER.with(|b| b.borrow_mut().pop()).unwrap_or_default();
+    BUILDER.with(|b| b.borrow_mut().clear());
     result?;
     builder.finish()
 }
@@ -79,7 +86,7 @@ fn install(ctx: &mut Context) -> JsResult<()> {
     ctx.eval(Source::from_bytes(
         "delete globalThis.Date; delete Math.random; delete globalThis.WeakRef; delete globalThis.FinalizationRegistry;",
     ))?;
-    let natives: [(&str, usize, fn(&JsValue, &[JsValue], &mut Context) -> JsResult<JsValue>); 10] = [
+    let natives: [(&str, usize, fn(&JsValue, &[JsValue], &mut Context) -> JsResult<JsValue>); 13] = [
         ("node", 2, native_node),
         ("draw", 1, native_draw),
         ("order", 1, native_order),
@@ -90,6 +97,9 @@ fn install(ctx: &mut Context) -> JsResult<()> {
         ("title", 1, native_title),
         ("fail", 1, native_fail),
         ("burin", 1, native_burin),
+        ("viewBegin", 1, native_view_begin),
+        ("viewEnd", 1, native_view_end),
+        ("viewPreset", 2, native_view_preset),
     ];
     let dl = boa_engine::object::ObjectInitializer::new(ctx).build();
     for (name, arity, f) in natives {
@@ -120,24 +130,32 @@ struct Builder {
     masks: Vec<(String, Mask)>,
     clip: Option<Clip>,
     optimize: Vec<drawland_core::optimize::OptimizeStep>,
+    views: Vec<grammar::View>,
+    /// For a view: its id, corner, and the output keys that override what
+    /// the style itself asks (the place, the rectangle's size, no padding).
+    view: Option<ViewHead>,
     /// The last error a native raised, with the user's line: a JS error
     /// thrown from the library would otherwise point inside the library.
     failure: Option<(String, Option<At>)>,
 }
 
 thread_local! {
-    static BUILDER: RefCell<Option<Builder>> = const { RefCell::new(None) };
+    /// The graph being built, innermost last: a view builds its own.
+    static BUILDER: RefCell<Vec<Builder>> = const { RefCell::new(Vec::new()) };
 }
 
 fn with<T>(f: impl FnOnce(&mut Builder) -> T) -> T {
-    BUILDER.with(|b| f(b.borrow_mut().as_mut().expect("natives run inside evaluate")))
+    BUILDER.with(|b| f(b.borrow_mut().last_mut().expect("natives run inside evaluate")))
 }
 
 impl Builder {
     fn finish(self) -> Result<Grammar, ScriptError> {
-        let output = match self.output {
-            Some(o) => o,
-            None => serde_json::from_value(Value::Object(Default::default())).expect("an empty output is valid"),
+        let output = match (self.output, &self.view) {
+            (Some(o), _) => o,
+            // A view whose style never called `output`: its own keys are all.
+            (None, Some((_, _, keys, _))) => serde_json::from_value(Value::Object(keys.clone()))
+                .map_err(|e| ScriptError { message: format!("view: {e}"), at: None })?,
+            (None, None) => serde_json::from_value(Value::Object(Default::default())).expect("an empty output is valid"),
         };
         let mut sections: Vec<(Section, Vec<Def>)> = Vec::new();
         for section in Section::ALL {
@@ -160,7 +178,7 @@ impl Builder {
             clip_default: self.clip.unwrap_or(Clip::Auto),
             optimize: self.optimize,
         };
-        let graph = Grammar { title: self.title, output, sections, draw: self.draw, compose };
+        let graph = Grammar { title: self.title, output, sections, draw: self.draw, compose, views: self.views };
         grammar::validate(&graph).map_err(|e| {
             let message = e.to_string();
             ScriptError { at: find_at(&message), message }
@@ -346,13 +364,116 @@ fn native_optimize(_: &JsValue, args: &[JsValue], ctx: &mut Context) -> JsResult
     Ok(JsValue::undefined())
 }
 
+/// `dl.output(spec)` → the output as it will be: inside a view, the view's
+/// place and rectangle win over what the style asks, so a preset drawn in a
+/// view keeps its paper-independent look (pens, patterns) at the view's place.
 fn native_output(_: &JsValue, args: &[JsValue], ctx: &mut Context) -> JsResult<JsValue> {
-    let spec = json_arg(args, 0, ctx)?;
-    let output: OutputSpec = serde_json::from_value(spec).map_err(|e| fail(ctx, format!("output: {e}")))?;
+    let mut spec = json_arg(args, 0, ctx)?;
+    if let (Some(obj), Some(keys)) = (spec.as_object_mut(), with(|b| b.view.as_ref().map(|v| v.2.clone()))) {
+        for k in ["address", "slices"] {
+            obj.remove(k);
+        }
+        obj.extend(keys);
+    }
+    let output: OutputSpec = serde_json::from_value(spec.clone()).map_err(|e| fail(ctx, format!("output: {e}")))?;
     if with(|b| b.output.replace(output).is_some()) {
         return Err(fail(ctx, "output is set twice"));
     }
+    JsValue::from_json(&spec, ctx)
+}
+
+/// A view's id, corner, ink, and the output keys its spec sets.
+type ViewHead = (String, (f64, f64), serde_json::Map<String, Value>, Option<String>);
+
+/// The output keys a view's spec sets: `{ id, at: [x, y], size: [w, h] }` in
+/// page mm, and the place (`lat`, `lng`, `scale`, `bearing`, `tileZoom`,
+/// `projection`). The view's id and corner, and those keys.
+fn view_keys(spec: &Value) -> Result<ViewHead, String> {
+    let o = spec.as_object().ok_or("view takes { at, size, lat, lng, scale, … }")?;
+    let pair = |k: &str| -> Result<(f64, f64), String> {
+        match o.get(k).and_then(Value::as_array).map(|a| a.iter().map(Value::as_f64).collect::<Vec<_>>()) {
+            Some(v) if v.len() == 2 && v.iter().all(Option::is_some) => Ok((v[0].unwrap(), v[1].unwrap())),
+            _ => Err(format!("view.{k} is [x, y] in millimetres")),
+        }
+    };
+    let at = pair("at")?;
+    let (w, h) = pair("size")?;
+    if w <= 0.0 || h <= 0.0 {
+        return Err("view.size must be positive".into());
+    }
+    let id = o.get("id").and_then(Value::as_str).ok_or("view.id names the view, as compose.mask occludes it")?.to_string();
+    let mut keys = serde_json::Map::new();
+    keys.insert("width".into(), Value::String(format!("{w}mm")));
+    keys.insert("height".into(), Value::String(format!("{h}mm")));
+    keys.insert("padding".into(), Value::from(0));
+    for k in ["lat", "lng", "scale", "bearing", "tileZoom", "projection"] {
+        if let Some(v) = o.get(k) {
+            keys.insert(k.into(), v.clone());
+        }
+    }
+    let ink = match o.get("ink") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(c)) if !c.trim().is_empty() => Some(c.trim().to_string()),
+        Some(v) => return Err(format!("view.ink is a colour like \"#e4572e\", got {v}")),
+    };
+    Ok((id, at, keys, ink))
+}
+
+/// `dl.viewBegin(spec)`: the graph the next calls build is the view's.
+fn native_view_begin(_: &JsValue, args: &[JsValue], ctx: &mut Context) -> JsResult<JsValue> {
+    let spec = json_arg(args, 0, ctx)?;
+    let view = view_keys(&spec).map_err(|e| fail(ctx, e))?;
+    if BUILDER.with(|b| b.borrow().len()) > VIEW_DEPTH {
+        return Err(fail(ctx, "views nest too deep"));
+    }
+    if with(|b| b.views.iter().any(|v| v.id == view.0)) {
+        return Err(fail(ctx, format!("two views are called {:?}", view.0)));
+    }
+    BUILDER.with(|b| b.borrow_mut().push(Builder { view: Some(view), ..Builder::default() }));
     Ok(JsValue::undefined())
+}
+
+/// `dl.viewEnd(ok)`: the view's graph is done; it joins the page's views
+/// (`ok`), or is dropped (the style threw).
+fn native_view_end(_: &JsValue, args: &[JsValue], ctx: &mut Context) -> JsResult<JsValue> {
+    let ok = args.first().is_some_and(JsValue::to_boolean);
+    let inner = BUILDER.with(|b| if b.borrow().len() > 1 { b.borrow_mut().pop() } else { None });
+    let Some(inner) = inner else { return Err(fail(ctx, "viewEnd without viewBegin")) };
+    if !ok {
+        return Ok(JsValue::undefined());
+    }
+    attach(inner, ctx)
+}
+
+/// `dl.viewPreset(spec, id)`: a view drawn in a built-in preset, run on its
+/// own (its top-level names never meet the page's).
+fn native_view_preset(_: &JsValue, args: &[JsValue], ctx: &mut Context) -> JsResult<JsValue> {
+    let spec = json_arg(args, 0, ctx)?;
+    let id = string_arg(args, 1, ctx)?;
+    let view = view_keys(&spec).map_err(|e| fail(ctx, e))?;
+    let Some((_, source)) = PRESETS.iter().find(|(p, _)| *p == id) else {
+        let known: Vec<&str> = PRESETS.iter().map(|(p, _)| *p).collect();
+        return Err(fail(ctx, format!("no preset {id:?}; one of {}", known.join(", "))));
+    };
+    if BUILDER.with(|b| b.borrow().len()) > VIEW_DEPTH {
+        return Err(fail(ctx, "views nest too deep"));
+    }
+    let view_id = view.0.clone();
+    BUILDER.with(|b| b.borrow_mut().push(Builder { view: Some(view), ..Builder::default() }));
+    let result = run(source);
+    let inner = BUILDER.with(|b| b.borrow_mut().pop()).expect("pushed above");
+    if let Err(e) = result {
+        return Err(fail(ctx, format!("view {view_id} ({id}): {e}")));
+    }
+    attach(inner, ctx)
+}
+
+/// A finished view's graph, added to the page's views; its id back.
+fn attach(inner: Builder, ctx: &mut Context) -> JsResult<JsValue> {
+    let (id, at, _, ink) = inner.view.clone().expect("a view builder");
+    let grammar = inner.finish().map_err(|e| fail(ctx, format!("view {id}: {}", e.message)))?;
+    with(|b| b.views.push(grammar::View { id: id.clone(), at, grammar: Box::new(grammar), ink }));
+    Ok(JsValue::from(js_string!(id)))
 }
 
 fn native_title(_: &JsValue, args: &[JsValue], ctx: &mut Context) -> JsResult<JsValue> {
@@ -453,17 +574,17 @@ fn first_use(source: &str, name: &str) -> Option<At> {
 /// Every function the library defines, as `areas.union` or `draw`, sorted:
 /// what `drawland.d.ts` must declare.
 pub fn library_names() -> Result<Vec<String>, ScriptError> {
-    BUILDER.with(|b| *b.borrow_mut() = Some(Builder::default()));
+    BUILDER.with(|b| b.borrow_mut().push(Builder::default()));
     let mut ctx = Context::default();
     install(&mut ctx).map_err(|e| ScriptError { message: format!("library: {e}"), at: None })?;
     let listing = ctx
         .eval(Source::from_bytes(
-            "JSON.stringify(['features','areas','engine','lines','fills','burin','ink','modules','draw','compose','output','title'].flatMap((n) =>              typeof globalThis[n] === 'function' ? [n] : [n, ...Object.keys(globalThis[n]).map((k) => n + '.' + k)]))",
+            "JSON.stringify(['features','areas','engine','lines','fills','burin','ink','modules','draw','compose','output','title','view'].flatMap((n) =>              typeof globalThis[n] === 'function' ? [n] : [n, ...Object.keys(globalThis[n]).map((k) => n + '.' + k)]))",
         ))
         .and_then(|v| v.to_string(&mut ctx))
         .map_err(|e| ScriptError { message: e.to_string(), at: None })?
         .to_std_string_escaped();
-    BUILDER.with(|b| b.borrow_mut().take());
+    BUILDER.with(|b| b.borrow_mut().pop());
     let mut names: Vec<String> = serde_json::from_str(&listing).unwrap_or_default();
     names.sort();
     Ok(names)

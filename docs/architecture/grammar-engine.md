@@ -60,3 +60,7 @@ Layers oriented by `compose.orient` (or `compose.linesort({ direction })`) prese
 ## Testing
 
 Heavy coverage in `grammar.rs` (parse/validate) and `drawland-script` integration tests (script → graph → render). Web presets checked by `drawland-cli` example `check_web_presets`.
+
+## Views (composite pages)
+
+A graph may carry `views` (`Grammar::views`, JSON `views: [{ id, at, graph }]`): other places, each a whole graph with its own `output` (place, scale, and the rectangle's size), drawn into a rectangle of the page at `at` (mm). `grammar_run::run_graph` runs each view in *collect* mode (`compose` hands back `(id, stroke, lines)` instead of writing; flat-colour fills are skipped with a warning), moves the strokes to the rectangle, cuts them with every page mask whose `occludes` names the view's id, and writes them under the page's own groups. Groups with the same id across views merge into one group (one pen). A view with `ink` (`View::ink`) is recoloured whole and written as one group named after the view: a pen of its own. `Inputs::views` carries each view's own features, tiles, terrain and fonts, in order. The page's own rows are opened after the views run, since a view's rows share their names.

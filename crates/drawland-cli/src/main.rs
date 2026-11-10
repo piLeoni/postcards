@@ -346,41 +346,89 @@ fn map_v3(
     export: ExportOptions,
 ) -> Result<Vec<(String, usize)>, String> {
     let base = profile_path.parent().unwrap_or(Path::new("."));
+    // A page of views needs no place of its own; each view has one.
+    let placeless = !grammar.views.is_empty()
+        && place.address.is_none()
+        && place.lat.is_none()
+        && grammar.output.address.is_none()
+        && grammar.output.lat.is_none();
+    let center = if placeless {
+        (0.0, 0.0)
+    } else {
+        let task = Task::begin(term, "locate", None, "locate", 0, "");
+        let c = locate(&task, http, place, grammar.output.address.clone(), (grammar.output.lat, grammar.output.lng))?;
+        task.ok("");
+        c
+    };
+    let output = Output::new(&grammar.output, center);
+    let page = gather(term, http, &grammar, &output, base, "")?;
+    let mut views = Vec::new();
+    for v in &grammar.views {
+        let view_output = Output::new(&v.grammar.output, v.center());
+        views.push(gather(term, http, &v.grammar, &view_output, base, &format!(" {}", v.id))?);
+    }
+
+    let draw = Task::begin(term, "draw", None, "draw", 0, "");
+    let mut inputs = page.inputs();
+    inputs.views = views.iter().map(Gathered::inputs).collect();
+    let rendered = drawland_core::grammar_run::run_with(&grammar, &output, inputs, &draw).map_err(|e| e.to_string())?;
+    save(draw, out, &rendered.svg, &rendered.slices, export)?;
+    Ok(rendered.groups)
+}
+
+/// Everything one graph reads, downloaded: what its `Inputs` are made of.
+struct Gathered {
+    features: Vec<Feature>,
+    tiles: Vec<Feature>,
+    terrain: Option<drawland_core::terrain::Grid>,
+    sources: BTreeMap<String, String>,
+    google_fonts: BTreeMap<String, Vec<u8>>,
+    stroke_fonts: BTreeMap<String, Vec<u8>>,
+    data: BTreeMap<String, String>,
+}
+
+impl Gathered {
+    fn inputs(&self) -> drawland_core::grammar_run::Inputs<'_> {
+        drawland_core::grammar_run::Inputs {
+            features: self.features.clone(),
+            tiles: self.tiles.clone(),
+            sources: &self.sources,
+            terrain: self.terrain.clone(),
+            memory_budget: None,
+            google_fonts: self.google_fonts.clone(),
+            stroke_fonts: self.stroke_fonts.clone(),
+            data: self.data.clone(),
+            views: Vec::new(),
+        }
+    }
+}
+
+/// What `grammar` reads at `output`: Overpass and the vector tiles as it
+/// asks, the terrain when it draws it, its fonts, datasets and SVG sources.
+/// `label` tells the rows of one view from another's.
+fn gather(term: &Term, http: &osm_http::Http, grammar: &Grammar, output: &Output, base: &Path, label: &str) -> Result<Gathered, String> {
     let mut sources = BTreeMap::new();
     for file in grammar.source_files() {
         let path = if Path::new(&file).is_absolute() { PathBuf::from(&file) } else { base.join(&file) };
         sources.insert(file, read(&path)?);
     }
-
-    let download = Task::begin(term, "download", None, "download", 0, "");
-    let center = locate(&download, http, place, grammar.output.address.clone(), (grammar.output.lat, grammar.output.lng))?;
-    let output = Output::new(&grammar.output, center);
+    let id = format!("download{}", label.replace(' ', ":"));
+    let download = Task::begin(term, &id, None, &format!("download{label}"), 0, "");
+    download.log(Level::Info, &format!("centre {:.7}, {:.7}", output.center.1, output.center.0));
     let needs = Needs { keys: grammar.osm_keys(), tiles: grammar.tile_selectors() };
     // Terrain is read only when a def draws it: the same grid burin's own
     // front ends use, cached a tile at a time like everything else.
-    let (features, tiles, terrain) = fetch(http, download, &output, &needs, &grammar)?;
-
-    let data = read_datasets(term, http, &grammar, base)?;
-
+    let (features, tiles, terrain) = fetch(http, download, output, &needs, grammar)?;
+    let data = read_datasets(term, http, grammar, base)?;
     let mut google_fonts = BTreeMap::new();
-    for key in drawland_core::labels::google_font_keys_in_grammar(&grammar) {
+    for key in drawland_core::labels::google_font_keys_in_grammar(grammar) {
         google_fonts.insert(key.clone(), google_fonts::fetch(&key)?);
     }
     let mut stroke_fonts = BTreeMap::new();
-    for key in drawland_core::labels::stroke_font_keys_in_grammar(&grammar) {
+    for key in drawland_core::labels::stroke_font_keys_in_grammar(grammar) {
         stroke_fonts.insert(key.clone(), stroke_fonts::fetch(&key)?);
     }
-
-    let draw = Task::begin(term, "draw", None, "draw", 0, "");
-    let rendered = drawland_core::grammar_run::run_with(
-        &grammar,
-        &output,
-        drawland_core::grammar_run::Inputs { features, tiles, sources: &sources, terrain, memory_budget: None, google_fonts, stroke_fonts, data },
-        &draw,
-    )
-    .map_err(|e| e.to_string())?;
-    save(draw, out, &rendered.svg, &rendered.slices, export)?;
-    Ok(rendered.groups)
+    Ok(Gathered { features, tiles, terrain, sources, google_fonts, stroke_fonts, data })
 }
 
 /// The GeoJSON of every `features.geojson` source: a URL downloaded (and

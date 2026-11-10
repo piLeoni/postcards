@@ -37,7 +37,7 @@ Implementation details and land-edge behaviour: `../burin-map` docs. draw.land d
 
 ## Related presets
 
-Examples: `web/src/presets/city-grain.js` (`burin.terrain` on relief areas), `ink-by-elevation.js`, `engraved-sea.js`, `salt-and-stone.js` (land strokes, concentric shore, swirling `follow: "map"` currents, with a tile `water` mask).
+Examples: `web/src/presets/city-grain.js` (`burin.terrain` on relief areas), `salt-and-stone.js` (land strokes, concentric shore, swirling `follow: "map"` currents, with a tile `water` mask).
 
 ## Grid placement and bearing
 

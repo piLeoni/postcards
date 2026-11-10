@@ -114,7 +114,13 @@ pub struct Inputs<'a> {
     /// GeoJSON text of every `data_select` source, keyed as written
     /// (`Grammar::datasets`).
     pub data: BTreeMap<String, String>,
+    /// What each of `grammar.views` reads, in the same order: every view is
+    /// another place, so it has its own features, tiles, terrain and fonts.
+    pub views: Vec<Inputs<'a>>,
 }
+
+/// A view's groups, made but not written: `(id, stroke, lines)` in order.
+type Collected = Vec<(String, Option<crate::profile::StrokeSpec>, Lines)>;
 
 /// Evaluate `grammar` against `inputs`, project to `output`, compose and write.
 pub fn run(grammar: &Grammar, output: &Output, inputs: Inputs) -> Result<Rendered, RunError> {
@@ -177,6 +183,20 @@ pub struct Drawn {
 /// generated, masked, cut and written a batch of strokes at a time, so the
 /// drawing is never in memory whole, as lines or as text.
 pub fn run_into(grammar: &Grammar, output: &Output, inputs: Inputs, draw: &Task, out: &mut crate::sheets::Out) -> Result<Drawn, RunError> {
+    run_graph(grammar, output, inputs, draw, out, None)
+}
+
+/// [`run_into`], or with `collect` the groups handed back instead of written
+/// (a view, which its page writes).
+fn run_graph(
+    grammar: &Grammar,
+    output: &Output,
+    mut inputs: Inputs,
+    draw: &Task,
+    out: &mut crate::sheets::Out,
+    collect: Option<&mut Collected>,
+) -> Result<Drawn, RunError> {
+    let view_inputs = std::mem::take(&mut inputs.views);
     let mut sources = Sources::new();
     for (file, text) in inputs.sources {
         let drawing =
@@ -247,11 +267,8 @@ pub fn run_into(grammar: &Grammar, output: &Output, inputs: Inputs, draw: &Task,
     let values = evaluate(grammar, &Found { osm: &features, tiles: &tiles, data: &data }, &engine, draw)?;
     probe(draw, "areas+lines");
 
-    // Fills are not made here but in their group, as it is written: one
-    // batch of strokes alive at a time.
-    let fill_count = grammar.defs(Section::Fills).iter().filter(|d| matches!(d.op, Op::Fill(_))).count();
-    let fills_task = draw.child("fills", "fills", fill_count as u64, "fills");
-    let compose_task = draw.child("compose", "compose", 0, "");
+    // The views first, under the page's own groups, and before the page
+    // opens its own rows (a view has rows of the same names).
     let spec = &grammar.output;
     let mut layout = crate::sheets::Layout::new(output.width_mm, output.height_mm, spec.padding, &spec.slices);
     let mut written = 0usize;
@@ -261,8 +278,23 @@ pub fn run_into(grammar: &Grammar, output: &Output, inputs: Inputs, draw: &Task,
         }
         out(k, text);
     };
+    if collect.is_none() {
+        draw_views(grammar, &values, view_inputs, draw, &mut layout, &mut counted)?;
+    }
+
+    // Fills are not made here but in their group, as it is written: one
+    // batch of strokes alive at a time.
+    let fill_count = grammar.defs(Section::Fills).iter().filter(|d| matches!(d.op, Op::Fill(_))).count();
+    let fills_task = draw.child("fills", "fills", fill_count as u64, "fills");
+    let compose_task = draw.child("compose", "compose", 0, "");
     let fills = Fills { values: &values, sources: &sources, budget: inputs.memory_budget, task: &fills_task };
-    compose(grammar, &values, &fills, &compose_task, &mut layout, &mut counted)?;
+    if let Some(collect) = collect {
+        compose(grammar, &values, &fills, &compose_task, &mut layout, &mut counted, Some(collect))?;
+        fills_task.ok("");
+        compose_task.ok("");
+        return Ok(Drawn { groups: Vec::new(), slices: Vec::new() });
+    }
+    compose(grammar, &values, &fills, &compose_task, &mut layout, &mut counted, None)?;
     let (groups, slices) = layout.finish(&mut counted);
     fills_task.ok("");
     compose_task.ok(&format!("{} groups", groups.len()));
@@ -355,7 +387,8 @@ fn text_on_page(t: &crate::grammar::Text, engine: &Engine) -> Result<(geom::Line
         .collect();
     if layout.outline {
         let silhouette = crate::text::glyph_silhouette(&strokes);
-        Ok((geom::rings(&silhouette), geom::fill_holes(&silhouette)))
+        let area = if t.open_counters { silhouette.clone() } else { geom::fill_holes(&silhouette) };
+        Ok((geom::rings(&silhouette), area))
     } else {
         let parts: Vec<MultiPolygon<f64>> = strokes.iter().map(|l| geom::buffer_line_round(l, t.size.0 * 0.08)).collect();
         Ok((strokes, geom::union_multi(&parts)))
@@ -985,6 +1018,7 @@ fn compose(
     task: &Task,
     layout: &mut crate::sheets::Layout,
     out: &mut crate::sheets::Out,
+    mut collect: Option<&mut Collected>,
 ) -> Result<(), RunError> {
     // 1. What each draw entry draws, and with what stroke.
     let mut drawn: BTreeMap<String, (Drawing, Option<&crate::profile::StrokeSpec>)> = BTreeMap::new();
@@ -1067,7 +1101,9 @@ fn compose(
         },
     }
 
-    let has_optimize = !grammar.compose.optimize.is_empty();
+    // Collecting (a view) goes the buffered way too: every group's strokes
+    // held, then handed back rather than written.
+    let has_optimize = !grammar.compose.optimize.is_empty() || collect.is_some();
     let mut buffered_meta: Vec<BufferedGroup> = Vec::new();
     let mut buffered_lines: Vec<(String, Lines)> = Vec::new();
 
@@ -1187,6 +1223,23 @@ fn compose(
     if has_optimize {
         crate::optimize::run_pipeline(&grammar.compose.optimize, &order, &mut buffered_lines, task);
         let mut by_id: BTreeMap<String, Lines> = buffered_lines.into_iter().collect();
+        if let Some(collect) = collect.as_deref_mut() {
+            for item in buffered_meta {
+                match item {
+                    BufferedGroup::SolidFill { id, .. } => {
+                        task.log(Level::Warn, &format!("{id}: flat colour fills are not drawn inside a view"));
+                    }
+                    BufferedGroup::Strokes { id, stroke, under_hatch } => {
+                        if under_hatch.is_some() {
+                            task.log(Level::Warn, &format!("{id}: a fill's background is not drawn inside a view"));
+                        }
+                        let lines = by_id.remove(&id).unwrap_or_default();
+                        collect.push((id, stroke.cloned(), lines));
+                    }
+                }
+            }
+            return Ok(());
+        }
         for item in buffered_meta {
             match item {
                 BufferedGroup::SolidFill { id, stroke, def, spec, above } => {
@@ -1210,6 +1263,80 @@ fn compose(
     Ok(())
 }
 
+
+/// Every view of `grammar`, each made from its own inputs, moved to its
+/// rectangle, cut by the page masks that name it, and written under the
+/// page's groups. Groups with the same id in several views are one group:
+/// the same pen.
+fn draw_views(
+    grammar: &Grammar,
+    values: &BTreeMap<Name, Value>,
+    inputs: Vec<Inputs>,
+    draw: &Task,
+    layout: &mut crate::sheets::Layout,
+    out: &mut crate::sheets::Out,
+) -> Result<(), RunError> {
+    if grammar.views.is_empty() {
+        return Ok(());
+    }
+    if inputs.is_empty() {
+        return Err(RunError::Plan("this page has views, but the host gave no inputs for them (each view is downloaded on its own)".into()));
+    }
+    if inputs.len() != grammar.views.len() {
+        return Err(RunError::Plan(format!("{} views but inputs for {}", grammar.views.len(), inputs.len())));
+    }
+    let mut merged: Collected = Vec::new();
+    for (view, input) in grammar.views.iter().zip(inputs) {
+        let task = draw.child(&format!("view:{}", view.id), &format!("view {}", view.id), 0, "");
+        let output = Output::new(&view.grammar.output, view.center());
+        let mut got = Collected::new();
+        run_graph(&view.grammar, &output, input, &task, &mut |_, _| {}, Some(&mut got))
+            .map_err(|e| RunError::Plan(format!("view {}: {e}", view.id)))?;
+        let over: Vec<MultiPolygon<f64>> = grammar
+            .compose
+            .masks
+            .iter()
+            .filter(|(_, m)| m.occludes.iter().any(|o| o.0 == view.id))
+            .map(|(name, m)| mask_area(m, values, grammar).map_err(|e| RunError::Plan(format!("masks.{name}: {e}"))))
+            .collect::<Result<_, _>>()?;
+        let mask = geom::union_multi(&over);
+        let (dx, dy) = view.at;
+        let mut strokes = 0usize;
+        for (id, stroke, lines) in got {
+            // An inked view is a pen of its own: all its strokes one group,
+            // named after the view, in its colour (already styled and cut).
+            let (id, stroke) = match &view.ink {
+                Some(ink) => {
+                    let mut s = stroke.unwrap_or_default();
+                    s.color = Some(ink.clone());
+                    s.style = None;
+                    s.dash = None;
+                    s.gap = None;
+                    s.mark = None;
+                    (view.id.clone(), Some(s))
+                }
+                None => (id, stroke),
+            };
+            let moved: Lines = lines
+                .into_iter()
+                .map(|l| LineString::new(l.0.into_iter().map(|c| Coord { x: c.x + dx, y: c.y + dy }).collect()))
+                .collect();
+            let kept = if mask.0.is_empty() { moved } else { geom::clip_lines(&moved, &mask, true) };
+            strokes += kept.len();
+            match merged.iter_mut().find(|(m, _, _)| *m == id) {
+                Some((_, _, acc)) => acc.extend(kept),
+                None => merged.push((id, stroke, kept)),
+            }
+        }
+        task.ok(&format!("{} strokes", thousands(strokes as u64)));
+    }
+    for (id, stroke, lines) in &merged {
+        layout.begin_with_style(id, stroke.as_ref());
+        layout.lines(lines, out);
+        layout.end();
+    }
+    Ok(())
+}
 
 /// The area a mask subtracts: `$areas.*` or a module output.
 fn mask_area(mask: &Mask, values: &BTreeMap<Name, Value>, grammar: &Grammar) -> Result<MultiPolygon<f64>, String> {
@@ -1268,7 +1395,7 @@ mod tests {
         run(
             &grammar,
             &output(),
-            Inputs { features: vec![], tiles: vec![], sources: &BTreeMap::new(), terrain: None, memory_budget: None, google_fonts: BTreeMap::new(), stroke_fonts: BTreeMap::new(), data: BTreeMap::new() },
+            Inputs { features: vec![], tiles: vec![], sources: &BTreeMap::new(), terrain: None, memory_budget: None, google_fonts: BTreeMap::new(), stroke_fonts: BTreeMap::new(), data: BTreeMap::new(), views: Vec::new() },
         )
     }
 
@@ -1302,7 +1429,7 @@ mod tests {
         let out = run(
             &grammar,
             &output(),
-            Inputs { features: vec![park], tiles: vec![], sources: &BTreeMap::new(), terrain: None, memory_budget: None, google_fonts: fonts, stroke_fonts: BTreeMap::new(), data: BTreeMap::new() },
+            Inputs { features: vec![park], tiles: vec![], sources: &BTreeMap::new(), terrain: None, memory_budget: None, google_fonts: fonts, stroke_fonts: BTreeMap::new(), data: BTreeMap::new(), views: Vec::new() },
         )
         .unwrap();
         let count = |id: &str| out.groups.iter().find(|(g, _)| g == id).map_or(0, |(_, n)| *n);

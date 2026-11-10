@@ -26,7 +26,7 @@ or directly:
 
 ```bash
 cargo run --release -p drawland-cli -- map --address "Piazza Maggiore, Bologna" -o map.svg
-cargo run --release -p drawland-cli -- map web/src/presets/parks.js --lat 37.8771 --lng -122.2562
+cargo run --release -p drawland-cli -- map web/src/presets/city-grain.js --lat 37.8771 --lng -122.2562
 ```
 
 | Argument | Does |

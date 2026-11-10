@@ -166,6 +166,10 @@
     if (typeof spec.text !== "string" || !spec.text) fail(`${where}.text is a string`);
     const op = { at: spec.at ?? ["50%", "50%"], text: spec.text, size: spec.size ?? "4mm", rotate: spec.rotate ?? 0 };
     if (spec.font != null) op.font = labelFont(spec.font, `${where}.font`);
+    if (spec.counters != null) {
+      if (spec.counters !== "open" && spec.counters !== "closed") fail(`${where}.counters is "open" or "closed", got ${describe(spec.counters)}`);
+      if (spec.counters === "open") op.openCounters = true;
+    }
     return op;
   };
   const unit = (t, where) => {
@@ -818,19 +822,47 @@
 
   // The scale the script's own `output` asked for, for sizes on the ground.
   let outputScale = null;
+  const scaleOf = (s) => {
+    const n = typeof s === "number" ? s : typeof s === "string" ? Number(s.trim().replace(/^1\s*:\s*/, "")) : NaN;
+    return isFinite(n) && n > 0 ? n : null;
+  };
   function output(spec) {
     object(spec, "output");
-    const s = spec.scale;
-    const n = typeof s === "number" ? s : typeof s === "string" ? Number(s.trim().replace(/^1\s*:\s*/, "")) : NaN;
-    if (isFinite(n) && n > 0) outputScale = n;
-    dl.output(spec);
+    // Inside a view the view's place wins: read the scale back from the
+    // output as it will be.
+    const effective = dl.output(spec);
+    outputScale = scaleOf(effective?.scale) ?? scaleOf(spec.scale) ?? outputScale;
+  }
+  // Another place, at its own scale, drawn into a rectangle of this page:
+  //   view({ id: "beach", at: [0, 0], size: [74, 50], lat, lng, scale: "1:6000" }, "city-grain")
+  //   view({ id: "park", … }, () => { draw({ … }) })
+  // `at` and `size` are in page millimetres. The style is a built-in preset
+  // by name, or a function whose calls build the view's own graph. Returns
+  // the view's id, for `compose.mask({ occludes: [id] })` on the page.
+  function view(spec, style) {
+    object(spec, "view");
+    if (typeof spec.id !== "string" || !spec.id) fail("view needs an id, a name for it");
+    if (typeof style === "string") return dl.viewPreset(spec, style);
+    if (typeof style !== "function") fail(`view: the style is a preset name ("city-grain") or a function that draws, got ${describe(style)}`);
+    const outer = outputScale;
+    outputScale = scaleOf(spec.scale) ?? outer;
+    dl.viewBegin(spec);
+    let ok = false;
+    try {
+      style();
+      ok = true;
+    } finally {
+      outputScale = outer;
+      dl.viewEnd(ok);
+    }
+    return spec.id;
   }
   function title(text) {
     if (typeof text !== "string") fail(`title expects a string, got ${describe(text)}`);
     dl.title(text);
   }
 
-  const lib = { features, areas, engine, lines, fills, burin, ink, modules, draw, compose, output, title };
+  const lib = { features, areas, engine, lines, fills, burin, ink, modules, draw, compose, output, title, view };
   for (const [name, value] of Object.entries(lib)) {
     if (typeof value === "object") Object.freeze(value);
     Object.defineProperty(globalThis, name, { value, enumerable: false, writable: false, configurable: false });

@@ -101,7 +101,7 @@ fn a_script_draws_contours_in_a_loop_over_elevation_bands() {
     let out = run(
         &g,
         &output,
-        Inputs { features: vec![], tiles: vec![], sources: &BTreeMap::new(), terrain: Some(terrain), memory_budget: None, google_fonts: BTreeMap::new(), stroke_fonts: BTreeMap::new(), data: BTreeMap::new() },
+        Inputs { features: vec![], tiles: vec![], sources: &BTreeMap::new(), terrain: Some(terrain), memory_budget: None, google_fonts: BTreeMap::new(), stroke_fonts: BTreeMap::new(), data: BTreeMap::new(), views: Vec::new() },
     )
     .unwrap();
     assert_eq!(out.groups.len(), 3, "three contour belts");
@@ -130,7 +130,7 @@ fn the_postcard_script_renders_without_osm_data() {
     let back = Grammar::from_json(&g.to_json().to_string()).unwrap();
     assert_eq!(back, g, "the graph survives JSON");
     let output = Output::new(&g.output, (-122.256196, 37.8771145));
-    let out = run(&g, &output, Inputs { features: vec![], tiles: vec![], sources: &BTreeMap::new(), terrain: None, memory_budget: None, google_fonts: BTreeMap::new(), stroke_fonts: BTreeMap::new(), data: BTreeMap::new() }).unwrap();
+    let out = run(&g, &output, Inputs { features: vec![], tiles: vec![], sources: &BTreeMap::new(), terrain: None, memory_budget: None, google_fonts: BTreeMap::new(), stroke_fonts: BTreeMap::new(), data: BTreeMap::new(), views: Vec::new() }).unwrap();
     assert!(!out.svg.is_empty());
     assert_eq!(out.groups.len(), 15);
 }
@@ -167,7 +167,7 @@ fn a_script_draws_terrain_from_the_elevation() {
     let out = run(
         &g,
         &output,
-        Inputs { features: vec![], tiles: vec![], sources: &BTreeMap::new(), terrain: Some(terrain), memory_budget: None, google_fonts: BTreeMap::new(), stroke_fonts: BTreeMap::new(), data: BTreeMap::new() },
+        Inputs { features: vec![], tiles: vec![], sources: &BTreeMap::new(), terrain: Some(terrain), memory_budget: None, google_fonts: BTreeMap::new(), stroke_fonts: BTreeMap::new(), data: BTreeMap::new(), views: Vec::new() },
     )
     .unwrap();
     assert_eq!(out.groups.len(), 2, "two terrain groups");
@@ -216,7 +216,7 @@ fn a_burin_document_runs_inside_a_profile() {
     let out = run(
         &g,
         &output,
-        Inputs { features: vec![], tiles: vec![], sources: &BTreeMap::new(), terrain: Some(terrain), memory_budget: None, google_fonts: BTreeMap::new(), stroke_fonts: BTreeMap::new(), data: BTreeMap::new() },
+        Inputs { features: vec![], tiles: vec![], sources: &BTreeMap::new(), terrain: Some(terrain), memory_budget: None, google_fonts: BTreeMap::new(), stroke_fonts: BTreeMap::new(), data: BTreeMap::new(), views: Vec::new() },
     )
     .unwrap();
     assert_eq!(out.groups.len(), 1);
@@ -569,7 +569,7 @@ fn compose_optimize_steps_round_trip_and_execute() {
     let out = run(
         &g,
         &Output::new(&g.output, (0.0, 0.0)),
-        Inputs { features: vec![], tiles: vec![], sources: &BTreeMap::new(), terrain: None, memory_budget: None, google_fonts: BTreeMap::new(), stroke_fonts: BTreeMap::new(), data: BTreeMap::new() },
+        Inputs { features: vec![], tiles: vec![], sources: &BTreeMap::new(), terrain: None, memory_budget: None, google_fonts: BTreeMap::new(), stroke_fonts: BTreeMap::new(), data: BTreeMap::new(), views: Vec::new() },
     )
     .unwrap();
     assert!(out.groups.iter().any(|(id, n)| id == "ring_a" && *n >= 1));
@@ -602,7 +602,7 @@ fn geojson_datasets_draw_from_a_url_and_from_the_profile() {
         {"type":"Feature","properties":{"mag":4.2},"geometry":{"type":"Point","coordinates":[0,-0.05,500]}}]}"#;
     let output = Output::new(&g.output, (0.0, 0.0));
     let render = |data: BTreeMap<String, String>| {
-        run(&g, &output, Inputs { features: vec![], tiles: vec![], sources: &BTreeMap::new(), terrain: None, memory_budget: None, google_fonts: BTreeMap::new(), stroke_fonts: BTreeMap::new(), data })
+        run(&g, &output, Inputs { features: vec![], tiles: vec![], sources: &BTreeMap::new(), terrain: None, memory_budget: None, google_fonts: BTreeMap::new(), stroke_fonts: BTreeMap::new(), data, views: Vec::new() })
     };
     assert!(render(BTreeMap::new()).is_err(), "a dataset the host never read is an error");
     let out = render([("https://example.org/q.geojson".to_string(), quakes.to_string())].into()).unwrap();
@@ -631,8 +631,85 @@ fn a_fill_another_def_reads_is_made_for_it() {
     )
     .unwrap();
     let output = Output::new(&g.output, (0.0, 0.0));
-    let out = run(&g, &output, Inputs { features: vec![], tiles: vec![], sources: &BTreeMap::new(), terrain: None, memory_budget: None, google_fonts: BTreeMap::new(), stroke_fonts: BTreeMap::new(), data: BTreeMap::new() }).unwrap();
+    let out = run(&g, &output, Inputs { features: vec![], tiles: vec![], sources: &BTreeMap::new(), terrain: None, memory_budget: None, google_fonts: BTreeMap::new(), stroke_fonts: BTreeMap::new(), data: BTreeMap::new(), views: Vec::new() }).unwrap();
     let strokes: BTreeMap<_, _> = out.groups.into_iter().collect();
     assert!(strokes["hatch"] > 0);
     assert!(strokes["under"] > 1, "the line under the hatch is cut where hatch lines cross it, got {}", strokes["under"]);
+}
+
+fn no_inputs(views: Vec<Inputs<'static>>) -> Inputs<'static> {
+    static NONE: std::sync::OnceLock<BTreeMap<String, String>> = std::sync::OnceLock::new();
+    Inputs {
+        features: vec![],
+        tiles: vec![],
+        sources: NONE.get_or_init(BTreeMap::new),
+        terrain: None,
+        memory_budget: None,
+        google_fonts: BTreeMap::new(),
+        stroke_fonts: BTreeMap::new(),
+        data: BTreeMap::new(),
+        views: views,
+    }
+}
+
+#[test]
+fn a_view_draws_its_own_graph_into_its_rectangle() {
+    // A page with one view: a 20 × 10 mm rectangle at (30, 40) holding a
+    // line across its middle; the page's mask over the view cuts it.
+    let g = evaluate(
+        "output({ width: '100mm', height: '100mm', padding: 0 })\n\
+         const v = view({ id: 'inset', at: [30, 40], size: [20, 10], lat: 1, lng: 2, scale: '1:5000' }, () => {\n\
+           draw({ id: 'across', from: lines.shape({ at: ['50%', '50%'], points: [[-10, 0], [10, 0]], closed: false }) })\n\
+         })\n\
+         const gap = areas.shape({ at: [40, 45], rect: [4, 4] })\n\
+         compose.mask({ from: gap, occludes: [v] })\n",
+    )
+    .unwrap();
+    assert_eq!(g.views.len(), 1);
+    assert_eq!(g.views[0].grammar.output.lat, Some(1.0));
+    assert_eq!(g.views[0].grammar.output.width.0, 20.0);
+    assert_eq!(Grammar::from_json(&g.to_json().to_string()).unwrap(), g, "the graph survives JSON, views and all");
+    let output = Output::new(&g.output, (0.0, 0.0));
+    let out = run(&g, &output, no_inputs(vec![no_inputs(vec![])])).unwrap();
+    let strokes: BTreeMap<_, _> = out.groups.into_iter().collect();
+    assert_eq!(strokes["across"], 2, "the mask splits the view's line in two");
+    // The line sits at the view's middle on the page: y = 40 + 5.
+    assert!(out.svg.contains(",45") || out.svg.contains(" 45"), "the view is moved to its rectangle");
+}
+
+#[test]
+fn a_view_can_draw_in_a_built_in_preset() {
+    let g = evaluate("view({ id: 'a', at: [0, 0], size: [50, 40], lat: 41.4, lng: 2.17, scale: '1:4000' }, 'city-grain')").unwrap();
+    let inner = &g.views[0].grammar;
+    assert_eq!(inner.output.lat, Some(41.4), "the view's place wins over the preset's");
+    assert_eq!(inner.output.width.0, 50.0);
+    assert!(!inner.draw.is_empty());
+    assert!(err("view({ id: 'a', at: [0, 0], size: [5, 5] }, 'nope')").to_string().contains("no preset"));
+}
+
+#[test]
+fn text_counters_open_only_when_asked() {
+    let g = evaluate("const a = areas.text({ text: 'A', counters: 'open' }); const b = areas.text({ text: 'B' })").unwrap();
+    let json = g.to_json().to_string();
+    assert_eq!(json.matches("openCounters").count(), 1);
+    assert!(err("areas.text({ text: 'A', counters: 'half' })").to_string().contains("counters"));
+}
+
+#[test]
+fn an_inked_view_is_a_pen_of_its_own() {
+    let g = evaluate(
+        "output({ width: '60mm', height: '30mm', padding: 0 })\n\
+         const line = () => draw({ id: 'l', from: lines.shape({ at: ['50%', '50%'], points: [[-5, 0], [5, 0]], closed: false }) })\n\
+         view({ id: 'a', at: [0, 0], size: [30, 30], ink: '#ff0000' }, line)\n\
+         view({ id: 'b', at: [30, 0], size: [30, 30] }, line)\n",
+    )
+    .unwrap();
+    assert_eq!(g.views[0].ink.as_deref(), Some("#ff0000"));
+    assert_eq!(Grammar::from_json(&g.to_json().to_string()).unwrap(), g);
+    let output = Output::new(&g.output, (0.0, 0.0));
+    let out = run(&g, &output, no_inputs(vec![no_inputs(vec![]), no_inputs(vec![])])).unwrap();
+    let ids: Vec<&str> = out.groups.iter().map(|(id, _)| id.as_str()).collect();
+    assert!(ids.contains(&"a") && ids.contains(&"l"), "the inked view is one group of its own, got {ids:?}");
+    assert!(out.svg.contains("#ff0000"));
+    assert!(err("view({ id: 'a', at: [0, 0], size: [5, 5], ink: 3 }, () => {})").to_string().contains("ink"));
 }

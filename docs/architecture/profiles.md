@@ -35,6 +35,7 @@ Common patterns:
 - `modules.roads({ from, widthMode, classes, … })`, `modules.labels({ from, rules })`
 - `burin.terrain((b) => …)` — burin-map-script builder; atlas stored on graph
 - `compose.mask({ name, from, occludes: [draw ids…] })`
+- `view({ id, at, size, lat, lng, scale }, "city-grain" | () => {…})` — another place drawn into a rectangle of the page (`configs/postcard-france.js`). The script crate keeps a stack of builders: a function style builds the view's graph in place; a preset name runs that preset (embedded from `web/src/presets` by `build.rs`) in a fresh interpreter. Inside a view, `output()` keeps the view's place and size over the style's own, and returns the effective spec (so `engine.scale()` is the view's)
 
 ## Web compile path
 

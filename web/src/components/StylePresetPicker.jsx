@@ -4,9 +4,9 @@ import { injectStyleAtPlace } from '../lib/doc'
 
 /**
  * The profile's style on the map: applied script title (with · mod when it no
- * longer matches a preset verbatim). Choosing a preset injects its style here
- * and draws it (`onApplied`) once it has compiled. A preset that brings its own
- * place (`ownPlace`: a world map, a dataset's city) is loaded whole instead.
+ * longer matches a preset verbatim). Choosing a preset loads it whole, as the
+ * script column's preset menu does: its place, scale and paper, the map moved
+ * and fitted to it, then drawn (`onLoadDoc`).
  */
 export default function StylePresetPicker({ doc, appliedDoc, setDoc, onNotice, onApplied, onLoadDoc }) {
   const menuRef = useRef(null)
@@ -17,11 +17,12 @@ export default function StylePresetPicker({ doc, appliedDoc, setDoc, onNotice, o
 
   const applyPreset = (p) => {
     menuRef.current?.removeAttribute('open')
-    if (p.ownPlace && onLoadDoc) {
+    if (onLoadDoc) {
       onLoadDoc(p.doc)
       flash(p.name)
       return
     }
+    // Without a loader (no map to move), the style at the current place.
     const text = injectStyleAtPlace(doc, p.doc)
     setDoc(text)
     // Draw the new style as soon as it has compiled: no REGEN to press.

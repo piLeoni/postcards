@@ -42,7 +42,11 @@ Share URLs: `lib/share.js` (fragments `#js=`, etc.).
 
 ## Presets
 
-`lib/presets.js` lists built-in scripts. A preset with `ownPlace: true` (`earthquakes`, `geojson-overlay`) carries its own place, paper and projection: the card's style picker and the sidebar load it whole (`loadDoc` in `App.jsx`) instead of injecting its style at the current place. The map's `minZoom` is 0 and `MapView` passes its own `transformConstrain` (any zoom, latitude kept within ±85°): MapLibre's default, with `renderWorldCopies` off, kept the world at least as wide as the window, so a world card (`earthquakes`) could never be zoomed out to fit.
+`lib/presets.js` lists built-in scripts. Choosing one — from the card's style picker or the sidebar's preset menu — loads it whole (`loadDoc` in `App.jsx`): its place, scale and paper, the map moved and fitted to it, then drawn. The sidebar's "inject here" keeps the current place instead, except for a preset with `ownPlace: true` (a world map, a dataset's city, a postcard of views), which always loads whole. The map's `minZoom` is 0 and `MapView` passes its own `transformConstrain` (any zoom, latitude kept within ±85°): MapLibre's default, with `renderWorldCopies` off, kept the world at least as wide as the window, so a world card (`earthquakes`) could never be zoomed out to fit.
+
+## Views (composite pages)
+
+A graph with `views` (`view(...)`: the France postcard) is drawn the way the CLI draws it. After the page's own downloads, `gatherViews` in `draw.worker.js` makes a `Job` for each `views[i].graph` at its own place, runs the same pipeline on it (Overpass, tiles, terrain, datasets, Google and stroke fonts), and hands it to the page job with `job.addView(sub)` (wasm moves its inputs out; the sub-job is used up). Each view's progress rows are emitted with ids prefixed `view:<id>:` under a `view <id>` row, so they never collide with the page's. Built-in presets a view names are embedded in the script interpreter (`drawland-script/build.rs`).
 
 ## GeoJSON import
 

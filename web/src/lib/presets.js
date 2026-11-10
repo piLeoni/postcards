@@ -4,26 +4,15 @@
  * and `wasm_render` only — the browser always re-runs the script in WASM.
  */
 import graphs from '../presets/graphs.json'
-import full from '../presets/full.js?raw'
-import mixed from '../presets/mixed.js?raw'
-import overpass from '../presets/overpass.js?raw'
-import parks from '../presets/parks.js?raw'
-import buildings from '../presets/buildings.js?raw'
-import goldenGate from '../presets/golden-gate.js?raw'
-import engravedSea from '../presets/engraved-sea.js?raw'
-import inkByHeight from '../presets/ink-by-height.js?raw'
-import inkByRiver from '../presets/ink-by-river.js?raw'
-import inkByElevation from '../presets/ink-by-elevation.js?raw'
-import flatColor from '../presets/flat-color.js?raw'
 import cityGrain from '../presets/city-grain.js?raw'
 import sketchbook from '../presets/sketchbook.js?raw'
 import saltAndStone from '../presets/salt-and-stone.js?raw'
 import atlas from '../presets/atlas.js?raw'
 import brutalist from '../presets/brutalist.js?raw'
-import labelFontsDemo from '../presets/label-fonts-demo.js?raw'
 import earthquakes from '../presets/earthquakes.js?raw'
 import geojsonOverlay from '../presets/geojson-overlay.js?raw'
 import stateCut from '../presets/state-cut.js?raw'
+import postcardFrance from '../presets/postcard-france.js?raw'
 import { styleOf, titleOf } from './doc'
 
 export const PRESETS = [
@@ -37,18 +26,7 @@ export const PRESETS = [
   { id: 'earthquakes', hint: 'live data: the last 30 days of quakes (USGS) on a world map, sized by magnitude, inked by depth', doc: earthquakes, ownPlace: true },
   { id: 'geojson-overlay', hint: 'a GeoJSON over a quiet base map; drop your own .geojson on the page', doc: geojsonOverlay, ownPlace: true },
   { id: 'state-cut', hint: 'a state\'s silhouette as a 4×6 die-cut card: one ink, one hatch, closer with height, each level outlined', doc: stateCut, ownPlace: true },
-  { id: 'label-fonts-demo', hint: 'single-stroke fonts: futural, EMS, URL load', doc: labelFontsDemo },
-  { id: 'flat-color', hint: 'solid fills for water, parks and buildings (screen-style)', doc: flatColor },
-  { id: 'full', hint: 'roads, trails, parks, water, buildings; all from OpenFreeMap', doc: full },
-  { id: 'mixed', hint: 'the same output; only the roads asked of Overpass', doc: mixed },
-  { id: 'overpass', hint: 'the same output, all from Overpass', doc: overpass },
-  { id: 'parks', hint: 'green, water, buildings', doc: parks },
-  { id: 'buildings', hint: 'the fastest draw', doc: buildings },
-  { id: 'golden-gate', hint: 'burin land and sea, at the Golden Gate', doc: goldenGate },
-  { id: 'engraved-sea', hint: 'burin hills, coast concentrics and waving currents', doc: engravedSea },
-  { id: 'ink-by-height', hint: 'each building inked by its height', doc: inkByHeight },
-  { id: 'ink-by-river', hint: 'buildings inked by their distance from the water, roads by class', doc: inkByRiver },
-  { id: 'ink-by-elevation', hint: 'contours tinted and weighted by their height', doc: inkByElevation },
+  { id: 'postcard-france', hint: 'a postcard of France in four views — Paris, Mont-Saint-Michel, Versailles, Mont Blanc — in City Grain, the name across them', doc: postcardFrance, ownPlace: true },
 ].map((p) => ({ ...p, name: titleOf(p.doc) ?? p.id, graph: graphs[p.id] }))
 
 /** The output the app opens on. */

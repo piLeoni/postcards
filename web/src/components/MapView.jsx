@@ -1523,8 +1523,14 @@ export default function MapView({
         className="pointer-events-none absolute left-0 top-0 z-[25]"
         style={{ display: 'none', willChange: 'transform' }}
       >
+        {/*
+          The card's edge is an inset outline, not a border: a border takes a
+          pixel on every side, so the preview (sized and placed in the card's
+          own pixels) sat one pixel right and down, its far edges clipped, and
+          the left and top margins read wider than the right and bottom.
+        */}
         <div
-          className={`pointer-events-none absolute inset-0 overflow-hidden border border-[color:var(--chrome-divider)] ${RAISED} ${
+          className={`pointer-events-none absolute inset-0 overflow-hidden outline outline-1 -outline-offset-1 outline-[color:var(--chrome-divider)] ${RAISED} ${
             paperBg ? 'bg-[var(--background0)]' : 'bg-[color-mix(in_srgb,var(--background0)_20%,transparent)]'
           }`}
         >

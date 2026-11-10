@@ -63,3 +63,7 @@ Default `cache/overpass/` for Overpass bodies; geocoding under cache root. Web u
 ## No I/O in core
 
 `drawland-core` accepts in-memory features, tile bytes, and font bytes. Any new data source should either feed those buffers or extend `tiles.rs` / `osm.rs`, not add HTTP to core.
+
+## Views
+
+A page with `views` (`view(...)` in a profile) is placeless unless the profile or command line gives a place. `map_v3` gathers the page's inputs and each view's (`gather`: Overpass, tiles, terrain, fonts, datasets for that view's output), each as its own `download <id>` row. The web app does the same in the worker (see [web.md](web.md)).

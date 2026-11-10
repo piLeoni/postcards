@@ -65,7 +65,7 @@ fn main() {
             let base = LIVE.load(Ordering::Relaxed);
             PEAK.store(base, Ordering::Relaxed);
             let t = std::time::Instant::now();
-            let Ok(out) = run(&grammar, &output, Inputs { features: vec![], tiles: vec![], sources: &Default::default(), terrain: None, memory_budget: None, google_fonts: BTreeMap::new(), stroke_fonts: BTreeMap::new(), data: BTreeMap::new() }) else {
+            let Ok(out) = run(&grammar, &output, Inputs { features: vec![], tiles: vec![], sources: &Default::default(), terrain: None, memory_budget: None, google_fonts: BTreeMap::new(), stroke_fonts: BTreeMap::new(), data: BTreeMap::new(), views: Vec::new() }) else {
                 println!("{g:<12} {s}: failed");
                 continue;
             };

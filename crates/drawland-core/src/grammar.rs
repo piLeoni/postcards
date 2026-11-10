@@ -195,6 +195,11 @@ pub struct Text {
     pub font: crate::text::LabelFont,
     #[serde(default)]
     pub rotate: f64,
+    /// `areas.text` with an outline font: keep the letters' counters (the
+    /// holes in A, B, O) open, for a fill inside the letters; closed by
+    /// default, for a mask.
+    #[serde(default, rename = "openCounters", skip_serializing_if = "std::ops::Not::not")]
+    pub open_counters: bool,
 }
 
 /// `"50%"` as a fraction, 0.5.
@@ -639,6 +644,30 @@ pub struct Grammar {
     pub sections: Vec<(Section, Vec<Def>)>,
     pub draw: Vec<Draw>,
     pub compose: Compose,
+    /// Other places drawn into rectangles of this page (`view(...)`), under
+    /// the page's own groups. Each is a whole graph with its own output.
+    pub views: Vec<View>,
+}
+
+/// A view: another place, at its own scale, drawn into a rectangle of the
+/// page. Its graph's `output` is the place and the rectangle's size; `at` is
+/// the rectangle's top-left corner on the page, in mm. A page mask whose
+/// `occludes` names the view's `id` cuts every stroke of it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct View {
+    pub id: String,
+    pub at: (f64, f64),
+    pub grammar: Box<Grammar>,
+    /// One colour for every stroke of the view, whatever its style asks: the
+    /// view is then one group of its own, named `id` — one pen.
+    pub ink: Option<String>,
+}
+
+impl View {
+    /// The place the view shows, as `(lng, lat)`.
+    pub fn center(&self) -> (f64, f64) {
+        (self.grammar.output.lng.unwrap_or(0.0), self.grammar.output.lat.unwrap_or(0.0))
+    }
 }
 
 impl Grammar {
@@ -800,6 +829,18 @@ struct Raw {
     draw: Vec<RawDraw>,
     #[serde(default)]
     compose: RawCompose,
+    #[serde(default)]
+    views: Vec<RawView>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawView {
+    id: String,
+    at: [f64; 2],
+    graph: Value,
+    #[serde(default)]
+    ink: Option<String>,
 }
 
 
@@ -1055,7 +1096,16 @@ fn build(raw: Raw) -> Result<Grammar, GrammarError> {
         optimize,
     };
 
-    let grammar = Grammar { title: raw.title, output: raw.output, sections, draw, compose };
+    let views = raw
+        .views
+        .into_iter()
+        .map(|v| {
+            let inner: Raw = serde_json::from_value(v.graph).map_err(|e| GrammarError::Json(format!("views.{}: {e}", v.id)))?;
+            let grammar = build(inner).map_err(|e| GrammarError::Invalid(format!("view {}: {e}", v.id)))?;
+            Ok(View { id: v.id, at: (v.at[0], v.at[1]), grammar: Box::new(grammar), ink: v.ink })
+        })
+        .collect::<Result<Vec<_>, GrammarError>>()?;
+    let grammar = Grammar { title: raw.title, output: raw.output, sections, draw, compose, views };
     validate(&grammar)?;
     Ok(grammar)
 }
@@ -1998,6 +2048,20 @@ impl Grammar {
             compose_obj["optimize"] = Value::Array(opt);
         }
         out.insert("compose".into(), compose_obj);
+        if !self.views.is_empty() {
+            let views: Vec<Value> =
+                self.views
+                    .iter()
+                    .map(|v| {
+                        let mut o = json!({ "id": v.id, "at": [v.at.0, v.at.1], "graph": v.grammar.to_json() });
+                        if let Some(ink) = &v.ink {
+                            o["ink"] = json!(ink);
+                        }
+                        o
+                    })
+                    .collect();
+            out.insert("views".into(), Value::Array(views));
+        }
         Value::Object(out)
     }
 
@@ -2095,7 +2159,7 @@ pub fn validate(g: &Grammar) -> Result<(), GrammarError> {
             )));
         }
         for id in &mask.occludes {
-            if !groups.contains(&id.0) {
+            if !groups.contains(&id.0) && !g.views.iter().any(|v| v.id == id.0) {
                 return Err(GrammarError::Invalid(located(
                     &format!("masks.{name}.occludes names {:?}, which is not a draw id", id.0),
                     mask.at,
