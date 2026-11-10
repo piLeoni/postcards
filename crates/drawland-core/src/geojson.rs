@@ -64,6 +64,71 @@ fn read(v: &Value, out: &mut Vec<Feature>) -> Result<(), GeoJsonError> {
     Ok(())
 }
 
+/// Points from plain JSON (`features.json`): the array at the dot-path
+/// `items` (empty: the reply itself), and in each item the latitude and
+/// longitude at `lat` and `lng`, numbers or numbers written as text. Every
+/// other field of an item is a tag under its dotted path (`attributes.bearing`,
+/// `relationships.route.data.id`); items without a position are skipped.
+pub fn features_from_json(text: &str, items: &str, lat: &str, lng: &str) -> Result<Vec<Feature>, GeoJsonError> {
+    let root: Value = serde_json::from_str(text)?;
+    let list = path(&root, items)
+        .and_then(Value::as_array)
+        .ok_or_else(|| shape(&format!("no array at {:?}", if items.is_empty() { "(the reply)" } else { items })))?;
+    let number = |v: Option<&Value>| match v? {
+        Value::Number(n) => n.as_f64(),
+        Value::String(s) => s.trim().parse().ok(),
+        _ => None,
+    };
+    let mut out = Vec::new();
+    for item in list {
+        let (Some(y), Some(x)) = (number(path(item, lat)), number(path(item, lng))) else { continue };
+        if !(x.is_finite() && y.is_finite()) {
+            continue;
+        }
+        let mut tags = Tags::new();
+        flatten(item, "", &mut tags);
+        out.push(Feature { element: Element::Data, id: out.len() as i64, tags, geometry: Geometry::Point(Point::new(x, y)) });
+    }
+    Ok(out)
+}
+
+/// The value at a dot-path (`a.b.0.c`); the empty path is `v` itself.
+fn path<'a>(v: &'a Value, dots: &str) -> Option<&'a Value> {
+    if dots.is_empty() {
+        return Some(v);
+    }
+    dots.split('.').try_fold(v, |at, k| match at {
+        Value::Object(o) => o.get(k),
+        Value::Array(a) => a.get(k.parse::<usize>().ok()?),
+        _ => None,
+    })
+}
+
+/// Scalars of `v` as tags under their dotted paths; arrays as JSON text.
+fn flatten(v: &Value, prefix: &str, tags: &mut Tags) {
+    match v {
+        Value::Object(o) => {
+            for (k, x) in o {
+                let key = if prefix.is_empty() { k.clone() } else { format!("{prefix}.{k}") };
+                flatten(x, &key, tags);
+            }
+        }
+        Value::Null => {}
+        Value::String(s) => {
+            tags.insert(prefix.to_string(), s.clone());
+        }
+        Value::Number(n) => {
+            tags.insert(prefix.to_string(), n.to_string());
+        }
+        Value::Bool(b) => {
+            tags.insert(prefix.to_string(), b.to_string());
+        }
+        Value::Array(_) => {
+            tags.insert(prefix.to_string(), v.to_string());
+        }
+    }
+}
+
 fn kind(v: &Value) -> Result<&str, GeoJsonError> {
     v.get("type").and_then(Value::as_str).ok_or_else(|| shape("no \"type\""))
 }
@@ -178,6 +243,24 @@ mod tests {
         assert!(matches!(&f[1].geometry, Geometry::Polygon(p) if p.interiors().len() == 1));
         assert!(matches!(f[2].geometry, Geometry::LineString(_)));
         assert!(f.iter().all(|x| x.element == Element::Data));
+    }
+
+    #[test]
+    fn plain_json_items_become_points_with_dotted_tags() {
+        let text = r#"{"data":[
+            {"id":"y1","attributes":{"latitude":42.33,"longitude":-71.08,"bearing":327,"speed":null},
+             "relationships":{"route":{"data":{"id":"Red"}}}},
+            {"id":"y2","attributes":{"latitude":"42.30","longitude":"-71.1"}},
+            {"id":"y3","attributes":{"latitude":null}}]}"#;
+        let f = features_from_json(text, "data", "attributes.latitude", "attributes.longitude").unwrap();
+        assert_eq!(f.len(), 2, "an item without a position is skipped");
+        assert!(matches!(f[0].geometry, Geometry::Point(p) if p.x() == -71.08 && p.y() == 42.33));
+        assert_eq!(f[0].tag("relationships.route.data.id"), Some("Red"));
+        assert_eq!(f[0].tag("attributes.bearing"), Some("327"));
+        assert!(!f[0].has("attributes.speed"));
+        assert!(matches!(f[1].geometry, Geometry::Point(p) if p.y() == 42.30), "numbers written as text read too");
+        assert!(features_from_json(r#"[{"lat":1,"lon":2}]"#, "", "lat", "lon").unwrap().len() == 1, "the reply itself as the array");
+        assert!(features_from_json(text, "nope", "a", "b").is_err());
     }
 
     #[test]

@@ -1,13 +1,13 @@
-title("Salt & Stone")
+title("Salt and stone")
 output({
-  width: "6in",
+  width: "15in",
   height: "10in",
-  scale: "1:170000",   // terrain 18.1 × 24.8 mi
+  scale: "1:250000",   // terrain 59.2 × 39.5 mi
   bearing: 0,
   projection: "webmercator",
-  lat: 37.6933607,
-  lng: -122.4257495,
-  tileZoom: 12,
+  lat: 21.4751284,
+  lng: -157.9748539,
+  tileZoom: 10,
   padding: "0.1in",
 })
 
@@ -17,7 +17,19 @@ output({
 // `ocean-currents`). Burin's own wobble gives the hand; no `compose.hand`, which
 // at this scale would push neighbouring strokes over each other.
 
-const SOLID = /** @type {Stroke} */ ({ style: "solid", width: "0.2mm", cap: "round" })
+// Two pens: the sea and the coast in blue, the ground in brown.
+const INK = { water: "#1f5fa8", ground: "#8a5a35" }
+/** @param {string} color @returns {Stroke} */
+const pen = (color) => ({ style: "solid", width: "0.2mm", cap: "round", color })
+/** The coast line goes with the water's pen: the water grown by a hair takes it. */
+const COAST_TAKE = "0.15mm"
+
+// How much sparser the sea is drawn than the land: every water line spacing
+// is multiplied by this, so the land reads denser and darker than the water
+// around it. 1 draws both alike.
+const SEA_SPARSITY = 1.7
+/** A water line spacing in burin px, thinned by `SEA_SPARSITY`. @param {number} px */
+const sea = (px) => +(px * SEA_SPARSITY).toFixed(2)
 
 // Where the water is, from the vector tiles: burin follows this coast rather
 // than guessing the sea from the elevation.
@@ -37,7 +49,7 @@ const nature = burin.terrain((b) => {
     follow: "shore",
     angle: 0,
     style: {
-      space_light: 3.4, space_dark: 3.4, water_space_reach: 0,
+      space_light: sea(3.4), space_dark: sea(3.4), water_space_reach: 0,
       water_start: 3.4, water_reach: 17, water_fade: 0.55,
       dash_dark: 1, dash_light: 0.08, dash_period: 14, mod_jitter: 0.7,
     },
@@ -48,8 +60,8 @@ const nature = burin.terrain((b) => {
     follow: "map",
     angle: 90,
     style: {
-      space_light: 5.5,
-      space_dark: 5.5,
+      space_light: sea(5.5),
+      space_dark: sea(5.5),
       water_start: 23,
       water_reach: 4000,
       water_fade: 0.2,
@@ -73,8 +85,12 @@ const nature = burin.terrain((b) => {
   })
 }, { water })
 
-draw({ id: "lines_nature", from: nature, stroke: SOLID })
+// One burin drawing, split by the water into two pens.
+const wet = areas.grow(water, COAST_TAKE)
+draw({ id: "lines_ground", from: lines.clip(nature, wet, { invert: true }), stroke: pen(INK.ground) })
+draw({ id: "lines_water", from: lines.clip(nature, wet), stroke: pen(INK.water) })
 
-compose.filter("lines_nature", { minLength: "0.2mm" })
-compose.simplify("lines_nature", "0.03mm")
+const layers = ["lines_ground", "lines_water"]
+compose.filter(layers, { minLength: "0.2mm" })
+compose.simplify(layers, "0.03mm")
 compose.linesort()

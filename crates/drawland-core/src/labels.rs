@@ -384,6 +384,14 @@ struct Candidate {
 #[derive(Clone, Copy)]
 struct Quad([Coord<f64>; 4]);
 
+/// Whether a glyph's quad touches `area`.
+fn touches(area: &MultiPolygon<f64>, q: &Quad) -> bool {
+    use geo::Intersects;
+    let mut ring = q.0.to_vec();
+    ring.push(q.0[0]);
+    area.intersects(&Polygon::new(LineString::new(ring), vec![]))
+}
+
 impl Quad {
     fn bounds(&self) -> (f64, f64, f64, f64) {
         let xs = self.0.map(|c| c.x);
@@ -586,6 +594,20 @@ pub fn place(
     google_fonts: &GoogleFonts,
     stroke_fonts: &StrokeFonts,
 ) -> Result<Placed, String> {
+    place_avoiding(features, frame, None, style, google_fonts, stroke_fonts)
+}
+
+/// [`place`], the letters (grown by `padding`) also kept off `avoid`: the
+/// lines of a transit map, say. A place's point and its dot are not held to
+/// it, so a station on a line still gets its name beside it.
+pub fn place_avoiding(
+    features: &[Feature],
+    frame: &MultiPolygon<f64>,
+    avoid: Option<&MultiPolygon<f64>>,
+    style: &Style,
+    google_fonts: &GoogleFonts,
+    stroke_fonts: &StrokeFonts,
+) -> Result<Placed, String> {
     validate_style(style)?;
     // Each font file decoded once, not once per label.
     let mut faces: HashMap<String, Vec<Vec<u8>>> = HashMap::new();
@@ -676,7 +698,10 @@ pub fn place(
         let k = size / layout.cap_height;
         let width = layout.width * k;
         let clear = |poses: &[Pose], taken: &Taken| {
-            poses.iter().all(|p| inside(&p.quad(&layout, 0.0)) && !taken.hits(&p.quad(&layout, look.padding.0)))
+            poses.iter().all(|p| {
+                let grown = p.quad(&layout, look.padding.0);
+                inside(&p.quad(&layout, 0.0)) && !taken.hits(&grown) && avoid.is_none_or(|a| !touches(a, &grown))
+            })
         };
         let far = |at: Coord<f64>, named: &HashMap<String, Vec<Coord<f64>>>| {
             named.get(&c.text).is_none_or(|seen| seen.iter().all(|&s| dist(s, at) >= look.spacing.0))
@@ -811,8 +836,11 @@ pub fn place(
                 let (half, gap, rise) = (width / 2.0, r + size * 0.45, size * 0.8);
                 let side = gap + half;
                 let diag = gap * 0.6 + half;
-                let spots = [(side, 0.0), (-side, 0.0), (diag, -rise), (diag, rise), (-diag, -rise), (-diag, rise), (0.0, -(r + size * 1.1)), (0.0, r + size * 1.1)];
-                for (dx, dy) in spots {
+                // Close in first; then the same directions a step farther out,
+                // for a long name beside a line that a close spot clips.
+                let near = [(side, 0.0), (-side, 0.0), (diag, -rise), (diag, rise), (-diag, -rise), (-diag, rise), (0.0, -(r + size * 1.1)), (0.0, r + size * 1.1)];
+                let far = near.map(|(dx, dy)| (dx + dx.signum() * size * 0.6, dy * 1.7));
+                for (dx, dy) in near.into_iter().chain(far) {
                     let poses = horizontal_label(&layout, Coord { x: at.x + dx, y: at.y + dy }, width, k);
                     if clear(&poses, &taken) {
                         keep(poses, *at, &mut taken, &mut out, &mut named);

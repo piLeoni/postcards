@@ -1,4 +1,4 @@
-title("Atlas")
+title("Schoolroom atlas")
 output({
   width: "8in",
   height: "6in",

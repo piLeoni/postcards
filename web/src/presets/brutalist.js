@@ -1,4 +1,4 @@
-title("Brutalist")
+title("Béton brut")
 output({
   width: "10in",
   height: "10in",

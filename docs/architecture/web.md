@@ -46,7 +46,7 @@ Share URLs: `lib/share.js` (fragments `#js=`, etc.).
 
 ## Views (composite pages)
 
-A graph with `views` (`view(...)`: the France postcard) is drawn the way the CLI draws it. After the page's own downloads, `gatherViews` in `draw.worker.js` makes a `Job` for each `views[i].graph` at its own place, runs the same pipeline on it (Overpass, tiles, terrain, datasets, Google and stroke fonts), and hands it to the page job with `job.addView(sub)` (wasm moves its inputs out; the sub-job is used up). Each view's progress rows are emitted with ids prefixed `view:<id>:` under a `view <id>` row, so they never collide with the page's. Built-in presets a view names are embedded in the script interpreter (`drawland-script/build.rs`).
+A graph with `views` (`view(...)`: Bonjour de France, `postcard-france`) is drawn the way the CLI draws it. After the page's own downloads, `gatherViews` in `draw.worker.js` makes a `Job` for each `views[i].graph` at its own place, runs the same pipeline on it (Overpass, tiles, terrain, datasets, Google and stroke fonts), and hands it to the page job with `job.addView(sub)` (wasm moves its inputs out; the sub-job is used up). Each view's progress rows are emitted with ids prefixed `view:<id>:` under a `view <id>` row, so they never collide with the page's. Built-in presets a view names are embedded in the script interpreter (`drawland-script/build.rs`).
 
 ## GeoJSON import
 

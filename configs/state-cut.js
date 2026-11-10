@@ -1,4 +1,4 @@
-// State cut: one state's silhouette, on a 4 × 6 in portrait card, its relief
+// Cookie cutter: one state's silhouette, on a 4 × 6 in portrait card, its relief
 // in one ink and one pattern. Every height belt is hatched with the same
 // lines, closer together the higher it lies, and outlined where it meets the
 // next. Nothing is drawn outside the border; the border is its own layer
@@ -8,7 +8,7 @@
 //
 //   drawland map configs/state-cut.js -o exports/state-cut.svg
 
-title("State cut")
+title("Cookie cutter · boolean cut")
 output({
   width: "4in",
   height: "6in",

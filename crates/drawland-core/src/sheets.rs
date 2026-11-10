@@ -1,9 +1,10 @@
-//! The paper the drawing goes on: a blank `padding` inside the output's edge,
-//! and the output cut into `slices`, `columns × rows` sheets of equal size with
-//! a blank `slices.gutter` between their drawings, half on each side of a
-//! cut, like the panels of a triptych. Every sheet's `inner` rectangle crops
-//! the composed drawing (padding zero still clips to the card edge);
-//! nothing is moved or scaled.
+//! The paper the drawing goes on: the output cut into `slices`, `columns ×
+//! rows` sheets of equal size, like the panels of a triptych, each with the
+//! same blank margin on all four sides: the output's `padding`, or half the
+//! `slices.gutter` when that is larger — so two neighbouring drawings are
+//! never closer than the gutter, and a sheet's outer edges match its cut
+//! ones. Every sheet's `inner` rectangle crops the composed drawing (padding
+//! zero still clips to the card edge); nothing is moved or scaled.
 
 use crate::geom::{self, Lines};
 use crate::svg;
@@ -18,8 +19,9 @@ pub struct Slices {
     pub columns: u32,
     #[serde(default = "one")]
     pub rows: u32,
-    /// Blank space between neighbouring sheets' drawings, across and down;
-    /// the outer edges keep the output's padding.
+    /// The least blank space between neighbouring sheets' drawings, across
+    /// and down. Every sheet keeps `max(padding, gutter / 2)` on all four
+    /// sides: the gutter never adds to the padding, it only wins when larger.
     #[serde(default)]
     pub gutter: MmXY,
 }
@@ -50,18 +52,14 @@ pub struct Sheet {
 pub fn sheets(width: f64, height: f64, padding: MmXY, slices: &Slices) -> Vec<Sheet> {
     let (cols, rows) = (slices.columns.max(1), slices.rows.max(1));
     let (sw, sh) = (width / cols as f64, height / rows as f64);
-    let (hx, hy) = (slices.gutter.x / 2.0, slices.gutter.y / 2.0);
+    // The same margin on every edge of every sheet, outer and cut alike.
+    let (mx, my) = (padding.x.max(slices.gutter.x / 2.0), padding.y.max(slices.gutter.y / 2.0));
     let mut out = Vec::new();
     for r in 0..rows {
         for c in 0..cols {
             let (x0, y0) = (c as f64 * sw, r as f64 * sh);
             let at = [x0, y0, x0 + sw, y0 + sh];
-            let inner = [
-                if c == 0 { padding.x } else { x0 + hx },
-                if r == 0 { padding.y } else { y0 + hy },
-                if c + 1 == cols { width - padding.x } else { x0 + sw - hx },
-                if r + 1 == rows { height - padding.y } else { y0 + sh - hy },
-            ];
+            let inner = [x0 + mx, y0 + my, x0 + sw - mx, y0 + sh - my];
             out.push(Sheet { name: format!("r{}c{}", r + 1, c + 1), at, inner });
         }
     }
@@ -521,13 +519,15 @@ mod tests {
         assert_eq!(s[0].name, "r1c1");
         assert_eq!(s[5].name, "r2c3");
         assert_eq!(s[0].at, [0.0, 0.0, 50.0, 50.0]);
-        // The output's padding on the outside edges, half the gutter on each side of a cut.
-        assert_eq!(s[0].inner, [5.0, 5.0, 48.0, 48.0]);
-        assert_eq!(s[4].inner, [52.0, 52.0, 98.0, 95.0]);
+        // The padding all round every sheet: half a 4 mm gutter is less, so it
+        // does not add to it.
+        assert_eq!(s[0].inner, [5.0, 5.0, 45.0, 45.0]);
+        assert_eq!(s[4].inner, [55.0, 55.0, 95.0, 95.0]);
         let thin = sheets(150.0, 100.0, even(0.0), &Slices { columns: 2, rows: 1, gutter: even(6.0) });
-        assert_eq!(thin[0].inner, [0.0, 0.0, 72.0, 100.0], "a gutter leaves the outer edges alone");
-        let apart = sheets(150.0, 100.0, MmXY { x: 6.0, y: 2.0 }, &Slices { columns: 2, rows: 2, gutter: MmXY { x: 8.0, y: 0.0 } });
-        assert_eq!(apart[3].inner, [79.0, 50.0, 144.0, 98.0], "across and down apart");
+        assert_eq!(thin[0].inner, [3.0, 3.0, 72.0, 97.0], "a gutter alone leaves half itself round every sheet, outer edges too");
+        assert_eq!(thin[1].inner[0] - thin[0].inner[2], 6.0, "and the drawings are the gutter apart");
+        let apart = sheets(150.0, 100.0, MmXY { x: 6.0, y: 2.0 }, &Slices { columns: 2, rows: 2, gutter: MmXY { x: 16.0, y: 0.0 } });
+        assert_eq!(apart[3].inner, [83.0, 52.0, 142.0, 98.0], "the larger of the two wins, across and down apart");
     }
 
     #[test]

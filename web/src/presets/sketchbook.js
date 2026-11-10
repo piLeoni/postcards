@@ -1,12 +1,12 @@
-title("Sketchbook")
+title("Napkin sketch")
 output({
-  width: "6in",
-  height: "4in",
-  scale: "1:10000",
+  width: "297mm",
+  height: "210mm",
+  scale: "1:25000",   // terrain 4.61 × 3.26 mi
   bearing: 0,
   projection: "webmercator",
-  lat: 37.8056294,
-  lng: -122.4462699,
+  lat: 45.4344693,
+  lng: 12.3377579,
   tileZoom: 14,
   padding: "0.1in",
 })

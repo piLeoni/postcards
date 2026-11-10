@@ -13,7 +13,7 @@
 //
 // The default is Paris's twenty arrondissements, from opendata.paris.fr.
 
-title("GeoJSON overlay")
+title("Red pencil · GeoJSON")
 output({
   width: "10in",
   height: "7.5in",

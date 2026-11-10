@@ -713,3 +713,23 @@ fn an_inked_view_is_a_pen_of_its_own() {
     assert!(out.svg.contains("#ff0000"));
     assert!(err("view({ id: 'a', at: [0, 0], size: [5, 5], ink: 3 }, () => {})").to_string().contains("ink"));
 }
+
+#[test]
+fn json_items_draw_as_points_through_the_runner() {
+    let g = evaluate(
+        "output({ width: '100mm', height: '100mm', scale: '1:1000000', lat: 0, lng: 0 })\n\
+         const v = features.json('https://example.org/v', { items: 'data', lat: 'a.lat', lng: 'a.lng' })\n\
+         draw({ id: 'red', from: lines.rings(areas.around(features.where(v, { 'route.id': 'Red' }), '1mm')) })\n",
+    )
+    .unwrap();
+    assert_eq!(g.datasets(), ["https://example.org/v"]);
+    assert_eq!(Grammar::from_json(&g.to_json().to_string()).unwrap(), g);
+    let reply = r#"{"data":[{"a":{"lat":0.01,"lng":0.02},"route":{"id":"Red"}},{"a":{"lat":0,"lng":0},"route":{"id":"Blue"}}]}"#;
+    let output = Output::new(&g.output, (0.0, 0.0));
+    let mut inputs = no_inputs(vec![]);
+    inputs.data = [("https://example.org/v".to_string(), reply.to_string())].into();
+    let out = run(&g, &output, inputs).unwrap();
+    let strokes: BTreeMap<_, _> = out.groups.into_iter().collect();
+    assert_eq!(strokes["red"], 1, "one red vehicle, one ring");
+    assert!(err("features.json('u', { lat: 'a' })").to_string().contains("lng"));
+}

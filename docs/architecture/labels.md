@@ -18,7 +18,7 @@ Place names along lines or at points; render as Hershey strokes or Google font o
 
 `modules.labels({ from: [feature sets], in?: area, rules: [...] })` in `library.js`.
 
-By default, label placement (`labels::place`) checks glyph quads against the drawable sheet area (`sheets::drawable_area`, which subtracts `output.padding` and `output.slices.gutter`) rather than the raw card edge, so `output.padding` never slices placed labels in half. When `in: area` is passed, labels are further restricted to that area (e.g. a custom inset or rounded frame).
+By default, label placement (`labels::place`) checks glyph quads against the drawable sheet area (`sheets::drawable_area`: every sheet inset by `max(output.padding, slices.gutter / 2)`) rather than the raw card edge, so `output.padding` never slices placed labels in half. When `in: area` is passed, labels are further restricted to that area (e.g. a custom inset or rounded frame).
 
 Rules match tags (`tiles:layer`, road `class`, etc.), set sizes (`size`, `minSize`), fonts, buffering along lines (`buffer`, `keepCenterline`).
 
@@ -41,3 +41,7 @@ Outline glyphs: filled silhouette uses **non-zero** winding across all contours 
 ## Projection
 
 Label geometry is in output mm after the same projection as other features.
+
+## Avoid
+
+`modules.labels({ avoid })` (`Labels::avoid`, `labels::place_avoiding`): an area the letters (grown by `padding`) keep off, while a place's point and dot may sit on it — a station on a transit line gets its name beside the line, never across it. Point labels try the eight spots round the dot, then the same eight a step farther out, so a long name beside a sloping line still finds room.

@@ -3,11 +3,11 @@
 // the sea (Mont-Saint-Michel in its bay), the countryside (the gardens of
 // Versailles) and the mountains (Mont Blanc). Each corner is named in a tab
 // cut into it; across the middle, over all four, the country's name in a
-// geometric sans filled with diagonal lines, the map cleared round the word.
+// geometric sans inked solid in red, as the greeting over it, the map cleared round the word.
 //
 //   drawland map configs/postcard-france.js -o exports/france.svg
 
-title("France postcard")
+title("Bonjour de France")
 // The page's own place only says where the card sits on the map (over
 // France, its four corners inside it): the page draws no map of its own,
 // each view has its own place and scale.
@@ -49,15 +49,13 @@ const TAB = { font: sans(700), size: 2.6, pad: 1.6, em: 0.78 }
 const GREET = { font: sans(700), size: 3.4, above: 4.2 }
 
 // One width for every pen. Heavier lines are doubled, not widened; letters
-// are filled with diagonal lines, never a thicker stroke. The title's edge
-// in navy, its fill and the greeting in red: two more pens.
+// are filled with diagonal lines, never a thicker stroke. The greeting and
+// the name share one more pen, red: an outline and a tight hatch inside.
 /** @param {string} color */
 const pen = (color) => ({ color, width: 0.2, cap: "round" })
-const NAVY = "#1d2a5c"
 const RED = "#ff4f3a"
-const DOUBLE = 0.3
-const TITLE_HATCH = { pattern: "lines", spacing: "0.7mm", angle: 45 }
-const TAB_HATCH = { pattern: "lines", spacing: "0.24mm", angle: 45 }
+/** Letters inked solid: diagonal lines just under the nib apart, counters left open. */
+const SOLID_HATCH = { pattern: "lines", spacing: "0.24mm", angle: 45 }
 // Paper kept clear round every letter of the title and the greeting.
 const TITLE_CLEAR = "1.2mm"
 
@@ -91,11 +89,6 @@ const tabs = cells.map((c) => {
 })
 
 const titleSpec = { at: ["50%", "50%"], text: NAME.toUpperCase(), size: `${TITLE.size}mm`, font: TITLE.font }
-const titleEdge = lines.text(titleSpec)
-// The edge doubled — a line either side of it — and the letters inside the
-// inner line hatched; their counters stay open.
-const titleDouble = lines.rings(areas.buffer(titleEdge, `${DOUBLE / 2}mm`))
-const titleInside = areas.grow(areas.text({ ...titleSpec, counters: "open" }), `-${DOUBLE / 2 + 0.15}mm`)
 // The greeting just above the name, its letters filled solid.
 const greetSpec = {
   at: ["50%", PAGE.h / 2 - TITLE.size / 2 - GREET.above],
@@ -110,12 +103,13 @@ const frameIds = cells.map((c, i) => draw({ id: `frame_${c.id}`, from: lines.rin
 const tabIds = tabs.flatMap((t) => [
   draw({ id: `tab_${t.id}`, from: lines.rings(t.box), stroke: pen(t.ink) }),
   draw({ id: `tab_name_${t.id}`, from: t.edge, stroke: pen(t.ink) }),
-  draw({ id: `tab_fill_${t.id}`, from: fills.fill({ in: t.letters, ...TAB_HATCH }), stroke: pen(t.ink) }),
+  draw({ id: `tab_fill_${t.id}`, from: fills.fill({ in: t.letters, ...SOLID_HATCH }), stroke: pen(t.ink) }),
 ])
-draw({ id: "title", from: titleDouble, stroke: pen(NAVY) })
-draw({ id: "title_fill", from: fills.fill({ in: titleInside, ...TITLE_HATCH }), stroke: pen(RED) })
-draw({ id: "greeting", from: lines.text(greetSpec), stroke: pen(RED) })
-draw({ id: "greeting_fill", from: fills.fill({ in: areas.text({ ...greetSpec, counters: "open" }), ...TAB_HATCH }), stroke: pen(RED) })
+// The name and the greeting alike: the letters' outline, and inked solid inside.
+for (const [id, spec] of [["title", titleSpec], ["greeting", greetSpec]]) {
+  draw({ id, from: lines.text(spec), stroke: pen(RED) })
+  draw({ id: `${id}_fill`, from: fills.fill({ in: areas.text({ ...spec, counters: "open" }), ...SOLID_HATCH }), stroke: pen(RED) })
+}
 
 // ── 4. OCCLUSION MASKS ──────────────────────────────────────────────────
 

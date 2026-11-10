@@ -101,8 +101,10 @@ export function outputBox(map, output) {
 export function sheetsOf(output) {
   const cols = Math.max(1, output.columns ?? 1)
   const rows = Math.max(1, output.rows ?? 1)
-  const [px, py] = [output.padding_x_mm ?? 0, output.padding_y_mm ?? 0]
-  const [hx, hy] = [(output.gutter_x_mm ?? 0) / 2, (output.gutter_y_mm ?? 0) / 2]
+  // Every sheet keeps the same margin on all four sides: the padding, or
+  // half the gutter when that is larger (the gutter never adds to it).
+  const mx = Math.max(output.padding_x_mm ?? 0, (output.gutter_x_mm ?? 0) / 2)
+  const my = Math.max(output.padding_y_mm ?? 0, (output.gutter_y_mm ?? 0) / 2)
   const [w, h] = [output.width_mm, output.height_mm]
   const [sw, sh] = [w / cols, h / rows]
   const out = []
@@ -111,12 +113,7 @@ export function sheetsOf(output) {
       const [x0, y0] = [c * sw, r * sh]
       out.push({
         at: [x0, y0, x0 + sw, y0 + sh],
-        inner: [
-          c === 0 ? px : x0 + hx,
-          r === 0 ? py : y0 + hy,
-          c === cols - 1 ? w - px : x0 + sw - hx,
-          r === rows - 1 ? h - py : y0 + sh - hy,
-        ],
+        inner: [x0 + mx, y0 + my, x0 + sw - mx, y0 + sh - my],
       })
     }
   }

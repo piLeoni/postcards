@@ -35,7 +35,10 @@ CLI HTTP: `drawland-cli/src/osm_http.rs`. Policy constants (endpoints, timeouts)
 
 CLI downloads via terramask's fetcher; web uses `web/src/lib/tiles.js` + `Job.readTiles`.
 
-## GeoJSON datasets
+## GeoJSON and JSON datasets
+
+`features.json(url, { items, lat, lng })` compiles to `data_select: { json: { url, items, lat, lng } }` (`DataSource::Json`): plain JSON fetched and cached exactly like a GeoJSON URL (it is in `Grammar::datasets()`), then turned into points by `geojson::features_from_json` — dot-paths to the item array and each item's position, every other field a tag under its dotted path. First user: `configs/boston-live.js` (MBTA vehicles).
+
 
 `features.geojson(source)` compiles to `data_select`. A string source (URL or file path) is listed by `Grammar::datasets()`; the host reads each one and passes the text as `Inputs::data`, keyed as written. An inline object (`{ geojson: {…} }`) lives in the graph and needs no host.
 

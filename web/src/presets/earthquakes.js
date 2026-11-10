@@ -1,4 +1,4 @@
-// Earthquakes: the last 30 days of magnitude 4.5+ quakes from the USGS live
+// Shaky ground: the last 30 days of magnitude 4.5+ quakes from the USGS live
 // feed, on a plain map (Natural Earth countries) with the tectonic plate
 // boundaries they trace. Web mercator, like the map on the page: move or
 // rescale the card and it draws whatever part of the world is under it. Dot size is the magnitude, ink the
@@ -7,7 +7,7 @@
 //
 //   drawland map configs/earthquakes.js -o exports/earthquakes.svg
 
-title("Earthquakes")
+title("Shaky ground · live data")
 output({
   width: "11in",
   height: "7in",

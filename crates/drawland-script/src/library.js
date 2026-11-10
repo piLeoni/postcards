@@ -100,6 +100,21 @@
     // Every feature of a GeoJSON dataset: a URL (fetched, cached) or a file
     // path beside the profile. Properties become tags, for `features.where`
     // and labels.
+    // Points from plain JSON (a transit API, a feed): dot-paths to the items
+    // and to each item's latitude and longitude. Every field of an item is a
+    // tag under its dotted path, for `features.where`.
+    //   features.json(url, { items: "data", lat: "attributes.latitude", lng: "attributes.longitude" })
+    json(url, paths) {
+      if (typeof url !== "string" || !url.trim()) fail(`features.json takes a URL or a file path, got ${describe(url)}`);
+      object(paths, "features.json paths");
+      for (const k of ["lat", "lng"]) {
+        if (typeof paths[k] !== "string" || !paths[k]) fail(`features.json needs ${k}, the dot-path to each item's ${k === "lat" ? "latitude" : "longitude"}`);
+      }
+      if (paths.items != null && typeof paths.items !== "string") fail("features.json items is a dot-path, like \"data\"");
+      const extra = Object.keys(paths).filter((k) => !["items", "lat", "lng"].includes(k));
+      if (extra.length) fail(`features.json: unknown key ${extra[0]} (items, lat, lng)`);
+      return make(Features, "features", { data_select: { json: { url: url.trim(), items: paths.items ?? "", lat: paths.lat, lng: paths.lng } } });
+    },
     // Or GeoJSON written in the profile: a graticule, a route, points of its own.
     geojson(source) {
       if (source !== null && typeof source === "object" && !Array.isArray(source)) {
@@ -580,14 +595,15 @@
     // strokes, `area` what they cover, for fills.fill, masks and the rest.
     labels(options = {}) {
       object(options, "modules.labels options");
-      const { from, in: inArea, keys, rules, ...rest } = options;
+      const { from, in: inArea, avoid, keys, rules, ...rest } = options;
       const sets = Array.isArray(from) ? from : [from];
       if (!sets.length) fail("modules.labels: from needs at least one feature set");
       const op = {
         from: sets.map((f, i) => need(f, Features, sets.length > 1 ? `modules.labels from (input ${i + 1})` : "modules.labels from")),
-        ...labelLook(rest, "modules.labels", "option", ["from", "in", "keys", "rules"]),
+        ...labelLook(rest, "modules.labels", "option", ["from", "in", "avoid", "keys", "rules"]),
       };
       if (inArea !== undefined) op.in = need(inArea, Area, "modules.labels in");
+      if (avoid !== undefined) op.avoid = need(avoid, Area, "modules.labels avoid");
       if (keys !== undefined) {
         const ks = Array.isArray(keys) ? keys : [keys];
         if (!ks.length || !ks.every((k) => typeof k === "string")) fail(`modules.labels: keys is a tag or a list of tags, got ${describe(keys)}`);

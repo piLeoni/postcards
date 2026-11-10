@@ -231,9 +231,13 @@ interface OutputOptions {
   bearing?: number
   /** `"webmercator"` (the web map, north up), `"utm"` (true distances), or a PROJ string with `{lat}` and `{lng}`. */
   projection?: "webmercator" | "utm" | `+proj=${string}`
-  /** Blank margin inside the paper's edge: one length, or across and down. */
+  /** Blank margin inside the paper's edge (and round every sheet when cut): one length, or across and down. */
   padding?: Length | [Length, Length]
-  /** The output cut into sheets. */
+  /**
+   * The output cut into sheets. `gutter` is the least gap between two
+   * sheets' drawings: every sheet keeps `max(padding, gutter / 2)` on all four
+   * sides, so the gutter never adds to the padding, it only wins when larger.
+   */
   slices?: { columns?: number; rows?: number; gutter?: Length | [Length, Length] }
   /** Bend the ground before drawing; the paper's edge stays. */
   warp?: Warp | Warp[]
@@ -289,6 +293,18 @@ declare const features: {
    * must allow CORS, and a file is one dropped on the page (by its name).
    */
   geojson(source: string | { type: string; [key: string]: unknown }): Features
+  /**
+   * Points from plain JSON — a transit API, a live feed — read like a GeoJSON
+   * URL (cached 15 min; in the browser the URL must allow CORS). `items` is
+   * the dot-path to the array of items (empty or left out: the reply is the
+   * array); `lat` and `lng` the dot-paths to each item's position. Every
+   * other field becomes a tag under its dotted path:
+   *
+   *   const vehicles = features.json("https://api-v3.mbta.com/vehicles",
+   *     { items: "data", lat: "attributes.latitude", lng: "attributes.longitude" })
+   *   features.where(vehicles, { "relationships.route.data.id": "Red" })
+   */
+  json(url: string, paths: { items?: string; lat: string; lng: string }): Features
   /**
    * The features whose tags pass every test: a value, a list of them, `true`
    * or `false` for present or absent, or a numeric range, `min` included and
@@ -658,6 +674,12 @@ interface LabelOptions {
   from: Features | Features[]
   /** Area to keep labels inside (default: the drawable sheet area after `output.padding`). */
   in?: Area
+  /**
+   * An area the letters keep off — the lines of a transit map, the roads
+   * under a park's name. A place's point and dot may still sit on it, so a
+   * station on a line gets its name beside the line, never across it.
+   */
+  avoid?: Area
   /** Capital height of the most important labels. Default `"2mm"`. */
   size?: Length
   /** Capital height of the least important. Default `"1.1mm"`. */

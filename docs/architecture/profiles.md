@@ -29,6 +29,7 @@ Limits: `LOOP_LIMIT`, `RECURSION_LIMIT` in `lib.rs`. Errors format as `line N co
 Common patterns:
 
 - `features.tiles("buildings")` / `features.osm({ … })`
+- `features.json(url, { items, lat, lng })` — points from plain JSON (a live API), fields as dotted tags
 - `features.geojson(url | path | {…})` — a dataset; properties are tags, so `features.where` bands it (`configs/earthquakes.js`, `configs/geojson-overlay.js`)
 - `areas.polygons`, `union`, `difference`, `grow`, `buffer`, …
 - `fills.fill({ in, pattern, spacing, … })`

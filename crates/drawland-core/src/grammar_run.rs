@@ -204,11 +204,22 @@ fn run_graph(
         sources.insert(file.clone(), drawing);
     }
 
+    // Every dataset read once, keyed by how it is read (a JSON source is its
+    // URL and paths, so two readings of one reply stay apart).
     let mut data: BTreeMap<String, Vec<Feature>> = BTreeMap::new();
-    for src in grammar.datasets() {
-        let text = inputs.data.get(&src).ok_or_else(|| RunError::Plan(format!("dataset {src:?} was not given")))?;
-        let found = crate::geojson::features(text).map_err(|e| RunError::Plan(format!("dataset {src:?}: {e}")))?;
-        data.insert(src, found);
+    for def in grammar.all_defs() {
+        let Op::DataSelect(source) = &def.op else { continue };
+        let (Some(url), key) = (source.url(), data_key(source)) else { continue };
+        if data.contains_key(&key) {
+            continue;
+        }
+        let text = inputs.data.get(url).ok_or_else(|| RunError::Plan(format!("dataset {url:?} was not given")))?;
+        let found = match source {
+            crate::grammar::DataSource::Json(j) => crate::geojson::features_from_json(text, &j.items, &j.lat, &j.lng),
+            _ => crate::geojson::features(text),
+        }
+        .map_err(|e| RunError::Plan(format!("dataset {url:?}: {e}")))?;
+        data.insert(key, found);
     }
     let data_n: usize = data.values().map(Vec::len).sum();
     let project = draw.child("project", "project", (inputs.features.len() + inputs.tiles.len() + data_n) as u64, "features");
@@ -304,6 +315,15 @@ fn run_graph(
     let cut = if slices.is_empty() { String::new() } else { format!(" · {} slices", slices.len()) };
     draw.child("svg", "svg", 0, "").ok(&format!("{} strokes · {:.1} MB{cut}", thousands(strokes as u64), written as f64 / 1e6));
     Ok(Drawn { groups, slices })
+}
+
+/// How a read dataset is kept: a GeoJSON URL by itself, a JSON source by its
+/// URL and the paths it reads.
+fn data_key(source: &crate::grammar::DataSource) -> String {
+    match source {
+        crate::grammar::DataSource::Json(j) => format!("json\u{1}{}\u{1}{}\u{1}{}\u{1}{}", j.url, j.items, j.lat, j.lng),
+        other => other.url().unwrap_or_default().to_string(),
+    }
 }
 
 /// The features a selection picks from, in output millimetres.
@@ -510,7 +530,9 @@ fn eval_op<'a>(
         Op::TileSelect(t) => {
             Value::Features(features.tiles.iter().filter(|f| crate::tiles::keeps(&t.filter, f)).cloned().collect())
         }
-        Op::DataSelect(crate::grammar::DataSource::Url(src)) => Value::Features(features.data.get(src).cloned().unwrap_or_default()),
+        Op::DataSelect(source @ (crate::grammar::DataSource::Url(_) | crate::grammar::DataSource::Json(_))) => {
+            Value::Features(features.data.get(&data_key(source)).cloned().unwrap_or_default())
+        }
         Op::DataSelect(crate::grammar::DataSource::Inline(gj)) => {
             let found = crate::geojson::features_of(gj).map_err(|e| format!("inline GeoJSON: {e}"))?;
             Value::Features(found.into_iter().map(|mut f| {
@@ -669,7 +691,8 @@ fn eval_op<'a>(
                 Some(n) => geom::intersection(area(n)?, &engine.drawable),
                 None => engine.drawable.clone(),
             };
-            Value::Labels(crate::labels::place(&named, &bounds, &l.style, engine.google_fonts, engine.stroke_fonts)?)
+            let avoid = l.avoid.as_ref().map(|n| area(n)).transpose()?;
+            Value::Labels(crate::labels::place_avoiding(&named, &bounds, avoid, &l.style, engine.google_fonts, engine.stroke_fonts)?)
         }
         // A fill another def reads, made whole (see `evaluate`).
         Op::Fill(f) => {

@@ -113,13 +113,40 @@ pub struct TileSelect {
     pub filter: terramask::Filter,
 }
 
-/// Where a `data_select` reads its GeoJSON.
+/// Where a `data_select` reads its features.
 #[derive(Debug, Clone, PartialEq)]
 pub enum DataSource {
-    /// A URL or a file path, for the host to read.
+    /// A GeoJSON URL or file path, for the host to read.
     Url(String),
     /// GeoJSON the profile wrote out itself.
     Inline(Value),
+    /// Plain JSON with positions in it (a transit API, a feed), read by the
+    /// host like a GeoJSON URL and turned into points by [`JsonSource`].
+    Json(JsonSource),
+}
+
+impl DataSource {
+    /// The URL or path the host reads, when there is one.
+    pub fn url(&self) -> Option<&str> {
+        match self {
+            DataSource::Url(u) => Some(u),
+            DataSource::Json(j) => Some(&j.url),
+            DataSource::Inline(_) => None,
+        }
+    }
+}
+
+/// `features.json(url, { items, lat, lng })`: dot-paths into the reply — the
+/// array of items (empty: the reply is the array), and each item's latitude
+/// and longitude (numbers, or numbers written as text).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct JsonSource {
+    pub url: String,
+    #[serde(default)]
+    pub items: String,
+    pub lat: String,
+    pub lng: String,
 }
 
 /// `tools_where`: the features of `of` whose tags pass every test, as
@@ -345,6 +372,9 @@ pub struct Labels {
     /// Placed together, so no set's labels cover another's.
     pub from: Vec<Name>,
     pub in_area: Option<Name>,
+    /// An area the letters keep off (the lines of a transit map); a place's
+    /// point and dot may still sit on it.
+    pub avoid: Option<Name>,
     pub style: crate::labels::Style,
 }
 
@@ -504,7 +534,7 @@ impl Op {
                 .chain(b.regions.values().cloned())
                 .chain(b.water.iter().cloned())
                 .collect(),
-            Op::Labels(l) => l.from.iter().chain(l.in_area.iter()).cloned().collect(),
+            Op::Labels(l) => l.from.iter().chain(l.in_area.iter()).chain(l.avoid.iter()).cloned().collect(),
             Op::LabelLines(p) | Op::LabelArea(p) => vec![p.of.clone()],
             Op::Fill(f) | Op::FillCover(f) => {
                 std::iter::once(f.in_area.clone()).chain(f.content.iter().cloned()).collect()
@@ -772,9 +802,12 @@ impl Grammar {
     pub fn datasets(&self) -> Vec<String> {
         let mut out: Vec<String> = Vec::new();
         for def in self.all_defs() {
-            if let Op::DataSelect(DataSource::Url(src)) = &def.op {
-                if !out.contains(src) {
-                    out.push(src.clone());
+            if let Some(src) = match &def.op {
+                Op::DataSelect(d) => d.url(),
+                _ => None,
+            } {
+                if !out.iter().any(|o| o == src) {
+                    out.push(src.to_string());
                 }
             }
         }
@@ -1197,7 +1230,15 @@ fn parse_op(raw: RawOp, section: Section) -> Result<Op, GrammarError> {
                 crate::geojson::features_of(&gj).map_err(|e| GrammarError::Invalid(format!("data_select: {e}")))?;
                 Op::DataSelect(DataSource::Inline(gj))
             }
-            _ => return Err(GrammarError::Invalid("data_select is a URL, a file path, or { geojson: {…} }".into())),
+            Value::Object(o) if o.len() == 1 && o.get("json").is_some_and(Value::is_object) => {
+                let js: JsonSource = serde_json::from_value(o["json"].clone())
+                    .map_err(|e| GrammarError::Invalid(format!("data_select.json: {e}")))?;
+                if js.url.trim().is_empty() || js.lat.is_empty() || js.lng.is_empty() {
+                    return Err(GrammarError::Invalid("data_select.json needs a url, and the lat and lng paths".into()));
+                }
+                Op::DataSelect(DataSource::Json(js))
+            }
+            _ => return Err(GrammarError::Invalid("data_select is a URL, a file path, { geojson: {…} } or { json: { url, items, lat, lng } }".into())),
         },
         "tools_where" => Op::Where(parse_where(&value)?),
         "engine_frame" => Op::Frame,
@@ -1430,20 +1471,24 @@ fn parse_op(raw: RawOp, section: Section) -> Result<Op, GrammarError> {
             if let Some(f) = from.iter().find(|f| f.section != Section::Features) {
                 return Err(GrammarError::Invalid(format!("tools_labels.from has {f}, but it reads $features sets")));
             }
-            let in_area = match body.remove("in") {
-                None => None,
-                Some(Value::String(s)) => {
-                    let n = refname(&s)?;
-                    if n.section != Section::Areas {
-                        return Err(GrammarError::Invalid(format!("tools_labels.in is {n}, but it reads an $areas def")));
+            let mut area_ref = |key: &str| -> Result<Option<Name>, GrammarError> {
+                match body.remove(key) {
+                    None => Ok(None),
+                    Some(Value::String(s)) => {
+                        let n = refname(&s)?;
+                        if n.section != Section::Areas {
+                            return Err(GrammarError::Invalid(format!("tools_labels.{key} is {n}, but it reads an $areas def")));
+                        }
+                        Ok(Some(n))
                     }
-                    Some(n)
+                    Some(_) => Err(GrammarError::Invalid(format!("tools_labels.{key} expects an $areas reference"))),
                 }
-                Some(_) => return Err(GrammarError::Invalid("tools_labels.in expects an $areas reference".into())),
             };
+            let in_area = area_ref("in")?;
+            let avoid = area_ref("avoid")?;
             let style: crate::labels::Style = json(&Value::Object(body), "tools_labels")?;
             crate::labels::validate_style(&style).map_err(GrammarError::Invalid)?;
-            Op::Labels(Labels { from, in_area, style })
+            Op::Labels(Labels { from, in_area, avoid, style })
         }
         "tools_rings" => match &value {
             Value::String(s) => Op::Rings(Rings { of: refname(s)?, exterior_only: false }),
@@ -1787,6 +1832,7 @@ pub fn op_to_json(op: &Op) -> Value {
         Op::TileSelect(t) => ("tiles_select", t.items.iter().cloned().map(Value::String).collect()),
         Op::DataSelect(DataSource::Url(src)) => ("data_select", Value::String(src.clone())),
         Op::DataSelect(DataSource::Inline(gj)) => ("data_select", json!({ "geojson": gj })),
+        Op::DataSelect(DataSource::Json(js)) => ("data_select", json!({ "json": js })),
         Op::Where(w) => {
             let tags: serde_json::Map<String, Value> = w
                 .tags
@@ -1887,6 +1933,9 @@ pub fn op_to_json(op: &Op) -> Value {
             body["from"] = refs_json(&l.from);
             if let Some(a) = &l.in_area {
                 body["in"] = Value::String(a.to_string());
+            }
+            if let Some(a) = &l.avoid {
+                body["avoid"] = Value::String(a.to_string());
             }
             ("tools_labels", body)
         }

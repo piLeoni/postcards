@@ -13,6 +13,7 @@ import earthquakes from '../presets/earthquakes.js?raw'
 import geojsonOverlay from '../presets/geojson-overlay.js?raw'
 import stateCut from '../presets/state-cut.js?raw'
 import postcardFrance from '../presets/postcard-france.js?raw'
+import bostonLive from '../presets/boston-live.js?raw'
 import { styleOf, titleOf } from './doc'
 
 export const PRESETS = [
@@ -24,6 +25,7 @@ export const PRESETS = [
   // `ownPlace`: the preset's place and paper are part of it (a world map, a
   // dataset's city), so choosing it loads it whole rather than at the map's place.
   { id: 'earthquakes', hint: 'live data: the last 30 days of quakes (USGS) on a world map, sized by magnitude, inked by depth', doc: earthquakes, ownPlace: true },
+  { id: 'boston-live', hint: 'live data: the T as a transit map (lines from CTPS GeoJSON), every train on it right now (MBTA API, plain JSON)', doc: bostonLive, ownPlace: true },
   { id: 'geojson-overlay', hint: 'a GeoJSON over a quiet base map; drop your own .geojson on the page', doc: geojsonOverlay, ownPlace: true },
   { id: 'state-cut', hint: 'a state\'s silhouette as a 4×6 die-cut card: one ink, one hatch, closer with height, each level outlined', doc: stateCut, ownPlace: true },
   { id: 'postcard-france', hint: 'a postcard of France in four views — Paris, Mont-Saint-Michel, Versailles, Mont Blanc — in City Grain, the name across them', doc: postcardFrance, ownPlace: true },
