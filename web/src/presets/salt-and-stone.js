@@ -1,13 +1,13 @@
 title("Salt & Stone")
 output({
-  width: "6.729in",
-  height: "9.238in",
+  width: "6in",
+  height: "10in",
   scale: "1:170000",   // terrain 18.1 × 24.8 mi
   bearing: 0,
   projection: "webmercator",
-  lat: 37.7378307,
-  lng: -122.3766556,
-  tileZoom: 14,
+  lat: 37.6933607,
+  lng: -122.4257495,
+  tileZoom: 12,
   padding: "0.1in",
 })
 

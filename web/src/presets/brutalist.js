@@ -1,13 +1,14 @@
 title("Brutalist")
 output({
-  width: "6in",
-  height: "4in",
-  scale: "1:10000",
-  bearing: 0,
+  width: "10in",
+  height: "10in",
+  scale: "1:20000",   // terrain 3.16 × 3.16 mi
+  bearing: 108,
   projection: "webmercator",
-  lat: 37.8056294,
-  lng: -122.4462699,
-  tileZoom: 14,
+  lat: -15.7952107,
+  lng: -47.878224,
+  tileZoom: 13,
+  slices: { columns: 2, rows: 2, gutter: "0.1in" },
   padding: "0.1in",
 })
 
@@ -37,75 +38,77 @@ const INK = {
   nature: null,
   built:  null,   // buildings, rail, names
 }
-/** Fine nib (half the master): streets, sea, small names. */
-const FINE = pen(0.5)
-/** @param {string | null} color @param {number} [width] @returns {Exclude<Stroke, string>} */
-const inkStroke = (color, width = PEN) => ({ style: "solid", ...(color ? { color } : {}), width, cap: "round", join: "round" })
+/**
+ * The one nib every line is drawn with. A line that must read heavier is not
+ * widened: it is drawn again beside itself, one nib away, until the passes
+ * touch and read solid (roads, the shore, building outlines, streams).
+ */
+const NIB = pen(0.5)
+/** Kept for the lengths written in it: the nib, as everywhere else. */
+const FINE = NIB
+/** @param {string | null} color @returns {Exclude<Stroke, string>} */
+const inkStroke = (color) => ({ style: "solid", ...(color ? { color } : {}), width: NIB, cap: "round", join: "round" })
 
 /** @type {Stroke} */
 const STROKE_SOLID   = inkStroke(INK.built)
 /** @type {Stroke} */
-const STROKE_STREET  = inkStroke(INK.street, FINE)
+const STROKE_STREET  = inkStroke(INK.street)
 /** @type {Stroke} */
 const STROKE_WATER   = inkStroke(INK.water)
 /** @type {Stroke} */
-const STROKE_SEA     = inkStroke(INK.water, FINE)
+const STROKE_SEA     = inkStroke(INK.water)
 /** @type {Stroke} */
 const STROKE_NATURE  = inkStroke(INK.nature)
 /** @type {Stroke} */
-const STROKE_TREES   = inkStroke(INK.nature, FINE)
+const STROKE_TREES   = inkStroke(INK.nature)
 /** @type {Stroke} */
-const STROKE_FINE    = inkStroke(INK.built, FINE)
+const STROKE_FINE    = inkStroke(INK.built)
 /** @type {Stroke} */
 /** Rail: fine dashes, so a bundle of tracks stays grey, not a black bar. */
 /** @type {Stroke} */
-const STROKE_RAIL    = { ...inkStroke(INK.built, FINE), style: "dash", dash: pen(3), gap: pen(2.5) }
+const STROKE_RAIL    = { ...inkStroke(INK.built), style: "dash", dash: pen(3), gap: pen(2.5) }
 
 // 1b. Clearances
 const OCEAN_SEAM_GROW  = pen(1)
 const FRAME_CLIP_INSET = pen(-0.5)
 const SIMPLIFY_TOL     = pen(0.2)
-const MASS_MIN_RING    = pen(12)    // building masses with a shorter outline (≈1.5 mm square) are left out
+/**
+ * Streets: a bar's passes must stay parallel, so they are only cleaned of
+ * true duplicates and specks — any looser and neighbouring passes are taken
+ * for one another, or bend apart.
+ */
+const ROAD_TOL         = 0.05   // also the shore's double line and the solid building masses
+/** Building masses are opened by this much (shrunk, then grown back): slivers and specks under twice it go, corners square up. */
+const MASS_OPEN        = 0.3
 
-// 1c. Roads: paper widths by class, so streets read the same at any scale.
-// Service roads and paths are left out: only the street grid speaks.
-/** OpenMapTiles carriageway classes (`minor` is residential/unclassified). */
-const VEHICLE_ROADS = "transportation:motorway,trunk,primary,secondary,tertiary,minor"
-/** @type {Omit<RoadOptions, "from">} */
-const ROAD_OPTIONS = {
-  widthMode: "paper",
-  useWidthTag: false,
-  multiplyByLanes: false,
-  centerlineMinWidth: { paper: 1000 },   // never: slabs carry no centre lines
-  jointClose: { paper: 0.4 },
-  classes: {
-    motorway:       pen(6.3),     // 7 lines
-    motorway_link:  pen(2.7),
-    trunk:          pen(5.4),     // 6 lines
-    trunk_link:     pen(2.7),
-    primary:        pen(4.5),     // 5 lines
-    primary_link:   pen(2.7),
-    secondary:      pen(3.6),     // 4 lines
-    secondary_link: pen(2.7),
-    tertiary:       pen(2.7),     // 3 lines
-    tertiary_link:  pen(1.8),
-    default:        pen(1.8),     // residential: 2 lines
-  },
-}
+// 1c. Roads, as a diagram: three measures, nothing else, each a black bar
+// made of passes of the nib laid side by side — one pass, three or five.
+// Each class is first merged into one strip (so the carriageways of a divided
+// road, the slip lanes beside it, become one band) and the bar runs down its
+// middle. Ramps, service roads and paths are left out; a lower class stops at
+// the edge of a higher one.
+// Local streets (`minor`) only at town scales: past 1:20000 they are a
+// texture, not a diagram.
+const LOCAL_STREETS = engine.scale() <= 20000
+const ROAD_CLASSES = [
+  { id: "triple", tiles: "transportation:motorway,trunk",    merge: 2.4, passes: 5 },
+  { id: "double", tiles: "transportation:primary,secondary", merge: 1.4, passes: 3 },
+  { id: "single", tiles: LOCAL_STREETS ? "transportation:tertiary,minor" : "transportation:tertiary", merge: 0.8, passes: 1 },
+]
+/** Passes of a bar this far apart, a little under the nib, so they overlap and read solid. */
+const PASS_STEP = NIB * 0.85
+/** How far a merged strip shrinks to leave its middle: all but a hair of each side. */
+const CORE_HAIR = 0.04
+/** Paper kept clear round each road bar, for the dots and trees. */
+const ROAD_CLEAR = pen(0.6)
 
 // 1d. Fills
-/**
- * Streets: offset rings from every edge, in the fine nib, 0.45 mm apart: each
- * pass sits just clear of the next (0.2 mm of paper between), never on it.
- */
-/** @type {Omit<FillOptions, "in">} */
-const FILL_STREETS   = { pattern: "offsets", spacing: pen(0.9) }
 /** Water: swells in the fine nib, fraying into broken strokes toward the shore. */
 /** @type {Omit<FillOptions, "in">} */
 const FILL_WATER     = { pattern: "swells", spacing: pen(1.6), fray: pen(10) }
-/** Buildings: a dot grid inside every mass, clear of its outline. */
+/** Buildings: solid black, as the roads — rings in from every edge, courtyards too, a little under a nib apart. */
 /** @type {Omit<FillOptions, "in">} */
-const FILL_BUILDINGS = { pattern: "dots", lattice: "square", spacing: pen(2.4), mark: pen(0.1), angle: 0, inset: pen(1.2) }
+const FILL_BUILDINGS = { pattern: "offsets", spacing: PASS_STEP }
 /** Trees: dendritic growth, one nib per branch. */
 /** @type {Omit<FillOptions, "in">} */
 const FILL_TREES     = {
@@ -134,11 +137,11 @@ const TREE_TILES = [
   "landcover:park,recreation_ground,village_green", "landuse:cemetery",
 ]
 
-// 1f. Labels: one heavy, semi-condensed display face (a Google font) for
-// every name, outlined and inked solid (zigzag) in the fine nib. Districts big; street
-// and park names smaller, with a tighter margin.
+// 1f. Labels: one semi-condensed display face (a Google font) for every
+// name, outlined and inked solid (zigzag) in the fine nib, its counters left
+// open. Districts big; street and park names smaller, with a tighter margin.
 /** @type {LabelFont} */
-const LABEL_FONT     = { origin: "google", family: "Saira Semi Condensed", weight: 800 }
+const LABEL_FONT     = { origin: "google", family: "Saira Semi Condensed", weight: 500 }
 const LABEL_BIG      = pen(10)     // 5 mm district names
 const LABEL_SMALL    = pen(5.2)    // 2.6 mm: the smallest at which both edges of a stem stay apart
 const CLEAR_BIG      = pen(3.2)    // paper kept clear round district letters (1.6 mm)
@@ -157,24 +160,41 @@ const LABEL_RULES = [
 // 2. FEATURE EXTRACTION & GEOMETRY PIPELINE
 // ═══════════════════════════════════════════════════════════════════════════
 const frame = engine.frame()
-const roads = modules.roads({ from: features.tiles(VEHICLE_ROADS), ...ROAD_OPTIONS })
+// Each class: the middle of its merged strip, stopping at the bars above
+// it, and passes of the nib either side of that middle.
+const roadClasses = []
+for (const c of ROAD_CLASSES) {
+  const centre = lines.of(features.where(features.tiles(c.tiles), { ramp: false }))
+  const whole = areas.buffer(centre, `${c.merge / 2}mm`)
+  const middle = lines.rings(areas.grow(whole, `-${c.merge / 2 - CORE_HAIR}mm`))
+  const above = roadClasses.map((r) => r.bar)
+  const core = above.length ? lines.clip(middle, areas.union(...above), { invert: true }) : middle
+  const sides = Array.from({ length: (c.passes - 1) / 2 }, (_, k) => lines.rings(areas.buffer(core, `${(k + 1) * PASS_STEP}mm`)))
+  const bar = areas.buffer(core, `${((c.passes - 1) / 2) * PASS_STEP + NIB / 2}mm`)
+  roadClasses.push({ ...c, bar, strokes: lines.join(core, ...sides) })
+}
+const roadArea = areas.union(...roadClasses.map((r) => areas.grow(r.bar, ROAD_CLEAR)))
 // Mainline track only: yards, sidings and spurs (`service` set) would pile
 // dozens of parallel dashes into one black bar.
 const rails = lines.of(features.where(features.tiles("transportation:rail/rail"), { service: false }))
 // Touching buildings fuse into one mass; only its outline is drawn.
-const buildings = areas.union(areas.polygons(features.tiles("buildings")))
+// Opened (shrunk, grown back): slivers and specks go, corners square up.
+const buildings = areas.grow(areas.grow(areas.union(areas.polygons(features.tiles("buildings"))), `-${MASS_OPEN}mm`), `${MASS_OPEN}mm`)
 
 const ocean = areas.extendToFrame(
   areas.grow(areas.intersect(areas.polygons(features.tiles("ocean")), frame), OCEAN_SEAM_GROW),
   frame,
 )
 const water = areas.union(areas.polygons(features.tiles("water:lake,river,pond,dock,reservoir")), ocean)
+// The shore and the building outlines are two passes: the edge, and the
+// edge one nib inside.
+const shore = lines.join(lines.rings(water), lines.rings(areas.grow(water, `-${PASS_STEP}mm`)))
 const streams = lines.clip(lines.of(features.tiles("waterway:river,canal,stream")), water, { invert: true })
 
-const trees = areas.difference(areas.polygons(features.tiles(...TREE_TILES)), roads.area, buildings, water)
+const trees = areas.difference(areas.polygons(features.tiles(...TREE_TILES)), roadArea, buildings, water)
 // All open land gets the stipple, tagged or not: parks, empty lots, yards
 // between houses, and under the trees. Only water, buildings and streets stay off it.
-const ground = areas.difference(frame, roads.area, buildings, water)
+const ground = areas.difference(frame, roadArea, buildings, water)
 const treeLines = fills.fill({ in: SHOW_TREES ? trees : areas.difference(trees, trees), ...FILL_TREES })
 const natureBurin = burin.terrain(
   (b) => b.batch({ angle: 0, draw: "dots", style: BURIN_NATURE_STYLE }),
@@ -193,6 +213,9 @@ const labels = modules.labels({
   minSize: LABEL_SMALL,
   rules: LABEL_RULES,
 })
+// The letters to ink, counters open: each rule's own area (the labels' whole
+// `area` closes the counters, for masks).
+const labelLetters = areas.union(labels.district.area, labels.park.area, labels.street.area)
 const labelClear = areas.union(
   labels.area,
   areas.buffer(labels.district.lines, CLEAR_BIG),
@@ -204,15 +227,15 @@ const labelClear = areas.union(
 // ═══════════════════════════════════════════════════════════════════════════
 const waterDraws = [
   draw({ id: "fill_water",       from: fills.fill({ in: water, ...FILL_WATER }), stroke: STROKE_SEA }),
-  draw({ id: "lines_water_ring", from: lines.clip(lines.rings(water), areas.grow(frame, FRAME_CLIP_INSET)), stroke: STROKE_WATER }),
-  draw({ id: "lines_streams",    from: streams, stroke: STROKE_WATER }),
+  draw({ id: "lines_water_ring", from: lines.clip(shore, areas.grow(frame, FRAME_CLIP_INSET)), stroke: STROKE_WATER }),
+  draw({ id: "lines_streams",    from: lines.rings(areas.buffer(streams, `${PASS_STEP / 2}mm`)), stroke: STROKE_WATER }),
 ]
 const treeDraws = [
   draw({ id: "lines_nature_burin", from: natureBurin, stroke: STROKE_NATURE }),
   draw({ id: "fill_trees",       from: treeLines, stroke: STROKE_TREES }),
 ]
 const roadDraws = [
-  draw({ id: "fill_streets",     from: fills.fill({ in: roads.area, ...FILL_STREETS }), stroke: STROKE_STREET }),
+  ...roadClasses.map((r) => draw({ id: `lines_road_${r.id}`, from: r.strokes, stroke: STROKE_STREET })),
   draw({ id: "lines_rail",       from: rails, stroke: STROKE_RAIL }),
 ]
 const buildingDraws = [
@@ -223,13 +246,13 @@ const buildingDraws = [
 const labelDraws = [
   draw({ id: "lines_labels_district", from: labels.district.lines, stroke: STROKE_FINE }),
   draw({ id: "lines_labels_small",    from: lines.join(labels.park.lines, labels.street.lines), stroke: STROKE_FINE }),
-  draw({ id: "fill_labels",           from: fills.fill({ in: labels.area, ...FILL_LETTERS }), stroke: STROKE_FINE }),
+  draw({ id: "fill_labels",           from: fills.fill({ in: labelLetters, ...FILL_LETTERS }), stroke: STROKE_FINE }),
 ]
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 4. OCCLUSION MASKS & LAYER ORDER
 // ═══════════════════════════════════════════════════════════════════════════
-compose.mask({ name: "mask_roads_over",   from: roads.area, occludes: [...waterDraws, ...treeDraws, ...buildingDraws] })
+compose.mask({ name: "mask_roads_over",   from: roadArea, occludes: [...waterDraws, ...treeDraws, ...buildingDraws] })
 
 compose.mask({ name: "mask_clear_labels", from: labelClear, occludes: [...waterDraws, ...treeDraws, ...roadDraws, ...buildingDraws] })
 
@@ -237,8 +260,7 @@ compose.order(
   "lines_labels_district",
   "lines_labels_small",
   "fill_labels",
-  "fill_streets",
-  "lines_rail",
+  ...roadDraws,
   "lines_buildings",
   "fill_buildings",
   "lines_water_ring",
@@ -252,10 +274,17 @@ compose.order(
 // 5. PLOTTER OPTIMIZATION
 // ═══════════════════════════════════════════════════════════════════════════
 const solid = ["lines_buildings", "lines_water_ring", "lines_streams"]
-// Drop tiny masses first, while each outline is still one closed ring.
-compose.filter(["lines_buildings"], { minLength: MASS_MIN_RING })
-compose.deoverlap(solid, { tolerance: pen(0.8), selfOverlap: true, acrossLayers: true })
-compose.linemerge(solid, pen(1))
-compose.filter(["lines_buildings"], { minLength: pen(4) })   // then the scraps the street slabs leave
-compose.simplify([...solid, "fill_streets", "lines_rail"], SIMPLIFY_TOL)
+// Doubled lines (the shore) and solid masses are passes a little under a
+// nib apart: only true duplicates go.
+compose.deoverlap(solid, { tolerance: ROAD_TOL, selfOverlap: true, acrossLayers: true })
+compose.linemerge(solid, ROAD_TOL)
+// A core is a ring round a hair-thin strip: two strokes on top of each other,
+// one is enough.
+const roadIds = roadDraws.filter((id) => id !== "lines_rail")
+compose.deoverlap(roadIds, { tolerance: ROAD_TOL, selfOverlap: true, acrossLayers: true })
+compose.linemerge(roadIds, ROAD_TOL)
+compose.simplify(["lines_rail"], SIMPLIFY_TOL)
+compose.simplify(solid, ROAD_TOL)
+compose.simplify(roadIds, ROAD_TOL)
+compose.filter(roadIds, { minLength: pen(2) })
 compose.linesort({ except: ["lines_labels_district", "lines_labels_small", "fill_labels"] })
