@@ -378,6 +378,52 @@ pub struct Labels {
     pub style: crate::labels::Style,
 }
 
+/// `tools_graticule` (lines) / `tools_graticule_area` (an area): an atlas
+/// plate's meridians and parallels round the page rectangle `in` (its
+/// bounds), through the output's projection. `part` picks what comes out.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Graticule {
+    pub in_area: Name,
+    pub look: GraticuleLook,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum GraticulePart {
+    /// Lines: the meridians and parallels, cut to `in`.
+    Grid,
+    /// Lines: the degree labels round the border; as an area, what they cover.
+    Labels,
+    /// An area: the border's inked keys.
+    Keys,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GraticuleLook {
+    pub part: GraticulePart,
+    /// Minutes of arc between lines, and between labels.
+    pub step: f64,
+    /// Minutes of arc per key of the border; 0, none.
+    #[serde(default)]
+    pub ticks: f64,
+    /// The key band's width, just outside `in`.
+    #[serde(default)]
+    pub band: Mm,
+    /// Paper between the band and the labels.
+    #[serde(default)]
+    pub gap: Mm,
+    /// The labels' capital height.
+    #[serde(default = "graticule_size")]
+    pub size: Mm,
+    #[serde(default)]
+    pub font: crate::text::LabelFont,
+}
+
+fn graticule_size() -> Mm {
+    Mm(1.8)
+}
+
 /// A penfill run. `per: feature` runs one pattern per polygon instead of one
 /// on the union. `content` fills the area with lines made elsewhere (burin's,
 /// or any `$lines`), cut to it, instead of a pattern.
@@ -413,6 +459,8 @@ pub enum Op {
     Shape(Shape),
     /// What a profile's text covers.
     TextArea(Text),
+    /// An atlas graticule's keys, or its labels' cover.
+    GraticuleArea(Graticule),
     BufferLines(BufferLines),
     /// What the letters of a `$lines` labels def cover.
     LabelArea(LabelPick),
@@ -435,6 +483,8 @@ pub enum Op {
     Path(Shape),
     /// Text written by the profile, as pen strokes.
     Text(Text),
+    /// An atlas graticule: its lines, or its degree labels.
+    Graticule(Graticule),
     /// Pen-and-ink terrain, drawn by burin from the elevation.
     Terrain(Terrain),
     /// A height or depth band of the elevation, as an area (`areas.band`): the
@@ -475,6 +525,7 @@ impl Op {
             | Op::Around(_)
             | Op::Shape(_)
             | Op::TextArea(_)
+            | Op::GraticuleArea(_)
             | Op::BufferLines(_)
             | Op::LabelArea(_)
             | Op::FillCover(_)
@@ -483,6 +534,7 @@ impl Op {
             | Op::TerrainBand(_) => Section::Areas,
             Op::Path(_)
             | Op::Text(_)
+            | Op::Graticule(_)
             | Op::Rings(_)
             | Op::Lines(_)
             | Op::Segments(_)
@@ -535,6 +587,7 @@ impl Op {
                 .chain(b.water.iter().cloned())
                 .collect(),
             Op::Labels(l) => l.from.iter().chain(l.in_area.iter()).chain(l.avoid.iter()).cloned().collect(),
+            Op::Graticule(g) | Op::GraticuleArea(g) => vec![g.in_area.clone()],
             Op::LabelLines(p) | Op::LabelArea(p) => vec![p.of.clone()],
             Op::Fill(f) | Op::FillCover(f) => {
                 std::iter::once(f.in_area.clone()).chain(f.content.iter().cloned()).collect()
@@ -1180,11 +1233,11 @@ fn parse_op(raw: RawOp, section: Section) -> Result<Op, GrammarError> {
     let target = match key.as_str() {
         "osm_select" | "tiles_select" | "data_select" | "tools_where" => Section::Features,
         "tools_polygons" | "tools_union" | "tools_difference" | "tools_intersect" | "tools_fill_holes"
-        | "tools_fill_cover" | "tools_grow" | "tools_around" | "tools_shape" | "tools_text_area" | "tools_buffer_lines" | "tools_label_area" | "tools_extend_to_frame" | "tools_terrain_band" | "engine_frame" => {
+        | "tools_fill_cover" | "tools_grow" | "tools_around" | "tools_shape" | "tools_text_area" | "tools_buffer_lines" | "tools_label_area" | "tools_graticule_area" | "tools_extend_to_frame" | "tools_terrain_band" | "engine_frame" => {
             Section::Areas
         }
         "tools_rings" | "tools_lines" | "tools_segments" | "tools_dedupe" | "tools_merge" | "tools_join"
-        | "tools_clip" | "tools_path" | "tools_text" | "tools_terrain" | "tools_burin" | "tools_labels" | "tools_label_lines" => Section::Lines,
+        | "tools_clip" | "tools_path" | "tools_text" | "tools_terrain" | "tools_burin" | "tools_labels" | "tools_label_lines" | "tools_graticule" => Section::Lines,
         "tools_fill" => Section::Fills,
         other => {
             if let Some(rest) = other.strip_prefix("module_") {
@@ -1454,6 +1507,34 @@ fn parse_op(raw: RawOp, section: Section) -> Result<Op, GrammarError> {
                 water: raw.water.as_deref().map(refname).transpose()?,
                 layer: raw.layer,
             })
+        }
+        "tools_graticule" | "tools_graticule_area" => {
+            let mut body = match value {
+                Value::Object(m) => m,
+                _ => return Err(GrammarError::Invalid(format!("{key} takes {{ in, part, step, ... }}"))),
+            };
+            let in_area = match body.remove("in") {
+                Some(Value::String(s)) => refname(&s)?,
+                _ => return Err(GrammarError::Invalid(format!("{key} needs in: an $areas reference"))),
+            };
+            if in_area.section != Section::Areas {
+                return Err(GrammarError::Invalid(format!("{key}.in is {in_area}, but it reads an $areas def")));
+            }
+            let look: GraticuleLook = json(&Value::Object(body), &key)?;
+            crate::text::validate_label_font(&look.font).map_err(GrammarError::Invalid)?;
+            if !(look.step > 0.0) {
+                return Err(GrammarError::Invalid(format!("{key}.step is minutes of arc, more than 0")));
+            }
+            let fits = match look.part {
+                GraticulePart::Grid => key == "tools_graticule",
+                GraticulePart::Keys => key == "tools_graticule_area",
+                GraticulePart::Labels => true,
+            };
+            if !fits {
+                return Err(GrammarError::Invalid(format!("{key}: part {:?} is not drawn by it", look.part)));
+            }
+            let g = Graticule { in_area, look };
+            if key == "tools_graticule" { Op::Graticule(g) } else { Op::GraticuleArea(g) }
         }
         "tools_labels" => {
             let mut body = match value {
@@ -1927,6 +2008,11 @@ pub fn op_to_json(op: &Op) -> Value {
                 body.insert("layer".into(), Value::String(l.clone()));
             }
             ("tools_burin", Value::Object(body))
+        }
+        Op::Graticule(g) | Op::GraticuleArea(g) => {
+            let mut body = serde_json::to_value(&g.look).unwrap_or_else(|_| json!({}));
+            body["in"] = Value::String(g.in_area.to_string());
+            (if matches!(op, Op::Graticule(_)) { "tools_graticule" } else { "tools_graticule_area" }, body)
         }
         Op::Labels(l) => {
             let mut body = serde_json::to_value(&l.style).unwrap_or_else(|_| json!({}));

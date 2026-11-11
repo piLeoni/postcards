@@ -589,6 +589,42 @@
         rails: out("rails"),
       });
     },
+    // An atlas plate's graticule round the page rectangle `in` (its bounds):
+    // meridians and parallels every `step` minutes of arc, a border band of
+    // black-and-white keys every `ticks` minutes just outside it, and the
+    // degree labels beyond the band. Found through the output's projection,
+    // so it stays true wherever the plate is moved.
+    graticule(options = {}) {
+      object(options, "modules.graticule options");
+      const { in: inArea, step, ticks, band, gap, size, font, ...rest } = options;
+      const extra = Object.keys(rest);
+      if (extra.length) fail(`modules.graticule: unknown option ${extra[0]} (in, step, ticks, band, gap, size, font)`);
+      const within = need(inArea, Area, "modules.graticule in");
+      if (typeof step !== "number" || !(step > 0)) fail(`modules.graticule: step is minutes of arc between lines, got ${describe(step)}`);
+      if (ticks !== undefined && (typeof ticks !== "number" || ticks < 0)) fail(`modules.graticule: ticks is minutes of arc per border key, got ${describe(ticks)}`);
+      const look = { in: within, step };
+      if (ticks !== undefined) look.ticks = ticks;
+      if (band !== undefined) look.band = band;
+      if (gap !== undefined) look.gap = gap;
+      if (size !== undefined) look.size = size;
+      if (font !== undefined) look.font = labelFont(font, "modules.graticule font");
+      const memo = {};
+      const part = (kind, p) => {
+        const k = `${kind === Lines ? "lines" : "area"}:${p}`;
+        if (!memo[k]) {
+          memo[k] = kind === Lines
+            ? make(Lines, "lines", { tools_graticule: { ...look, part: p } })
+            : make(Area, "areas", { tools_graticule_area: { ...look, part: p } });
+        }
+        return memo[k];
+      };
+      return Object.freeze({
+        get lines() { return part(Lines, "grid"); },
+        get keys() { return part(Area, "keys"); },
+        get labels() { return part(Lines, "labels"); },
+        get labelArea() { return part(Area, "labels"); },
+      });
+    },
     // Names written on the map, placed so that none covers another: along
     // the roads (bent with them where they curve), level inside areas, larger
     // the more the feature matters. Geometry only: `lines` are the letters'

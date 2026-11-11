@@ -230,6 +230,18 @@ export default function App() {
   const onViewportRef = useRef(null)
   const viewportSeqRef = useRef(0)
   useEffect(() => () => workerRef.current?.terminate(), [])
+  // The token of the draw the worker is running, 0 when it is idle. Once the
+  // engine itself runs (`job.draw`, synchronous wasm) the worker reads no
+  // messages until it is done, so a draw it is still busy with can only be
+  // stopped by ending the worker: otherwise the next draw waits, unseen, in
+  // its queue behind the stopped one, and the card hangs empty.
+  const workerBusyRef = useRef(0)
+  const dropBusyWorker = useCallback(() => {
+    if (!workerBusyRef.current) return
+    workerRef.current?.terminate()
+    workerRef.current = null
+    workerBusyRef.current = 0
+  }, [])
 
   // The tile plan runs in a worker of its own (see `plan.worker.js`), so
   // planning the grid never touches a draw in flight. Its token drops a reply
@@ -266,10 +278,7 @@ export default function App() {
     const token = ++drawTokenRef.current
     const { lat, lng } = output
     const at = placeOf(output)
-    if (!workerRef.current) {
-      workerRef.current = new Worker(new URL('./lib/draw.worker.js', import.meta.url), { type: 'module' })
-      workerRef.current.onmessage = ({ data }) => onWorkerRef.current?.(data)
-    }
+    dropBusyWorker()
 
     // Mount the output at once, so the first paint is the output itself and not
     // a flash of the old drawing; it repaints at most once a frame.
@@ -334,7 +343,9 @@ export default function App() {
         else if (tileState) tileState.state[msg.i] = msg.state
         tilesChanged()
       } else if (msg.type === 'event') {
-        board.apply(msg.e, msg.e.at ?? performance.now())
+        // The worker stamps events on the wall clock; the card ticks on the
+        // page's `performance.now()`, so bring them onto it.
+        board.apply(msg.e, msg.e.at != null ? msg.e.at - performance.timeOrigin : performance.now())
         changed()
         if (msg.e.kind === 'begin' && msg.e.id === 'draw') {
           setStatus({ phase: 'working', detail: 'Drawing…' })
@@ -345,6 +356,7 @@ export default function App() {
           }
         }
       } else if (msg.type === 'done') {
+        if (workerBusyRef.current === token) workerBusyRef.current = 0
         setDrawing({
           svg: msg.svg,
           preview: msg.preview ?? null,
@@ -363,6 +375,7 @@ export default function App() {
         // The card stays, as the report of this draw; it goes on the next.
         if (token === drawTokenRef.current) setLoadMin(true)
       } else if (msg.type === 'error') {
+        if (workerBusyRef.current === token) workerBusyRef.current = 0
         if (msg.fatal) {
           workerRef.current?.terminate()
           workerRef.current = null
@@ -387,6 +400,11 @@ export default function App() {
     ])
       .then(([googleFonts, strokeFonts]) => {
         if (token !== drawTokenRef.current || ac.signal.aborted) return
+        if (!workerRef.current) {
+          workerRef.current = new Worker(new URL('./lib/draw.worker.js', import.meta.url), { type: 'module' })
+          workerRef.current.onmessage = ({ data }) => onWorkerRef.current?.(data)
+        }
+        workerBusyRef.current = token
         workerRef.current.postMessage({
           type: 'draw',
           token,
@@ -403,22 +421,23 @@ export default function App() {
         if (token !== drawTokenRef.current || e?.name === 'AbortError') return
         onWorkerRef.current?.({ type: 'error', token, message: e?.message ?? String(e), fatal: false })
       })
-  }, [engine, graph, output])
+  }, [engine, graph, output, dropBusyWorker])
 
   /**
    * Stop the draw that is running: its token no longer matches, so its events
    * fall through `onWorkerRef`, the half-drawn card goes, and the status reads
-   * ready again. The worker itself keeps its own copy of the script, so the
-   * next play starts a fresh job rather than resuming this one.
+   * ready again. A worker still busy with it is ended (see `workerBusyRef`),
+   * so the next play starts at once on a fresh one.
    */
   const stop = useCallback(() => {
     if (status.phase !== 'working') return
     drawAbortRef.current?.abort()
+    dropBusyWorker()
     drawTokenRef.current++
     setLoadMin(true)
     setTiles(null)
     setStatus({ phase: 'ready' })
-  }, [status.phase])
+  }, [status.phase, dropBusyWorker])
 
   // While the script and the compiled graph disagree, tile overlays stay hidden:
   // a preset or an apply moves the map at once, but `output`/`here` trail until

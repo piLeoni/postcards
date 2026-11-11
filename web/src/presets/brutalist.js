@@ -101,6 +101,13 @@ const PASS_STEP = NIB * 0.85
 const CORE_HAIR = 0.04
 /** Paper kept clear round each road bar, for the dots and trees. */
 const ROAD_CLEAR = pen(0.6)
+// Lanes: footways, pedestrian streets, steps — not drawn, but at town
+// scales each cuts a seam of paper through the building masses, so blocks
+// that touch wall to wall (Venice's calli, old town cores) still read as
+// blocks. Indoor corridors and platforms are left out.
+const LANE_CLASSES = ["pedestrian", "footway", "path", "steps"]
+/** Width of a lane's seam through the buildings: a little over one nib. */
+const LANE_CUT = NIB * 1.2
 
 // 1d. Fills
 /** Water: swells in the fine nib, fraying into broken strokes toward the shore. */
@@ -179,7 +186,11 @@ const roadArea = areas.union(...roadClasses.map((r) => areas.grow(r.bar, ROAD_CL
 const rails = lines.of(features.where(features.tiles("transportation:rail/rail"), { service: false }))
 // Touching buildings fuse into one mass; only its outline is drawn.
 // Opened (shrunk, grown back): slivers and specks go, corners square up.
-const buildings = areas.grow(areas.grow(areas.union(areas.polygons(features.tiles("buildings"))), `-${MASS_OPEN}mm`), `${MASS_OPEN}mm`)
+// Lanes are cut before the opening, so the scraps a seam leaves go too.
+const lanes = lines.of(features.where(features.tiles("transportation:path"), { subclass: LANE_CLASSES }))
+const laneCut = areas.buffer(lanes, `${LOCAL_STREETS ? LANE_CUT / 2 : 0}mm`)
+const blocks = areas.difference(areas.union(areas.polygons(features.tiles("buildings"))), laneCut)
+const buildings = areas.grow(areas.grow(blocks, `-${MASS_OPEN}mm`), `${MASS_OPEN}mm`)
 
 const ocean = areas.extendToFrame(
   areas.grow(areas.intersect(areas.polygons(features.tiles("ocean")), frame), OCEAN_SEAM_GROW),
@@ -194,7 +205,7 @@ const streams = lines.clip(lines.of(features.tiles("waterway:river,canal,stream"
 const trees = areas.difference(areas.polygons(features.tiles(...TREE_TILES)), roadArea, buildings, water)
 // All open land gets the stipple, tagged or not: parks, empty lots, yards
 // between houses, and under the trees. Only water, buildings and streets stay off it.
-const ground = areas.difference(frame, roadArea, buildings, water)
+const ground = areas.difference(frame, roadArea, buildings, water, laneCut)
 const treeLines = fills.fill({ in: SHOW_TREES ? trees : areas.difference(trees, trees), ...FILL_TREES })
 const natureBurin = burin.terrain(
   (b) => b.batch({ angle: 0, draw: "dots", style: BURIN_NATURE_STYLE }),

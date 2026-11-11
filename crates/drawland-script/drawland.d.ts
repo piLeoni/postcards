@@ -667,6 +667,43 @@ declare const modules: {
    * first.
    */
   labels(options: LabelOptions): Labels
+  /**
+   * An atlas plate's graticule round the page rectangle `in` (its bounds):
+   * meridians and parallels, a border of black-and-white keys, and degree
+   * labels — through the output's projection, so true wherever the plate is
+   * moved, at any bearing.
+   *
+   *   const g = modules.graticule({ in: plate, step: 30, ticks: 10, band: "1.4mm", gap: "1mm", size: "1.8mm" })
+   *   draw({ from: g.lines, … }); draw({ from: fills.fill({ in: g.keys, pattern: "solid" }), … })
+   */
+  graticule(options: GraticuleOptions): Graticule
+}
+
+interface GraticuleOptions {
+  /** The map's rectangle on the page; the border goes just outside it. */
+  in: Area
+  /** Minutes of arc between lines, and between labels (30: every half degree). */
+  step: number
+  /** Minutes of arc per border key; leave out for no keys. */
+  ticks?: number
+  /** The key band's width, outside `in`. */
+  band?: Length
+  /** Paper between the band and the labels. */
+  gap?: Length
+  /** The labels' capital height. Default 1.8mm. */
+  size?: Length
+  font?: LabelFont
+}
+
+interface Graticule {
+  /** Meridians and parallels, cut to `in`. */
+  readonly lines: Lines
+  /** The border band's inked keys (every other `ticks` minutes). */
+  readonly keys: Area
+  /** Degree labels round the border (`70°30′W`), as pen strokes. */
+  readonly labels: Lines
+  /** What the labels cover, to fill them or clear paper round them. */
+  readonly labelArea: Area
 }
 
 interface LabelOptions {

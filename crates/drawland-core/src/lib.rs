@@ -7,6 +7,7 @@ mod fill_penfill;
 pub mod geojson;
 pub mod geom;
 pub mod google_fonts;
+pub mod graticule;
 pub mod grammar;
 pub mod grammar_run;
 pub mod labels;

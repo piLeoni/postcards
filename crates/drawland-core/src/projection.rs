@@ -151,6 +151,8 @@ enum Base {
 pub struct Projector {
     base: Base,
     center: (f64, f64),
+    /// The output's centre, `(lon, lat)`: where `locate` starts looking.
+    geo: (f64, f64),
     sx: f64,
     sy: f64,
     half: (f64, f64),
@@ -189,6 +191,7 @@ impl Projector {
         Projector {
             base,
             center,
+            geo: (lon, lat),
             sx: mm_per_m * fx,
             sy: -mm_per_m * fy,
             half: (output.width_mm / 2.0, output.height_mm / 2.0),
@@ -215,6 +218,36 @@ impl Projector {
         let (px, py) = (x - self.half.0, y - self.half.1);
         let (dx, dy) = (px * self.cos_b + py * self.sin_b, -px * self.sin_b + py * self.cos_b);
         p.inverse(self.center.0 + dx / self.sx, self.center.1 + dy / self.sy)
+    }
+
+    /// The `(lon, lat)` under output mm `(x, y)`, for any projection: Newton
+    /// steps on `project`, from the output's centre. `None` where it does not
+    /// settle (off the edge of the projection's world).
+    pub fn locate(&self, x: f64, y: f64) -> Option<(f64, f64)> {
+        let (mut lon, mut lat) = self.geo;
+        const H: f64 = 1e-6;
+        for _ in 0..30 {
+            let (px, py) = self.project(lon, lat);
+            let (ex, ey) = (px - x, py - y);
+            if ex.hypot(ey) < 1e-7 {
+                return Some((lon, lat));
+            }
+            let (ax, ay) = self.project(lon + H, lat);
+            let (bx, by) = self.project(lon, lat + H);
+            let (j11, j21, j12, j22) = ((ax - px) / H, (ay - py) / H, (bx - px) / H, (by - py) / H);
+            let det = j11 * j22 - j12 * j21;
+            if !det.is_finite() || det.abs() < 1e-12 {
+                return None;
+            }
+            lon -= (j22 * ex - j12 * ey) / det;
+            lat -= (-j21 * ex + j11 * ey) / det;
+            if !(lon.is_finite() && lat.is_finite()) {
+                return None;
+            }
+            lat = lat.clamp(-89.9, 89.9);
+        }
+        let (px, py) = self.project(lon, lat);
+        ((px - x).hypot(py - y) < 1e-4).then_some((lon, lat))
     }
 
     pub fn project_geometry<G: MapCoords<f64, f64, Output = G>>(&self, g: &G) -> G {

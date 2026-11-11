@@ -45,3 +45,7 @@ Label geometry is in output mm after the same projection as other features.
 ## Avoid
 
 `modules.labels({ avoid })` (`Labels::avoid`, `labels::place_avoiding`): an area the letters (grown by `padding`) keep off, while a place's point and dot may sit on it — a station on a transit line gets its name beside the line, never across it. Point labels try the eight spots round the dot, then the same eight a step farther out, so a long name beside a sloping line still finds room.
+
+## Graticule (`graticule.rs`)
+
+`tools_graticule` (lines: `part: grid | labels`) and `tools_graticule_area` (area: `part: keys | labels`) draw an atlas plate round the bounds of an `in` area. Meridians and parallels every `step` arc-minutes are sampled in lon/lat over the ground under the plate and projected; that ground is found by `Projector::locate`, a Newton inverse that works for every projection and bearing. A side's keys and labels come from where its own family (meridians on top and bottom, parallels on the sides) crosses it. Keys are inked by the parity of the arc-minutes, so opposite sides agree and they stay put as the plate moves. Labels sit `band + gap` outside the edge: level on top and bottom, turned on the sides. A label is skipped near a corner, or where it would touch the one before. Label areas keep counters open, so they can be filled solid.

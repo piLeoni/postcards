@@ -32,7 +32,7 @@ Interactive map + profile editor; preview and download SVG using the same engine
 7. Stroke fonts for labels/`lines.text` — catalog ids and `{ origin: "stroke", url }` (`strokeFontKeys` / `loadStrokeFontsForGraph` on main thread, or `fetchStrokeFonts` in worker; `job.addStrokeFont`). Catalog GitLab URLs in the graph are fetched from bundled copies under `web/public/fonts/` (`strokeFontUrls.js`); CLI still downloads from GitLab.
 8. `job.draw` — SVG streamed via callbacks; result as Blob parts plus an overview `ImageBitmap` (`lib/preview.js`) rendered onto an `OffscreenCanvas` in the worker; when the map settles (`moveend`), the worker re-renders the visible viewport slice from its recorded vector coordinates at native device-pixel resolution so zoomed-in views stay vector-sharp without parsing large SVG DOMs on the main thread
 
-Cancel via `AbortController`; WASM trap handling avoids leaving a borrowed `Job` (see worker comments).
+Cancel via `AbortController`; WASM trap handling avoids leaving a borrowed `Job` (see worker comments). `job.draw` is synchronous, so a worker inside it reads no messages: Stop, or a new draw, while the worker is still busy (`workerBusyRef` in `App.jsx`) terminates it and the next draw starts on a fresh worker — otherwise the new draw would wait unseen behind the stopped one, its progress card empty.
 
 ## Routing
 

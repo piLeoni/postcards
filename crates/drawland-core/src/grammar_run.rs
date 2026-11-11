@@ -415,6 +415,51 @@ fn text_on_page(t: &crate::grammar::Text, engine: &Engine) -> Result<(geom::Line
     }
 }
 
+/// An atlas graticule's part, round the bounds of `within`: its lines (cut
+/// to `within`), its degree labels (pen strokes and what they cover), or the
+/// border's inked keys.
+fn graticule_on_page(g: &crate::grammar::Graticule, within: &MultiPolygon<f64>, as_area: bool, engine: &Engine) -> Result<Value, String> {
+    use crate::grammar::{GraticulePart, PagePos, ShapeAt, Text};
+    use crate::graticule as gr;
+    use geo::BoundingRect;
+    let Some(r) = within.bounding_rect() else {
+        return Ok(if as_area { Value::Area(MultiPolygon::new(vec![])) } else { Value::Lines(vec![]) });
+    };
+    let plate = gr::Plate { x0: r.min().x, y0: r.min().y, x1: r.max().x, y1: r.max().y };
+    let p = &engine.projector;
+    let look = &g.look;
+    Ok(match look.part {
+        GraticulePart::Grid => {
+            let paths: geom::Lines = gr::lines(p, &plate, look.step).into_iter().map(|l| l.path).collect();
+            Value::Lines(geom::clip_lines(&paths, within, false))
+        }
+        GraticulePart::Keys => Value::Area(gr::keys(p, &plate, look.ticks, look.band.0)),
+        GraticulePart::Labels => {
+            let mut strokes = geom::Lines::new();
+            let mut cover: Vec<MultiPolygon<f64>> = Vec::new();
+            for m in gr::marks(p, &plate, look.step, look.band.0 + look.gap.0, look.size.0) {
+                let t = Text {
+                    at: ShapeAt::Page([PagePos::Mm(crate::units::Mm(m.at.x)), PagePos::Mm(crate::units::Mm(m.at.y))]),
+                    text: m.text,
+                    size: look.size,
+                    font: look.font.clone(),
+                    rotate: m.rotate,
+                    // Filled solid, the holes of 0, 8 and ° stay open.
+                    open_counters: true,
+                };
+                let (lines, area) = text_on_page(&t, engine)?;
+                // A label that would run into the one before it is left out.
+                if cover.last().is_some_and(|prev| geo::Intersects::intersects(prev, &area)) {
+                    continue;
+                }
+                strokes.extend(lines);
+                cover.push(area);
+            }
+            if as_area { Value::Area(geom::union_multi(&cover)) } else { Value::Lines(strokes) }
+        }
+    })
+}
+
 /// Evaluate every non-fill def, in dependency order (waves).
 fn evaluate(
     grammar: &Grammar,
@@ -583,6 +628,7 @@ fn eval_op<'a>(
             Value::Area(geom::union_multi(&[MultiPolygon::new(vec![Polygon::new(ring, vec![])])]))
         }
         Op::TextArea(t) => Value::Area(text_on_page(t, engine)?.1),
+        Op::GraticuleArea(g) => graticule_on_page(g, area(&g.in_area)?, true, engine)?,
         Op::BufferLines(b) => {
             let ls = lines(&b.lines)?;
             let radius = b.by.0;
@@ -612,6 +658,7 @@ fn eval_op<'a>(
             Value::Lines(vec![LineString::new(pts)])
         }
         Op::Text(t) => Value::Lines(text_on_page(t, engine)?.0),
+        Op::Graticule(g) => graticule_on_page(g, area(&g.in_area)?, false, engine)?,
         Op::Rings(r) => {
             let a = area(&r.of)?;
             Value::Lines(if r.exterior_only { geom::exterior_rings(a) } else { geom::rings(a) })

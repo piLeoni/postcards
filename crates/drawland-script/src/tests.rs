@@ -733,3 +733,23 @@ fn json_items_draw_as_points_through_the_runner() {
     assert_eq!(strokes["red"], 1, "one red vehicle, one ring");
     assert!(err("features.json('u', { lat: 'a' })").to_string().contains("lng"));
 }
+
+#[test]
+fn a_graticule_follows_the_projection_round_its_plate() {
+    let g = evaluate(
+        "output({ width: '200mm', height: '150mm', scale: '1:1000000', lat: 41.7, lng: -70.4, padding: 0 })\n\
+         const plate = areas.shape({ at: [100, 75], rect: [160, 110] })\n\
+         const grat = modules.graticule({ in: plate, step: 30, ticks: 10, band: '1.5mm' })\n\
+         draw({ id: 'grid', from: grat.lines })\n\
+         draw({ id: 'keys', from: lines.rings(grat.keys) })\n",
+    )
+    .unwrap();
+    assert_eq!(Grammar::from_json(&g.to_json().to_string()).unwrap(), g);
+    let output = Output::new(&g.output, (-70.4, 41.7));
+    let out = run(&g, &output, no_inputs(vec![])).unwrap();
+    let strokes: BTreeMap<_, _> = out.groups.into_iter().collect();
+    assert!(strokes["grid"] >= 5, "{}", strokes["grid"]);
+    // Every other 10′ along each side: about six keys on the long sides, three on the short.
+    assert!((14..=22).contains(&strokes["keys"]), "{}", strokes["keys"]);
+    assert!(err("modules.graticule({ in: areas.shape({ at: [0, 0], rect: [1, 1] }) })").to_string().contains("step"));
+}

@@ -238,6 +238,10 @@ fn font_keys_in_grammar(grammar: &crate::grammar::Grammar, kind: FontKeyKind) ->
                 FontKeyKind::Google => t.font.google_key().into_iter().collect(),
                 FontKeyKind::Stroke => t.font.stroke_font_key().into_iter().collect(),
             },
+            Op::Graticule(g) | Op::GraticuleArea(g) if g.look.part == crate::grammar::GraticulePart::Labels => match kind {
+                FontKeyKind::Google => g.look.font.google_key().into_iter().collect(),
+                FontKeyKind::Stroke => g.look.font.stroke_font_key().into_iter().collect(),
+            },
             _ => vec![],
         })
         .collect();

@@ -53,7 +53,9 @@ async function run({ token, graph, lat, lng, googleFonts, strokeFonts, datasets,
   current?.abort()
   const ac = new AbortController()
   current = ac
-  const emit = (e) => self.postMessage({ type: 'event', token, e: { ...e, at: performance.now() } })
+  // `at` on the wall clock: this worker's `performance.now()` counts from when
+  // the worker started, the page's from when the page loaded.
+  const emit = (e) => self.postMessage({ type: 'event', token, e: { ...e, at: performance.timeOrigin + performance.now() } })
   let engine = null
   // A trap leaves the job borrowed and the module's heap unusable: freeing
   // the job then throws "attempted to take ownership of Rust value while it
