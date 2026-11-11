@@ -60,7 +60,8 @@ export function usePlaceSearch(active, onPick) {
   const pick = (p) => {
     const { title, detail } = placeParts(p)
     const text = detail ? `${title}, ${detail}` : title
-    setSaved((s) => ({ ...s, place: { lat: Number(p.lat), lng: Number(p.lon), text } }))
+    // A place chosen is done with: the next search starts empty.
+    setSaved((s) => ({ ...s, query: '', rows: [], state: 'idle', place: { lat: Number(p.lat), lng: Number(p.lon), text } }))
     onPick?.({ lat: Number(p.lat), lng: Number(p.lon), text })
   }
 
