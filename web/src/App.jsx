@@ -642,7 +642,7 @@ export default function App() {
           drawAfterApply(current)
           return
         }
-        const overlay = PRESETS.find((p) => p.id === 'geojson-overlay').doc
+        const overlay = PRESETS.find((p) => p.id === 'red-pencil').doc
         const literal = outputOf(overlay)?.value ?? {}
         const inch = (v) => (typeof v === 'string' && v.endsWith('in') ? parseFloat(v) * 25.4 : parseFloat(v))
         const pad = 2 * (inch(literal.padding) || 0)

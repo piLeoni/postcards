@@ -30,14 +30,16 @@ Common patterns:
 
 - `features.tiles("buildings")` / `features.osm({ … })`
 - `features.json(url, { items, lat, lng })` — points from plain JSON (a live API), fields as dotted tags
-- `features.geojson(url | path | {…})` — a dataset; properties are tags, so `features.where` bands it (`configs/earthquakes.js`, `configs/geojson-overlay.js`)
+- `features.geojson(url | path | {…})` — a dataset; properties are tags, so `features.where` bands it (`configs/shaky-ground.js`, `configs/red-pencil.js`)
 - `areas.polygons`, `union`, `difference`, `grow`, `buffer`, …
+- `areas.move(area, [across, down])`: the area moved across the page (a cloud's shadow cast off its footprint).
+- `pattern: "clouds"` (penfill `clouds.rs`): cumulus from above, a covering fill like `isoline-stack`, so `fills.cover` gives its footprint. The Cloud cover preset (`configs/karl-the-fog.js`, `web/src/presets/karl-the-fog.js`) masks City Grain under it and stipples the footprint moved down-sun as the shadow.
 - `fills.fill({ in, pattern, spacing, … })`
 - `modules.roads({ from, widthMode, classes, … })`, `modules.labels({ from, rules })`
 - `modules.graticule({ in, step, ticks, band, gap, size, font })`: an atlas plate's meridians and parallels round a page rectangle (`.lines`), its border keys (`.keys`), and degree labels (`.labels`, `.labelArea`). The script never knows the plate's centre (the page sends lat/lng to the engine), so anything tied to the ground round a paper rectangle has to be computed in the engine, as this is; the Schoolroom atlas uses it.
 - `burin.terrain((b) => …)` — burin-map-script builder; atlas stored on graph
 - `compose.mask({ name, from, occludes: [draw ids…] })`
-- `view({ id, at, size, lat, lng, scale }, "city-grain" | () => {…})` — another place drawn into a rectangle of the page (`configs/postcard-france.js`). The script crate keeps a stack of builders: a function style builds the view's graph in place; a preset name runs that preset (embedded from `web/src/presets` by `build.rs`) in a fresh interpreter. Inside a view, `output()` keeps the view's place and size over the style's own, and returns the effective spec (so `engine.scale()` is the view's)
+- `view({ id, at, size, lat, lng, scale }, "city-grain" | () => {…})` — another place drawn into a rectangle of the page (`configs/bonjour-de-france.js`). The script crate keeps a stack of builders: a function style builds the view's graph in place; a preset name runs that preset (embedded from `web/src/presets` by `build.rs`) in a fresh interpreter. Inside a view, `output()` keeps the view's place and size over the style's own, and returns the effective spec (so `engine.scale()` is the view's)
 
 ## Web compile path
 

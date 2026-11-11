@@ -12,7 +12,7 @@ pub fn registry_name(generator: &str, o: &Opts) -> Result<Option<String>, FillEr
     if generator == "none" {
         return Ok(None);
     }
-    if matches!(generator, "isoline-blobs" | "isoline-stack" | "isoline-stack-hatched" | "growth") {
+    if matches!(generator, "isoline-blobs" | "isoline-stack" | "isoline-stack-hatched" | "growth" | "clouds") {
         return Ok(None);
     }
     if generator == "pat" {

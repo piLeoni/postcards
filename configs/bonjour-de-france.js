@@ -5,7 +5,7 @@
 // cut into it; across the middle, over all four, the country's name in a
 // geometric sans inked solid in red, as the greeting over it, the map cleared round the word.
 //
-//   drawland map configs/postcard-france.js -o exports/france.svg
+//   drawland map configs/bonjour-de-france.js -o exports/france.svg
 
 title("Bonjour de France")
 // The page's own place only says where the card sits on the map (over

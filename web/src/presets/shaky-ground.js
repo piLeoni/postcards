@@ -5,7 +5,7 @@
 // depth; the largest are named with their magnitude. Draw it again tomorrow
 // and the dots move: the feed is re-read when the cached copy is 15 min old.
 //
-//   drawland map configs/earthquakes.js -o exports/earthquakes.svg
+//   drawland map configs/shaky-ground.js -o exports/earthquakes.svg
 
 title("Shaky ground · live data")
 output({

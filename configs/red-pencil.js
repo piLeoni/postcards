@@ -9,7 +9,7 @@
 // on the command line at a file beside this profile, then set the place and
 // scale to fit it (or pass --address / --lat --lng):
 //
-//   drawland map configs/geojson-overlay.js -o exports/overlay.svg
+//   drawland map configs/red-pencil.js -o exports/overlay.svg
 //
 // The default is Paris's twenty arrondissements, from opendata.paris.fr.
 

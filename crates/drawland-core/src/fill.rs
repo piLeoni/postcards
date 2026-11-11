@@ -31,7 +31,7 @@ pub enum FillError {
 
 pub const GENERATORS: &[&str] = &[
     "amphibolite", "arena", "beds", "bentonite", "brackets", "breccia", "breccia-blobs", "canopy", "cell-net", "chalky-soil",
-    "chess", "clay-soil", "coal", "coarse-stone", "compacted-soil", "concentric", "conglomerate",
+    "chess", "clay-soil", "clouds", "coal", "coarse-stone", "compacted-soil", "concentric", "conglomerate",
     "conglomerate-flat", "coquina", "cracked-earth", "cracks", "curl-waves", "dacite", "debris-soil", "diabase", "diatom",
     "diorite", "doodle-trees", "dots", "drift", "dry-cracked-soil", "eddies", "erosion-lines", "feldspar", "ferrous", "fill", "fine-gravel", "flow-waves",
     "fluid-grass", "gabbro", "gneiss", "grainy-soil", "granite", "granite-x", "grass", "gravel", "gravel-clipped",
@@ -265,7 +265,7 @@ fn run_generator_into(region: &Region, generator: &str, spec: &FillSpec, sink: &
         "honeycomb" => honeycomb::fill_honeycomb(r, s, a, o.mm("line_width")?.unwrap_or(0.0), at),
         "terrazzo" => terrazzo::fill_terrazzo(r, s, o.mm("hatch")?.unwrap_or(s / 6.0), seed),
         "chess" => chess::fill_chess(r, o.mm("cell")?.unwrap_or(s * 8.0), s, a, at),
-        "isoline-blobs" | "isoline-stack" | "isoline-stack-hatched" | "growth" => covering(r, spec, true)?.strokes,
+        "isoline-blobs" | "isoline-stack" | "isoline-stack-hatched" | "growth" | "clouds" => covering(r, spec, true)?.strokes,
         "none" | "solid" => vec![],
         other => return Err(FillError::UnknownGenerator(other.into())),
     };
@@ -279,7 +279,7 @@ fn run_generator_into(region: &Region, generator: &str, spec: &FillSpec, sink: &
 /// Generators that know what they cover, which may be less (clearings) or
 /// more (overflow) than the area they are given.
 fn covers(generator: &str) -> bool {
-    matches!(generator, "isoline-blobs" | "isoline-stack" | "isoline-stack-hatched" | "growth")
+    matches!(generator, "isoline-blobs" | "isoline-stack" | "isoline-stack-hatched" | "growth" | "clouds")
 }
 
 /// Runs made for a [`cover`], kept until the fill pass draws them, so a
@@ -384,6 +384,29 @@ fn covering(r: &Region, spec: &FillSpec, take: bool) -> Result<penfill::FillWith
                 stack.light = None;
             }
             fill_isoline_stack_with_coverage(r, &stack)
+        }
+        "clouds" => {
+            use penfill::clouds::{fill_clouds_with_coverage, CloudParams};
+            let d = CloudParams::default();
+            let params = CloudParams {
+                seed,
+                size: spec.spacing.map_or(d.size, |m| m.0),
+                cell: o.mm("cell")?.unwrap_or(0.0),
+                coverage: o.num("coverage")?.unwrap_or(d.coverage),
+                warp: o.num("warp")?.unwrap_or(d.warp),
+                puffs: o.num("puffs")?.unwrap_or(d.puffs),
+                elongate: o.num("elongate")?.unwrap_or(d.elongate),
+                stretch: o.num("stretch")?.unwrap_or(d.stretch),
+                wind_deg: o.num("wind")?.unwrap_or(d.wind_deg),
+                light_deg: o.num("light_angle")?.unwrap_or(d.light_deg),
+                light_elevation: o.num("light_elevation")?.unwrap_or(d.light_elevation),
+                height: o.num("height")?.unwrap_or(d.height),
+                shade: o.num("shade")?.unwrap_or(d.shade),
+                hatch: o.mm("hatch")?.unwrap_or(d.hatch),
+                dots: o.str("shading")?.map_or(d.dots, |v| v != "lines"),
+                dot: o.mm("dot")?.unwrap_or(d.dot),
+            };
+            fill_clouds_with_coverage(r, &params)
         }
         other => unreachable!("{other} does not report coverage"),
     };

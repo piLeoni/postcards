@@ -615,6 +615,7 @@ fn eval_op<'a>(
         Op::LabelArea(p) => Value::Area(label_pick(done, p)?),
         Op::LabelLines(p) => Value::Lines(label_lines(done, p)?),
         Op::Grow(g) => Value::Area(geom::buffer(area(&g.of)?, g.by.0)),
+        Op::Move(m) => Value::Area(geo::Translate::translate(area(&m.of)?, m.by[0].0, m.by[1].0)),
         Op::Around(a) => {
             let discs: Vec<MultiPolygon<f64>> = feats(&a.of)?
                 .iter()

@@ -172,6 +172,14 @@ pub struct Grow {
     pub by: Mm,
 }
 
+/// An area moved across the page by `by` mm (x right, y down): a shadow
+/// cast off what casts it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Move {
+    pub of: Name,
+    pub by: [Mm; 2],
+}
+
 /// A disc of radius `by` around every point of a feature set (mapped trees),
 /// merged into one area. Lines and polygons in the set are ignored.
 #[derive(Debug, Clone, PartialEq)]
@@ -454,6 +462,7 @@ pub enum Op {
     Intersect(Intersect),
     FillHoles(Name),
     Grow(Grow),
+    Move(Move),
     Around(Around),
     /// A closed shape written by the profile.
     Shape(Shape),
@@ -522,6 +531,7 @@ impl Op {
             | Op::Intersect(_)
             | Op::FillHoles(_)
             | Op::Grow(_)
+            | Op::Move(_)
             | Op::Around(_)
             | Op::Shape(_)
             | Op::TextArea(_)
@@ -572,6 +582,7 @@ impl Op {
                 .chain(i.keep_rule.as_deref().map(Op::refs).unwrap_or_default())
                 .collect(),
             Op::Grow(g) => vec![g.of.clone()],
+            Op::Move(m) => vec![m.of.clone()],
             Op::Around(a) => vec![a.of.clone()],
             Op::BufferLines(b) => vec![b.lines.clone()],
             Op::ExtendToFrame(e) => vec![e.of.clone(), e.within.clone()],
@@ -1233,7 +1244,7 @@ fn parse_op(raw: RawOp, section: Section) -> Result<Op, GrammarError> {
     let target = match key.as_str() {
         "osm_select" | "tiles_select" | "data_select" | "tools_where" => Section::Features,
         "tools_polygons" | "tools_union" | "tools_difference" | "tools_intersect" | "tools_fill_holes"
-        | "tools_fill_cover" | "tools_grow" | "tools_around" | "tools_shape" | "tools_text_area" | "tools_buffer_lines" | "tools_label_area" | "tools_graticule_area" | "tools_extend_to_frame" | "tools_terrain_band" | "engine_frame" => {
+        | "tools_fill_cover" | "tools_grow" | "tools_move" | "tools_around" | "tools_shape" | "tools_text_area" | "tools_buffer_lines" | "tools_label_area" | "tools_graticule_area" | "tools_extend_to_frame" | "tools_terrain_band" | "engine_frame" => {
             Section::Areas
         }
         "tools_rings" | "tools_lines" | "tools_segments" | "tools_dedupe" | "tools_merge" | "tools_join"
@@ -1335,6 +1346,16 @@ fn parse_op(raw: RawOp, section: Section) -> Result<Op, GrammarError> {
         "tools_fill_holes" => Op::FillHoles(name_ref(&value, "tools_fill_holes")?),
         "tools_label_area" => Op::LabelArea(parse_label_pick(&value, "tools_label_area")?),
         "tools_label_lines" => Op::LabelLines(parse_label_pick(&value, "tools_label_lines")?),
+        "tools_move" => {
+            #[derive(Deserialize)]
+            #[serde(deny_unknown_fields)]
+            struct Raw {
+                of: String,
+                by: [Mm; 2],
+            }
+            let raw: Raw = json(&value, "tools_move")?;
+            Op::Move(Move { of: refname(&raw.of)?, by: raw.by })
+        }
         "tools_grow" => {
             #[derive(Deserialize)]
             #[serde(deny_unknown_fields)]
@@ -2026,6 +2047,7 @@ pub fn op_to_json(op: &Op) -> Value {
             ("tools_labels", body)
         }
         Op::Grow(g) => ("tools_grow", json!({ "of": g.of.to_string(), "by": g.by })),
+        Op::Move(m) => ("tools_move", json!({ "of": m.of.to_string(), "by": [m.by[0], m.by[1]] })),
         Op::Around(a) => ("tools_around", json!({ "of": a.of.to_string(), "by": a.by })),
         Op::Shape(s) => ("tools_shape", serde_json::to_value(s).unwrap_or_default()),
         Op::Path(s) => ("tools_path", serde_json::to_value(s).unwrap_or_default()),

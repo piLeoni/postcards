@@ -47,7 +47,7 @@ type TilePreset =
  */
 type Pattern =
   | "amphibolite" | "arena" | "beds" | "bentonite" | "brackets" | "breccia" | "breccia-blobs" | "canopy" | "cell-net" | "chalky-soil"
-  | "chess" | "clay-soil" | "coal" | "coarse-stone" | "compacted-soil" | "concentric" | "conglomerate"
+  | "chess" | "clay-soil" | "clouds" | "coal" | "coarse-stone" | "compacted-soil" | "concentric" | "conglomerate"
   | "conglomerate-flat" | "coquina" | "cracked-earth" | "cracks" | "curl-waves" | "dacite" | "debris-soil" | "diabase" | "diatom"
   | "diorite" | "doodle-trees" | "dots" | "drift" | "dry-cracked-soil" | "eddies" | "erosion-lines" | "feldspar" | "ferrous" | "fill" | "fine-gravel" | "flow-waves"
   | "fluid-grass" | "gabbro" | "gneiss" | "grainy-soil" | "granite" | "granite-x" | "grass" | "gravel" | "gravel-clipped"
@@ -176,8 +176,33 @@ interface FillOptions {
   light_elevation?: number
   /** `isoline-blobs`: distance between contour lines in mm. Default ~0.045× `spacing`. */
   contour?: Length
-  /** `isoline-blobs`: domain warp of the field (0–1). Default 0.45. */
+  /** `isoline-blobs`: domain warp of the field (0–1). Default 0.45. `clouds`: how much the masses curl and drift (0–1). Default 0.25. */
   warp?: number
+  /**
+   * `clouds` — cumulus seen from above, heaped from puffs on a body that
+   * rises and falls, shaded where it turns from the sun or higher cloud
+   * shadows it. `spacing` is a puff's size; `coverage` the share of sky;
+   * `cell` the scale of the masses (default 8 puffs); `light_angle` (page
+   * degrees, default 225: from the top left) and `light_elevation` (default
+   * 30) the sun; `hatch` the shade's spacing at its deepest. `fills.cover`
+   * gives the clouds' footprint: mask what lies under them, and
+   * `areas.move` it down-sun for their shadow on the ground.
+   */
+  puffs?: number
+  /** `clouds`: how drawn out each puff is along the cloud's run (0 round). Default 0.35. */
+  elongate?: number
+  /** `clouds`: how far the masses are drawn out along `wind` (0–0.95). Default 0.25. */
+  stretch?: number
+  /** `clouds`: the wind's direction on the page, degrees. Default 15. */
+  wind?: number
+  /** `clouds`: how tall the cloud heaps up (1 cumulus, 0.3 a flat sheet). Default 1. */
+  height?: number
+  /** `clouds`: how much of the cloud is shaded (0–1, 0 none). Default 0.45. */
+  shade?: number
+  /** `clouds`: shade in `"dots"` (default) or `"lines"`. */
+  shading?: "dots" | "lines"
+  /** `clouds`: each shading dot's length. Default 0.12mm. */
+  dot?: Length
   /** `isoline-blobs`: field level for patches and coverage (0–1). Default 0.25. */
   threshold?: number
   /**
@@ -358,6 +383,8 @@ declare const areas: {
   fillHoles(of: Area): Area
   /** Grown by a length; a negative one shrinks it. */
   grow(of: Area, by: Length): Area
+  /** The area moved across the page by `[across, down]`: a cloud's shadow cast off its footprint. */
+  move(of: Area, by: [Length, Length]): Area
   /** A disc of radius `by` around every point feature (mapped trees), merged; lines and polygons are ignored. */
   around(of: Features, by: Length): Area
   /** A shape you write: `circle`, `rect`, regular polygon (`sides` + `r`), or `points` in mm from `at`. */

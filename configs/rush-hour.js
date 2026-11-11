@@ -6,7 +6,7 @@
 // again when the cached copy is 15 minutes old: draw it twice and the trains
 // move.
 //
-//   drawland map configs/boston-live.js -o exports/boston.svg
+//   drawland map configs/rush-hour.js -o exports/boston.svg
 
 title("Rush hour · live transit")
 output({

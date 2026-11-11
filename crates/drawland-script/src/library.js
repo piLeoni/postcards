@@ -272,6 +272,12 @@
     fillHoles(of) {
       return make(Area, "areas", { tools_fill_holes: need(of, Area, "areas.fillHoles") });
     },
+    // The area moved across the page, `by` = [across, down] in page lengths:
+    // a shadow cast off what casts it.
+    move(of, by) {
+      if (!Array.isArray(by) || by.length !== 2) fail(`areas.move: by is [across, down], like ["2mm", "1mm"], got ${describe(by)}`);
+      return make(Area, "areas", { tools_move: { of: need(of, Area, "areas.move"), by } });
+    },
     grow(of, by) {
       if (typeof by !== "number" && typeof by !== "string") fail(`areas.grow: by is a length like "0.5mm", got ${describe(by)}`);
       return make(Area, "areas", { tools_grow: { of: need(of, Area, "areas.grow"), by } });

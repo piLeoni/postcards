@@ -6,7 +6,7 @@
 //
 // Change STATE (any Natural Earth admin-1 name) and move the card onto it.
 //
-//   drawland map configs/state-cut.js -o exports/state-cut.svg
+//   drawland map configs/cookie-cutter.js -o exports/state-cut.svg
 
 title("Cookie cutter · boolean cut")
 output({
