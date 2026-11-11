@@ -90,6 +90,7 @@ const MASS_OPEN        = 0.3
 // Local streets (`minor`) only at town scales: past 1:20000 they are a
 // texture, not a diagram.
 const LOCAL_STREETS = engine.scale() <= 20000
+/** @type {{ id: string, tiles: TilePreset, merge: number, passes: number }[]} */
 const ROAD_CLASSES = [
   { id: "triple", tiles: "transportation:motorway,trunk",    merge: 2.4, passes: 5 },
   { id: "double", tiles: "transportation:primary,secondary", merge: 1.4, passes: 3 },
@@ -173,7 +174,7 @@ const roadClasses = []
 for (const c of ROAD_CLASSES) {
   const centre = lines.of(features.where(features.tiles(c.tiles), { ramp: false }))
   const whole = areas.buffer(centre, `${c.merge / 2}mm`)
-  const middle = lines.rings(areas.grow(whole, `-${c.merge / 2 - CORE_HAIR}mm`))
+  const middle = lines.rings(areas.grow(whole, -(c.merge / 2 - CORE_HAIR)))
   const above = roadClasses.map((r) => r.bar)
   const core = above.length ? lines.clip(middle, areas.union(...above), { invert: true }) : middle
   const sides = Array.from({ length: (c.passes - 1) / 2 }, (_, k) => lines.rings(areas.buffer(core, `${(k + 1) * PASS_STEP}mm`)))
@@ -199,7 +200,7 @@ const ocean = areas.extendToFrame(
 const water = areas.union(areas.polygons(features.tiles("water:lake,river,pond,dock,reservoir")), ocean)
 // The shore and the building outlines are two passes: the edge, and the
 // edge one nib inside.
-const shore = lines.join(lines.rings(water), lines.rings(areas.grow(water, `-${PASS_STEP}mm`)))
+const shore = lines.join(lines.rings(water), lines.rings(areas.grow(water, -PASS_STEP)))
 const streams = lines.clip(lines.of(features.tiles("waterway:river,canal,stream")), water, { invert: true })
 
 const trees = areas.difference(areas.polygons(features.tiles(...TREE_TILES)), roadArea, buildings, water)

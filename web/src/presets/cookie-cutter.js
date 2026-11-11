@@ -33,6 +33,7 @@ const INK = "#1b1b1b"
 // the next one. One pattern for all, its spacing the only thing that changes:
 // the higher, the closer the lines.
 // Across the Sierra, not along it: the belts read as steps, not stripes.
+/** @type {Omit<FillOptions, "in">} */
 const PATTERN = { pattern: "lines", angle: -45 }
 const BELTS = [
   { from: -100, spacing: 3.2 },
@@ -56,6 +57,7 @@ const FONT = "futural"
 
 // Name and key in page millimetres, where the state leaves the card free
 // (laid out for California; move them for another state).
+/** @type {ShapeAt} */
 const NAME_AT = ["50%", 141]
 const KEY = { x: 64, top: 26, step: 5.2, swatch: 3.6 }
 

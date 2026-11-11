@@ -42,6 +42,7 @@ const INK = {
 
 // Size by magnitude: each band's dot radius, and the ripple drawn round the
 // strongest. Bands are [min, max): a 6.0 is in the third.
+/** @type {{ id: string, min: number, max: number, r: Length, ripple?: Length[] }[]} */
 const MAG = [
   { id: "m45", min: 4.5, max: 5, r: "0.45mm" },
   { id: "m50", min: 5, max: 6, r: "0.85mm" },
@@ -57,7 +58,9 @@ const DEPTH = [
   { id: "deep", min: 300, max: 1000, color: "#3f6fa8", label: "300+ km" },
 ]
 
+/** @type {Omit<FillOptions, "in">} */
 const FILL_DOT = { pattern: "concentric", spacing: "0.22mm" }
+/** @type {Omit<FillOptions, "in">} */
 const FILL_SEA = { pattern: "lines", spacing: "1.1mm", angle: 0 }
 const GRID_STEP = 30
 const LABEL_MIN_MAG = 6.5
@@ -111,7 +114,9 @@ const H = 177.8
 const PAD = 6.35
 const LEG_Y = H - 17
 // White bands the map stops at: the title on top, the legend below.
+/** @type {[number, number]} */
 const TITLE_BAND = [PAD, 19]
+/** @type {[number, number]} */
 const LEGEND_BAND = [H - 28, H - PAD]
 const band = ([y0, y1]) => areas.shape({ at: [W / 2, (y0 + y1) / 2], rect: [W - 2 * PAD, y1 - y0] })
 const bands = areas.union(band(TITLE_BAND), band(LEGEND_BAND))

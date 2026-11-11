@@ -635,6 +635,7 @@ const CLOUDS = {
 }
 /** How far the shadow falls from its cloud, mm: the clouds' height above the ground. */
 const SHADOW_DROP = pen(40)
+/** @type {Omit<FillOptions, "in">} */
 const FILL_SHADOW = { pattern: "stipple", spacing: pen(2.6), mark: pen(0.6) }
 
 const sky = engine.frame()

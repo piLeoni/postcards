@@ -12,6 +12,7 @@ output({
 
 // Parks. Each kind claims its area minus the kinds before it, so a garden
 // inside a park is dotted once.
+/** @type {Omit<FillOptions, "in">} */
 const dots = { pattern: "dots", spacing: "0.45mm", mark: "0.2mm", angle: 45 }
 const kinds = {
   g: { leisure: "garden" },

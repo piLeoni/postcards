@@ -54,6 +54,8 @@ A `.geojson`/`.json` dropped anywhere on the page (`App.jsx`) is kept in memory 
 
 ## Editor integration
 
+The editor type-checks scripts against `crates/drawland-script/drawland.d.ts` (`setUpEditor` in `Sidebar.jsx`: `checkJs`, ES2020). `src/lib/presets.typecheck.test.js` runs the same check over every preset in `src/presets/` and every profile in `configs/` in `npm test`, so no example opens with errors. TypeScript widens object literals held in a `const` (`pattern: "lines"` becomes a `string`), so give fill, stroke and text constants their type: `/** @type {Omit<FillOptions, "in">} */`, `@returns {Stroke}`, `/** @type {TextSpec} */`.
+
 `compile()` underlines errors using wasm-reported line/column. Literal `output({…})` can be parsed for map framing without full graph (`literalOutputInfo`).
 
 ## Export, G-code & DXF (`lib/download.js`, `lib/gcode.js`, `lib/dxf.js`)

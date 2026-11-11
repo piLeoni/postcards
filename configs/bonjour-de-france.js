@@ -51,10 +51,11 @@ const GREET = { font: sans(700), size: 3.4, above: 4.2 }
 // One width for every pen. Heavier lines are doubled, not widened; letters
 // are filled with diagonal lines, never a thicker stroke. The greeting and
 // the name share one more pen, red: an outline and a tight hatch inside.
-/** @param {string} color */
+/** @param {string} color @returns {Stroke} */
 const pen = (color) => ({ color, width: 0.2, cap: "round" })
 const RED = "#ff4f3a"
 /** Letters inked solid: diagonal lines just under the nib apart, counters left open. */
+/** @type {Omit<FillOptions, "in">} */
 const SOLID_HATCH = { pattern: "lines", spacing: "0.24mm", angle: 45 }
 // Paper kept clear round every letter of the title and the greeting.
 const TITLE_CLEAR = "1.2mm"
@@ -84,12 +85,15 @@ const tabs = cells.map((c) => {
   const cx = c.right ? c.x + cellW - w / 2 : c.x + w / 2
   const cy = c.bottom ? c.y + cellH - h / 2 : c.y + h / 2
   const box = areas.shape({ at: [cx, cy], rect: [w, h] })
+  /** @type {TextSpec} */
   const spec = { at: [cx, cy], text: c.name, size: `${TAB.size}mm`, font: TAB.font, counters: "open" }
   return { ...c, box, edge: lines.text(spec), letters: areas.text(spec) }
 })
 
+/** @type {TextSpec} */
 const titleSpec = { at: ["50%", "50%"], text: NAME.toUpperCase(), size: `${TITLE.size}mm`, font: TITLE.font }
 // The greeting just above the name, its letters filled solid.
+/** @type {TextSpec} */
 const greetSpec = {
   at: ["50%", PAGE.h / 2 - TITLE.size / 2 - GREET.above],
   text: GREETING.toUpperCase(),
@@ -106,7 +110,7 @@ const tabIds = tabs.flatMap((t) => [
   draw({ id: `tab_fill_${t.id}`, from: fills.fill({ in: t.letters, ...SOLID_HATCH }), stroke: pen(t.ink) }),
 ])
 // The name and the greeting alike: the letters' outline, and inked solid inside.
-for (const [id, spec] of [["title", titleSpec], ["greeting", greetSpec]]) {
+for (const [id, spec] of /** @type {[string, TextSpec][]} */ ([["title", titleSpec], ["greeting", greetSpec]])) {
   draw({ id, from: lines.text(spec), stroke: pen(RED) })
   draw({ id: `${id}_fill`, from: fills.fill({ in: areas.text({ ...spec, counters: "open" }), ...SOLID_HATCH }), stroke: pen(RED) })
 }
