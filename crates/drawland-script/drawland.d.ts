@@ -391,8 +391,7 @@ declare const areas: {
   shape(spec: ShapeSpec): Area
   /** What `lines.text(spec)` covers (for masks). */
   text(spec: TextSpec): Area
-  /** A strip around lines: `by` is the half-width (flat caps), merged into one area. */
-  /** Half-width strip around the lines, merged. Joins are round; default cap is round. */
+  /** A strip around lines, merged into one area: `by` is the half-width. Joins are round; caps round unless `cap: "flat"`. */
   buffer(of: Lines, by: Length, options?: { cap?: "round" | "flat" }): Area
   /**
    * Close the thin gaps between `of` and the edges of `within` (vector-tile
@@ -422,7 +421,10 @@ declare const engine: {
 /** Line sets. */
 declare const lines: {
   /** The outlines of an area's polygons. */
-  rings(of: Area, options?: { /** Only the outer edge, not the holes. */ exteriorOnly?: boolean }): Lines
+  rings(of: Area, options?: {
+    /** Only the outer edge, not the holes. */
+    exteriorOnly?: boolean
+  }): Lines
   /** The features' own lines (roads, walls drawn as lines). */
   of(features: Features): Lines
   /** Every edge of every polygon, and the lines: shared walls appear twice. */
@@ -538,7 +540,8 @@ type ContoursOptions = Omit<TerrainOptions, "draw" | "where"> & {
 }
 
 /** Patterns inside areas, by penfill. */
-declare const fills: {  /** The area filled with a pattern: lines, ready to draw. */
+declare const fills: {
+  /** The area filled with a pattern: lines, ready to draw. */
   fill(options: FillOptions): Lines
   /**
    * What `fill(options)` covers on paper, to mask other layers with. The area

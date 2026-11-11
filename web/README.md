@@ -15,8 +15,9 @@ npm install
 npm run dev
 ```
 
-Open http://localhost:5173. The map starts on Berkeley; put the card where you
-want it and press "generate card".
+Open http://localhost:5173. The map opens on City Grain over San Francisco's
+Marina; move the selection where you want it and press the draw button. The
+docs are at http://localhost:5173/docs.
 
 ## How it works
 
@@ -47,37 +48,36 @@ want it and press "generate card".
 - `src/components/MapView.jsx` puts the two together: the card rectangle is
   centred on the map, `width × height` at `1:N`, and the SVG is stretched to
   fill exactly that rectangle.
-- `src/lib/presets.js` holds the card documents the app ships. They are the
-  format the CLI reads, so anything you write there works in `drawland map`
-  too. `cargo run --example check_web_presets` parses each one, so a preset that
-  stops parsing fails there rather than in a browser.
-- "presets" replaces the profile with a ready-made one and centres the map on
-  its `output({ lat, lng })`. The preset whose style the config has (everything but `title:` and
-  `card:`) is highlighted in the menu. A preset brings its name as the
-  config's `title:`, which "save" names the file after.
-- "load" and "save" in the sidebar read and write the config, saved under
-  its title; "download",
-  in black in the map's corner once the card is drawn, saves the drawing as
-  an SVG, one per sheet when the card is sliced. Beside it, "selection to
-  map" brings the card to the middle of the map and "map to selection" the
-  map to the card.
-- An edit in the editor is applied only once the engine takes it: "apply"
-  (or ⌘/Ctrl+Enter) on a config with a mistake keeps it as a draft, opens a
-  card centred over the config with the engine's message, and underlines the
-  spot it points to. A loaded file with a mistake opens the same way; a draw
-  that fails says why in the same card.
-- "transform" on the card opens the `card:` block as controls
-  (`src/components/CardControls.jsx`): the place (move with latitude and
-  longitude, rotate, scale, the terrain the card covers) and the output (the
-  paper's size, columns and rows, margin, gutter). A new terrain is a new
-  scale on the same paper, and a new paper size takes in more or less terrain
-  at the same scale. A new scale changes the terrain, or, with the switch
-  beside it on "output", the paper around the same terrain; the switch is
-  remembered in the browser.
-  Every label drags its value sideways (Shift: 15° steps for the bearing,
-  bigger steps elsewhere) and every field takes it typed, written on Enter or
-  on leaving the field (Escape drops it), the arrows stepping it. Lengths take
-  `mm`, `cm` or `in`, terrain `m`, `km`, `mi` or `ft`; a bare number keeps the
-  unit the field had. Drags and steps are written into the config as they
-  happen; the drawing waits for "generate". The pieces live in
-  `src/components/controls.jsx`, ready for a settings panel in the sidebar.
+- `src/lib/presets.js` holds the presets the app ships (`src/presets/*.js`).
+  They are the format the CLI reads, so anything written there works in
+  `drawland map` too. `cargo run --example check_web_presets` parses each one,
+  and `npm test` type-checks each against `drawland.d.ts`, so a preset that
+  stops parsing or type-checking fails there rather than in a browser.
+- The **selection** is the card on the map: what will be drawn, at the
+  profile's paper and scale. The style picker over the map (and the preset
+  menu in the script column) loads a preset whole: its place, paper and scale,
+  the map fitted to it, then drawn; the menu's second button keeps the map's
+  place and paper and brings only the preset's layers. "selection to map"
+  brings the selection to the middle of the map, "map to selection" the map to
+  the selection.
+- The **script column** holds the profile in an editor that autocompletes and
+  type-checks against `drawland.d.ts`. "load" and "save" read and write it as a
+  `.js` named after its `title(...)`. An edit is applied only once the engine
+  takes it: "apply" (or ⌘/Ctrl+Enter) on a script with a mistake keeps it as a
+  draft and opens the engine's message, underlining the spot it points to.
+- The **output controls** (`src/components/OutputControls.jsx`, pieces in
+  `controls.jsx`) edit the literal `output({...})` call: the place (latitude
+  and longitude, bearing, scale, the terrain covered) and the paper (size,
+  slices, padding, gutter, overlap, tile zoom). Every label drags its value
+  sideways (Shift: bigger steps) and every field takes it typed; lengths take
+  `mm`, `cm` or `in`, terrain `m`, `km`, `mi` or `ft`. Edits are written into
+  the script as they happen; the drawing waits for the draw button.
+- **Download** (`DownloadModal.jsx`) saves the drawing as SVG, PNG, DXF or
+  G-code (`GcodeConfig.jsx`, `src/lib/gcode.js`), whole or per sheet, and one
+  file per layer (per pen) on request. **Share** (`ShareModal.jsx`) gives a
+  link that carries the script in it, or a short link to a stored copy.
+- `/docs` (`src/docs/`) is the documentation, opened over the page with the
+  map and editor kept alive behind it. Its pictures are drawn by the CLI with
+  `web/scripts/render-docs.sh` into `public/docs/`, its reference generated
+  from `drawland.d.ts` by `web/scripts/build-reference.mjs`; every example on
+  it opens on the map.

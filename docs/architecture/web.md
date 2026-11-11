@@ -36,7 +36,22 @@ Cancel via `AbortController`; WASM trap handling avoids leaving a borrowed `Job`
 
 ## Routing
 
-`/docs` — in-app docs (`docs/Docs.jsx`), not a static file route. Map/editor stay mounted; `history.pushState` + `popstate`.
+`/docs` — in-app docs (`docs/Docs.jsx`), not a static file route. Map/editor stay mounted; `history.pushState` + `popstate`. `Docs` takes `onOpen(script)`: App runs `loadDoc` on it (the example on the map, fitted, drawn) and navigates back to `/`.
+
+## Docs (`src/docs/`)
+
+Order: gallery → tutorial → lite styles → concepts → patterns → reference → developers. One component per section (`Gallery`, `Tutorial`, `Lite`, `Concepts`, `Patterns`, `Reference`, `Developers`), shared typography in `Bits.jsx`, the left index in `nav.js` (each section exports its heading ids and titles; the index opens only the group being read).
+
+Nothing on the page is hand-maintained against the code:
+
+| Part | Source of truth | Generated / checked by |
+|------|-----------------|------------------------|
+| Reference | `drawland.d.ts` | `web/scripts/build-reference.mjs` → `docs/library-reference.json`; `src/lib/reference.test.js` fails when stale |
+| Tutorial steps, lite styles | `docs/examples/tutorial-*.js`, `lite-*.js` (+ `lite.json`) | type-checked by `presets.typecheck.test.js`; imported `?raw` so the page shows the file that runs |
+| Pictures | examples, `src/presets/*.js` | `web/scripts/render-docs.sh` (CLI → `rsvg-convert` → WebP in `public/docs/{examples,gallery}`; before/after loupes `*.detail.webp`) |
+| Pattern swatches | `Pattern` union in `drawland.d.ts` | `web/scripts/render-patterns.mjs` → `public/docs/patterns/*.svg`, `docs/pattern-swatches.json` |
+
+Tutorial steps are whole, cumulative profiles; `Tutorial.jsx` shows each step's additions with a line LCS against the previous step (`added()`). After changing the engine, a preset or an example, rerun `render-docs.sh` (section and file-prefix arguments narrow it).
 
 Share URLs: `lib/share.js` (fragments `#js=`, etc.).
 

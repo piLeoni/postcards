@@ -1,0 +1,5740 @@
+{
+  "source": "crates/drawland-script/drawland.d.ts",
+  "generator": "web/scripts/build-reference.mjs",
+  "namespaces": [
+    {
+      "name": "features",
+      "doc": [
+        {
+          "kind": "p",
+          "text": "Map data to build from."
+        }
+      ],
+      "members": [
+        {
+          "name": "osm",
+          "signature": "features.osm(tags: Tags): Features",
+          "params": [
+            {
+              "name": "tags",
+              "type": "Tags"
+            }
+          ],
+          "returns": "Features",
+          "types": [
+            "Tags",
+            "Features"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "OSM features with any of these tags, from Overpass."
+            }
+          ]
+        },
+        {
+          "name": "tiles",
+          "signature": "features.tiles(...items: (TilePreset | TilePreset[])[]): Features",
+          "params": [
+            {
+              "name": "items",
+              "rest": true,
+              "type": "(TilePreset | TilePreset[])[]"
+            }
+          ],
+          "returns": "Features",
+          "types": [
+            "TilePreset",
+            "Features"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Features from OpenFreeMap's vector tiles: presets (`\"buildings\"`) or rules (`\"landcover:park,garden\"`). No Overpass."
+            }
+          ]
+        },
+        {
+          "name": "geojson",
+          "signature": "features.geojson(source: string | { type: string; [key: string]: unknown }): Features",
+          "params": [
+            {
+              "name": "source",
+              "type": "string | { type: string; [key: string]: unknown }",
+              "properties": [
+                {
+                  "name": "type",
+                  "kind": "property",
+                  "type": "string"
+                },
+                {
+                  "name": "[key: string]",
+                  "kind": "index",
+                  "type": "unknown"
+                }
+              ]
+            }
+          ],
+          "returns": "Features",
+          "types": [
+            "Features"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Every feature of a GeoJSON dataset: a URL (fetched and cached; `--refresh` fetches again) or a file path beside the profile. Each feature's `properties` become its tags, so `features.where` bands it by a number and `modules.labels({ keys })` names it:"
+            },
+            {
+              "kind": "code",
+              "text": "const quakes = features.geojson(\"https://earthquake.usgs.gov/…/2.5_week.geojson\")\nfeatures.where(quakes, { mag: { min: 6 } })"
+            },
+            {
+              "kind": "p",
+              "text": "Or a GeoJSON object written in the profile (a graticule, a route, points of its own). Coordinates are lon/lat (RFC 7946); a point's third coordinate (a quake's depth) is the tag `geom:z`. In the browser a URL must allow CORS, and a file is one dropped on the page (by its name)."
+            }
+          ]
+        },
+        {
+          "name": "json",
+          "signature": "features.json(url: string, paths: { items?: string; lat: string; lng: string }): Features",
+          "params": [
+            {
+              "name": "url",
+              "type": "string"
+            },
+            {
+              "name": "paths",
+              "type": "{ items?: string; lat: string; lng: string }",
+              "properties": [
+                {
+                  "name": "items",
+                  "optional": true,
+                  "kind": "property",
+                  "type": "string"
+                },
+                {
+                  "name": "lat",
+                  "kind": "property",
+                  "type": "string"
+                },
+                {
+                  "name": "lng",
+                  "kind": "property",
+                  "type": "string"
+                }
+              ]
+            }
+          ],
+          "returns": "Features",
+          "types": [
+            "Features"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Points from plain JSON — a transit API, a live feed — read like a GeoJSON URL (cached 15 min; in the browser the URL must allow CORS). `items` is the dot-path to the array of items (empty or left out: the reply is the array); `lat` and `lng` the dot-paths to each item's position. Every other field becomes a tag under its dotted path:"
+            },
+            {
+              "kind": "code",
+              "text": "const vehicles = features.json(\"https://api-v3.mbta.com/vehicles\",\n  { items: \"data\", lat: \"attributes.latitude\", lng: \"attributes.longitude\" })\nfeatures.where(vehicles, { \"relationships.route.data.id\": \"Red\" })"
+            }
+          ]
+        },
+        {
+          "name": "where",
+          "signature": "features.where(of: Features, tags: Record<string, TagValue | number | { min?: number; max?: number }>): Features",
+          "params": [
+            {
+              "name": "of",
+              "type": "Features"
+            },
+            {
+              "name": "tags",
+              "type": "Record<string, TagValue | number | { min?: number; max?: number }>"
+            }
+          ],
+          "returns": "Features",
+          "types": [
+            "Features",
+            "TagValue"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "The features whose tags pass every test: a value, a list of them, `true` or `false` for present or absent, or a numeric range, `min` included and `max` not. Ranges side by side split a set into bands, each drawn with its own ink:"
+            },
+            {
+              "kind": "code",
+              "text": "features.where(buildings, { render_height: { min: 20, max: 40 } })"
+            },
+            {
+              "kind": "p",
+              "text": "Tile features carry the vector tile's attributes (`render_height`, `class`, `rank`, `brunnel`); OSM features their tags (`building:levels`)."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "ink",
+      "doc": [
+        {
+          "kind": "p",
+          "text": "Ink worked out from data, for a stroke's `color` and `width`."
+        }
+      ],
+      "members": [
+        {
+          "name": "ramp",
+          "signature": "ink.ramp(stops: string[], t: number): string",
+          "params": [
+            {
+              "name": "stops",
+              "type": "string[]"
+            },
+            {
+              "name": "t",
+              "type": "number"
+            }
+          ],
+          "returns": "string",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "The colour at `t` (0 to 1) along evenly spaced `stops`: `ink.ramp([\"#fde68a\", \"#7c2d12\"], 0.5)`."
+            }
+          ]
+        },
+        {
+          "name": "width",
+          "signature": "ink.width(thin: number | `${number}mm`, thick: number | `${number}mm`, t: number): `${number}mm`",
+          "params": [
+            {
+              "name": "thin",
+              "type": "number | `${number}mm`"
+            },
+            {
+              "name": "thick",
+              "type": "number | `${number}mm`"
+            },
+            {
+              "name": "t",
+              "type": "number"
+            }
+          ],
+          "returns": "`${number}mm`",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "The width at `t` (0 to 1) between `thin` and `thick`: `ink.width(0.1, 0.6, 0.5)` is `\"0.35mm\"`."
+            }
+          ]
+        },
+        {
+          "name": "at",
+          "signature": "ink.at(v: number, lo: number, hi: number): number",
+          "params": [
+            {
+              "name": "v",
+              "type": "number"
+            },
+            {
+              "name": "lo",
+              "type": "number"
+            },
+            {
+              "name": "hi",
+              "type": "number"
+            }
+          ],
+          "returns": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Where `v` sits between `lo` and `hi`, kept to 0 to 1: what `ramp` and `width` take."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "areas",
+      "doc": [
+        {
+          "kind": "p",
+          "text": "Polygons, and what can be done with them."
+        }
+      ],
+      "members": [
+        {
+          "name": "band",
+          "signature": "areas.band(where: TerrainWhere, options?: { in?: Area; blur?: number }): Area",
+          "params": [
+            {
+              "name": "where",
+              "type": "TerrainWhere"
+            },
+            {
+              "name": "options",
+              "optional": true,
+              "type": "{ in?: Area; blur?: number }",
+              "properties": [
+                {
+                  "name": "in",
+                  "optional": true,
+                  "kind": "property",
+                  "type": "Area",
+                  "types": [
+                    "Area"
+                  ]
+                },
+                {
+                  "name": "blur",
+                  "optional": true,
+                  "kind": "property",
+                  "type": "number"
+                }
+              ]
+            }
+          ],
+          "returns": "Area",
+          "types": [
+            "TerrainWhere",
+            "Area"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "A band of the elevation as an area: between two heights (`elevMin`, `elevMax`), or two depths below the sea (`depthMin`, `depthMax`), in metres; unset limits are open. The belts an atlas tints — fill it with `pattern: \"solid\"`. `blur` (px, default 4) smooths the heights before the cut — raise it (15–20) for the sea floor, whose coarse source data otherwise shows as rows of specks; `in` keeps it to an area."
+            }
+          ]
+        },
+        {
+          "name": "polygons",
+          "signature": "areas.polygons(of: Features): Area",
+          "params": [
+            {
+              "name": "of",
+              "type": "Features"
+            }
+          ],
+          "returns": "Area",
+          "types": [
+            "Features",
+            "Area"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "The features' polygons, merged into one area."
+            }
+          ]
+        },
+        {
+          "name": "union",
+          "signature": "areas.union(...areas: (Area | Area[])[]): Area",
+          "params": [
+            {
+              "name": "areas",
+              "rest": true,
+              "type": "(Area | Area[])[]"
+            }
+          ],
+          "returns": "Area",
+          "types": [
+            "Area"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Everything in any of the areas."
+            }
+          ]
+        },
+        {
+          "name": "difference",
+          "signature": "areas.difference(base: Area, ...cut: (Area | Area[])[]): Area",
+          "params": [
+            {
+              "name": "base",
+              "type": "Area"
+            },
+            {
+              "name": "cut",
+              "rest": true,
+              "type": "(Area | Area[])[]"
+            }
+          ],
+          "returns": "Area",
+          "types": [
+            "Area"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "`base` without the parts in any of `cut`; with nothing to cut, `base` itself."
+            }
+          ]
+        },
+        {
+          "name": "intersect",
+          "signature": "areas.intersect(base: Area, keep: Area): Area",
+          "params": [
+            {
+              "name": "base",
+              "type": "Area"
+            },
+            {
+              "name": "keep",
+              "type": "Area"
+            }
+          ],
+          "returns": "Area",
+          "types": [
+            "Area"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "The part of `base` inside `keep`."
+            }
+          ]
+        },
+        {
+          "name": "fillHoles",
+          "signature": "areas.fillHoles(of: Area): Area",
+          "params": [
+            {
+              "name": "of",
+              "type": "Area"
+            }
+          ],
+          "returns": "Area",
+          "types": [
+            "Area"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "The area with its holes closed (lakes inside parks, yards inside blocks)."
+            }
+          ]
+        },
+        {
+          "name": "grow",
+          "signature": "areas.grow(of: Area, by: Length): Area",
+          "params": [
+            {
+              "name": "of",
+              "type": "Area"
+            },
+            {
+              "name": "by",
+              "type": "Length"
+            }
+          ],
+          "returns": "Area",
+          "types": [
+            "Area",
+            "Length"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Grown by a length; a negative one shrinks it."
+            }
+          ]
+        },
+        {
+          "name": "move",
+          "signature": "areas.move(of: Area, by: [Length, Length]): Area",
+          "params": [
+            {
+              "name": "of",
+              "type": "Area"
+            },
+            {
+              "name": "by",
+              "type": "[Length, Length]"
+            }
+          ],
+          "returns": "Area",
+          "types": [
+            "Area",
+            "Length"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "The area moved across the page by `[across, down]`: a cloud's shadow cast off its footprint."
+            }
+          ]
+        },
+        {
+          "name": "around",
+          "signature": "areas.around(of: Features, by: Length): Area",
+          "params": [
+            {
+              "name": "of",
+              "type": "Features"
+            },
+            {
+              "name": "by",
+              "type": "Length"
+            }
+          ],
+          "returns": "Area",
+          "types": [
+            "Features",
+            "Length",
+            "Area"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "A disc of radius `by` around every point feature (mapped trees), merged; lines and polygons are ignored."
+            }
+          ]
+        },
+        {
+          "name": "shape",
+          "signature": "areas.shape(spec: ShapeSpec): Area",
+          "params": [
+            {
+              "name": "spec",
+              "type": "ShapeSpec"
+            }
+          ],
+          "returns": "Area",
+          "types": [
+            "ShapeSpec",
+            "Area"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "A shape you write: `circle`, `rect`, regular polygon (`sides` + `r`), or `points` in mm from `at`."
+            }
+          ]
+        },
+        {
+          "name": "text",
+          "signature": "areas.text(spec: TextSpec): Area",
+          "params": [
+            {
+              "name": "spec",
+              "type": "TextSpec"
+            }
+          ],
+          "returns": "Area",
+          "types": [
+            "TextSpec",
+            "Area"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "What `lines.text(spec)` covers (for masks)."
+            }
+          ]
+        },
+        {
+          "name": "buffer",
+          "signature": "areas.buffer(of: Lines, by: Length, options?: { cap?: \"round\" | \"flat\" }): Area",
+          "params": [
+            {
+              "name": "of",
+              "type": "Lines"
+            },
+            {
+              "name": "by",
+              "type": "Length"
+            },
+            {
+              "name": "options",
+              "optional": true,
+              "type": "{ cap?: \"round\" | \"flat\" }",
+              "properties": [
+                {
+                  "name": "cap",
+                  "optional": true,
+                  "kind": "property",
+                  "type": "\"round\" | \"flat\""
+                }
+              ]
+            }
+          ],
+          "returns": "Area",
+          "types": [
+            "Lines",
+            "Length",
+            "Area"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "A strip around lines, merged into one area: `by` is the half-width. Joins are round; caps round unless `cap: \"flat\"`."
+            }
+          ]
+        },
+        {
+          "name": "extendToFrame",
+          "signature": "areas.extendToFrame(of: Area, within: Area, options?: { gapMm?: Length }): Area",
+          "params": [
+            {
+              "name": "of",
+              "type": "Area"
+            },
+            {
+              "name": "within",
+              "type": "Area"
+            },
+            {
+              "name": "options",
+              "optional": true,
+              "type": "{ gapMm?: Length }",
+              "properties": [
+                {
+                  "name": "gapMm",
+                  "optional": true,
+                  "kind": "property",
+                  "type": "Length",
+                  "types": [
+                    "Length"
+                  ]
+                }
+              ]
+            }
+          ],
+          "returns": "Area",
+          "types": [
+            "Area",
+            "Length"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Close the thin gaps between `of` and the edges of `within` (vector-tile water that stops just short of the card border): parts of `of` within `gapMm` (default 1 mm) of an edge are stretched out to it, nothing else."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "engine",
+      "doc": [
+        {
+          "kind": "p",
+          "text": "Areas the engine makes, not OSM."
+        }
+      ],
+      "members": [
+        {
+          "name": "frame",
+          "signature": "engine.frame(): Area",
+          "returns": "Area",
+          "types": [
+            "Area"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "The paper's rectangle."
+            }
+          ]
+        },
+        {
+          "name": "scale",
+          "signature": "engine.scale(): number",
+          "returns": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "The scale denominator this script's `output` asked for (`10000` for `\"1:10000\"`), to size things on the ground: `metres * 1000 / engine.scale()` is millimetres on paper. Call `output` first."
+            }
+          ]
+        },
+        {
+          "name": "ocean",
+          "signature": "engine.ocean(): Area",
+          "returns": "Area",
+          "types": [
+            "Area"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Open sea from `features.tiles(\"ocean\")`, buffered and extended to the card. Prefer building the same chain yourself with `areas.extendToFrame`."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "lines",
+      "doc": [
+        {
+          "kind": "p",
+          "text": "Line sets."
+        }
+      ],
+      "members": [
+        {
+          "name": "rings",
+          "signature": "lines.rings(of: Area, options?: { exteriorOnly?: boolean }): Lines",
+          "params": [
+            {
+              "name": "of",
+              "type": "Area"
+            },
+            {
+              "name": "options",
+              "optional": true,
+              "type": "{ exteriorOnly?: boolean }",
+              "properties": [
+                {
+                  "name": "exteriorOnly",
+                  "optional": true,
+                  "kind": "property",
+                  "type": "boolean",
+                  "doc": [
+                    {
+                      "kind": "p",
+                      "text": "Only the outer edge, not the holes."
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "returns": "Lines",
+          "types": [
+            "Area",
+            "Lines"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "The outlines of an area's polygons."
+            }
+          ]
+        },
+        {
+          "name": "of",
+          "signature": "lines.of(features: Features): Lines",
+          "params": [
+            {
+              "name": "features",
+              "type": "Features"
+            }
+          ],
+          "returns": "Lines",
+          "types": [
+            "Features",
+            "Lines"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "The features' own lines (roads, walls drawn as lines)."
+            }
+          ]
+        },
+        {
+          "name": "segments",
+          "signature": "lines.segments(features: Features): Lines",
+          "params": [
+            {
+              "name": "features",
+              "type": "Features"
+            }
+          ],
+          "returns": "Lines",
+          "types": [
+            "Features",
+            "Lines"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Every edge of every polygon, and the lines: shared walls appear twice."
+            }
+          ]
+        },
+        {
+          "name": "dedupe",
+          "signature": "lines.dedupe(of: Lines): Lines",
+          "params": [
+            {
+              "name": "of",
+              "type": "Lines"
+            }
+          ],
+          "returns": "Lines",
+          "types": [
+            "Lines"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "The same segment drawn twice, once."
+            }
+          ]
+        },
+        {
+          "name": "merge",
+          "signature": "lines.merge(of: Lines): Lines",
+          "params": [
+            {
+              "name": "of",
+              "type": "Lines"
+            }
+          ],
+          "returns": "Lines",
+          "types": [
+            "Lines"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Lines that touch end to end, joined."
+            }
+          ]
+        },
+        {
+          "name": "join",
+          "signature": "lines.join(...sets: (Lines | Lines[])[]): Lines",
+          "params": [
+            {
+              "name": "sets",
+              "rest": true,
+              "type": "(Lines | Lines[])[]"
+            }
+          ],
+          "returns": "Lines",
+          "types": [
+            "Lines"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Several line sets as one."
+            }
+          ]
+        },
+        {
+          "name": "clip",
+          "signature": "lines.clip(of: Lines, within: Area, options?: { invert?: boolean }): Lines",
+          "params": [
+            {
+              "name": "of",
+              "type": "Lines"
+            },
+            {
+              "name": "within",
+              "type": "Area"
+            },
+            {
+              "name": "options",
+              "optional": true,
+              "type": "{ invert?: boolean }",
+              "properties": [
+                {
+                  "name": "invert",
+                  "optional": true,
+                  "kind": "property",
+                  "type": "boolean"
+                }
+              ]
+            }
+          ],
+          "returns": "Lines",
+          "types": [
+            "Lines",
+            "Area"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "The parts inside `within`, or outside with `invert`."
+            }
+          ]
+        },
+        {
+          "name": "terrain",
+          "signature": "lines.terrain(options?: TerrainOptions): Lines",
+          "params": [
+            {
+              "name": "options",
+              "optional": true,
+              "type": "TerrainOptions"
+            }
+          ],
+          "returns": "Lines",
+          "types": [
+            "TerrainOptions",
+            "Lines"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Pen-and-ink terrain in `in`, drawn by burin from the elevation under the output: streamlines along the slope, coloured and weighted per dash, or a flat fill of a height band with `draw: \"fill\"` and `where`. Needs the terrain tiles, which the host reads on its own when a script draws terrain."
+            }
+          ]
+        },
+        {
+          "name": "contours",
+          "signature": "lines.contours(options?: ContoursOptions): Lines",
+          "params": [
+            {
+              "name": "options",
+              "optional": true,
+              "type": "ContoursOptions"
+            }
+          ],
+          "returns": "Lines",
+          "types": [
+            "ContoursOptions",
+            "Lines"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "One contour belt between two heights, as a flat fill of the band: `lines.contours({ from: 200, to: 400 })`. Call it in a loop over heights to stack the belts, each drawn as its own layer."
+            }
+          ]
+        },
+        {
+          "name": "shape",
+          "signature": "lines.shape(spec: ShapeSpec & { closed?: boolean }): Lines",
+          "params": [
+            {
+              "name": "spec",
+              "type": "ShapeSpec & { closed?: boolean }",
+              "properties": [
+                {
+                  "name": "closed",
+                  "optional": true,
+                  "kind": "property",
+                  "type": "boolean"
+                }
+              ]
+            }
+          ],
+          "returns": "Lines",
+          "types": [
+            "ShapeSpec",
+            "Lines"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Like `areas.shape`, as strokes; closed unless you pass `points` with `closed: false`."
+            }
+          ]
+        },
+        {
+          "name": "text",
+          "signature": "lines.text(spec: TextSpec): Lines",
+          "params": [
+            {
+              "name": "spec",
+              "type": "TextSpec"
+            }
+          ],
+          "returns": "Lines",
+          "types": [
+            "TextSpec",
+            "Lines"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "One line of text centred on `at`; same fonts as `modules.labels`."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "fills",
+      "doc": [
+        {
+          "kind": "p",
+          "text": "Patterns inside areas, by penfill."
+        }
+      ],
+      "members": [
+        {
+          "name": "fill",
+          "signature": "fills.fill(options: FillOptions): Lines",
+          "params": [
+            {
+              "name": "options",
+              "type": "FillOptions"
+            }
+          ],
+          "returns": "Lines",
+          "types": [
+            "FillOptions",
+            "Lines"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "The area filled with a pattern: lines, ready to draw."
+            }
+          ]
+        },
+        {
+          "name": "cover",
+          "signature": "fills.cover(options: FillOptions): Area",
+          "params": [
+            {
+              "name": "options",
+              "type": "FillOptions"
+            }
+          ],
+          "returns": "Area",
+          "types": [
+            "FillOptions",
+            "Area"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "What `fill(options)` covers on paper, to mask other layers with. The area itself for most patterns; for `isoline-blobs` and `isoline-stack` their footprint (clearings left out, `edge: \"overflow\"` spill included). The same options run the pattern once for both."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "burin",
+      "doc": [
+        {
+          "kind": "p",
+          "text": "A burin document, built by burin's own language inside this profile. The callback is a real function and runs in the same interpreter, so it is linted and its errors carry this script's positions. The document is burin's own (`burin.batch`, `burin.water`, `burin.shore`, `burin.fill`, the trees); the engine draws it later, from the elevation the host fetched."
+        }
+      ],
+      "members": [
+        {
+          "name": "terrain",
+          "signature": "burin.terrain(build: (burin: BurinBuilder) => void, options?: BurinTerrainOptions): Lines",
+          "params": [
+            {
+              "name": "build",
+              "type": "(burin: BurinBuilder) => void"
+            },
+            {
+              "name": "options",
+              "optional": true,
+              "type": "BurinTerrainOptions"
+            }
+          ],
+          "returns": "Lines",
+          "types": [
+            "BurinBuilder",
+            "BurinTerrainOptions",
+            "Lines"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Draw a burin document in the terrain: streamlines down the slope, the stippled sea, contour belts, the shore — whatever the callback builds."
+            },
+            {
+              "kind": "code",
+              "text": "const natural = burin.terrain((b) => {\n  b.batch({ angle: 90, style: { space: 3, space_dark: 0.8 } })\n  b.water(\"dots\", { follow: \"shore\", style: { space: 10 } })\n  b.shore({ lines: 2 })\n})\ndraw({ id: \"land\", from: natural, stroke: \"solid\" })"
+            },
+            {
+              "kind": "p",
+              "text": "It covers the whole output. `in` clips it to an area; to put it under other layers, draw it first and mask it like any other group; to fill a shape with it, `fills.fill({ in: shape, content: natural })`."
+            }
+          ]
+        },
+        {
+          "name": "script",
+          "signature": "burin.script(build: (burin: BurinBuilder) => void, options?: BurinTerrainOptions): Lines",
+          "params": [
+            {
+              "name": "build",
+              "type": "(burin: BurinBuilder) => void"
+            },
+            {
+              "name": "options",
+              "optional": true,
+              "type": "BurinTerrainOptions"
+            }
+          ],
+          "returns": "Lines",
+          "types": [
+            "BurinBuilder",
+            "BurinTerrainOptions",
+            "Lines"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "The same: a burin document, whatever it draws."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "modules",
+      "doc": [
+        {
+          "kind": "p",
+          "text": "Compiled recipes."
+        }
+      ],
+      "members": [
+        {
+          "name": "roads",
+          "signature": "modules.roads(options?: RoadOptions): Roads",
+          "params": [
+            {
+              "name": "options",
+              "optional": true,
+              "type": "RoadOptions"
+            }
+          ],
+          "returns": "Roads",
+          "types": [
+            "RoadOptions",
+            "Roads"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Roads with their widths, crossings and bridges; from OSM `highway` unless given features. Call once."
+            }
+          ]
+        },
+        {
+          "name": "labels",
+          "signature": "modules.labels(options: LabelOptions): Labels",
+          "params": [
+            {
+              "name": "options",
+              "type": "LabelOptions"
+            }
+          ],
+          "returns": "Labels",
+          "types": [
+            "LabelOptions",
+            "Labels"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Names written on the map, in a single-stroke (Hershey) font or an outline font, placed so that none covers another: along each road, bent with it where it curves, and level inside areas. Larger the more the feature matters (a road's class, an area's size); the most important are placed first."
+            }
+          ]
+        },
+        {
+          "name": "graticule",
+          "signature": "modules.graticule(options: GraticuleOptions): Graticule",
+          "params": [
+            {
+              "name": "options",
+              "type": "GraticuleOptions"
+            }
+          ],
+          "returns": "Graticule",
+          "types": [
+            "GraticuleOptions",
+            "Graticule"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "An atlas plate's graticule round the page rectangle `in` (its bounds): meridians and parallels, a border of black-and-white keys, and degree labels — through the output's projection, so true wherever the plate is moved, at any bearing."
+            },
+            {
+              "kind": "code",
+              "text": "const g = modules.graticule({ in: plate, step: 30, ticks: 10, band: \"1.4mm\", gap: \"1mm\", size: \"1.8mm\" })\ndraw({ from: g.lines, … }); draw({ from: fills.fill({ in: g.keys, pattern: \"solid\" }), … })"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "compose",
+      "doc": [
+        {
+          "kind": "p",
+          "text": "How the drawn groups stack, cover each other, and are optimized for the plotter."
+        }
+      ],
+      "members": [
+        {
+          "name": "order",
+          "signature": "compose.order(...ids: (string | string[])[]): void",
+          "params": [
+            {
+              "name": "ids",
+              "rest": true,
+              "type": "(string | string[])[]"
+            }
+          ],
+          "returns": "void",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Group ids, bottom first; groups left out go on top in draw order. Default: draw order."
+            }
+          ]
+        },
+        {
+          "name": "mask",
+          "signature": "compose.mask(options: { name?: string; from: Area; occludes: string[] }): void",
+          "params": [
+            {
+              "name": "options",
+              "type": "{ name?: string; from: Area; occludes: string[] }",
+              "properties": [
+                {
+                  "name": "name",
+                  "optional": true,
+                  "kind": "property",
+                  "type": "string"
+                },
+                {
+                  "name": "from",
+                  "kind": "property",
+                  "type": "Area",
+                  "types": [
+                    "Area"
+                  ]
+                },
+                {
+                  "name": "occludes",
+                  "kind": "property",
+                  "type": "string[]"
+                }
+              ]
+            }
+          ],
+          "returns": "void",
+          "types": [
+            "Area"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "`from` hides exactly the listed groups, wherever they are in the order."
+            }
+          ]
+        },
+        {
+          "name": "clip",
+          "signature": "compose.clip(value: \"auto\" | \"none\" | Area[]): void",
+          "params": [
+            {
+              "name": "value",
+              "type": "\"auto\" | \"none\" | Area[]"
+            }
+          ],
+          "returns": "void",
+          "types": [
+            "Area"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Which masks cut: `\"auto\"` (default), `\"none\"`, or exactly these areas."
+            }
+          ]
+        },
+        {
+          "name": "deoverlap",
+          "signature": "compose.deoverlap(layers?: LayerTargets | Length | DeoverlapOptions, options?: Length | DeoverlapOptions): void",
+          "params": [
+            {
+              "name": "layers",
+              "optional": true,
+              "type": "LayerTargets | Length | DeoverlapOptions"
+            },
+            {
+              "name": "options",
+              "optional": true,
+              "type": "Length | DeoverlapOptions"
+            }
+          ],
+          "returns": "void",
+          "types": [
+            "LayerTargets",
+            "Length",
+            "DeoverlapOptions"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Remove overlapping stroke segments within or across layers."
+            }
+          ]
+        },
+        {
+          "name": "linemerge",
+          "signature": "compose.linemerge(layers?: LayerTargets | Length | ToleranceOptimizeOptions, options?: Length | ToleranceOptimizeOptions): void",
+          "params": [
+            {
+              "name": "layers",
+              "optional": true,
+              "type": "LayerTargets | Length | ToleranceOptimizeOptions"
+            },
+            {
+              "name": "options",
+              "optional": true,
+              "type": "Length | ToleranceOptimizeOptions"
+            }
+          ],
+          "returns": "void",
+          "types": [
+            "LayerTargets",
+            "Length",
+            "ToleranceOptimizeOptions"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Join polylines whose endpoints are within `tolerance` (default `\"0.1mm\"`)."
+            }
+          ]
+        },
+        {
+          "name": "simplify",
+          "signature": "compose.simplify(layers?: LayerTargets | Length | ToleranceOptimizeOptions, options?: Length | ToleranceOptimizeOptions): void",
+          "params": [
+            {
+              "name": "layers",
+              "optional": true,
+              "type": "LayerTargets | Length | ToleranceOptimizeOptions"
+            },
+            {
+              "name": "options",
+              "optional": true,
+              "type": "Length | ToleranceOptimizeOptions"
+            }
+          ],
+          "returns": "void",
+          "types": [
+            "LayerTargets",
+            "Length",
+            "ToleranceOptimizeOptions"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Ramer-Douglas-Peucker simplification within `tolerance` (default `\"0.05mm\"`)."
+            }
+          ]
+        },
+        {
+          "name": "filter",
+          "signature": "compose.filter(layers?: LayerTargets | Length | FilterOptimizeOptions, options?: Length | FilterOptimizeOptions): void",
+          "params": [
+            {
+              "name": "layers",
+              "optional": true,
+              "type": "LayerTargets | Length | FilterOptimizeOptions"
+            },
+            {
+              "name": "options",
+              "optional": true,
+              "type": "Length | FilterOptimizeOptions"
+            }
+          ],
+          "returns": "void",
+          "types": [
+            "LayerTargets",
+            "Length",
+            "FilterOptimizeOptions"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Drop strokes shorter than `minLength` (default `\"0.05mm\"`)."
+            }
+          ]
+        },
+        {
+          "name": "reloop",
+          "signature": "compose.reloop(layers?: LayerTargets | ReloopOptimizeOptions): void",
+          "params": [
+            {
+              "name": "layers",
+              "optional": true,
+              "type": "LayerTargets | ReloopOptimizeOptions"
+            }
+          ],
+          "returns": "void",
+          "types": [
+            "LayerTargets",
+            "ReloopOptimizeOptions"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Randomize seam vertex on closed loops to avoid ink blobs."
+            }
+          ]
+        },
+        {
+          "name": "hand",
+          "signature": "compose.hand(layers?: LayerTargets | HandPreset | HandOptions, options?: HandPreset | HandOptions): void",
+          "params": [
+            {
+              "name": "layers",
+              "optional": true,
+              "type": "LayerTargets | HandPreset | HandOptions"
+            },
+            {
+              "name": "options",
+              "optional": true,
+              "type": "HandPreset | HandOptions"
+            }
+          ],
+          "returns": "void",
+          "types": [
+            "LayerTargets",
+            "HandPreset",
+            "HandOptions"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Redraw strokes as if by hand: tremble, bowed edges, loose ends, unclosed rings. Runs where it is called in the sequence — usually after `linemerge`, before `simplify`/`linesort`."
+            }
+          ]
+        },
+        {
+          "name": "orient",
+          "signature": "compose.orient(layers?: LayerTargets | OrientDirection | OrientOptions, options?: OrientDirection | OrientOptions): void",
+          "params": [
+            {
+              "name": "layers",
+              "optional": true,
+              "type": "LayerTargets | OrientDirection | OrientOptions"
+            },
+            {
+              "name": "options",
+              "optional": true,
+              "type": "OrientDirection | OrientOptions"
+            }
+          ],
+          "returns": "void",
+          "types": [
+            "LayerTargets",
+            "OrientDirection",
+            "OrientOptions"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Flip open strokes so they flow toward a preferred direction (e.g. `\"tl-br\"` or `45` degrees) to avoid pen skipping on reversals."
+            }
+          ]
+        },
+        {
+          "name": "linesort",
+          "signature": "compose.linesort(layers?: LayerTargets | OrientDirection | LinesortOptions, options?: OrientDirection | LinesortOptions): void",
+          "params": [
+            {
+              "name": "layers",
+              "optional": true,
+              "type": "LayerTargets | OrientDirection | LinesortOptions"
+            },
+            {
+              "name": "options",
+              "optional": true,
+              "type": "OrientDirection | LinesortOptions"
+            }
+          ],
+          "returns": "void",
+          "types": [
+            "LayerTargets",
+            "OrientDirection",
+            "LinesortOptions"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Nearest-neighbour + 2-opt stroke ordering to minimize pen-up travel."
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "functions": [
+    {
+      "name": "draw",
+      "signature": "draw(options: DrawOptions): string",
+      "params": [
+        {
+          "name": "options",
+          "type": "DrawOptions"
+        }
+      ],
+      "returns": "string",
+      "types": [
+        "DrawOptions"
+      ],
+      "doc": [
+        {
+          "kind": "p",
+          "text": "Put lines on paper; returns the group id. Later draws go on top."
+        }
+      ]
+    },
+    {
+      "name": "output",
+      "signature": "output(options: OutputOptions): void",
+      "params": [
+        {
+          "name": "options",
+          "type": "OutputOptions"
+        }
+      ],
+      "returns": "void",
+      "types": [
+        "OutputOptions"
+      ],
+      "doc": [
+        {
+          "kind": "p",
+          "text": "Where the map is and on what paper. The page edits this call when its values are written literally."
+        }
+      ]
+    },
+    {
+      "name": "title",
+      "signature": "title(text: string): void",
+      "params": [
+        {
+          "name": "text",
+          "type": "string"
+        }
+      ],
+      "returns": "void",
+      "doc": [
+        {
+          "kind": "p",
+          "text": "The profile's name."
+        }
+      ]
+    },
+    {
+      "name": "view",
+      "signature": "view(spec: ViewSpec, style: string | (() => void)): string",
+      "params": [
+        {
+          "name": "spec",
+          "type": "ViewSpec"
+        },
+        {
+          "name": "style",
+          "type": "string | (() => void)"
+        }
+      ],
+      "returns": "string",
+      "types": [
+        "ViewSpec"
+      ],
+      "doc": [
+        {
+          "kind": "p",
+          "text": "Another place, at its own scale, drawn into a rectangle of this page: a postcard of four corners of a city, an inset. The style is a built-in preset by name (`\"city-grain\"`) or a function whose calls build the view's own graph. The view is drawn under the page's own groups; a page mask that names it in `occludes` cuts it (a title knocked out of all four). Returns the view's id."
+        }
+      ]
+    }
+  ],
+  "types": [
+    {
+      "name": "Features",
+      "kind": "handle",
+      "doc": [
+        {
+          "kind": "p",
+          "text": "Features picked from the map data: they are not drawn, areas and lines are made from them."
+        }
+      ]
+    },
+    {
+      "name": "Area",
+      "kind": "handle",
+      "doc": [
+        {
+          "kind": "p",
+          "text": "Polygons in output millimetres: what fills go in, masks hide with, and rings outline."
+        }
+      ]
+    },
+    {
+      "name": "Lines",
+      "kind": "handle",
+      "doc": [
+        {
+          "kind": "p",
+          "text": "Lines in output millimetres: what `draw` puts on paper."
+        }
+      ]
+    },
+    {
+      "name": "Length",
+      "kind": "type",
+      "doc": [
+        {
+          "kind": "p",
+          "text": "A length: a number of millimetres, or a string with a unit (`\"0.5mm\"`, `\"6in\"`, `\"2cm\"`)."
+        }
+      ],
+      "text": "number | `${number}mm` | `${number}cm` | `${number}in` | `${number}m`",
+      "others": [
+        "number",
+        "`${number}mm`",
+        "`${number}cm`",
+        "`${number}in`",
+        "`${number}m`"
+      ]
+    },
+    {
+      "name": "TagValue",
+      "kind": "type",
+      "doc": [
+        {
+          "kind": "p",
+          "text": "One value or several, or `true` for any value and `false` for none."
+        }
+      ],
+      "text": "string | string[] | boolean",
+      "others": [
+        "string",
+        "string[]",
+        "boolean"
+      ]
+    },
+    {
+      "name": "Tags",
+      "kind": "interface",
+      "doc": [
+        {
+          "kind": "p",
+          "text": "OSM tags, any of which selects a feature: `{ building: true }`, `{ leisure: [\"park\", \"garden\"] }`."
+        }
+      ],
+      "members": [
+        {
+          "name": "[tag: string]",
+          "kind": "index",
+          "type": "TagValue | Record<string, TagValue> | undefined",
+          "types": [
+            "TagValue"
+          ]
+        },
+        {
+          "name": "except",
+          "optional": true,
+          "kind": "property",
+          "type": "Record<string, TagValue>",
+          "types": [
+            "TagValue"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Tags that drop a feature even when another tag selected it."
+            }
+          ]
+        },
+        {
+          "name": "underground",
+          "optional": true,
+          "kind": "property",
+          "type": "boolean",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Keep features below ground (tunnels, `layer < 0`); dropped by default."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "TilePreset",
+      "kind": "type",
+      "doc": [
+        {
+          "kind": "p",
+          "text": "A terramask preset, or a rule `layer:class,class` on the OpenMapTiles layers (`landcover:park,garden`)."
+        }
+      ],
+      "text": "\"water\" | \"ocean\" | \"lakes\" | \"rivers\" | \"land\" | \"forest\" | \"glacier\" | \"wetland\" | \"sand\" | \"rock\" | \"grass\" | \"farmland\" | \"parks\" | \"urban\" | \"buildings\" | \"roads\" | \"paths\" | \"road_names\" | \"rail\" | `${string}:${string}`",
+      "values": [
+        "water",
+        "ocean",
+        "lakes",
+        "rivers",
+        "land",
+        "forest",
+        "glacier",
+        "wetland",
+        "sand",
+        "rock",
+        "grass",
+        "farmland",
+        "parks",
+        "urban",
+        "buildings",
+        "roads",
+        "paths",
+        "road_names",
+        "rail"
+      ],
+      "others": [
+        "`${string}:${string}`"
+      ]
+    },
+    {
+      "name": "Pattern",
+      "kind": "type",
+      "doc": [
+        {
+          "kind": "p",
+          "text": "A penfill pattern. `concentric`: rings inward from the outer edge; a hole stops them. `offsets`: rings from every edge, holes included, so a network (streets round blocks) fills evenly; `spacing` apart, sharp corners."
+        }
+      ],
+      "text": "\"amphibolite\" | \"arena\" | \"beds\" | \"bentonite\" | \"brackets\" | \"breccia\" | \"breccia-blobs\" | \"canopy\" | \"cell-net\" | \"chalky-soil\" | \"chess\" | \"clay-soil\" | \"clouds\" | \"coal\" | \"coarse-stone\" | \"compacted-soil\" | \"concentric\" | \"conglomerate\" | \"conglomerate-flat\" | \"coquina\" | \"cracked-earth\" | \"cracks\" | \"curl-waves\" | \"dacite\" | \"debris-soil\" | \"diabase\" | \"diatom\" | \"diorite\" | \"doodle-trees\" | \"dots\" | \"drift\" | \"dry-cracked-soil\" | \"eddies\" | \"erosion-lines\" | \"feldspar\" | \"ferrous\" | \"fill\" | \"fine-gravel\" | \"flow-waves\" | \"fluid-grass\" | \"gabbro\" | \"gneiss\" | \"grainy-soil\" | \"granite\" | \"granite-x\" | \"grass\" | \"gravel\" | \"gravel-clipped\" | \"gravelly-soil\" | \"grid\" | \"growth\" | \"hilbert\" | \"honeycomb\" | \"hornblende\" | \"isoline-blobs\" | \"isoline-stack\" | \"isoline-stack-hatched\" | \"laminae\" | \"lava\" | \"layered-soil\" | \"lily-pads\" | \"lines\" | \"loose-soil\" | \"marble\" | \"masonry\" | \"mixed-rocks\" | \"mulch\" | \"mulched-soil\" | \"none\" | \"offsets\" | \"ophitic\" | \"organic-topsoil\" | \"pat\" | \"pebble-scatter\" | \"pebbled-soil\" | \"pebbles\" | \"rectilinear\" | \"ripples\" | \"sandy-soil\" | \"scales\" | \"scallop-waves\" | \"scribble\" | \"shards\" | \"silty-soil\" | \"solid\" | \"spiral\" | \"sprouts\" | \"stipple\" | \"stipple-edge\" | \"stipple-noise\" | \"stone-cluster\" | \"sunburst\" | \"swells\" | \"terrazzo\" | \"triangles\" | \"truchet\" | \"tufts\" | \"twigs\" | \"vines\" | \"wave-grid\" | \"wave_grid\" | \"waves\" | \"wood\" | \"zigzag\"",
+      "values": [
+        "amphibolite",
+        "arena",
+        "beds",
+        "bentonite",
+        "brackets",
+        "breccia",
+        "breccia-blobs",
+        "canopy",
+        "cell-net",
+        "chalky-soil",
+        "chess",
+        "clay-soil",
+        "clouds",
+        "coal",
+        "coarse-stone",
+        "compacted-soil",
+        "concentric",
+        "conglomerate",
+        "conglomerate-flat",
+        "coquina",
+        "cracked-earth",
+        "cracks",
+        "curl-waves",
+        "dacite",
+        "debris-soil",
+        "diabase",
+        "diatom",
+        "diorite",
+        "doodle-trees",
+        "dots",
+        "drift",
+        "dry-cracked-soil",
+        "eddies",
+        "erosion-lines",
+        "feldspar",
+        "ferrous",
+        "fill",
+        "fine-gravel",
+        "flow-waves",
+        "fluid-grass",
+        "gabbro",
+        "gneiss",
+        "grainy-soil",
+        "granite",
+        "granite-x",
+        "grass",
+        "gravel",
+        "gravel-clipped",
+        "gravelly-soil",
+        "grid",
+        "growth",
+        "hilbert",
+        "honeycomb",
+        "hornblende",
+        "isoline-blobs",
+        "isoline-stack",
+        "isoline-stack-hatched",
+        "laminae",
+        "lava",
+        "layered-soil",
+        "lily-pads",
+        "lines",
+        "loose-soil",
+        "marble",
+        "masonry",
+        "mixed-rocks",
+        "mulch",
+        "mulched-soil",
+        "none",
+        "offsets",
+        "ophitic",
+        "organic-topsoil",
+        "pat",
+        "pebble-scatter",
+        "pebbled-soil",
+        "pebbles",
+        "rectilinear",
+        "ripples",
+        "sandy-soil",
+        "scales",
+        "scallop-waves",
+        "scribble",
+        "shards",
+        "silty-soil",
+        "solid",
+        "spiral",
+        "sprouts",
+        "stipple",
+        "stipple-edge",
+        "stipple-noise",
+        "stone-cluster",
+        "sunburst",
+        "swells",
+        "terrazzo",
+        "triangles",
+        "truchet",
+        "tufts",
+        "twigs",
+        "vines",
+        "wave-grid",
+        "wave_grid",
+        "waves",
+        "wood",
+        "zigzag"
+      ]
+    },
+    {
+      "name": "PatName",
+      "kind": "type",
+      "doc": [
+        {
+          "kind": "p",
+          "text": "A built-in hatch for `pattern: \"pat\"`."
+        }
+      ],
+      "text": "\"BRICK\" | \"HERRINGBONE\" | \"BASKET\" | \"PARQUET\" | \"ANSI31\" | \"ANSI32\" | \"ANSI33\" | \"ANSI37\" | \"EARTH\" | \"CROSS\" | \"DASH\" | \"STAIRS\" | \"GRATE\" | \"ANGLE\"",
+      "values": [
+        "BRICK",
+        "HERRINGBONE",
+        "BASKET",
+        "PARQUET",
+        "ANSI31",
+        "ANSI32",
+        "ANSI33",
+        "ANSI37",
+        "EARTH",
+        "CROSS",
+        "DASH",
+        "STAIRS",
+        "GRATE",
+        "ANGLE"
+      ]
+    },
+    {
+      "name": "FillOptions",
+      "kind": "interface",
+      "members": [
+        {
+          "name": "in",
+          "kind": "property",
+          "type": "Area",
+          "types": [
+            "Area"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "The area to fill."
+            }
+          ]
+        },
+        {
+          "name": "per",
+          "optional": true,
+          "kind": "property",
+          "type": "\"feature\"",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "`\"feature\"`: one pattern per polygon (each building hatched on its own) instead of one over the union."
+            }
+          ]
+        },
+        {
+          "name": "pattern",
+          "optional": true,
+          "kind": "property",
+          "type": "Pattern",
+          "types": [
+            "Pattern"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "The pattern; or leave it out and give a `source` or a `content`."
+            }
+          ]
+        },
+        {
+          "name": "content",
+          "optional": true,
+          "kind": "property",
+          "type": "Lines",
+          "types": [
+            "Lines"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Lines to fill the area with, cut to it: a burin document, or any `lines.*`."
+            }
+          ]
+        },
+        {
+          "name": "spacing",
+          "optional": true,
+          "kind": "property",
+          "type": "Length",
+          "types": [
+            "Length"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Distance between lines, rows or dots. Default 0.5mm."
+            }
+          ]
+        },
+        {
+          "name": "angle",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Degrees; most patterns default to 0 (zigzag and lines to 45)."
+            }
+          ]
+        },
+        {
+          "name": "mark",
+          "optional": true,
+          "kind": "property",
+          "type": "Length",
+          "types": [
+            "Length"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Dot or mark size, for `dots` and `stipple`. Default 0.2mm."
+            }
+          ]
+        },
+        {
+          "name": "inset",
+          "optional": true,
+          "kind": "property",
+          "type": "Length",
+          "types": [
+            "Length"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Shrink the area first. `waves` default to 0.1mm."
+            }
+          ]
+        },
+        {
+          "name": "fray",
+          "optional": true,
+          "kind": "property",
+          "type": "Length",
+          "types": [
+            "Length"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Perimeter-aware edge fade width: lines break into shorter dashes/dots and disappear before the boundary."
+            }
+          ]
+        },
+        {
+          "name": "seed",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "For the random patterns: the same seed draws the same lines."
+            }
+          ]
+        },
+        {
+          "name": "anchor",
+          "optional": true,
+          "kind": "property",
+          "type": "\"global\" | \"local\"",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "`\"global\"` (default): neighbouring areas share one grid. `\"local\"`: each shape on its own."
+            }
+          ]
+        },
+        {
+          "name": "shift",
+          "optional": true,
+          "kind": "property",
+          "type": "[Length, Length]",
+          "types": [
+            "Length"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Move the grid, across and down."
+            }
+          ]
+        },
+        {
+          "name": "centre",
+          "optional": true,
+          "kind": "property",
+          "type": "[Length, Length]",
+          "types": [
+            "Length"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Centre the pattern here, in output millimetres (sunburst, spiral)."
+            }
+          ]
+        },
+        {
+          "name": "lattice",
+          "optional": true,
+          "kind": "property",
+          "type": "\"square\" | \"hexagonal\"",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "`dots`: a square or a hexagonal lattice."
+            }
+          ]
+        },
+        {
+          "name": "line_width",
+          "optional": true,
+          "kind": "property",
+          "type": "Length",
+          "types": [
+            "Length"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "`honeycomb`: double the walls this far apart. `growth`: the pen width, so trunk passes sit side by side. Default 0.15 for `growth`."
+            }
+          ]
+        },
+        {
+          "name": "hatch",
+          "optional": true,
+          "kind": "property",
+          "type": "Length",
+          "types": [
+            "Length"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "`terrazzo`: the hatch inside the stones. `isoline-stack` with `light`: shading hatch spacing in mm, `0` for none. Default 0.4."
+            }
+          ]
+        },
+        {
+          "name": "cell",
+          "optional": true,
+          "kind": "property",
+          "type": "Length",
+          "types": [
+            "Length"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "`chess`: the size of a square."
+            }
+          ]
+        },
+        {
+          "name": "name",
+          "optional": true,
+          "kind": "property",
+          "type": "PatName",
+          "types": [
+            "PatName"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "`pat`: which hatch."
+            }
+          ]
+        },
+        {
+          "name": "scale",
+          "optional": true,
+          "kind": "property",
+          "type": "Length",
+          "types": [
+            "Length"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "`pat`: the hatch's size."
+            }
+          ]
+        },
+        {
+          "name": "source",
+          "optional": true,
+          "kind": "property",
+          "type": "{ file: string; size?: string; position?: string; repeat?: string }",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "An SVG drawn into the area instead of a pattern."
+            }
+          ]
+        },
+        {
+          "name": "background",
+          "optional": true,
+          "kind": "property",
+          "type": "string",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Screen-style flat colour under the hatch (SVG fill, not pen ink)."
+            }
+          ]
+        },
+        {
+          "name": "edge",
+          "optional": true,
+          "kind": "property",
+          "type": "\"clip\" | \"inside\" | \"overflow\"",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "`isoline-stack`: `clip` cuts at the border; `inside` closes inside it; `overflow` bulges past. Default `clip`."
+            }
+          ]
+        },
+        {
+          "name": "overflow",
+          "optional": true,
+          "kind": "property",
+          "type": "Length",
+          "types": [
+            "Length"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "`isoline-stack` with `edge: \"overflow\"`: how far past the border, in mm. Default ~0.4× `spacing`."
+            }
+          ]
+        },
+        {
+          "name": "coverage",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "`isoline-stack` / `isoline-blobs`: how patchy the crowns are (0–1), not “this fraction of the polygon’s area”. Low values leave more clearings; `1` fills everywhere the generator allows. Default 0.6."
+            }
+          ]
+        },
+        {
+          "name": "bubble",
+          "optional": true,
+          "kind": "property",
+          "type": "Length",
+          "types": [
+            "Length"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "`isoline-stack`: typical bubble radius in mm; smaller is lumpier. Default ~0.3× `spacing`."
+            }
+          ]
+        },
+        {
+          "name": "slices",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "`isoline-stack`: horizontal slices through the stack; more rings. Default 9."
+            }
+          ]
+        },
+        {
+          "name": "jitter",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "`isoline-stack`: contour displacement intensity (`jaggedness`, 0–2.5). `growth`: steering wobble (0–1ish). Default 1.1 for `isoline-stack`, 0.1 for `growth`."
+            }
+          ]
+        },
+        {
+          "name": "jitter_period",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "`isoline-stack`: jitter wavelength — how many control points sit on each contour (0.2–4; lower = finer serration). Alias: `period`. Default 0.68."
+            }
+          ]
+        },
+        {
+          "name": "period",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Alias for `jitter_period`."
+            }
+          ]
+        },
+        {
+          "name": "ticks",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "`isoline-stack`: short cross-contour slope ticks at bough clefts and shadowed tiers (0–1.5). Default 0.42."
+            }
+          ]
+        },
+        {
+          "name": "elongation",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "`isoline-stack`: crown elliptical elongation / wind sweep (0–1). Default 0.18."
+            }
+          ]
+        },
+        {
+          "name": "lobes",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "`isoline-stack`: bough cleft depth and compound sub-crown lobing (0–2.5). Default 1.0."
+            }
+          ]
+        },
+        {
+          "name": "light",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "`isoline-stack`: directional sun strength (0–1). Default 0.82. Lit-side arcs, shadow-side density; use `ticks` for cross-contour hachures."
+            }
+          ]
+        },
+        {
+          "name": "light_angle",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "`isoline-stack` with `light`: degrees the light comes *from* (0 = +x, 90 = +y). Default -45. `doodle-trees`: side the shadow scribble avoids. Default 225."
+            }
+          ]
+        },
+        {
+          "name": "loops",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "`doodle-trees` (`spacing` = crown diameter): curls round each crown's rim, as a multiple of the default. Default 1."
+            }
+          ]
+        },
+        {
+          "name": "shadow",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "`doodle-trees`: share of crowns (0–1) with a shade crescent. Default 0.8."
+            }
+          ]
+        },
+        {
+          "name": "wavelength",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "`curl-waves` (`spacing` = gap between rows): distance between waves along a row, × `spacing`. Default 1.35. `flow-waves` (`spacing` = gap between lines): length of one swell, × `spacing`. Default 13."
+            }
+          ]
+        },
+        {
+          "name": "amplitude",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "`flow-waves`: swell height, × `spacing`. Default 2.6."
+            }
+          ]
+        },
+        {
+          "name": "drift",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "`flow-waves`: how fast the swell's height and phase change across the sea. Default 1."
+            }
+          ]
+        },
+        {
+          "name": "breaks",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "`flow-waves`: how broken the lines are (0–1, 0 = unbroken). Default 0.5."
+            }
+          ]
+        },
+        {
+          "name": "depth",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "`scallop-waves` (`spacing` = gap between rows; `wavelength` = scallop width × spacing, default 1.35): how far each scallop dips, × `spacing`. Default 0.35."
+            }
+          ]
+        },
+        {
+          "name": "round",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "`scallop-waves`: arc shape, below 1 rounder, above 1 more pointed. Default 0.8."
+            }
+          ]
+        },
+        {
+          "name": "curl",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "`curl-waves`: radius of each curl, × the wavelength. Default 0.2."
+            }
+          ]
+        },
+        {
+          "name": "turns",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "`curl-waves`: how far each curl winds in (1 = one full turn). Default 0.95."
+            }
+          ]
+        },
+        {
+          "name": "stagger",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "`curl-waves`: shift every other row by this share of a wave (0–1). Default 0."
+            }
+          ]
+        },
+        {
+          "name": "flip",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "`curl-waves`: 1 mirrors the waves so they break the other way. Default 0."
+            }
+          ]
+        },
+        {
+          "name": "light_elevation",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "`isoline-stack` with `light`: sun height in degrees; lower casts longer shadows. Default 35."
+            }
+          ]
+        },
+        {
+          "name": "contour",
+          "optional": true,
+          "kind": "property",
+          "type": "Length",
+          "types": [
+            "Length"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "`isoline-blobs`: distance between contour lines in mm. Default ~0.045× `spacing`."
+            }
+          ]
+        },
+        {
+          "name": "warp",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "`isoline-blobs`: domain warp of the field (0–1). Default 0.45. `clouds`: how much the masses curl and drift (0–1). Default 0.25."
+            }
+          ]
+        },
+        {
+          "name": "puffs",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "`clouds` — cumulus seen from above, heaped from puffs on a body that rises and falls, shaded where it turns from the sun or higher cloud shadows it. `spacing` is a puff's size; `coverage` the share of sky; `cell` the scale of the masses (default 8 puffs); `light_angle` (page degrees, default 225: from the top left) and `light_elevation` (default 30) the sun; `hatch` the shade's spacing at its deepest. `fills.cover` gives the clouds' footprint: mask what lies under them, and `areas.move` it down-sun for their shadow on the ground."
+            }
+          ]
+        },
+        {
+          "name": "elongate",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "`clouds`: how drawn out each puff is along the cloud's run (0 round). Default 0.35."
+            }
+          ]
+        },
+        {
+          "name": "stretch",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "`clouds`: how far the masses are drawn out along `wind` (0–0.95). Default 0.25."
+            }
+          ]
+        },
+        {
+          "name": "wind",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "`clouds`: the wind's direction on the page, degrees. Default 15."
+            }
+          ]
+        },
+        {
+          "name": "height",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "`clouds`: how tall the cloud heaps up (1 cumulus, 0.3 a flat sheet). Default 1."
+            }
+          ]
+        },
+        {
+          "name": "shade",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "`clouds`: how much of the cloud is shaded (0–1, 0 none). Default 0.45."
+            }
+          ]
+        },
+        {
+          "name": "shading",
+          "optional": true,
+          "kind": "property",
+          "type": "\"dots\" | \"lines\"",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "`clouds`: shade in `\"dots\"` (default) or `\"lines\"`."
+            }
+          ]
+        },
+        {
+          "name": "dot",
+          "optional": true,
+          "kind": "property",
+          "type": "Length",
+          "types": [
+            "Length"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "`clouds`: each shading dot's length. Default 0.12mm."
+            }
+          ]
+        },
+        {
+          "name": "threshold",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "`isoline-blobs`: field level for patches and coverage (0–1). Default 0.25."
+            }
+          ]
+        },
+        {
+          "name": "roots",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "`growth`: dendritic branches grown toward a field of attractor points (space colonization) — river deltas, veins, cracks, roots, lichen; `spacing` is the gap between neighbouring twigs. How many roots it grows from. Default: one per `root_spacing`."
+            }
+          ]
+        },
+        {
+          "name": "root_spacing",
+          "optional": true,
+          "kind": "property",
+          "type": "Length",
+          "types": [
+            "Length"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "`growth`: roots this far apart, each draining its own basin. Default ~12× `spacing`."
+            }
+          ]
+        },
+        {
+          "name": "variation",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "`growth`: how much trees differ in size (0–1): uneven root spacing, big crowns next to saplings. Default 0.35."
+            }
+          ]
+        },
+        {
+          "name": "trunk",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "`growth`: most pen passes on a trunk; thick near the roots, hairline at the twigs. Default 3."
+            }
+          ]
+        },
+        {
+          "name": "step",
+          "optional": true,
+          "kind": "property",
+          "type": "Length",
+          "types": [
+            "Length"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "`growth`: how far a branch advances per step, in mm. Default ~0.16× `spacing`."
+            }
+          ]
+        },
+        {
+          "name": "reach",
+          "optional": true,
+          "kind": "property",
+          "type": "Length",
+          "types": [
+            "Length"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "`growth`: an attractor beyond this from every branch tip pulls nothing. Default ~3.2× `spacing`."
+            }
+          ]
+        },
+        {
+          "name": "kill",
+          "optional": true,
+          "kind": "property",
+          "type": "Length",
+          "types": [
+            "Length"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "`growth`: an attractor this close to a tip is consumed, in mm. Default ~0.4× `spacing`."
+            }
+          ]
+        },
+        {
+          "name": "max_steps",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "`growth`: a hard cap on growth steps, so a pathological shape cannot hang. Default 20000."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Stroke",
+      "kind": "type",
+      "doc": [
+        {
+          "kind": "p",
+          "text": "`solid`, `dash`, `dotted`, `none`, or an object: the dashes' sizes and the ink (`color`, `width` in mm, `cap`)."
+        }
+      ],
+      "text": "\"solid\" | \"dash\" | \"dotted\" | \"none\" | { style?: \"solid\" | \"dash\" | \"dotted\" | \"none\"; dash?: Length; gap?: Length; mark?: Length; color?: string; width?: Length; cap?: \"round\" | \"square\" | \"butt\"; join?: \"round\" | \"miter\" | \"bevel\" }",
+      "types": [
+        "Length"
+      ],
+      "values": [
+        "solid",
+        "dash",
+        "dotted",
+        "none"
+      ],
+      "others": [
+        "{ style?: \"solid\" | \"dash\" | \"dotted\" | \"none\"; dash?: Length; gap?: Length; mark?: Length; color?: string; width?: Length; cap?: \"round\" | \"square\" | \"butt\"; join?: \"round\" | \"miter\" | \"bevel\" }"
+      ],
+      "members": [
+        {
+          "name": "style",
+          "optional": true,
+          "kind": "property",
+          "type": "\"solid\" | \"dash\" | \"dotted\" | \"none\""
+        },
+        {
+          "name": "dash",
+          "optional": true,
+          "kind": "property",
+          "type": "Length",
+          "types": [
+            "Length"
+          ]
+        },
+        {
+          "name": "gap",
+          "optional": true,
+          "kind": "property",
+          "type": "Length",
+          "types": [
+            "Length"
+          ]
+        },
+        {
+          "name": "mark",
+          "optional": true,
+          "kind": "property",
+          "type": "Length",
+          "types": [
+            "Length"
+          ]
+        },
+        {
+          "name": "color",
+          "optional": true,
+          "kind": "property",
+          "type": "string"
+        },
+        {
+          "name": "width",
+          "optional": true,
+          "kind": "property",
+          "type": "Length",
+          "types": [
+            "Length"
+          ]
+        },
+        {
+          "name": "cap",
+          "optional": true,
+          "kind": "property",
+          "type": "\"round\" | \"square\" | \"butt\""
+        },
+        {
+          "name": "join",
+          "optional": true,
+          "kind": "property",
+          "type": "\"round\" | \"miter\" | \"bevel\""
+        }
+      ]
+    },
+    {
+      "name": "DrawOptions",
+      "kind": "interface",
+      "members": [
+        {
+          "name": "id",
+          "optional": true,
+          "kind": "property",
+          "type": "string",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "The SVG group's id; a plotter can give each group its own pen."
+            }
+          ]
+        },
+        {
+          "name": "from",
+          "kind": "property",
+          "type": "Lines",
+          "types": [
+            "Lines"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "The lines to draw."
+            }
+          ]
+        },
+        {
+          "name": "stroke",
+          "optional": true,
+          "kind": "property",
+          "type": "Stroke",
+          "types": [
+            "Stroke"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "How the lines are inked. Without one, as they are (fills are already lines)."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "OutputOptions",
+      "kind": "interface",
+      "members": [
+        {
+          "name": "address",
+          "optional": true,
+          "kind": "property",
+          "type": "string",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Where: looked up with Nominatim when there is no `lat`/`lng`."
+            }
+          ]
+        },
+        {
+          "name": "lat",
+          "optional": true,
+          "kind": "property",
+          "type": "number"
+        },
+        {
+          "name": "lng",
+          "optional": true,
+          "kind": "property",
+          "type": "number"
+        },
+        {
+          "name": "width",
+          "optional": true,
+          "kind": "property",
+          "type": "Length",
+          "types": [
+            "Length"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "The paper. Default 6in × 4in."
+            }
+          ]
+        },
+        {
+          "name": "height",
+          "optional": true,
+          "kind": "property",
+          "type": "Length",
+          "types": [
+            "Length"
+          ]
+        },
+        {
+          "name": "scale",
+          "optional": true,
+          "kind": "property",
+          "type": "`1:${number}` | number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "`\"1:10000\"`, or the denominator."
+            }
+          ]
+        },
+        {
+          "name": "bearing",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Degrees clockwise."
+            }
+          ]
+        },
+        {
+          "name": "projection",
+          "optional": true,
+          "kind": "property",
+          "type": "\"webmercator\" | \"utm\" | `+proj=${string}`",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "`\"webmercator\"` (the web map, north up), `\"utm\"` (true distances), or a PROJ string with `{lat}` and `{lng}`."
+            }
+          ]
+        },
+        {
+          "name": "padding",
+          "optional": true,
+          "kind": "property",
+          "type": "Length | [Length, Length]",
+          "types": [
+            "Length"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Blank margin inside the paper's edge (and round every sheet when cut): one length, or across and down."
+            }
+          ]
+        },
+        {
+          "name": "slices",
+          "optional": true,
+          "kind": "property",
+          "type": "{ columns?: number; rows?: number; gutter?: Length | [Length, Length]; overlap?: Length | [Length, Length] }",
+          "types": [
+            "Length"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "The output cut into sheets. `padding` is the margin round the card's outside edge only; `gutter` is the gap between two sheets' drawings, half of it on each side of every cut (none: the drawings meet at the cut)."
+            },
+            {
+              "kind": "p",
+              "text": "`overlap` is the opposite, for a poster printed in tiles: every sheet is the same size and runs this far over its neighbour, so both carry the same strip of drawing to line them up by. With no gutter the drawing runs to every cut, so at twice the printer's unprintable edge or more, that blank edge trimmed off one sheet and laid on the next, the drawing runs on with no gap."
+            }
+          ]
+        },
+        {
+          "name": "warp",
+          "optional": true,
+          "kind": "property",
+          "type": "Warp | Warp[]",
+          "types": [
+            "Warp"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Bend the ground before drawing; the paper's edge stays."
+            }
+          ]
+        },
+        {
+          "name": "tileZoom",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "The vector tiles' zoom, up to 14: deeper holds every building (none below 13), shallower downloads fewer tiles. Unset, the deepest under the cap."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Warp",
+      "kind": "type",
+      "text": "{ fisheye: number } | { twirl: number } | { wave: { amplitude: Length; wavelength: Length } }",
+      "types": [
+        "Length"
+      ],
+      "others": [
+        "{ fisheye: number }",
+        "{ twirl: number }",
+        "{ wave: { amplitude: Length; wavelength: Length } }"
+      ],
+      "members": [
+        {
+          "name": "fisheye",
+          "kind": "property",
+          "type": "number"
+        },
+        {
+          "name": "twirl",
+          "kind": "property",
+          "type": "number"
+        },
+        {
+          "name": "wave",
+          "kind": "property",
+          "type": "{ amplitude: Length; wavelength: Length }",
+          "types": [
+            "Length"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Roads",
+      "kind": "interface",
+      "doc": [
+        {
+          "kind": "p",
+          "text": "What the roads module publishes."
+        }
+      ],
+      "members": [
+        {
+          "name": "area",
+          "readonly": true,
+          "kind": "property",
+          "type": "Area",
+          "types": [
+            "Area"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Every road's surface, and the strip each trail and railway covers: a mask for what roads cover."
+            }
+          ]
+        },
+        {
+          "name": "outlines",
+          "readonly": true,
+          "kind": "property",
+          "type": "Lines",
+          "types": [
+            "Lines"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "The roads' edges."
+            }
+          ]
+        },
+        {
+          "name": "details",
+          "readonly": true,
+          "kind": "property",
+          "type": "Lines",
+          "types": [
+            "Lines"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "The centre lines and the seams together."
+            }
+          ]
+        },
+        {
+          "name": "trails",
+          "readonly": true,
+          "kind": "property",
+          "type": "Lines",
+          "types": [
+            "Lines"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Paths and tracks, as single lines."
+            }
+          ]
+        },
+        {
+          "name": "centerlines",
+          "readonly": true,
+          "kind": "property",
+          "type": "Lines",
+          "types": [
+            "Lines"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "The centre lines of the roads, to dash."
+            }
+          ]
+        },
+        {
+          "name": "seams",
+          "readonly": true,
+          "kind": "property",
+          "type": "Lines",
+          "types": [
+            "Lines"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Where a bridge's edges meet the roads under it."
+            }
+          ]
+        },
+        {
+          "name": "rails",
+          "readonly": true,
+          "kind": "property",
+          "type": "Lines",
+          "types": [
+            "Lines"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Railways, as single lines: only when the features include them, `modules.roads({ from: features.tiles(\"roads\", \"rail\") })`. Their track bed is part of `area`, so whatever `area` masks keeps clear of them."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "ShapeAt",
+      "kind": "type",
+      "doc": [
+        {
+          "kind": "p",
+          "text": "Page mm, lengths, or `\"50%\"`; or `{ lat, lng }` on the ground."
+        }
+      ],
+      "text": "[Length | `${number}%`, Length | `${number}%`] | { lat: number; lng: number }",
+      "types": [
+        "Length"
+      ],
+      "others": [
+        "[Length | `${number}%`, Length | `${number}%`]",
+        "{ lat: number; lng: number }"
+      ],
+      "members": [
+        {
+          "name": "lat",
+          "kind": "property",
+          "type": "number"
+        },
+        {
+          "name": "lng",
+          "kind": "property",
+          "type": "number"
+        }
+      ]
+    },
+    {
+      "name": "ShapeSpec",
+      "kind": "interface",
+      "members": [
+        {
+          "name": "at",
+          "optional": true,
+          "kind": "property",
+          "type": "ShapeAt",
+          "types": [
+            "ShapeAt"
+          ]
+        },
+        {
+          "name": "circle",
+          "optional": true,
+          "kind": "property",
+          "type": "Length",
+          "types": [
+            "Length"
+          ]
+        },
+        {
+          "name": "rect",
+          "optional": true,
+          "kind": "property",
+          "type": "[Length, Length]",
+          "types": [
+            "Length"
+          ]
+        },
+        {
+          "name": "sides",
+          "optional": true,
+          "kind": "property",
+          "type": "number"
+        },
+        {
+          "name": "r",
+          "optional": true,
+          "kind": "property",
+          "type": "Length",
+          "types": [
+            "Length"
+          ]
+        },
+        {
+          "name": "points",
+          "optional": true,
+          "kind": "property",
+          "type": "[number, number][]"
+        },
+        {
+          "name": "rotate",
+          "optional": true,
+          "kind": "property",
+          "type": "number"
+        }
+      ]
+    },
+    {
+      "name": "TextSpec",
+      "kind": "interface",
+      "members": [
+        {
+          "name": "at",
+          "optional": true,
+          "kind": "property",
+          "type": "ShapeAt",
+          "types": [
+            "ShapeAt"
+          ]
+        },
+        {
+          "name": "text",
+          "kind": "property",
+          "type": "string"
+        },
+        {
+          "name": "size",
+          "optional": true,
+          "kind": "property",
+          "type": "Length",
+          "types": [
+            "Length"
+          ]
+        },
+        {
+          "name": "font",
+          "optional": true,
+          "kind": "property",
+          "type": "LabelFont",
+          "types": [
+            "LabelFont"
+          ]
+        },
+        {
+          "name": "rotate",
+          "optional": true,
+          "kind": "property",
+          "type": "number"
+        },
+        {
+          "name": "counters",
+          "optional": true,
+          "kind": "property",
+          "type": "\"open\" | \"closed\"",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "`areas.text` with an outline (Google) font: `\"open\"` keeps the letters' counters (the holes in A, B, O) out of the area, to fill the letters with a pattern; `\"closed\"` (default) covers them, for a mask."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "TerrainStroke",
+      "kind": "type",
+      "doc": [
+        {
+          "kind": "p",
+          "text": "Burin's terrain line styles: how the streamlines are drawn, and stippled."
+        }
+      ],
+      "text": "\"lines\" | \"curls\" | \"waves\" | \"dots\"",
+      "values": [
+        "lines",
+        "curls",
+        "waves",
+        "dots"
+      ]
+    },
+    {
+      "name": "TerrainMode",
+      "kind": "type",
+      "doc": [
+        {
+          "kind": "p",
+          "text": "What `lines.terrain` draws: hatching, a fill of a band, or stippling."
+        }
+      ],
+      "text": "\"lines\" | \"fill\" | \"dots\"",
+      "values": [
+        "lines",
+        "fill",
+        "dots"
+      ]
+    },
+    {
+      "name": "TerrainWhere",
+      "kind": "type",
+      "doc": [
+        {
+          "kind": "p",
+          "text": "The heights or depths a batch keeps to, in metres; unset limits are open."
+        }
+      ],
+      "text": "{ elevMin?: number; elevMax?: number; depthMin?: number; depthMax?: number }",
+      "members": [
+        {
+          "name": "elevMin",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "The lowest height to draw, in metres."
+            }
+          ]
+        },
+        {
+          "name": "elevMax",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "The highest height to draw, in metres."
+            }
+          ]
+        },
+        {
+          "name": "depthMin",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "The deepest water to draw, in metres below the surface."
+            }
+          ]
+        },
+        {
+          "name": "depthMax",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "The shallowest water to draw, in metres below the surface."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "TerrainOptions",
+      "kind": "type",
+      "doc": [
+        {
+          "kind": "p",
+          "text": "What `lines.terrain` draws, and how, as burin names the parameters."
+        }
+      ],
+      "text": "{ in?: Area; angle?: number; layer?: string; shore?: boolean; draw?: TerrainMode; where?: TerrainWhere; color?: unknown; width?: unknown; style?: Record<string, number> } & Record<string, unknown>",
+      "types": [
+        "Area",
+        "TerrainMode",
+        "TerrainWhere"
+      ],
+      "extends": [
+        "Record<string, unknown>"
+      ],
+      "members": [
+        {
+          "name": "in",
+          "optional": true,
+          "kind": "property",
+          "type": "Area",
+          "types": [
+            "Area"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "The area to draw in; the whole output without one."
+            }
+          ]
+        },
+        {
+          "name": "angle",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "The field the streamlines run along, in degrees. Default 0."
+            }
+          ]
+        },
+        {
+          "name": "layer",
+          "optional": true,
+          "kind": "property",
+          "type": "string",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "The layer name; `terrain` without one."
+            }
+          ]
+        },
+        {
+          "name": "shore",
+          "optional": true,
+          "kind": "property",
+          "type": "boolean",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Draw the shore, the zero contour. Default false."
+            }
+          ]
+        },
+        {
+          "name": "draw",
+          "optional": true,
+          "kind": "property",
+          "type": "TerrainMode",
+          "types": [
+            "TerrainMode"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Hatching (the default), a fill of `where`, or stippling."
+            }
+          ]
+        },
+        {
+          "name": "where",
+          "optional": true,
+          "kind": "property",
+          "type": "TerrainWhere",
+          "types": [
+            "TerrainWhere"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "The heights or depths to keep to. A fill usually wants one."
+            }
+          ]
+        },
+        {
+          "name": "color",
+          "optional": true,
+          "kind": "property",
+          "type": "unknown",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "The colour at each dash, as burin reads one: a hex string, a grey, an rgb triple, or a tree over the fields (`[\"lerp\", …]`). A constant is `\"#000\"`."
+            }
+          ]
+        },
+        {
+          "name": "width",
+          "optional": true,
+          "kind": "property",
+          "type": "unknown",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "The line width at each dash, as a multiple of the batch's stroke: a number, or a tree over the fields."
+            }
+          ]
+        },
+        {
+          "name": "style",
+          "optional": true,
+          "kind": "property",
+          "type": "Record<string, number>",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Style parameters, by burin's names (`line_space`, `stroke`, …)."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "ContoursOptions",
+      "kind": "type",
+      "doc": [
+        {
+          "kind": "p",
+          "text": "What `lines.contours` draws: one belt of heights, as a fill."
+        }
+      ],
+      "text": "Omit<TerrainOptions, \"draw\" | \"where\"> & { from?: number; to?: number; where?: TerrainWhere }",
+      "types": [
+        "TerrainOptions",
+        "TerrainWhere"
+      ],
+      "extends": [
+        "Omit<TerrainOptions, \"draw\" | \"where\">"
+      ],
+      "members": [
+        {
+          "name": "from",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "The lowest height of the belt, in metres."
+            }
+          ]
+        },
+        {
+          "name": "to",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "The highest height of the belt, in metres."
+            }
+          ]
+        },
+        {
+          "name": "where",
+          "optional": true,
+          "kind": "property",
+          "type": "TerrainWhere",
+          "types": [
+            "TerrainWhere"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Other bands, if you need a depth instead of a height."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "BurinTerrainOptions",
+      "kind": "type",
+      "doc": [
+        {
+          "kind": "p",
+          "text": "Where a burin document is clipped, and the regions its batches name."
+        }
+      ],
+      "text": "{ in?: Area; regions?: Record<string, Area>; water?: Area }",
+      "types": [
+        "Area"
+      ],
+      "members": [
+        {
+          "name": "in",
+          "optional": true,
+          "kind": "property",
+          "type": "Area",
+          "types": [
+            "Area"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Clip the drawing to this area (a hard edge after the mask)."
+            }
+          ]
+        },
+        {
+          "name": "regions",
+          "optional": true,
+          "kind": "property",
+          "type": "Record<string, Area>",
+          "types": [
+            "Area"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Polygons batches name in `within` / `outside`, by name — the same `mask_*` easing as burin-map's engraved sea at the coast."
+            }
+          ]
+        },
+        {
+          "name": "water",
+          "optional": true,
+          "kind": "property",
+          "type": "Area",
+          "types": [
+            "Area"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Where the water is (sea, lakes): burin's water mask, so `burin.shore` and `burin.water` follow this outline. Without it burin takes the sea from the elevation (at or below 0.5 m), which detailed terrain tiles can miss."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "BurinBuilder",
+      "kind": "interface",
+      "doc": [
+        {
+          "kind": "p",
+          "text": "The `burin` object a burin document sees, the same one as at burin's own front ends."
+        }
+      ],
+      "members": [
+        {
+          "name": "batch",
+          "kind": "method",
+          "type": "(options?: Record<string, unknown>) => unknown",
+          "params": [
+            {
+              "name": "options",
+              "optional": true,
+              "type": "Record<string, unknown>"
+            }
+          ],
+          "returns": "unknown",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "A batch of hatching, stippling or a fill."
+            }
+          ]
+        },
+        {
+          "name": "fill",
+          "kind": "method",
+          "type": "(options?: Record<string, unknown>) => unknown",
+          "params": [
+            {
+              "name": "options",
+              "optional": true,
+              "type": "Record<string, unknown>"
+            }
+          ],
+          "returns": "unknown",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "A fill of a height or depth band: what a contour belt is."
+            }
+          ]
+        },
+        {
+          "name": "water",
+          "kind": "method",
+          "type": "(kind?: \"lines\" | \"ripples\" | \"dots\", options?: Record<string, unknown>) => unknown",
+          "params": [
+            {
+              "name": "kind",
+              "optional": true,
+              "type": "\"lines\" | \"ripples\" | \"dots\""
+            },
+            {
+              "name": "options",
+              "optional": true,
+              "type": "Record<string, unknown>"
+            }
+          ],
+          "returns": "unknown",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Lines on water: `\"lines\"`, `\"ripples\"` or `\"dots\"`."
+            }
+          ]
+        },
+        {
+          "name": "shore",
+          "kind": "method",
+          "type": "(options?: Record<string, unknown>) => unknown",
+          "params": [
+            {
+              "name": "options",
+              "optional": true,
+              "type": "Record<string, unknown>"
+            }
+          ],
+          "returns": "unknown",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "The shore, the zero contour."
+            }
+          ]
+        },
+        {
+          "name": "lerp",
+          "kind": "method",
+          "type": "(a: unknown, b: unknown, t: unknown) => unknown",
+          "params": [
+            {
+              "name": "a",
+              "type": "unknown"
+            },
+            {
+              "name": "b",
+              "type": "unknown"
+            },
+            {
+              "name": "t",
+              "type": "unknown"
+            }
+          ],
+          "returns": "unknown",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "A colour between two others, by `t`."
+            }
+          ]
+        },
+        {
+          "name": "rgb",
+          "kind": "method",
+          "type": "(r: unknown, g: unknown, b: unknown) => unknown",
+          "params": [
+            {
+              "name": "r",
+              "type": "unknown"
+            },
+            {
+              "name": "g",
+              "type": "unknown"
+            },
+            {
+              "name": "b",
+              "type": "unknown"
+            }
+          ],
+          "returns": "unknown",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "An rgb colour from three trees."
+            }
+          ]
+        },
+        {
+          "name": "clamp",
+          "kind": "method",
+          "type": "(x: unknown, lo: unknown, hi: unknown) => unknown",
+          "params": [
+            {
+              "name": "x",
+              "type": "unknown"
+            },
+            {
+              "name": "lo",
+              "type": "unknown"
+            },
+            {
+              "name": "hi",
+              "type": "unknown"
+            }
+          ],
+          "returns": "unknown",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "`x` kept between `lo` and `hi`."
+            }
+          ]
+        },
+        {
+          "name": "smoothstep",
+          "kind": "method",
+          "type": "(edge0: unknown, edge1: unknown, x: unknown) => unknown",
+          "params": [
+            {
+              "name": "edge0",
+              "type": "unknown"
+            },
+            {
+              "name": "edge1",
+              "type": "unknown"
+            },
+            {
+              "name": "x",
+              "type": "unknown"
+            }
+          ],
+          "returns": "unknown",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "A smooth step between two edges."
+            }
+          ]
+        },
+        {
+          "name": "step",
+          "kind": "method",
+          "type": "(edge: unknown, x: unknown) => unknown",
+          "params": [
+            {
+              "name": "edge",
+              "type": "unknown"
+            },
+            {
+              "name": "x",
+              "type": "unknown"
+            }
+          ],
+          "returns": "unknown",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "0 below `edge`, 1 above."
+            }
+          ]
+        },
+        {
+          "name": "abs",
+          "kind": "method",
+          "type": "(x: unknown) => unknown",
+          "params": [
+            {
+              "name": "x",
+              "type": "unknown"
+            }
+          ],
+          "returns": "unknown"
+        },
+        {
+          "name": "floor",
+          "kind": "method",
+          "type": "(x: unknown) => unknown",
+          "params": [
+            {
+              "name": "x",
+              "type": "unknown"
+            }
+          ],
+          "returns": "unknown"
+        },
+        {
+          "name": "ceil",
+          "kind": "method",
+          "type": "(x: unknown) => unknown",
+          "params": [
+            {
+              "name": "x",
+              "type": "unknown"
+            }
+          ],
+          "returns": "unknown"
+        },
+        {
+          "name": "round",
+          "kind": "method",
+          "type": "(x: unknown) => unknown",
+          "params": [
+            {
+              "name": "x",
+              "type": "unknown"
+            }
+          ],
+          "returns": "unknown"
+        },
+        {
+          "name": "min",
+          "kind": "method",
+          "type": "(a: unknown, b: unknown) => unknown",
+          "params": [
+            {
+              "name": "a",
+              "type": "unknown"
+            },
+            {
+              "name": "b",
+              "type": "unknown"
+            }
+          ],
+          "returns": "unknown"
+        },
+        {
+          "name": "max",
+          "kind": "method",
+          "type": "(a: unknown, b: unknown) => unknown",
+          "params": [
+            {
+              "name": "a",
+              "type": "unknown"
+            },
+            {
+              "name": "b",
+              "type": "unknown"
+            }
+          ],
+          "returns": "unknown"
+        },
+        {
+          "name": "mix",
+          "kind": "method",
+          "type": "(a: unknown, b: unknown, t: unknown) => unknown",
+          "params": [
+            {
+              "name": "a",
+              "type": "unknown"
+            },
+            {
+              "name": "b",
+              "type": "unknown"
+            },
+            {
+              "name": "t",
+              "type": "unknown"
+            }
+          ],
+          "returns": "unknown",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "`t` as a plain fraction, for a colour."
+            }
+          ]
+        },
+        {
+          "name": "elev",
+          "kind": "property",
+          "type": "unknown",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "The elevation at the dash."
+            }
+          ]
+        },
+        {
+          "name": "tone",
+          "kind": "property",
+          "type": "unknown",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "The tone at the dash: 0 where light, 1 where dark."
+            }
+          ]
+        },
+        {
+          "name": "dist",
+          "kind": "property",
+          "type": "unknown",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "The distance to the shore."
+            }
+          ]
+        },
+        {
+          "name": "depth",
+          "kind": "property",
+          "type": "unknown",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "The depth below the surface."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "RoadMeasure",
+      "kind": "type",
+      "doc": [
+        {
+          "kind": "p",
+          "text": "A road measurement: a bare number (interpreted via `widthMode`: metres on the ground or millimetres on paper), or an explicit `{ ground: number }` (metres) or `{ paper: number }` (millimetres on the sheet)."
+        }
+      ],
+      "text": "number | { ground: number } | { paper: number }",
+      "others": [
+        "number",
+        "{ ground: number }",
+        "{ paper: number }"
+      ],
+      "members": [
+        {
+          "name": "ground",
+          "kind": "property",
+          "type": "number"
+        },
+        {
+          "name": "paper",
+          "kind": "property",
+          "type": "number"
+        }
+      ]
+    },
+    {
+      "name": "RoadClassObject",
+      "kind": "interface",
+      "doc": [
+        {
+          "kind": "p",
+          "text": "Per-class road configuration in `modules.roads({ classes })`. Either a 2-sided road (`ground` / `paper` / `width`, `lanes`, `centerline`, `clearance`) or a single-line path/rail (`singleLine: true`, `clearance`)."
+        }
+      ],
+      "members": [
+        {
+          "name": "ground",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Base width in ground metres (per lane when `multiplyByLanes: true`)."
+            }
+          ]
+        },
+        {
+          "name": "paper",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Base width in paper millimetres (per lane when `multiplyByLanes: true`)."
+            }
+          ]
+        },
+        {
+          "name": "width",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Base width in the top-level `widthMode` coordinate space."
+            }
+          ]
+        },
+        {
+          "name": "lanes",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Default lane count when the feature has no `lanes` tag and `inferLanesByClass: true`."
+            }
+          ]
+        },
+        {
+          "name": "centerline",
+          "optional": true,
+          "kind": "property",
+          "type": "boolean",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Emit a centre line on `roads.centerlines` when at least `centerlineMinWidth` wide."
+            }
+          ]
+        },
+        {
+          "name": "singleLine",
+          "optional": true,
+          "kind": "property",
+          "type": "boolean",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Draw as a single line on `roads.trails` (or `roads.rails` for `rail`) instead of a 2-sided outline."
+            }
+          ]
+        },
+        {
+          "name": "clearance",
+          "optional": true,
+          "kind": "property",
+          "type": "RoadMeasure",
+          "types": [
+            "RoadMeasure"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "For `singleLine: true`: total mask corridor width in `roads.area`. For 2-sided roads: extra mask margin outside the carriageway in `roads.area`."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "RoadClassSpec",
+      "kind": "type",
+      "text": "number | RoadClassObject",
+      "types": [
+        "RoadClassObject"
+      ],
+      "others": [
+        "number",
+        "RoadClassObject"
+      ]
+    },
+    {
+      "name": "RoadOptions",
+      "kind": "interface",
+      "members": [
+        {
+          "name": "from",
+          "optional": true,
+          "kind": "property",
+          "type": "Features",
+          "types": [
+            "Features"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Road & rail features (e.g. `features.tiles(\"roads\", \"rail\")`). Default: all OSM features."
+            }
+          ]
+        },
+        {
+          "name": "widthMode",
+          "optional": true,
+          "kind": "property",
+          "type": "\"ground\" | \"paper\"",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Coordinate space for bare numbers: `\"ground\"` (metres scaled by map scale, default) or `\"paper\"` (mm on sheet)."
+            }
+          ]
+        },
+        {
+          "name": "widthMultiplier",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Global multiplier applied to 2-sided road widths. Default: `1.0`."
+            }
+          ]
+        },
+        {
+          "name": "useWidthTag",
+          "optional": true,
+          "kind": "property",
+          "type": "boolean",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Honour explicit OSM `width` / `width:lanes` tags when present. Default: `true`."
+            }
+          ]
+        },
+        {
+          "name": "multiplyByLanes",
+          "optional": true,
+          "kind": "property",
+          "type": "boolean",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Multiply each class's base width by the lane count. Default: `true`."
+            }
+          ]
+        },
+        {
+          "name": "inferLanesByClass",
+          "optional": true,
+          "kind": "property",
+          "type": "boolean",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "When `multiplyByLanes` is `true` and the feature has no `lanes` tag, use the class's `lanes` count. Default: `true`."
+            }
+          ]
+        },
+        {
+          "name": "centerlineMinWidth",
+          "optional": true,
+          "kind": "property",
+          "type": "RoadMeasure",
+          "types": [
+            "RoadMeasure"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Minimum carriageway width required to emit `roads.centerlines`. Default: `{ ground: 7.0 }`."
+            }
+          ]
+        },
+        {
+          "name": "jointClose",
+          "optional": true,
+          "kind": "property",
+          "type": "RoadMeasure",
+          "types": [
+            "RoadMeasure"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Morphological close radius for smoothing road intersections (`0` disables). Default: `{ ground: 3.0 }`."
+            }
+          ]
+        },
+        {
+          "name": "clearance",
+          "optional": true,
+          "kind": "property",
+          "type": "RoadMeasure",
+          "types": [
+            "RoadMeasure"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Default extra mask clearance added around 2-sided roads in `roads.area`. Default: `0`."
+            }
+          ]
+        },
+        {
+          "name": "classes",
+          "optional": true,
+          "kind": "property",
+          "type": "Record<string, RoadClassSpec>",
+          "types": [
+            "RoadClassSpec"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Per-class road configuration keyed by class name (`\"motorway\"`, `\"primary\"`, `\"residential\"`, `\"footway\"`, `\"rail\"`, `\"default\"`, …)."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "GraticuleOptions",
+      "kind": "interface",
+      "members": [
+        {
+          "name": "in",
+          "kind": "property",
+          "type": "Area",
+          "types": [
+            "Area"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "The map's rectangle on the page; the border goes just outside it."
+            }
+          ]
+        },
+        {
+          "name": "step",
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Minutes of arc between lines, and between labels (30: every half degree)."
+            }
+          ]
+        },
+        {
+          "name": "ticks",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Minutes of arc per border key; leave out for no keys."
+            }
+          ]
+        },
+        {
+          "name": "band",
+          "optional": true,
+          "kind": "property",
+          "type": "Length",
+          "types": [
+            "Length"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "The key band's width, outside `in`."
+            }
+          ]
+        },
+        {
+          "name": "gap",
+          "optional": true,
+          "kind": "property",
+          "type": "Length",
+          "types": [
+            "Length"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Paper between the band and the labels."
+            }
+          ]
+        },
+        {
+          "name": "size",
+          "optional": true,
+          "kind": "property",
+          "type": "Length",
+          "types": [
+            "Length"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "The labels' capital height. Default 1.8mm."
+            }
+          ]
+        },
+        {
+          "name": "font",
+          "optional": true,
+          "kind": "property",
+          "type": "LabelFont",
+          "types": [
+            "LabelFont"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Graticule",
+      "kind": "interface",
+      "members": [
+        {
+          "name": "lines",
+          "readonly": true,
+          "kind": "property",
+          "type": "Lines",
+          "types": [
+            "Lines"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Meridians and parallels, cut to `in`."
+            }
+          ]
+        },
+        {
+          "name": "keys",
+          "readonly": true,
+          "kind": "property",
+          "type": "Area",
+          "types": [
+            "Area"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "The border band's inked keys (every other `ticks` minutes)."
+            }
+          ]
+        },
+        {
+          "name": "labels",
+          "readonly": true,
+          "kind": "property",
+          "type": "Lines",
+          "types": [
+            "Lines"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Degree labels round the border (`70°30′W`), as pen strokes."
+            }
+          ]
+        },
+        {
+          "name": "labelArea",
+          "readonly": true,
+          "kind": "property",
+          "type": "Area",
+          "types": [
+            "Area"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "What the labels cover, to fill them or clear paper round them."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "LabelOptions",
+      "kind": "interface",
+      "members": [
+        {
+          "name": "from",
+          "kind": "property",
+          "type": "Features | Features[]",
+          "types": [
+            "Features"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "The named features, `features.tiles(\"road_names\")`, or several sets placed together."
+            }
+          ]
+        },
+        {
+          "name": "in",
+          "optional": true,
+          "kind": "property",
+          "type": "Area",
+          "types": [
+            "Area"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Area to keep labels inside (default: the drawable sheet area after `output.padding`)."
+            }
+          ]
+        },
+        {
+          "name": "avoid",
+          "optional": true,
+          "kind": "property",
+          "type": "Area",
+          "types": [
+            "Area"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "An area the letters keep off — the lines of a transit map, the roads under a park's name. A place's point and dot may still sit on it, so a station on a line gets its name beside the line, never across it."
+            }
+          ]
+        },
+        {
+          "name": "size",
+          "optional": true,
+          "kind": "property",
+          "type": "Length",
+          "types": [
+            "Length"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Capital height of the most important labels. Default `\"2mm\"`."
+            }
+          ]
+        },
+        {
+          "name": "minSize",
+          "optional": true,
+          "kind": "property",
+          "type": "Length",
+          "types": [
+            "Length"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Capital height of the least important. Default `\"1.1mm\"`."
+            }
+          ]
+        },
+        {
+          "name": "padding",
+          "optional": true,
+          "kind": "property",
+          "type": "Length",
+          "types": [
+            "Length"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Clear space kept around every letter. Default `\"0.5mm\"`."
+            }
+          ]
+        },
+        {
+          "name": "spacing",
+          "optional": true,
+          "kind": "property",
+          "type": "Length",
+          "types": [
+            "Length"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Distance between two labels of the same name. Default `\"70mm\"`."
+            }
+          ]
+        },
+        {
+          "name": "curved",
+          "optional": true,
+          "kind": "property",
+          "type": "boolean",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Bend text along curving roads; `false` labels straight stretches only. Default `true`."
+            }
+          ]
+        },
+        {
+          "name": "upper",
+          "optional": true,
+          "kind": "property",
+          "type": "boolean",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Write the names in capitals."
+            }
+          ]
+        },
+        {
+          "name": "keys",
+          "optional": true,
+          "kind": "property",
+          "type": "string | string[]",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "The tags the text is read from, the first present. Default `[\"name\", \"ref\"]`."
+            }
+          ]
+        },
+        {
+          "name": "font",
+          "optional": true,
+          "kind": "property",
+          "type": "LabelFont",
+          "types": [
+            "LabelFont"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Draw.land Hershey font or a Google outline font. Default `\"futural\"`."
+            }
+          ]
+        },
+        {
+          "name": "buffer",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Concentric outlines around each placed name (0 = the letters' strokes only). Each pass adds an outline at `bufferStep`, `2× bufferStep`, … Default `0`."
+            }
+          ]
+        },
+        {
+          "name": "bufferStep",
+          "optional": true,
+          "kind": "property",
+          "type": "Length",
+          "types": [
+            "Length"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Half-width per buffer pass. Default `\"0.1mm\"`."
+            }
+          ]
+        },
+        {
+          "name": "keepCenterline",
+          "optional": true,
+          "kind": "property",
+          "type": "boolean",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "With `buffer` > 0, keep the letters' own strokes. Default `true`; `false` = outlines only."
+            }
+          ]
+        },
+        {
+          "name": "marker",
+          "optional": true,
+          "kind": "property",
+          "type": "Length",
+          "types": [
+            "Length"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "A dot at each place's point (radius, scaled 60–100 % by the place's importance), its name set beside it — right, left, the diagonals, above or below, whichever is free. The dot is part of the label's `area`. Default 0 (no dot, name centred on the point)."
+            }
+          ]
+        },
+        {
+          "name": "rules",
+          "optional": true,
+          "kind": "property",
+          "type": "LabelRule[]",
+          "types": [
+            "LabelRule"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Overrides for features that match `tags` (same syntax as `features.where`). First matching rule wins; unset fields keep the defaults above."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "LabelRule",
+      "kind": "interface",
+      "doc": [
+        {
+          "kind": "p",
+          "text": "One style override inside `modules.labels({ rules: [...] })`."
+        }
+      ],
+      "members": [
+        {
+          "name": "id",
+          "optional": true,
+          "kind": "property",
+          "type": "string",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "When set, labels placed under this rule are also exposed as `labels.<id>.lines` and `labels.<id>.area` for separate ink afterward."
+            }
+          ]
+        },
+        {
+          "name": "tags",
+          "kind": "property",
+          "type": "Tags",
+          "types": [
+            "Tags"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Tag tests, e.g. `{ class: [\"motorway\", \"primary\"] }` or `{ \"tiles:layer\": \"park\" }`."
+            }
+          ]
+        },
+        {
+          "name": "font",
+          "optional": true,
+          "kind": "property",
+          "type": "LabelFont",
+          "types": [
+            "LabelFont"
+          ]
+        },
+        {
+          "name": "size",
+          "optional": true,
+          "kind": "property",
+          "type": "Length",
+          "types": [
+            "Length"
+          ]
+        },
+        {
+          "name": "minSize",
+          "optional": true,
+          "kind": "property",
+          "type": "Length",
+          "types": [
+            "Length"
+          ]
+        },
+        {
+          "name": "padding",
+          "optional": true,
+          "kind": "property",
+          "type": "Length",
+          "types": [
+            "Length"
+          ]
+        },
+        {
+          "name": "spacing",
+          "optional": true,
+          "kind": "property",
+          "type": "Length",
+          "types": [
+            "Length"
+          ]
+        },
+        {
+          "name": "curved",
+          "optional": true,
+          "kind": "property",
+          "type": "boolean"
+        },
+        {
+          "name": "upper",
+          "optional": true,
+          "kind": "property",
+          "type": "boolean"
+        },
+        {
+          "name": "buffer",
+          "optional": true,
+          "kind": "property",
+          "type": "number"
+        },
+        {
+          "name": "bufferStep",
+          "optional": true,
+          "kind": "property",
+          "type": "Length",
+          "types": [
+            "Length"
+          ]
+        },
+        {
+          "name": "keepCenterline",
+          "optional": true,
+          "kind": "property",
+          "type": "boolean"
+        },
+        {
+          "name": "marker",
+          "optional": true,
+          "kind": "property",
+          "type": "Length",
+          "types": [
+            "Length"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "LabelFont",
+      "kind": "type",
+      "doc": [
+        {
+          "kind": "p",
+          "text": "`modules.labels` / `lines.text` font: built-in Hershey, EMS/Hershey catalog, custom stroke URL, or Google outline."
+        }
+      ],
+      "text": "DrawlandFontId | DrawlandCatalogFontId | DrawlandFont | StrokeFont | GoogleFont",
+      "types": [
+        "DrawlandFontId",
+        "DrawlandCatalogFontId",
+        "DrawlandFont",
+        "StrokeFont",
+        "GoogleFont"
+      ],
+      "others": [
+        "DrawlandFontId",
+        "DrawlandCatalogFontId",
+        "DrawlandFont",
+        "StrokeFont",
+        "GoogleFont"
+      ]
+    },
+    {
+      "name": "DrawlandFontId",
+      "kind": "type",
+      "doc": [
+        {
+          "kind": "p",
+          "text": "Built-in single-stroke font (Greek/Cyrillic/Latin-ext fallback in WASM)."
+        }
+      ],
+      "text": "\"futural\""
+    },
+    {
+      "name": "DrawlandCatalogFontId",
+      "kind": "type",
+      "doc": [
+        {
+          "kind": "p",
+          "text": "Evil Mad Scientist / Hershey SVG fonts (downloaded at render time; same URLs as the [oskay/svg-fonts](https://gitlab.com/oskay/svg-fonts) catalog)."
+        }
+      ],
+      "text": "\"ems-readability\" | \"ems-readability-italic\" | \"ems-swiss\" | \"ems-tech\" | \"ems-casual-hand\" | \"ems-allure\" | \"ems-osmotron\" | \"ems-nixish\" | \"ems-bird\" | \"ems-capitol\" | \"hershey-serif-med\" | \"hershey-script\" | \"hershey-goth-english\"",
+      "values": [
+        "ems-readability",
+        "ems-readability-italic",
+        "ems-swiss",
+        "ems-tech",
+        "ems-casual-hand",
+        "ems-allure",
+        "ems-osmotron",
+        "ems-nixish",
+        "ems-bird",
+        "ems-capitol",
+        "hershey-serif-med",
+        "hershey-script",
+        "hershey-goth-english"
+      ]
+    },
+    {
+      "name": "DrawlandFont",
+      "kind": "interface",
+      "members": [
+        {
+          "name": "origin",
+          "kind": "property",
+          "type": "\"drawland\""
+        },
+        {
+          "name": "id",
+          "kind": "property",
+          "type": "DrawlandFontId | DrawlandCatalogFontId | string",
+          "types": [
+            "DrawlandFontId",
+            "DrawlandCatalogFontId"
+          ]
+        },
+        {
+          "name": "url",
+          "optional": true,
+          "kind": "property",
+          "type": "string",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Override catalog URL or load a custom Hershey/EMS SVG/JHF file."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "StrokeFont",
+      "kind": "interface",
+      "doc": [
+        {
+          "kind": "p",
+          "text": "Any single-stroke SVG or `.jhf` font by URL (`fetch` in browser/CLI)."
+        }
+      ],
+      "members": [
+        {
+          "name": "origin",
+          "kind": "property",
+          "type": "\"stroke\""
+        },
+        {
+          "name": "url",
+          "kind": "property",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "GoogleFont",
+      "kind": "interface",
+      "members": [
+        {
+          "name": "origin",
+          "kind": "property",
+          "type": "\"google\""
+        },
+        {
+          "name": "family",
+          "kind": "property",
+          "type": "string"
+        },
+        {
+          "name": "weight",
+          "optional": true,
+          "kind": "property",
+          "type": "number"
+        },
+        {
+          "name": "italic",
+          "optional": true,
+          "kind": "property",
+          "type": "boolean"
+        }
+      ]
+    },
+    {
+      "name": "LabelBucket",
+      "kind": "interface",
+      "doc": [
+        {
+          "kind": "p",
+          "text": "Strokes and covered area for one `rules[].id` bucket."
+        }
+      ],
+      "members": [
+        {
+          "name": "lines",
+          "readonly": true,
+          "kind": "property",
+          "type": "Lines",
+          "types": [
+            "Lines"
+          ]
+        },
+        {
+          "name": "area",
+          "readonly": true,
+          "kind": "property",
+          "type": "Area",
+          "types": [
+            "Area"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Labels",
+      "kind": "type",
+      "doc": [
+        {
+          "kind": "p",
+          "text": "What the labels module publishes. Each `rules[].id` adds a property with the same name (`labels.park`, …) whose value is a `LabelBucket`."
+        }
+      ],
+      "text": "{ readonly lines: Lines; readonly area: Area } & Record<string, LabelBucket>",
+      "types": [
+        "Lines",
+        "Area",
+        "LabelBucket"
+      ],
+      "extends": [
+        "Record<string, LabelBucket>"
+      ],
+      "members": [
+        {
+          "name": "lines",
+          "readonly": true,
+          "kind": "property",
+          "type": "Lines",
+          "types": [
+            "Lines"
+          ]
+        },
+        {
+          "name": "area",
+          "readonly": true,
+          "kind": "property",
+          "type": "Area",
+          "types": [
+            "Area"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "What every label covers, counters closed: to mask what is under the names. A rule's own `.area` keeps the counters open, to fill the letters."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "LayerTargets",
+      "kind": "type",
+      "text": "string | string[]",
+      "others": [
+        "string",
+        "string[]"
+      ]
+    },
+    {
+      "name": "DeoverlapOptions",
+      "kind": "interface",
+      "members": [
+        {
+          "name": "tolerance",
+          "optional": true,
+          "kind": "property",
+          "type": "Length",
+          "types": [
+            "Length"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Corridor half-width (typically the pen width). Default: `\"0.3mm\"`."
+            }
+          ]
+        },
+        {
+          "name": "selfOverlap",
+          "optional": true,
+          "kind": "property",
+          "type": "boolean",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Dedup segments within a single polyline too. Default: `true`."
+            }
+          ]
+        },
+        {
+          "name": "acrossLayers",
+          "optional": true,
+          "kind": "property",
+          "type": "boolean",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Propagate the drawn corridor mask to subsequent layers in this call. Default: `false`."
+            }
+          ]
+        },
+        {
+          "name": "angle",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Maximum angular difference in degrees (`0..=90`), or omit to disable angle check."
+            }
+          ]
+        },
+        {
+          "name": "prefer",
+          "optional": true,
+          "kind": "property",
+          "type": "\"longest\" | \"first\" | \"shortest\"",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Which overlapping polyline keeps the shared section. Default: `\"longest\"`."
+            }
+          ]
+        },
+        {
+          "name": "minLength",
+          "optional": true,
+          "kind": "property",
+          "type": "Length",
+          "types": [
+            "Length"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Drop remnants shorter than this after clipping. Default: `tolerance`."
+            }
+          ]
+        },
+        {
+          "name": "drop",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Drop polylines whose retained length is below this fraction (`0..=1`) of their original length."
+            }
+          ]
+        },
+        {
+          "name": "except",
+          "optional": true,
+          "kind": "property",
+          "type": "string[]",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Exclude these layer ids when `layers` is omitted."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "ToleranceOptimizeOptions",
+      "kind": "interface",
+      "members": [
+        {
+          "name": "tolerance",
+          "optional": true,
+          "kind": "property",
+          "type": "Length",
+          "types": [
+            "Length"
+          ]
+        },
+        {
+          "name": "except",
+          "optional": true,
+          "kind": "property",
+          "type": "string[]"
+        }
+      ]
+    },
+    {
+      "name": "FilterOptimizeOptions",
+      "kind": "interface",
+      "members": [
+        {
+          "name": "minLength",
+          "optional": true,
+          "kind": "property",
+          "type": "Length",
+          "types": [
+            "Length"
+          ]
+        },
+        {
+          "name": "except",
+          "optional": true,
+          "kind": "property",
+          "type": "string[]"
+        }
+      ]
+    },
+    {
+      "name": "ReloopOptimizeOptions",
+      "kind": "interface",
+      "members": [
+        {
+          "name": "except",
+          "optional": true,
+          "kind": "property",
+          "type": "string[]"
+        }
+      ]
+    },
+    {
+      "name": "HandPreset",
+      "kind": "type",
+      "doc": [
+        {
+          "kind": "p",
+          "text": "Starting point for `compose.hand`; any key below overrides it."
+        }
+      ],
+      "text": "\"steady\" | \"sketch\"",
+      "values": [
+        "steady",
+        "sketch"
+      ]
+    },
+    {
+      "name": "HandOptions",
+      "kind": "interface",
+      "members": [
+        {
+          "name": "preset",
+          "optional": true,
+          "kind": "property",
+          "type": "HandPreset",
+          "types": [
+            "HandPreset"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "`\"steady\"` (default): tremble, bowed edges, loose ends. `\"sketch\"`: also crossing corners and long lines in several strokes."
+            }
+          ]
+        },
+        {
+          "name": "wobble",
+          "optional": true,
+          "kind": "property",
+          "type": "Length",
+          "types": [
+            "Length"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Slow tremble shared by every stroke, so joins stay joined. Default `\"0.25mm\"` (sketch `\"0.35mm\"`)."
+            }
+          ]
+        },
+        {
+          "name": "wavelength",
+          "optional": true,
+          "kind": "property",
+          "type": "Length",
+          "types": [
+            "Length"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Wavelength of that tremble. Default `\"15mm\"`."
+            }
+          ]
+        },
+        {
+          "name": "tremor",
+          "optional": true,
+          "kind": "property",
+          "type": "Length",
+          "types": [
+            "Length"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Fine tremor along each stroke. Default `\"0.04mm\"`."
+            }
+          ]
+        },
+        {
+          "name": "bow",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Sideways sag of straight runs, as a fraction of their length (capped at 0.9mm). Default `0.012`."
+            }
+          ]
+        },
+        {
+          "name": "overshoot",
+          "optional": true,
+          "kind": "property",
+          "type": "Length",
+          "types": [
+            "Length"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Open strokes overshoot (or stop short of) their ends by up to this. Default `\"0.3mm\"`."
+            }
+          ]
+        },
+        {
+          "name": "close",
+          "optional": true,
+          "kind": "property",
+          "type": "Length",
+          "types": [
+            "Length"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Closed rings miss closing by up to this (gap or drifting overlap). Default `\"0.7mm\"`."
+            }
+          ]
+        },
+        {
+          "name": "reach",
+          "optional": true,
+          "kind": "property",
+          "type": "Length",
+          "types": [
+            "Length"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Longest single pen stroke; longer lines are drawn in several. `0` = off (default; sketch `\"40mm\"`)."
+            }
+          ]
+        },
+        {
+          "name": "corners",
+          "optional": true,
+          "kind": "property",
+          "type": "Length",
+          "types": [
+            "Length"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Sharp corners drawn as crossing lines running past by up to this. `0` = off (default; sketch `\"0.8mm\"`)."
+            }
+          ]
+        },
+        {
+          "name": "retrace",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Share (0–1) of strokes gone over a second time with their own bows and ends. Default `0` (sketch `0.3`)."
+            }
+          ]
+        },
+        {
+          "name": "retraceOffset",
+          "optional": true,
+          "kind": "property",
+          "type": "Length",
+          "types": [
+            "Length"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "How far apart a second pass is set down, at most. Default `\"0.25mm\"`."
+            }
+          ]
+        },
+        {
+          "name": "seed",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Seed for the hand's randomness. Default `1`."
+            }
+          ]
+        },
+        {
+          "name": "except",
+          "optional": true,
+          "kind": "property",
+          "type": "string[]",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Exclude these layer ids when `layers` is omitted."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "OrientDirection",
+      "kind": "type",
+      "doc": [
+        {
+          "kind": "p",
+          "text": "Preferred drawing direction for pen strokes:"
+        },
+        {
+          "kind": "list",
+          "items": [
+            "A compass preset (`\"lr\"`, `\"rl\"`, `\"tb\"`, `\"bt\"`, `\"tl-br\"`, `\"tr-bl\"`, `\"bl-tr\"`, `\"br-tl\"`, `\"e\"`, `\"se\"`, `\"s\"`, `\"sw\"`, `\"w\"`, `\"nw\"`, `\"n\"`, `\"ne\"`)",
+            "Or a numeric angle in degrees (`0` = East / left-to-right, `45` = South-East / top-left to bottom-right, `90` = South / top-to-bottom)."
+          ]
+        }
+      ],
+      "text": "number | \"lr\" | \"left-to-right\" | \"e\" | \"east\" | \"tl-br\" | \"nw-se\" | \"se\" | \"southeast\" | \"tb\" | \"top-to-bottom\" | \"s\" | \"south\" | \"tr-bl\" | \"ne-sw\" | \"sw\" | \"southwest\" | \"rl\" | \"right-to-left\" | \"w\" | \"west\" | \"br-tl\" | \"se-nw\" | \"nw\" | \"northwest\" | \"bt\" | \"bottom-to-top\" | \"n\" | \"north\" | \"bl-tr\" | \"sw-ne\" | \"ne\" | \"northeast\"",
+      "values": [
+        "lr",
+        "left-to-right",
+        "e",
+        "east",
+        "tl-br",
+        "nw-se",
+        "se",
+        "southeast",
+        "tb",
+        "top-to-bottom",
+        "s",
+        "south",
+        "tr-bl",
+        "ne-sw",
+        "sw",
+        "southwest",
+        "rl",
+        "right-to-left",
+        "w",
+        "west",
+        "br-tl",
+        "se-nw",
+        "nw",
+        "northwest",
+        "bt",
+        "bottom-to-top",
+        "n",
+        "north",
+        "bl-tr",
+        "sw-ne",
+        "ne",
+        "northeast"
+      ],
+      "others": [
+        "number"
+      ]
+    },
+    {
+      "name": "OrientOptions",
+      "kind": "interface",
+      "members": [
+        {
+          "name": "direction",
+          "optional": true,
+          "kind": "property",
+          "type": "OrientDirection",
+          "types": [
+            "OrientDirection"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Preferred stroke direction (compass preset or angle in degrees). Default: `\"lr\"` (`0`)."
+            }
+          ]
+        },
+        {
+          "name": "angle",
+          "optional": true,
+          "kind": "property",
+          "type": "OrientDirection",
+          "types": [
+            "OrientDirection"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Alias for `direction` when specifying an angle in degrees."
+            }
+          ]
+        },
+        {
+          "name": "maxLength",
+          "optional": true,
+          "kind": "property",
+          "type": "Length",
+          "types": [
+            "Length"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Leave strokes longer than `maxLength` untouched."
+            }
+          ]
+        },
+        {
+          "name": "splitReversals",
+          "optional": true,
+          "kind": "property",
+          "type": "boolean",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Split multi-segment strokes (such as zigzags) where they reverse against `direction` before orienting. Default: `false`."
+            }
+          ]
+        },
+        {
+          "name": "except",
+          "optional": true,
+          "kind": "property",
+          "type": "string[]",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Exclude these layer ids when `layers` is omitted."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "LinesortOptions",
+      "kind": "interface",
+      "members": [
+        {
+          "name": "twoOpt",
+          "optional": true,
+          "kind": "property",
+          "type": "boolean",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Run 2-opt swaps after nearest-neighbour pass. Default: `true`."
+            }
+          ]
+        },
+        {
+          "name": "passes",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Maximum 2-opt passes. Default: `250`."
+            }
+          ]
+        },
+        {
+          "name": "follow",
+          "optional": true,
+          "kind": "property",
+          "type": "boolean",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Do not flip stroke directions during sorting (connect `end -> start` only). Default: `false` (automatically `true` when `direction`/`angle` is set or after `compose.orient`)."
+            }
+          ]
+        },
+        {
+          "name": "direction",
+          "optional": true,
+          "kind": "property",
+          "type": "OrientDirection",
+          "types": [
+            "OrientDirection"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Orient strokes along this preferred direction before sorting, and lock their direction (`follow: true`)."
+            }
+          ]
+        },
+        {
+          "name": "angle",
+          "optional": true,
+          "kind": "property",
+          "type": "OrientDirection",
+          "types": [
+            "OrientDirection"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Alias for `direction`."
+            }
+          ]
+        },
+        {
+          "name": "maxLength",
+          "optional": true,
+          "kind": "property",
+          "type": "Length",
+          "types": [
+            "Length"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "When `direction`/`angle` is set, leave strokes longer than `maxLength` untouched."
+            }
+          ]
+        },
+        {
+          "name": "splitReversals",
+          "optional": true,
+          "kind": "property",
+          "type": "boolean",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "When `direction`/`angle` is set, split strokes at sharp reversals against `direction` before orienting. Default: `false`."
+            }
+          ]
+        },
+        {
+          "name": "except",
+          "optional": true,
+          "kind": "property",
+          "type": "string[]",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Exclude these layer ids when `layers` is omitted."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "ViewSpec",
+      "kind": "interface",
+      "doc": [
+        {
+          "kind": "p",
+          "text": "Where a view goes on the page, and what place it shows."
+        }
+      ],
+      "members": [
+        {
+          "name": "id",
+          "kind": "property",
+          "type": "string",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "A name for the view: `compose.mask({ occludes: [id] })` cuts it."
+            }
+          ]
+        },
+        {
+          "name": "at",
+          "kind": "property",
+          "type": "[number, number]",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Top-left corner on the page, in mm."
+            }
+          ]
+        },
+        {
+          "name": "size",
+          "kind": "property",
+          "type": "[number, number]",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Width and height on the page, in mm."
+            }
+          ]
+        },
+        {
+          "name": "lat",
+          "optional": true,
+          "kind": "property",
+          "type": "number"
+        },
+        {
+          "name": "lng",
+          "optional": true,
+          "kind": "property",
+          "type": "number"
+        },
+        {
+          "name": "scale",
+          "optional": true,
+          "kind": "property",
+          "type": "string | number"
+        },
+        {
+          "name": "bearing",
+          "optional": true,
+          "kind": "property",
+          "type": "number"
+        },
+        {
+          "name": "tileZoom",
+          "optional": true,
+          "kind": "property",
+          "type": "number"
+        },
+        {
+          "name": "projection",
+          "optional": true,
+          "kind": "property",
+          "type": "OutputOptions[\"projection\"]",
+          "types": [
+            "OutputOptions"
+          ]
+        },
+        {
+          "name": "ink",
+          "optional": true,
+          "kind": "property",
+          "type": "string",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "One colour for every stroke of the view: it becomes one SVG group named `id`, a pen of its own."
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

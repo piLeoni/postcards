@@ -39,6 +39,7 @@ pub fn registry_name(generator: &str, o: &Opts) -> Result<Option<String>, FillEr
 
 fn litho_alias(generator: &str) -> Option<&'static str> {
     Some(match generator {
+        "bentonite" => "benton",
         "granite-x" => "granite2",
         "breccia-blobs" => "breccia2",
         "conglomerate-flat" => "conglomerate2",

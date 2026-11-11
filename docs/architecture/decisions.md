@@ -34,6 +34,6 @@ No randomness, time, or network in the sandbox — same script + same inputs →
 
 All HTTP and filesystem live in CLI or browser workers; WASM `Job` receives bytes. Simplifies testing and parity between front ends.
 
-## Documentation gaps (known)
+## User docs are generated or checked, never transcribed
 
-`README.md` references `docs/library.md` and `docs/plan.md` which are not present; `drawland.d.ts` is the maintained API reference until those files exist.
+The `/docs` page drifted for months when it was hand-written prose (patterns listed by hand, files linked that never existed). Now the reference is generated from `drawland.d.ts`, every example is a real profile that `npm test` type-checks, and every picture is drawn by the CLI (`web/scripts/render-docs.sh`). Prose stays where only prose works (tutorial, concepts). See [web.md](web.md#docs-srcdocs).

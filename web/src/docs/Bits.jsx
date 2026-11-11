@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { highlight } from './highlight'
+import { highlight } from './highlight.js'
 
 /**
  * The documentation's text and code, in the page's own style.
@@ -76,4 +76,84 @@ function textOf(node) {
   if (Array.isArray(node)) return node.map(textOf).join('')
   if (typeof node === 'object' && 'props' in node) return textOf(node.props.children)
   return ''
+}
+
+/** A heading with an anchor: linking to it scrolls here. */
+export function H({ id, children, level = 2 }) {
+  const Tag = `h${level}`
+  return (
+    <Tag id={id} className={`group scroll-mt-[2lh] ${level === 2 ? 'mt-[3lh] mb-[1lh] text-[1.4em]' : 'mt-[2lh] mb-[0.5lh] text-[1.15em]'} font-bold`}>
+      <a href={`#${id}`} className="no-underline hover:underline">
+        {children}
+        <span className="ml-[1ch] opacity-0 group-hover:opacity-40">#</span>
+      </a>
+    </Tag>
+  )
+}
+
+export function P({ children }) {
+  return <p className="my-[1lh] max-w-[80ch] leading-relaxed">{children}</p>
+}
+
+export function UL({ children }) {
+  return <ul className="my-[1lh] flex max-w-[80ch] flex-col gap-[0.5lh]">{children}</ul>
+}
+
+export function LI({ children }) {
+  return <li className="leading-relaxed">{children}</li>
+}
+
+/** A name in bold, for the tight lists. */
+export function T({ children }) {
+  return <span className="font-bold">{children}</span>
+}
+
+/** An aside: a fact worth stopping on, or a limit to know about. */
+export function Note({ children }) {
+  return (
+    <p className="thin my-[1lh] max-w-[80ch] bg-[var(--background1)] px-[1ch] py-[1ch] leading-relaxed">
+      {children}
+    </p>
+  )
+}
+
+/** A table with a header row: `head` is the column titles, `rows` arrays of cells. */
+export function Table({ head, rows }) {
+  return (
+    <div className="thin my-[1lh] max-w-[80ch] overflow-x-auto">
+      <table className="w-full border-collapse">
+        <thead>
+          <tr className="bg-[var(--background1)] text-left">
+            {head.map((h, i) => (
+              <th key={i} className="border-b border-black px-[1ch] py-[0.25lh]">{h}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r, i) => (
+            <tr key={i}>
+              {r.map((cell, j) => (
+                <td key={j} className={`border-b border-black/20 px-[1ch] py-[0.25lh] align-top ${j === 0 ? 'font-bold' : j === r.length - 1 && r.length > 2 ? 'opacity-80' : ''}`}>
+                  {cell}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+/**
+ * A picture rendered ahead of time by `web/scripts/render-docs.sh` (the CLI,
+ * so it is what `drawland map` draws): `src` under `public/docs/`.
+ */
+export function Figure({ src, alt, caption, className = '' }) {
+  return (
+    <figure className={`thin my-[1lh] max-w-[80ch] ${className}`}>
+      <img src={src} alt={alt} loading="lazy" className="block w-full border border-black/30 bg-white" />
+      {caption ? <figcaption className="mt-[0.25lh] opacity-60">{caption}</figcaption> : null}
+    </figure>
+  )
 }

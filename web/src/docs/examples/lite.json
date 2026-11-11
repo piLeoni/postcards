@@ -1,0 +1,49 @@
+[
+  {
+    "id": "lite-city-grain",
+    "preset": "city-grain",
+    "title": "City grain (lite)",
+    "teaches": [
+      "pen(k) and ground(m): paper lengths from the nib, real sizes from the scale",
+      "burin.terrain hatches open ground and fades out near a named region",
+      "isoline-stack crowns sized on the ground; fills.cover gives their footprint",
+      "masks stack layers: trees over roads, roads over buildings"
+    ],
+    "lines": 70
+  },
+  {
+    "id": "lite-napkin-sketch",
+    "preset": "napkin-sketch",
+    "title": "Napkin sketch (lite)",
+    "teaches": [
+      "grow then shrink (a morphological close) fuses houses into blocks",
+      "scallop-waves with fray, filled past the sheet so the fray stays on the shore",
+      "compose.hand loosens finished strokes; one seed keeps joins trembling together",
+      "linemerge and filter before the hand, so long lines are drawn as one stroke"
+    ],
+    "lines": 66
+  },
+  {
+    "id": "lite-karl-the-fog",
+    "preset": "karl-the-fog",
+    "title": "Karl the Fog (lite)",
+    "teaches": [
+      "fills.cover gives a pattern's footprint, from the same run as the fill",
+      "a mask from that footprint clears the map under the clouds",
+      "areas.move casts a shadow down-sun from the light angle"
+    ],
+    "lines": 63
+  },
+  {
+    "id": "lite-shaky-ground",
+    "preset": "shaky-ground",
+    "title": "Shaky ground (lite)",
+    "teaches": [
+      "features.geojson reads a live feed: properties become tags, depth becomes geom:z",
+      "features.where with side-by-side ranges splits data into bands",
+      "areas.around sizes a disc per point; colour, not width, separates the pens",
+      "modules.labels with keys names features by a data value"
+    ],
+    "lines": 62
+  }
+]

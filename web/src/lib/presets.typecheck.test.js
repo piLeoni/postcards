@@ -9,7 +9,7 @@ import ts from 'typescript'
 
 const root = join(import.meta.dirname, '..', '..', '..')
 const library = join(root, 'crates', 'drawland-script', 'drawland.d.ts')
-const dirs = [join(root, 'web', 'src', 'presets'), join(root, 'configs')]
+const dirs = [join(root, 'web', 'src', 'presets'), join(root, 'web', 'src', 'docs', 'examples'), join(root, 'configs')]
 const files = dirs.flatMap((d) => readdirSync(d).filter((f) => f.endsWith('.js')).map((f) => join(d, f)))
 
 // The editor's settings (`setUpEditor` in Sidebar.jsx).

@@ -7,15 +7,18 @@ one layered SVG in paper millimetres; what is drawn, and how, is a short
 JavaScript profile. Area patterns come from
 [penfill](https://github.com/piLeoni/penfill).
 
-Everything after the SVG (path optimisation, G-code, upload) is out of scope
-for now.
+The profile can also prepare the strokes for the machine (merge, simplify,
+sort, a hand-drawn tremble), and the web page exports the drawing as SVG, PNG,
+DXF or G-code, whole, per sheet or per pen. Sending it to a plotter is left to
+the plotter's own software.
 
 ## Use
 
-The web page draws maps and carries the documentation at `/docs`: the library
-reference, the profiles it runs, and where the Rust, command-line and Python
-front ends stand. Start here: [`docs/library.md`](docs/library.md) is the
-reference, and `crates/drawland-script/drawland.d.ts` is its exact description.
+The web page draws maps and carries the documentation at `/docs`: a gallery
+of every preset, a tutorial that builds a map in eight steps, four presets cut
+down to a page of code, the patterns drawn, and a reference generated from
+`crates/drawland-script/drawland.d.ts`, the library's exact description. Its
+sources are in `web/src/docs/` (see [Documentation](#documentation) below).
 
 ```bash
 ./generate.sh "1730 Highland Pl, Berkeley, CA 94709"
@@ -37,6 +40,9 @@ cargo run --release -p drawland-cli -- map web/src/presets/city-grain.js --lat 3
 | `-o` | Output SVG (default `map.svg`) |
 | `--cache` | Overpass / Nominatim response cache (default `cache/`; Overpass replies in `cache/overpass/`, reused by any map they cover) |
 | `--offline` | Use cached responses only |
+| `--refresh` | Fetch datasets again even when cached |
+| `--slices` | For a card cut into sheets: `whole`, `slices` or `both` (default) |
+| `--per-layer` | Also one SVG per top-level layer (a file per pen) |
 
 ## Profiles
 
@@ -46,9 +52,9 @@ map is and on what paper (`output({...})`), which map data to read
 make of it (`areas.*`, `lines.*`, `fills.fill`, `modules.roads()`), and how to
 ink and stack it (`draw`, `compose`). The script only builds a graph; the
 engine runs the graph in Rust. `configs/postcard.js` is the default; the web
-page's presets are in `web/src/presets/`. [`docs/library.md`](docs/library.md)
-is the reference, and `crates/drawland-script/drawland.d.ts` its exact
-description (the web editor autocompletes and type-checks against it).
+page's presets are in `web/src/presets/`. `crates/drawland-script/drawland.d.ts`
+is the library's exact description: the web editor autocompletes and
+type-checks against it, and the docs' reference is generated from it.
 
 ## Layout
 
@@ -62,7 +68,6 @@ description (the web editor autocompletes and type-checks against it).
 | `configs/` | Profiles |
 | `data/` | Address lists |
 | `docs/architecture/` | Architecture index for contributors and coding agents (`AGENTS.md`) |
-| `docs/plan.md` | The Rust rewrite: decisions, status, next phases (not in tree yet) |
 | `reference/python/` | The former Python pipeline, kept to read, not run |
 
 ## Tests
@@ -73,6 +78,21 @@ cargo test
 ```
 
 draw.land builds against sibling checkouts of its own libraries, developed
-alongside it: penfill in `../penfill` (fills) and terramask in `../terramask`
-(the sea, from vector tiles); burin-map in `../burin-map` comes next, for
-terrain.
+alongside it: penfill in `../penfill` (fills), terramask in `../terramask`
+(map tiles as polygons, the sea, elevation bands) and burin-map in
+`../burin-map` (pen-and-ink terrain).
+
+## Documentation
+
+The `/docs` page is built from code it is checked against:
+
+| Part | Source | Regenerate |
+|---|---|---|
+| Reference | `drawland.d.ts` → `web/src/docs/library-reference.json` | `node web/scripts/build-reference.mjs` (`npm test` fails when stale) |
+| Tutorial, lite styles | `web/src/docs/examples/*.js` (type-checked by `npm test`) | `web/scripts/render-docs.sh examples` |
+| Gallery | `web/src/presets/*.js` | `web/scripts/render-docs.sh gallery` |
+| Pattern swatches | the `Pattern` type in `drawland.d.ts` | `web/scripts/render-docs.sh patterns` |
+
+`web/scripts/render-docs.sh` with no argument draws every picture with the CLI
+into `web/public/docs/` (`OFFLINE=1` draws from the cache only). Run it after a
+change to the engine, a preset, or an example.

@@ -13,6 +13,7 @@ Authoring format for maps: declarative calls into the draw.land library that bui
 | `crates/drawland-script/drawland.d.ts` | Type reference for editor + docs |
 | `configs/*.js` | Default CLI profiles |
 | `web/src/presets/*.js` | Shipped web presets |
+| `web/src/docs/examples/*.js` | Tutorial steps and lite presets shown on `/docs` (type-checked like presets) |
 
 ## Execution model
 
@@ -59,9 +60,11 @@ Rebuild: `web/build-wasm.sh`.
 For substantial presets (`web/src/presets/*.js`, `configs/*.js`), follow `.cursor/rules/profile-style.mdc`:
 - Group all visual constants, stroke specs, buffer widths, fill patterns, and taxonomy tables at the top (`1. PARAMETERS & STYLE PALETTE`).
 - Execute feature extraction/geometry (`2`), `draw` declarations (`3`), `compose.mask` / `compose.order` (`4`), and plotter optimization (`5`) linearly below without inline magic numbers.
+- One stroke width per pen; weight comes from offset double lines, never a wider stroke (`ink.width` is for print/screen styles such as the Schoolroom atlas).
 
 ## When changing the API
 
 1. `library.js` + native bindings in `lib.rs`
 2. `drawland.d.ts` (and tests that keep d.ts aligned)
-3. Subsystem docs here if behaviour or contracts change
+3. `node web/scripts/build-reference.mjs` (the `/docs` reference; `npm test` fails until it is rerun)
+4. Subsystem docs here if behaviour or contracts change; the `/docs` Concepts section (`web/src/docs/Concepts.jsx`) if the change alters how profiles are written

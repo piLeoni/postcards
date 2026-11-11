@@ -1,9 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useAtom } from 'jotai'
 import MapView from './components/MapView'
 import Sidebar from './components/Sidebar'
 import ThemePicker from './components/ThemePicker'
-import Docs from './docs/Docs'
 import { loadDrawland } from './lib/drawland'
 import { loadGoogleFontsForGraph } from './lib/googleFonts'
 import { loadStrokeFontsForGraph } from './lib/strokeFonts'
@@ -23,6 +22,9 @@ const OPENED_SHARE = Boolean(readFragment(typeof location !== 'undefined' ? loca
 
 /** The project on GitHub: the header and the sidebar both point here. */
 export const REPO = 'https://github.com/piLeoni/postcards'
+
+/** The documentation, loaded the first time it is opened: its reference and examples stay out of the map's bundle. */
+const Docs = lazy(() => import('./docs/Docs.jsx'))
 
 /** Whether the URL is the docs page, `/docs` (or `#docs` for a plain file server). */
 const isDocs = () => /^\/docs\/?$/.test(location.pathname) || location.hash === '#docs'
@@ -813,7 +815,16 @@ export default function App() {
       {docs ? (
         <div className="fixed inset-0 z-50 flex flex-col bg-[var(--background0)]">
           <SiteHeader docs={docs} over themeId={themeId} onTheme={setThemeId} />
-          <Docs />
+          <Suspense fallback={<p className="p-[2ch] opacity-60">loading the docs…</p>}>
+          <Docs
+            onOpen={(text) => {
+              // An example from the docs: on the map, drawn, and the page left for it.
+              loadDoc(text)
+              history.pushState(null, '', '/')
+              window.dispatchEvent(new PopStateEvent('popstate'))
+            }}
+          />
+          </Suspense>
         </div>
       ) : null}
     </div>
