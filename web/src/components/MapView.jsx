@@ -430,23 +430,28 @@ function sizeText(output, units) {
 function Guides({ output, showMargins }) {
   if (!hasLayout(output)) return null
   const [w, h] = [output.width_mm, output.height_mm]
-  const cols = Math.max(1, output.columns ?? 1)
-  const rows = Math.max(1, output.rows ?? 1)
+  const sheets = sheetsOf(output)
+  // Every sheet edge inside the card: one cut between sheets side by side,
+  // or, when they overlap, both edges of the strip they share.
+  const inside = (v, size) => v > 1e-6 && v < size - 1e-6
+  const edges = (k0, k1, size) => [...new Set(sheets.flatMap((s) => [s.at[k0], s.at[k1]]).filter((v) => inside(v, size)).map((v) => +v.toFixed(4)))]
+  const xs = edges(0, 2, w)
+  const ys = edges(1, 3, h)
   const line = { vectorEffect: 'non-scaling-stroke', fill: 'none' }
   return (
     <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none">
       {showMargins &&
-        sheetsOf(output).map((s, i) => {
+        sheets.map((s, i) => {
           const [x0, y0, x1, y1] = s.inner
           const margin = s.inner.some((v, k) => Math.abs(v - s.at[k]) > 1e-6)
           return margin && x1 > x0 && y1 > y0 ? (
             <rect key={i} x={x0} y={y0} width={x1 - x0} height={y1 - y0} stroke="var(--chrome-divider)" strokeDasharray="1 3" strokeWidth={1} {...line} />
           ) : null
         })}
-      {Array.from({ length: cols - 1 }, (_, i) => (w * (i + 1)) / cols).map((x) => (
+      {xs.map((x) => (
         <line key={`c${x}`} x1={x} y1={0} x2={x} y2={h} stroke="var(--chrome-divider)" strokeWidth={1} {...line} />
       ))}
-      {Array.from({ length: rows - 1 }, (_, i) => (h * (i + 1)) / rows).map((y) => (
+      {ys.map((y) => (
         <line key={`r${y}`} x1={0} y1={y} x2={w} y2={y} stroke="var(--chrome-divider)" strokeWidth={1} {...line} />
       ))}
     </svg>

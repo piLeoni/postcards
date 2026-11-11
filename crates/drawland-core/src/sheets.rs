@@ -1,10 +1,10 @@
 //! The paper the drawing goes on: the output cut into `slices`, `columns ×
-//! rows` sheets of equal size, like the panels of a triptych, each with the
-//! same blank margin on all four sides: the output's `padding`, or half the
-//! `slices.gutter` when that is larger — so two neighbouring drawings are
-//! never closer than the gutter, and a sheet's outer edges match its cut
-//! ones. Every sheet's `inner` rectangle crops the composed drawing (padding
-//! zero still clips to the card edge); nothing is moved or scaled.
+//! rows` sheets of equal size, like the panels of a triptych. The output's
+//! `padding` is the margin round the card's outside edge only; at every cut
+//! inside it each sheet keeps half the `slices.gutter`, so two neighbouring
+//! drawings are exactly the gutter apart (none: they meet at the cut). Every
+//! sheet's `inner` rectangle crops the composed drawing (padding zero still
+//! clips to the card edge); nothing is moved or scaled.
 
 use crate::geom::{self, Lines};
 use crate::svg;
@@ -19,11 +19,19 @@ pub struct Slices {
     pub columns: u32,
     #[serde(default = "one")]
     pub rows: u32,
-    /// The least blank space between neighbouring sheets' drawings, across
-    /// and down. Every sheet keeps `max(padding, gutter / 2)` on all four
-    /// sides: the gutter never adds to the padding, it only wins when larger.
+    /// The blank space between neighbouring sheets' drawings, across and
+    /// down: half of it on each side of every cut. The output's padding is
+    /// only round the card's outside edge.
     #[serde(default)]
     pub gutter: MmXY,
+    /// How much neighbouring sheets share, across and down: every sheet is
+    /// the same size and runs this far over its neighbour, so the same strip
+    /// of drawing is on both and one can be laid over the other to line them
+    /// up (a poster printed in tiles). With no gutter the drawing runs to every
+    /// cut, so an overlap of twice the printer's unprintable edge or more
+    /// leaves no gap: trim that blank edge off one sheet and lay it on the next.
+    #[serde(default, skip_serializing_if = "MmXY::is_zero")]
+    pub overlap: MmXY,
 }
 
 fn one() -> u32 {
@@ -32,7 +40,7 @@ fn one() -> u32 {
 
 impl Default for Slices {
     fn default() -> Self {
-        Slices { columns: 1, rows: 1, gutter: MmXY::default() }
+        Slices { columns: 1, rows: 1, gutter: MmXY::default(), overlap: MmXY::default() }
     }
 }
 
@@ -51,22 +59,29 @@ pub struct Sheet {
 /// The sheets of a `width × height` mm output, row by row.
 pub fn sheets(width: f64, height: f64, padding: MmXY, slices: &Slices) -> Vec<Sheet> {
     let (cols, rows) = (slices.columns.max(1), slices.rows.max(1));
-    let (sw, sh) = (width / cols as f64, height / rows as f64);
-    // The same margin on every edge of every sheet, outer and cut alike.
-    let (mx, my) = (padding.x.max(slices.gutter.x / 2.0), padding.y.max(slices.gutter.y / 2.0));
+    // Equal sheets, each `o` over the next: n sheets of s cover n·s − (n−1)·o.
+    let (ox, oy) = (if cols > 1 { slices.overlap.x.max(0.0) } else { 0.0 }, if rows > 1 { slices.overlap.y.max(0.0) } else { 0.0 });
+    let (sw, sh) = ((width + (cols - 1) as f64 * ox) / cols as f64, (height + (rows - 1) as f64 * oy) / rows as f64);
+    // The padding on the card's outside edges, half the gutter at the cuts.
+    let (gx, gy) = (slices.gutter.x / 2.0, slices.gutter.y / 2.0);
     let mut out = Vec::new();
     for r in 0..rows {
         for c in 0..cols {
-            let (x0, y0) = (c as f64 * sw, r as f64 * sh);
+            let (x0, y0) = (c as f64 * (sw - ox), r as f64 * (sh - oy));
             let at = [x0, y0, x0 + sw, y0 + sh];
-            let inner = [x0 + mx, y0 + my, x0 + sw - mx, y0 + sh - my];
+            let left = if c == 0 { padding.x } else { gx };
+            let right = if c == cols - 1 { padding.x } else { gx };
+            let top = if r == 0 { padding.y } else { gy };
+            let bottom = if r == rows - 1 { padding.y } else { gy };
+            let inner = [x0 + left, y0 + top, x0 + sw - right, y0 + sh - bottom];
             out.push(Sheet { name: format!("r{}c{}", r + 1, c + 1), at, inner });
         }
     }
     out
 }
 
-/// The drawable area of the output after `padding` and `slices.gutter` margins:
+/// The drawable area of the output after the `padding` (outside) and
+/// `slices.gutter` (at the cuts) margins:
 /// every sheet's `inner` rectangle, as a [`MultiPolygon`].
 pub fn drawable_area(width: f64, height: f64, padding: MmXY, slices: &Slices) -> MultiPolygon<f64> {
     MultiPolygon::new(
@@ -218,6 +233,10 @@ pub struct Layout {
     /// Colour for [`multipolygon_filled`] while a [`begin_fill`] group is open.
     fill_paint: Option<String>,
     decimals: u8,
+    /// Whether neighbouring sheets share drawing (`slices.overlap`).
+    overlap: bool,
+    /// Every sheet's inner rectangle together.
+    drawable: MultiPolygon<f64>,
 }
 
 /// Bytes of SVG text a part holds before handing them out.
@@ -236,7 +255,9 @@ impl Layout {
             let um = |v: f64| (v * 1000.0).round() / 1000.0;
             parts.extend(sheets.iter().map(|s| svg::header(um(s.at[2] - s.at[0]), um(s.at[3] - s.at[1]))));
         }
-        Layout { sheets, cropped, parts, groups: Vec::new(), fill_paint: None, decimals: decimals.min(6) }
+        let overlap = sheets.len() > 1 && (slices.overlap.x > 0.0 || slices.overlap.y > 0.0);
+        let drawable = if overlap { geom::union_multi(sheets.iter().map(|s| rect_mp(s.inner)).collect::<Vec<_>>().iter()) } else { geom::empty() };
+        Layout { sheets, cropped, parts, groups: Vec::new(), fill_paint: None, decimals: decimals.min(6), overlap, drawable }
     }
 
     fn cut(&self) -> bool {
@@ -249,11 +270,20 @@ impl Layout {
         if !self.cropped {
             return lines.to_vec();
         }
+        if self.overlaps() {
+            return geom::clip_lines(lines, &self.drawable, false);
+        }
         let mut out = Vec::new();
         for s in &self.sheets {
             out.extend(clip(lines, s.inner));
         }
         out
+    }
+
+    /// Sheets that share drawing: the whole output is then cropped to their
+    /// union once, not sheet by sheet (which would draw the shared strips twice).
+    fn overlaps(&self) -> bool {
+        self.overlap
     }
 
     /// Start the group `id`, in every part.
@@ -370,12 +400,23 @@ impl Layout {
         let d = self.decimals;
         if self.cut() {
             let mut total_whole = 0;
+            if self.overlaps() {
+                let whole = geom::clip_lines(lines, &self.drawable, false);
+                total_whole = whole.len();
+                for l in &whole {
+                    svg::polyline_with_decimals(&mut self.parts[0], l, d);
+                }
+            }
             for (k, s) in self.sheets.iter().enumerate() {
                 let sheet_lines = clip(lines, s.inner);
-                total_whole += sheet_lines.len();
+                if !self.overlap {
+                    total_whole += sheet_lines.len();
+                }
                 let [x0, y0, _, _] = s.at;
                 for l in &sheet_lines {
-                    svg::polyline_with_decimals(&mut self.parts[0], l, d);
+                    if !self.overlap {
+                        svg::polyline_with_decimals(&mut self.parts[0], l, d);
+                    }
                     let moved = LineString::new(l.0.iter().map(|c| Coord { x: c.x - x0, y: c.y - y0 }).collect());
                     svg::polyline_with_decimals(&mut self.parts[k + 1], &moved, d);
                 }
@@ -514,20 +555,19 @@ mod tests {
     #[test]
     fn sheets_share_the_card_and_keep_their_margins() {
         let even = |v| MmXY { x: v, y: v };
-        let s = sheets(150.0, 100.0, even(5.0), &Slices { columns: 3, rows: 2, gutter: even(4.0) });
+        let s = sheets(150.0, 100.0, even(5.0), &Slices { columns: 3, rows: 2, gutter: even(4.0), ..Default::default() });
         assert_eq!(s.len(), 6);
         assert_eq!(s[0].name, "r1c1");
         assert_eq!(s[5].name, "r2c3");
         assert_eq!(s[0].at, [0.0, 0.0, 50.0, 50.0]);
-        // The padding all round every sheet: half a 4 mm gutter is less, so it
-        // does not add to it.
-        assert_eq!(s[0].inner, [5.0, 5.0, 45.0, 45.0]);
-        assert_eq!(s[4].inner, [55.0, 55.0, 95.0, 95.0]);
-        let thin = sheets(150.0, 100.0, even(0.0), &Slices { columns: 2, rows: 1, gutter: even(6.0) });
-        assert_eq!(thin[0].inner, [3.0, 3.0, 72.0, 97.0], "a gutter alone leaves half itself round every sheet, outer edges too");
-        assert_eq!(thin[1].inner[0] - thin[0].inner[2], 6.0, "and the drawings are the gutter apart");
-        let apart = sheets(150.0, 100.0, MmXY { x: 6.0, y: 2.0 }, &Slices { columns: 2, rows: 2, gutter: MmXY { x: 16.0, y: 0.0 } });
-        assert_eq!(apart[3].inner, [83.0, 52.0, 142.0, 98.0], "the larger of the two wins, across and down apart");
+        // The padding round the card's outside, half the 4 mm gutter at the cuts.
+        assert_eq!(s[0].inner, [5.0, 5.0, 48.0, 48.0]);
+        assert_eq!(s[4].inner, [52.0, 52.0, 98.0, 95.0]);
+        assert_eq!(s[1].inner[0] - s[0].inner[2], 4.0, "neighbouring drawings are the gutter apart");
+        let thin = sheets(150.0, 100.0, even(0.0), &Slices { columns: 2, rows: 1, gutter: even(6.0), ..Default::default() });
+        assert_eq!(thin[0].inner, [0.0, 0.0, 72.0, 100.0], "a gutter alone leaves the outside edges bare");
+        let apart = sheets(150.0, 100.0, MmXY { x: 6.0, y: 2.0 }, &Slices { columns: 2, rows: 2, ..Default::default() });
+        assert_eq!(apart[3].inner, [75.0, 50.0, 144.0, 98.0], "no gutter: the drawings meet at the cuts, the padding only outside");
     }
 
     #[test]
@@ -542,7 +582,7 @@ mod tests {
     #[test]
     fn a_cut_card_writes_one_drawing_per_sheet() {
         let across = LineString::from(vec![(0.0, 50.0), (150.0, 50.0)]);
-        let paper = lay_out(150.0, 100.0, MmXY::default(), &Slices { columns: 2, rows: 1, gutter: MmXY { x: 6.0, y: 6.0 } }, vec![("g".into(), vec![across])]);
+        let paper = lay_out(150.0, 100.0, MmXY::default(), &Slices { columns: 2, rows: 1, gutter: MmXY { x: 6.0, y: 6.0 }, ..Default::default() }, vec![("g".into(), vec![across])]);
         assert_eq!(paper.groups, vec![("g".to_string(), 2)], "the gutter splits the line");
         assert_eq!(paper.slices.len(), 2);
         assert!(paper.slices[1].1.contains("width=\"75mm\""), "{}", &paper.slices[1].1[..200]);
@@ -553,7 +593,7 @@ mod tests {
             150.0,
             100.0,
             MmXY::default(),
-            &Slices { columns: 2, rows: 1, gutter: MmXY { x: 6.0, y: 6.0 } },
+            &Slices { columns: 2, rows: 1, gutter: MmXY { x: 6.0, y: 6.0 }, ..Default::default() },
             vec![
                 ("roads_outlines".into(), vec![LineString::from(vec![(0.0, 50.1234), (150.0, 50.1234)])]),
                 ("parks".into(), vec![LineString::from(vec![(0.0, 20.5678), (150.0, 20.5678)])]),
@@ -572,5 +612,26 @@ mod tests {
         assert_eq!(suffixes, vec!["-r1c1-roads-outlines", "-r1c1-parks", "-r1c2-roads-outlines", "-r1c2-parks"]);
         assert!(exported[0].1.contains("50.12"));
         assert!(!exported[0].1.contains("50.1234"));
+    }
+
+    #[test]
+    fn overlapping_sheets_share_a_strip_and_the_whole_draws_it_once() {
+        let even = |v| MmXY { x: v, y: v };
+        // 3 sheets across 300 mm, 20 mm over each other: 113.33 mm each.
+        let slices = Slices { columns: 3, rows: 1, overlap: even(20.0), ..Default::default() };
+        let s = sheets(300.0, 100.0, even(5.0), &slices);
+        let w = (300.0 + 2.0 * 20.0) / 3.0;
+        for (k, sheet) in s.iter().enumerate() {
+            assert!((sheet.at[2] - sheet.at[0] - w).abs() < 1e-9, "equal sheets");
+            assert!((sheet.at[0] - k as f64 * (w - 20.0)).abs() < 1e-9);
+        }
+        assert!((s[2].at[2] - 300.0).abs() < 1e-9, "the last ends at the card's edge");
+        assert!(s[0].at[2] - s[1].at[0] - 20.0 < 1e-9, "neighbours share 20 mm");
+        // A line across: one stroke on the whole card, one on each sheet.
+        let across = LineString::from(vec![(0.0, 50.0), (300.0, 50.0)]);
+        let paper = lay_out(300.0, 100.0, even(5.0), &slices, vec![("g".into(), vec![across])]);
+        assert_eq!(paper.groups, vec![("g".to_string(), 1)]);
+        assert_eq!(paper.svg.matches("<polyline").count(), 1);
+        assert!(paper.slices.iter().all(|(_, svg)| svg.matches("<polyline").count() == 1));
     }
 }

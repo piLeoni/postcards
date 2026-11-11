@@ -19,10 +19,13 @@ function xyText({ x, y }) {
 
 const some = ({ x, y }) => x.mm > 0 || y.mm > 0
 
-/** The `slices` key for a cut; the default (one sheet, no gutter) leaves it out. */
-function slicesKey({ columns, rows, gutter }) {
-  if (columns === 1 && rows === 1 && !some(gutter)) return null
-  return some(gutter) ? { columns, rows, gutter: xyText(gutter) } : { columns, rows }
+/** The `slices` key for a cut; the default (one sheet, no gutter, no overlap) leaves it out. */
+function slicesKey({ columns, rows, gutter, overlap }) {
+  if (columns === 1 && rows === 1 && !some(gutter) && !some(overlap)) return null
+  const key = { columns, rows }
+  if (some(gutter)) key.gutter = xyText(gutter)
+  if (some(overlap)) key.overlap = xyText(overlap)
+  return key
 }
 
 /**
@@ -48,11 +51,12 @@ export const SIDEBAR_WIDE_PX = 560
 
 export default function OutputControls({ output, units, onEdit, onMove, compact = false, sidebarWidth }) {
   const wide = compact || (sidebarWidth != null && sidebarWidth >= SIDEBAR_WIDE_PX)
-  const u = { width: 'mm', height: 'mm', padding: 'mm', gutter: 'mm', terrain: 'km', ...units }
+  const u = { width: 'mm', height: 'mm', padding: 'mm', gutter: 'mm', overlap: 'mm', terrain: 'km', ...units }
   const width = { mm: output.width_mm, unit: u.width }
   const height = { mm: output.height_mm, unit: u.height }
   const padding = { x: { mm: output.padding_x_mm ?? 0, unit: u.padding }, y: { mm: output.padding_y_mm ?? 0, unit: u.padding } }
   const gutter = { x: { mm: output.gutter_x_mm ?? 0, unit: u.gutter }, y: { mm: output.gutter_y_mm ?? 0, unit: u.gutter } }
+  const overlap = { x: { mm: output.overlap_x_mm ?? 0, unit: u.overlap }, y: { mm: output.overlap_y_mm ?? 0, unit: u.overlap } }
   const columns = output.columns ?? 1
   const rows = output.rows ?? 1
   const terrainW = { m: (output.width_mm / 1000) * output.scale, unit: u.terrain }
@@ -64,6 +68,7 @@ export default function OutputControls({ output, units, onEdit, onMove, compact 
   const paperH = lengthModel(u.height, { min: 1 })
   const margin = lengthModel(u.padding)
   const gap = lengthModel(u.gutter)
+  const shared = lengthModel(u.overlap)
   const terrain = terrainModel(u.terrain)
   const tileZoom = tileZoomModel
 
@@ -74,6 +79,7 @@ export default function OutputControls({ output, units, onEdit, onMove, compact 
     onEdit({ padding: some(p) ? xyText(p) : null })
   }
   const setGutter = (patch) => setSlices({ gutter: { ...gutter, ...patch } })
+  const setOverlap = (patch) => setSlices({ overlap: { ...overlap, ...patch } })
   const [scaleChanges, setScaleChanges] = useState(() => (localStorage.getItem(SCALE_CHANGES_KEY) === 'paper' ? 'paper' : 'terrain'))
   const chooseScaleChanges = (v) => {
     setScaleChanges(v)
@@ -105,7 +111,7 @@ export default function OutputControls({ output, units, onEdit, onMove, compact 
   const setBearing = (b) => onEdit({ bearing: b })
   // The tile zoom the output reads at, or automatic (`null` removes the key).
   const setTileZoom = (v) => onEdit({ tileZoom: v.z })
-  const setSlices = (patch) => onEdit({ slices: slicesKey({ columns, rows, gutter, ...patch }) })
+  const setSlices = (patch) => onEdit({ slices: slicesKey({ columns, rows, gutter, overlap, ...patch }) })
   // Dragging a row's label moves both its values: sizes keep their shape.
   // The terrain width or height on its own: at the same scale, that side of the
   // paper grows to cover that much ground, and the other side stays put. The
@@ -237,6 +243,10 @@ export default function OutputControls({ output, units, onEdit, onMove, compact 
         <Scrub icon="‖" label="gutter" title="Drag to widen or narrow the blank space between the sheets" model={both(gap)} value={gutter} onChange={(v) => setSlices({ gutter: v })} />
         <Field label="gutter across" title="Blank space between side-by-side sheets, half on each side of the cut: mm, cm or in" model={gap} value={gutter.x} onChange={(x) => setGutter({ x })} />
         <Field label="gutter down" title="Blank space between stacked sheets, half on each side of the cut: mm, cm or in" model={gap} value={gutter.y} onChange={(y) => setGutter({ y })} />
+
+        <Scrub icon="⧉" label="overlap" title="Drag to make neighbouring sheets share more or less of the drawing, to tile a poster: trim one sheet's blank edge and lay it on the next" model={both(shared)} value={overlap} onChange={(v) => setSlices({ overlap: v })} />
+        <Field label="overlap across" title="Drawing shared by side-by-side sheets, to lay one over the other: mm, cm or in; at twice your printer's blank edge or more, trim that edge off one sheet and the drawing runs on" model={shared} value={overlap.x} onChange={(x) => setOverlap({ x })} />
+        <Field label="overlap down" title="Drawing shared by stacked sheets, to lay one over the other: mm, cm or in; at twice your printer's blank edge or more, trim that edge off one sheet and the drawing runs on" model={shared} value={overlap.y} onChange={(y) => setOverlap({ y })} />
       </Section>
     </div>
   )

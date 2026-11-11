@@ -234,11 +234,18 @@ interface OutputOptions {
   /** Blank margin inside the paper's edge (and round every sheet when cut): one length, or across and down. */
   padding?: Length | [Length, Length]
   /**
-   * The output cut into sheets. `gutter` is the least gap between two
-   * sheets' drawings: every sheet keeps `max(padding, gutter / 2)` on all four
-   * sides, so the gutter never adds to the padding, it only wins when larger.
+   * The output cut into sheets. `padding` is the margin round the card's
+   * outside edge only; `gutter` is the gap between two sheets' drawings, half
+   * of it on each side of every cut (none: the drawings meet at the cut).
+   *
+   * `overlap` is the opposite, for a poster printed in tiles: every sheet is
+   * the same size and runs this far over its neighbour, so both carry the
+   * same strip of drawing to line them up by. With no gutter the drawing
+   * runs to every cut, so at twice the printer's unprintable edge or more,
+   * that blank edge trimmed off one sheet and laid on the next, the drawing
+   * runs on with no gap.
    */
-  slices?: { columns?: number; rows?: number; gutter?: Length | [Length, Length] }
+  slices?: { columns?: number; rows?: number; gutter?: Length | [Length, Length]; overlap?: Length | [Length, Length] }
   /** Bend the ground before drawing; the paper's edge stays. */
   warp?: Warp | Warp[]
   /**

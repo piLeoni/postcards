@@ -70,6 +70,12 @@ pub struct MmXY {
     pub y: f64,
 }
 
+impl MmXY {
+    pub fn is_zero(&self) -> bool {
+        self.x == 0.0 && self.y == 0.0
+    }
+}
+
 impl<'de> Deserialize<'de> for MmXY {
     fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
         #[derive(Deserialize)]

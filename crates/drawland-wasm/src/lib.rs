@@ -108,7 +108,8 @@ pub fn osm_evict(entries: &str, now: f64) -> Result<Vec<u32>, JsValue> {
 /// `graph` may be just `{ "output": { … } }`.
 ///
 /// Returns `{ lat, lng, width_mm, height_mm, scale, bearing, padding_x_mm,
-/// padding_y_mm, columns, rows, gutter_x_mm, gutter_y_mm, projection,
+/// padding_y_mm, columns, rows, gutter_x_mm, gutter_y_mm, overlap_x_mm,
+/// overlap_y_mm, projection,
 /// tileZoom? }`, the projection as
 /// `webmercator`, `utm` or the PROJ string, and `tileZoom` only when the
 /// document sets it.
@@ -137,6 +138,8 @@ pub fn output_info(graph: &str) -> Result<JsValue, JsValue> {
         ("rows", spec.slices.rows.max(1) as f64),
         ("gutter_x_mm", spec.slices.gutter.x),
         ("gutter_y_mm", spec.slices.gutter.y),
+        ("overlap_x_mm", spec.slices.overlap.x),
+        ("overlap_y_mm", spec.slices.overlap.y),
     ] {
         js_sys::Reflect::set(&o, &JsValue::from_str(k), &JsValue::from_f64(v)).ok();
     }

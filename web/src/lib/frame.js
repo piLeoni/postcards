@@ -101,19 +101,28 @@ export function outputBox(map, output) {
 export function sheetsOf(output) {
   const cols = Math.max(1, output.columns ?? 1)
   const rows = Math.max(1, output.rows ?? 1)
-  // Every sheet keeps the same margin on all four sides: the padding, or
-  // half the gutter when that is larger (the gutter never adds to it).
-  const mx = Math.max(output.padding_x_mm ?? 0, (output.gutter_x_mm ?? 0) / 2)
-  const my = Math.max(output.padding_y_mm ?? 0, (output.gutter_y_mm ?? 0) / 2)
+  // The padding round the card's outside edge; half the gutter on each side
+  // of every cut inside it.
+  const [px, py] = [output.padding_x_mm ?? 0, output.padding_y_mm ?? 0]
+  const [gx, gy] = [(output.gutter_x_mm ?? 0) / 2, (output.gutter_y_mm ?? 0) / 2]
   const [w, h] = [output.width_mm, output.height_mm]
-  const [sw, sh] = [w / cols, h / rows]
+  // Overlapping sheets (a poster in tiles): all the same size, each running
+  // `overlap` over the next, so n sheets of s cover n·s − (n−1)·overlap.
+  const ox = cols > 1 ? Math.max(0, output.overlap_x_mm ?? 0) : 0
+  const oy = rows > 1 ? Math.max(0, output.overlap_y_mm ?? 0) : 0
+  const [sw, sh] = [(w + (cols - 1) * ox) / cols, (h + (rows - 1) * oy) / rows]
   const out = []
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
-      const [x0, y0] = [c * sw, r * sh]
+      const [x0, y0] = [c * (sw - ox), r * (sh - oy)]
       out.push({
         at: [x0, y0, x0 + sw, y0 + sh],
-        inner: [x0 + mx, y0 + my, x0 + sw - mx, y0 + sh - my],
+        inner: [
+          x0 + (c === 0 ? px : gx),
+          y0 + (r === 0 ? py : gy),
+          x0 + sw - (c === cols - 1 ? px : gx),
+          y0 + sh - (r === rows - 1 ? py : gy),
+        ],
       })
     }
   }

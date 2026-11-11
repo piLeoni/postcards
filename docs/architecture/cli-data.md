@@ -13,6 +13,7 @@
 - `--cache` (default `cache/`), `--offline`, `--refresh`
 - `--dump-graph` — print JSON and exit
 - SVG export: `--decimals <0..6>`, `--per-layer`, `--slices <whole|slices|both>` (`sheets::export_svg_files`)
+- Sheets (`sheets.rs`, mirrored for the preview by `sheetsOf` in `web/src/lib/frame.js`): `output.slices` cuts the card into `columns × rows` sheets, each inset by `padding` on the card's outside edges and by `gutter / 2` on each side of every cut. With `slices.overlap`, the sheets stay one size and each runs `overlap` mm over its neighbour, n sheets of `(size + (n−1)·overlap) / n`, so neighbours carry the same strip of drawing. That lets a poster be printed in tiles: with no gutter the drawing runs to every cut, so with `overlap` at least twice the printer's unprintable edge, that edge trimmed off one sheet and laid on the next, the drawing runs on without a gap. The whole SVG crops once to the union of the sheets' inner rectangles (`Layout::overlaps`), so the shared strips are not drawn twice; each sheet's SVG has its own full copy.
 
 `generate.sh` wraps common invocations.
 

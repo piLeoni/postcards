@@ -42,7 +42,7 @@ function go(e, path) {
 /** Where the output is, how big, how it is cut and drawn: a drawing is only good for one of these. */
 const placeOf = (c) =>
   c
-    ? [c.lat, c.lng, c.width_mm, c.height_mm, c.scale, c.bearing, c.padding_x_mm, c.padding_y_mm, c.columns, c.rows, c.gutter_x_mm, c.gutter_y_mm, c.projection].join()
+    ? [c.lat, c.lng, c.width_mm, c.height_mm, c.scale, c.bearing, c.padding_x_mm, c.padding_y_mm, c.columns, c.rows, c.gutter_x_mm, c.gutter_y_mm, c.overlap_x_mm, c.overlap_y_mm, c.projection].join()
     : ''
 
 /** `placeOf` without the bearing: the same ground, so the same tiles under it, turned or not. */
@@ -64,6 +64,7 @@ function unitsOf(doc) {
     height: outputUnit(doc, 'height') ?? paper,
     padding: outputUnit(doc, 'padding') ?? paper,
     gutter: outputUnit(doc, 'slices.gutter') ?? paper,
+    overlap: outputUnit(doc, 'slices.overlap') ?? paper,
     terrain: outputComment(doc, 'scale')?.match(/^terrain [\d.]+ × [\d.]+ (m|km|mi|ft)\b/)?.[1] ?? (paper === 'in' ? 'mi' : 'km'),
   }
 }
