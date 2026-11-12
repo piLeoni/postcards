@@ -4,6 +4,11 @@ description = "draw.land map stage: fetch OSM, render the layered SVG"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme = "../../README.md"
+keywords = ["plotter", "map", "openstreetmap", "svg", "cli"]
+categories = ["graphics", "science::geo"]
 
 [[bin]]
 name = "drawland"

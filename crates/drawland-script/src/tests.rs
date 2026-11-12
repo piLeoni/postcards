@@ -757,3 +757,26 @@ fn a_graticule_follows_the_projection_round_its_plate() {
     assert!((14..=22).contains(&strokes["keys"]), "{}", strokes["keys"]);
     assert!(err("modules.graticule({ in: areas.shape({ at: [0, 0], rect: [1, 1] }) })").to_string().contains("step"));
 }
+
+#[test]
+fn the_built_in_presets_are_the_web_apps() {
+    // `presets/` is a copy, built in so the crate stands alone; in the repo
+    // it must match the web app's scripts exactly.
+    let here = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let web = here.join("../../web/src/presets");
+    let Ok(entries) = std::fs::read_dir(&web) else { return };
+    let mut n = 0;
+    for e in entries.filter_map(|e| e.ok()) {
+        let name = e.file_name().into_string().unwrap_or_default();
+        if !name.ends_with(".js") {
+            continue;
+        }
+        n += 1;
+        let copy = std::fs::read_to_string(here.join("presets").join(&name)).unwrap_or_default();
+        assert!(
+            copy == std::fs::read_to_string(e.path()).unwrap(),
+            "presets/{name} differs from web/src/presets: cargo run --example check_web_presets -- --write"
+        );
+    }
+    assert_eq!(n, crate::PRESETS.len(), "a preset is missing from presets/");
+}

@@ -1,14 +1,17 @@
 //! The web app's presets, pre-run: each script in `web/src/presets` evaluated
 //! here, its graph written to `web/src/presets/graphs.json`, so the page draws
-//! a preset without loading the script interpreter.
+//! a preset without loading the script interpreter. The scripts are also
+//! copied into `crates/drawland-script/presets/`, which that crate builds in
+//! (`view(…, "city-grain")`): a published crate cannot reach the web app.
 //!
-//! `cargo run --example check_web_presets` fails when a preset does not run
-//! or `graphs.json` is stale; `-- --write` writes it.
+//! `cargo run --example check_web_presets` fails when a preset does not run,
+//! or `graphs.json` or the crate's copies are stale; `-- --write` writes them.
 
 use serde_json::{Map, Value};
 
 const DIR: &str = "web/src/presets";
 const GRAPHS: &str = "web/src/presets/graphs.json";
+const COPIES: &str = "crates/drawland-script/presets";
 
 fn main() {
     let write = std::env::args().any(|a| a == "--write");
@@ -30,6 +33,32 @@ fn main() {
             }
             Err(e) => {
                 println!("FAIL  {name}: {e}");
+                failed += 1;
+            }
+        }
+    }
+    // The crate's copies: exactly the web app's scripts.
+    for name in &names {
+        let (from, to) = (format!("{DIR}/{name}.js"), format!("{COPIES}/{name}.js"));
+        let text = std::fs::read_to_string(&from).expect("preset");
+        if std::fs::read_to_string(&to).ok().as_deref() != Some(text.as_str()) {
+            if write {
+                std::fs::write(&to, &text).expect(&to);
+                println!("wrote {to}");
+            } else {
+                println!("STALE {to}: run with -- --write");
+                failed += 1;
+            }
+        }
+    }
+    for e in std::fs::read_dir(COPIES).expect(COPIES).filter_map(|e| e.ok()) {
+        let file = e.file_name().into_string().unwrap_or_default();
+        if file.strip_suffix(".js").is_some_and(|n| !names.iter().any(|m| m == n)) {
+            if write {
+                std::fs::remove_file(e.path()).expect("remove a stale copy");
+                println!("removed {COPIES}/{file}");
+            } else {
+                println!("STALE {COPIES}/{file}: no such preset; run with -- --write");
                 failed += 1;
             }
         }

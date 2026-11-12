@@ -4,6 +4,11 @@ description = "draw.land profiles in JavaScript: the script builds the graph the
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme = "../../README.md"
+keywords = ["plotter", "map", "javascript", "svg", "cartography"]
+categories = ["graphics", "science::geo"]
 
 [dependencies]
 drawland-core = { workspace = true }
