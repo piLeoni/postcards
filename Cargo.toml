@@ -10,8 +10,8 @@ repository = "https://github.com/piLeoni/postcards"
 homepage = "https://draw.land"
 
 [workspace.dependencies]
-drawland-core = { path = "crates/drawland-core" }
-drawland-script = { path = "crates/drawland-script" }
+drawland-core = { path = "crates/drawland-core", version = "0.1.0" }
+drawland-script = { path = "crates/drawland-script", version = "0.1.0" }
 penfill = { path = "../penfill", version = "0.4.0", default-features = false }
 # Pen-and-ink terrain drawing: its own engine, its own expression trees.
 burin-map-core = { path = "../burin-map/crates/burin-map-core", version = "0.1.0" }
