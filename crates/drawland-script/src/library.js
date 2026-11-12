@@ -485,6 +485,9 @@
       const op = { in: need(area, Area, "fills.fill in"), ...rest };
       if (per !== undefined) op.per = per;
       if (content !== undefined) op.content = need(content, Lines, "fills.fill content");
+      // A motif drawn with lines.* (a shape, a word) is a reference the engine
+      // resolves; a symbol name or polylines written out go as they are.
+      if (rest.motif instanceof Lines) op.motif = need(rest.motif, Lines, "fills.fill motif");
       return make(Lines, "fills", { tools_fill: op });
     },
     // What a fill with the same options covers on paper: the area itself for
@@ -494,7 +497,9 @@
       object(spec, "fills.cover");
       const { in: area, per, content, ...rest } = spec;
       if (per !== undefined || content !== undefined) fail("fills.cover: takes a pattern, not per or content");
-      return make(Area, "areas", { tools_fill_cover: { in: need(area, Area, "fills.cover in"), ...rest } });
+      const op = { in: need(area, Area, "fills.cover in"), ...rest };
+      if (rest.motif instanceof Lines) op.motif = need(rest.motif, Lines, "fills.cover motif");
+      return make(Area, "areas", { tools_fill_cover: op });
     },
   };
 

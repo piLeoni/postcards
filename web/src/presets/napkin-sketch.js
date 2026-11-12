@@ -25,10 +25,10 @@ const inked = (s) => /** @type {Stroke} */ ({ ...s, width: pen(1), cap: "round" 
 const SOLID = inked({ style: "solid" })
 
 // The sea: rows of scallops, arcs dipping between sharp points, one stroke a
-// row — drawn precisely by penfill (`scallop-waves`), then loosened by the hand
+// row — drawn precisely by penfill (`scallops`), then loosened by the hand
 // like everything else, and frayed toward the shore.
-/** @type {Omit<FillOptions, "in">} */
-const SEA = { pattern: "scallop-waves", spacing: pen(14), wavelength: 1.35, depth: 0.35, stagger: 0.5, fray: pen(10) }
+/** @type {FillStyle} */
+const SEA = { pattern: "scallops", spacing: pen(14), stagger: 0.5, fray: pen(10) }
 
 // One seed everywhere, so strokes that meet in different layers tremble together.
 /** @type {HandOptions} */
@@ -160,7 +160,7 @@ draw({ id: "lines_major",   from: lines.rings(majorArea), stroke: SOLID })
 draw({ id: "lines_streets", from: streets, stroke: SOLID })
 draw({ id: "lines_blocks",  from: lines.rings(blocks), stroke: SOLID })
 draw({ id: "lines_piers",   from: lines.rings(piers), stroke: SOLID })
-draw({ id: "fill_blocks",   from: fills.fill({ in: blocks, per: "feature", pattern: "scribble", inset: pen(3), spacing: pen(8), angle: 40 }), stroke: SOLID })
+draw({ id: "fill_blocks",   from: fills.fill({ in: blocks, per: "feature", pattern: "scribble", inset: pen(3), spacing: pen(11), angle: 40 }), stroke: SOLID })
 draw({ id: "fill_trees",    from: fills.fill({ in: greens, pattern: "doodle-trees", spacing: pen(20), coverage: 0.8, edge: "inside", seed: 9 }), stroke: SOLID })
 
 draw({ id: "lines_names", from: names.lines, stroke: SOLID })

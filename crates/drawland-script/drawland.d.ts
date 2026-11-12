@@ -40,193 +40,499 @@ type TilePreset =
   | "grass" | "farmland" | "parks" | "urban" | "buildings" | "roads" | "paths" | "road_names" | "rail"
   | `${string}:${string}`
 
-/**
- * A penfill pattern. `concentric`: rings inward from the outer edge; a hole
- * stops them. `offsets`: rings from every edge, holes included, so a network
- * (streets round blocks) fills evenly; `spacing` apart, sharp corners.
- */
-type Pattern =
-  | "amphibolite" | "arena" | "beds" | "bentonite" | "brackets" | "breccia" | "breccia-blobs" | "canopy" | "cell-net" | "chalky-soil"
-  | "chess" | "clay-soil" | "clouds" | "coal" | "coarse-stone" | "compacted-soil" | "concentric" | "conglomerate"
-  | "conglomerate-flat" | "coquina" | "cracked-earth" | "cracks" | "curl-waves" | "dacite" | "debris-soil" | "diabase" | "diatom"
-  | "diorite" | "doodle-trees" | "dots" | "drift" | "dry-cracked-soil" | "eddies" | "erosion-lines" | "feldspar" | "ferrous" | "fill" | "fine-gravel" | "flow-waves"
-  | "fluid-grass" | "gabbro" | "gneiss" | "grainy-soil" | "granite" | "granite-x" | "grass" | "gravel" | "gravel-clipped"
-  | "gravelly-soil" | "grid" | "growth" | "hilbert" | "honeycomb" | "hornblende" | "isoline-blobs" | "isoline-stack" | "isoline-stack-hatched" | "laminae" | "lava" | "layered-soil" | "lily-pads"
-  | "lines" | "loose-soil" | "marble" | "masonry" | "mixed-rocks" | "mulch" | "mulched-soil" | "none" | "offsets" | "ophitic"
-  | "organic-topsoil" | "pat" | "pebble-scatter" | "pebbled-soil" | "pebbles" | "rectilinear" | "ripples" | "sandy-soil" | "scales" | "scallop-waves"
-  | "scribble" | "shards" | "silty-soil" | "solid" | "spiral" | "sprouts" | "stipple" | "stipple-edge" | "stipple-noise"
-  | "stone-cluster" | "sunburst" | "swells" | "terrazzo" | "triangles" | "truchet" | "tufts" | "twigs" | "vines" | "wave-grid" | "wave_grid" | "waves" | "wood"
-  | "zigzag"
-
-/** A built-in hatch for `pattern: "pat"`. */
-type PatName =
-  | "BRICK" | "HERRINGBONE" | "BASKET" | "PARQUET" | "ANSI31" | "ANSI32" | "ANSI33" | "ANSI37" | "EARTH" | "CROSS"
-  | "DASH" | "STAIRS" | "GRATE" | "ANGLE"
-
-interface FillOptions {
+/** What every fill takes, whatever its pattern. */
+interface FillBase {
   /** The area to fill. */
   in: Area
   /** `"feature"`: one pattern per polygon (each building hatched on its own) instead of one over the union. */
   per?: "feature"
-  /** The pattern; or leave it out and give a `source` or a `content`. */
-  pattern?: Pattern
-  /** Lines to fill the area with, cut to it: a burin document, or any `lines.*`. */
-  content?: Lines
-  /** Distance between lines, rows or dots. Default 0.5mm. */
+  /**
+   * Distance between neighbouring elements, centre to centre: the pitch of
+   * lines, of marks, the size of cells. Every pattern has its own default;
+   * giving one to a material scales the whole recipe.
+   */
   spacing?: Length
-  /** Degrees; most patterns default to 0 (zigzag and lines to 45). */
+  /** Degrees: the pattern turned on the page. A material turns all its layers together. */
   angle?: number
-  /** Dot or mark size, for `dots` and `stipple`. Default 0.2mm. */
-  mark?: Length
-  /** Shrink the area first. `waves` default to 0.1mm. */
-  inset?: Length
-  /** Perimeter-aware edge fade width: lines break into shorter dashes/dots and disappear before the boundary. */
-  fray?: Length
-  /** For the random patterns: the same seed draws the same lines. */
+  /** For the patterns with randomness: the same seed draws the same lines. */
   seed?: number
-  /** `"global"` (default): neighbouring areas share one grid. `"local"`: each shape on its own. */
+  /** Shrink the area first. */
+  inset?: Length
+  /** How the pattern meets the edge: `clip` cuts at the border, `inside` keeps every mark whole inside it, `overflow` lets it bulge past. Default `clip`. */
+  edge?: "clip" | "inside" | "overflow"
+  /** With `edge: "overflow"`: how far past the border. Default 0.4 × spacing. */
+  overflow?: Length
+  /** A fading edge this wide: lines break into shorter pieces and marks thin out before the border. */
+  fray?: Length
+  /** `"global"` (default): one lattice for the whole page, so neighbouring areas meet without a seam and a moved card keeps its marks. `"local"`: each shape on its own. */
   anchor?: "global" | "local"
-  /** Move the grid, across and down. */
+  /** Move the lattice, across and down. */
   shift?: [Length, Length]
-  /** Centre the pattern here, in output millimetres (sunburst, spiral). */
-  centre?: [Length, Length]
-  /** `dots`: a square or a hexagonal lattice. */
-  lattice?: "square" | "hexagonal"
-  /** `honeycomb`: double the walls this far apart. `growth`: the pen width, so trunk passes sit side by side. Default 0.15 for `growth`. */
-  line_width?: Length
-  /** `terrazzo`: the hatch inside the stones. `isoline-stack` with `light`: shading hatch spacing in mm, `0` for none. Default 0.4. */
-  hatch?: Length
-  /** `chess`: the size of a square. */
-  cell?: Length
-  /** `pat`: which hatch. */
-  name?: PatName
-  /** `pat`: the hatch's size. */
-  scale?: Length
-  /** An SVG drawn into the area instead of a pattern. */
-  source?: { file: string; size?: string; position?: string; repeat?: string }
   /** Screen-style flat colour under the hatch (SVG fill, not pen ink). */
   background?: string
-  /** `isoline-stack`: `clip` cuts at the border; `inside` closes inside it; `overflow` bulges past. Default `clip`. */
-  edge?: "clip" | "inside" | "overflow"
-  /** `isoline-stack` with `edge: "overflow"`: how far past the border, in mm. Default ~0.4× `spacing`. */
-  overflow?: Length
-  /**
-   * `isoline-stack` / `isoline-blobs`: how patchy the crowns are (0–1), not
-   * “this fraction of the polygon’s area”. Low values leave more clearings;
-   * `1` fills everywhere the generator allows. Default 0.6.
-   */
-  coverage?: number
-  /** `isoline-stack`: typical bubble radius in mm; smaller is lumpier. Default ~0.3× `spacing`. */
-  bubble?: Length
-  /** `isoline-stack`: horizontal slices through the stack; more rings. Default 9. */
-  slices?: number
-  /**
-   * `isoline-stack`: contour displacement intensity (`jaggedness`, 0–2.5).
-   * `growth`: steering wobble (0–1ish). Default 1.1 for `isoline-stack`, 0.1 for `growth`.
-   */
+}
+
+/**
+ * A fill: a pattern and its options (`pattern: "gravel"`, or a generator
+ * such as `pattern: "scatter"` with every option open), lines made
+ * elsewhere (`content`), or an SVG (`source`).
+ */
+type FillOptions = FillBase &
+  (
+    | PatternOptions
+    | { pattern?: undefined; content: Lines }
+    | { pattern?: undefined; source: { file: string; size?: string; position?: string; repeat?: string } }
+    | { pattern: "none" }
+  )
+
+/** A fill's options without its area: what a style keeps in a constant, `/** @type {FillStyle} *\/`. */
+type FillStyle = FillOptions extends infer F ? (F extends unknown ? Omit<F, "in"> : never) : never
+
+// ── catalog:begin (generated by `cargo run -p drawland-script --example write_dts`; do not edit) ──
+
+/** A pattern: a material (a named recipe, chosen by what it is for) or a generator (the algorithm, every option open). */
+type Pattern = Material | Generator | "none"
+
+/** The materials, group by group. Each is a recipe over one or more generators; `spacing` scales the whole recipe. */
+type Material =
+  // Water: Seas, lakes, rivers and wet ground.
+  | "waves" | "scallops" | "curls" | "currents" | "wave-net" | "swells" | "eddies" | "ripples" | "shore-lines" | "shallows" | "marsh"
+  // Vegetation: Grass, woods, crops and gardens, in the symbols maps use for them.
+  | "grass" | "meadow" | "scrub" | "woodland" | "forest" | "conifers" | "orchard" | "vineyard" | "fields" | "garden" | "sprouts" | "leaves" | "isoline-stack" | "canopy" | "doodle-trees" | "twigs" | "growth"
+  // Ground and soil: Sand, soil, gravel and bare earth.
+  | "sand" | "dunes" | "soil" | "gravel" | "pebbles" | "boulders" | "scree" | "cracked-earth" | "dry-mud" | "clay" | "silt" | "peat" | "layered-soil" | "chalky-soil"
+  // Rock: Rock in the conventions of geological maps: the symbols a geologist reads at a glance.
+  | "sandstone" | "siltstone" | "shale" | "limestone" | "chalk" | "conglomerate" | "breccia" | "coal" | "granite" | "basalt" | "tuff" | "gneiss" | "schist" | "salt" | "marble"
+  // Built: Paving, brickwork, tiles and the textures of built surfaces.
+  | "brick" | "herringbone" | "basket" | "parquet" | "setts" | "flagstones" | "tiles" | "hexagons" | "stairs" | "grate" | "chess" | "cobbles" | "terrazzo" | "cemetery" | "wood"
+  // Sky: Clouds seen from above, and their shadows.
+  | "clouds"
+  // Plain hatches: Lines, grids, dots and rings: abstract hatches for anything.
+  | "lines" | "crosshatch" | "triad" | "serpentine" | "dashes" | "dots" | "stipple" | "concentric" | "offsets" | "spiral" | "scribble" | "hilbert" | "truchet" | "honeycomb" | "scales" | "sunburst" | "isoline-blobs" | "solid"
+
+/** The generators: the algorithms under every material. */
+type Generator = "hatch" | "scatter" | "cells" | "tile" | "waves" | "rings" | "scribble" | "hilbert" | "truchet" | "honeycomb" | "scales" | "sunburst" | "wood" | "marble" | "swells" | "eddies" | "ripples" | "canopy" | "twigs" | "doodle-trees" | "growth" | "isoline-stack" | "isoline-blobs" | "clouds" | "solid"
+
+/** A symbol `scatter` can place by name. */
+type Mark = "dot" | "tick" | "dash" | "plus" | "cross" | "ring" | "ring-dot" | "pebble" | "blob" | "shard" | "rock" | "tee" | "vee" | "bracket" | "tuft" | "reed" | "tree" | "conifer" | "shrub" | "sprout" | "leaf" | "vine" | "flower" | "grave"
+
+/** Polylines in mm around the origin, for your own motif: one `[[x, y], …]` or several. */
+type Polylines = [number, number][] | [number, number][][]
+
+/** `hatch`: Parallel lines; crossed into a grid or a triad, joined into serpentines, dashed, bent, unevenly spaced, or thinned by tone. */
+interface HatchOptions {
+  /** Families of lines: 1 parallel lines, 2 a grid (crossing at right angles), 3 a triad (at 60°). Default 1. */
+  cross?: 1 | 2 | 3
+  /** Join the lines end to end into serpentines, so the pen lifts as little as possible (one family, no dashes). Default false. */
+  join?: boolean
+  /** Break the lines into dashes: `[on, off]` in mm. */
+  dash?: Length | [Length, Length]
+  /** How much dash and gap lengths differ, and how far each row's dashes are offset, 0 to 1. Default 0. */
+  dash_jitter?: number
+  /** How far the lines bend away from straight, in mm. Neighbouring lines bend together, like bedding. Default 0. */
+  wobble?: Length
+  /** The length of one bend along the lines, in mm. Default 14 × spacing. */
+  wobble_length?: Length
+  /** How uneven the gaps between lines are, 0 (even) to 1: layered soil, worn bedding. Default 0. */
+  vary?: number
+  /** The tone across the area: even, denser toward the edge, toward the centre, in noisy patches, or along a gradient toward `toward` degrees. Default `"even"`. */
+  density?: "even" | "edge" | "centre" | "noise" | "gradient"
+  /** How far the tone swings, 0 (none) to 1 (from full to nothing). Default 0.8. */
+  contrast?: number
+  /** The scale of the tone: the width of the edge band, the size of noise patches, in mm. Default 8 × spacing. */
+  feature?: Length
+  /** With `density: "gradient"`: the direction the tone gets denser, in page degrees (90: down the page). Default 90. */
+  toward?: number
+}
+
+/** `scatter`: One mark at each of many places: dots, strokes, stones, plants or a symbol of your own, evenly scattered, on a lattice, in rows or in clusters, thinned by tone. */
+interface ScatterOptions {
+  /** Where the marks go: blue (even but irregular, like a stipple by hand), hex or square (a lattice; add jitter to loosen it), rows (along the angle, wandering only along their row: an orchard, a vineyard), clusters (small groups). Default `"blue"`. */
+  arrange?: "blue" | "hex" | "square" | "rows" | "clusters"
+  /** The mark: a symbol by name, or your own polylines in mm around the origin (up is negative y), drawn at their own size. Default `"dot"`. */
+  motif?: Mark | Lines | Polylines
+  /** The size of one element: a dot's length, a symbol's height, in mm. Default 0.35 × spacing. */
+  mark?: Length
+  /** How marks turn: random (every mark its own way), aligned (with the pattern's angle), upright (standing up on the page whatever the angle: trees, reeds, crosses), or a number of degrees added to the pattern's angle. Default `"random"`. */
+  rotate?: number | "random" | "aligned" | "upright"
+  /** How much element sizes differ, 0 (all alike) to 1. Default 0. */
+  vary?: number
+  /** How far elements wander from their place, 0 to 1. Default 0. */
   jitter?: number
-  /**
-   * `isoline-stack`: jitter wavelength — how many control points sit on each contour
-   * (0.2–4; lower = finer serration). Alias: `period`. Default 0.68.
-   */
-  jitter_period?: number
-  /** Alias for `jitter_period`. */
-  period?: number
-  /**
-   * `isoline-stack`: short cross-contour slope ticks at bough clefts and shadowed
-   * tiers (0–1.5). Default 0.42.
-   */
-  ticks?: number
-  /** `isoline-stack`: crown elliptical elongation / wind sweep (0–1). Default 0.18. */
-  elongation?: number
-  /** `isoline-stack`: bough cleft depth and compound sub-crown lobing (0–2.5). Default 1.0. */
-  lobes?: number
-  /**
-   * `isoline-stack`: directional sun strength (0–1). Default 0.82. Lit-side arcs,
-   * shadow-side density; use `ticks` for cross-contour hachures.
-   */
-  light?: number
-  /** `isoline-stack` with `light`: degrees the light comes *from* (0 = +x, 90 = +y). Default -45. `doodle-trees`: side the shadow scribble avoids. Default 225. */
-  light_angle?: number
-  /** `doodle-trees` (`spacing` = crown diameter): curls round each crown's rim, as a multiple of the default. Default 1. */
-  loops?: number
-  /** `doodle-trees`: share of crowns (0–1) with a shade crescent. Default 0.8. */
-  shadow?: number
-  /** `curl-waves` (`spacing` = gap between rows): distance between waves along a row, × `spacing`. Default 1.35. `flow-waves` (`spacing` = gap between lines): length of one swell, × `spacing`. Default 13. */
-  wavelength?: number
-  /** `flow-waves`: swell height, × `spacing`. Default 2.6. */
-  amplitude?: number
-  /** `flow-waves`: how fast the swell's height and phase change across the sea. Default 1. */
-  drift?: number
-  /** `flow-waves`: how broken the lines are (0–1, 0 = unbroken). Default 0.5. */
-  breaks?: number
-  /** `scallop-waves` (`spacing` = gap between rows; `wavelength` = scallop width × spacing, default 1.35): how far each scallop dips, × `spacing`. Default 0.35. */
-  depth?: number
-  /** `scallop-waves`: arc shape, below 1 rounder, above 1 more pointed. Default 0.8. */
+  /** Let marks overlap their neighbours. Off, a mark that would touch a neighbour gives way to it, as an engraver leaves symbols apart. Default false. */
+  overlap?: boolean
+  /** The tone across the area: even, denser toward the edge, toward the centre, in noisy patches, or along a gradient toward `toward` degrees. Default `"even"`. */
+  density?: "even" | "edge" | "centre" | "noise" | "gradient"
+  /** How far the tone swings, 0 (none) to 1 (from full to nothing). Default 0.8. */
+  contrast?: number
+  /** The scale of the tone: the width of the edge band, the size of noise patches, in mm. Default 8 × spacing. */
+  feature?: Length
+  /** With `density: "gradient"`: the direction the tone gets denser, in page degrees (90: down the page). Default 90. */
+  toward?: number
+}
+
+/** `cells`: Irregular cells: rounded stones apart from each other, a net of shared walls, or plates with wide cracks; with marks inside, sizes from even to mixed, thinned by tone. */
+interface CellsOptions {
+  /** `stones`: every cell its own rounded outline, apart from its neighbours (gravel, cobbles, pebble beds). `net`: the shared walls, drawn once (cell nets, mud cracks seen from above, crazing). `cracks`: angular plates with wide cracks between them (dry cracked earth). Default `"stones"`. */
+  style?: "stones" | "net" | "cracks"
+  /** The space between neighbouring cells, in mm. Unset: 0.14 × spacing for stones, 0.24 × spacing for cracks; for a net, the break left where walls meet (unset: none, the walls join). */
+  gap?: Length
+  /** How rounded the corners are, 0 (sharp) to 1 (as round as the cell allows). Unset: 0.7 for stones, 0.25 for cracks. */
   round?: number
-  /** `curl-waves`: radius of each curl, × the wavelength. Default 0.2. */
-  curl?: number
-  /** `curl-waves`: how far each curl winds in (1 = one full turn). Default 0.95. */
-  turns?: number
-  /** `curl-waves`: shift every other row by this share of a wave (0–1). Default 0. */
+  /** How much element sizes differ, 0 (all alike) to 1. Default 0. */
+  vary?: number
+  /** How far elements wander from their place, 0 to 1. Default 0. */
+  jitter?: number
+  /** A mark inside each cell: `dots` (a few specks: chalky soil), `hatch` (lines at each stone's own angle), `ring` (an inner outline: a rimmed pebble), `mixed` (terrazzo: some chips hatched, a few dense, most left plain). Default `"none"`. */
+  inner?: "none" | "dots" | "hatch" | "ring" | "mixed"
+  /** The tone across the area: even, denser toward the edge, toward the centre, in noisy patches, or along a gradient toward `toward` degrees. Default `"even"`. */
+  density?: "even" | "edge" | "centre" | "noise" | "gradient"
+  /** How far the tone swings, 0 (none) to 1 (from full to nothing). Default 0.8. */
+  contrast?: number
+  /** The scale of the tone: the width of the edge band, the size of noise patches, in mm. Default 8 × spacing. */
+  feature?: Length
+  /** With `density: "gradient"`: the direction the tone gets denser, in page degrees (90: down the page). Default 90. */
+  toward?: number
+}
+
+/** `tile`: A motif laid on a lattice: brick, herringbone, basket weave, parquet, setts, flagstones, tiles, hexagons, stairs, grating, chess; your own polylines; or a CAD .pat hatch. */
+interface TileOptions {
+  /** What is laid: `brick` (running bond), `herringbone` (pavers at right angles in a zigzag), `basket` (pairs of pavers, alternating direction), `parquet` (square blocks of boards, alternating), `setts` (small stones in staggered courses), `flagstones` (random rectangular paving: course heights and stone lengths vary, joints staggered), `tiles` (square tiles with a grout joint), `hexagons` (hexagonal pavers), `stairs` (stone steps seen from above), `grate` (bar grating), `chess` (squares, alternate ones hatched); or your own polylines in mm around the origin. Default `"brick"`. */
+  motif?: "brick" | "herringbone" | "basket" | "parquet" | "setts" | "flagstones" | "tiles" | "hexagons" | "stairs" | "grate" | "chess" | Lines | Polylines
+  /** One piece, `[length, width]` in mm. Unset, at spacing s: brick [3s, s], herringbone and basket [2s, s], parquet [4s, 0.8s] (a block of five boards), setts [1.15s, s], flagstones [3s, 2s], tiles and chess [3s, 3s], hexagons 2.5s across, stairs [6s, 1.5s] (slab length, tread depth), grate [3s, 0.5s] (cross bar pitch, bar pitch). For your own polylines: the tile box, centred on the origin (unset: the lines' extent). */
+  size?: Length | [Length, Length]
+  /** For your own motif: how far each row is shifted along, as a share of the tile width (0.5: brick bond). Default 0. */
   stagger?: number
-  /** `curl-waves`: 1 mirrors the waves so they break the other way. Default 0. */
-  flip?: number
-  /** `isoline-stack` with `light`: sun height in degrees; lower casts longer shadows. Default 35. */
-  light_elevation?: number
-  /** `isoline-blobs`: distance between contour lines in mm. Default ~0.045× `spacing`. */
-  contour?: Length
-  /** `isoline-blobs`: domain warp of the field (0–1). Default 0.45. `clouds`: how much the masses curl and drift (0–1). Default 0.25. */
-  warp?: number
-  /**
-   * `clouds` — cumulus seen from above, heaped from puffs on a body that
-   * rises and falls, shaded where it turns from the sun or higher cloud
-   * shadows it. `spacing` is a puff's size; `coverage` the share of sky;
-   * `cell` the scale of the masses (default 8 puffs); `light_angle` (page
-   * degrees, default 225: from the top left) and `light_elevation` (default
-   * 30) the sun; `hatch` the shade's spacing at its deepest. `fills.cover`
-   * gives the clouds' footprint: mask what lies under them, and
-   * `areas.move` it down-sun for their shadow on the ground.
-   */
-  puffs?: number
-  /** `clouds`: how drawn out each puff is along the cloud's run (0 round). Default 0.35. */
-  elongate?: number
-  /** `clouds`: how far the masses are drawn out along `wind` (0–0.95). Default 0.25. */
-  stretch?: number
-  /** `clouds`: the wind's direction on the page, degrees. Default 15. */
-  wind?: number
-  /** `clouds`: how tall the cloud heaps up (1 cumulus, 0.3 a flat sheet). Default 1. */
-  height?: number
-  /** `clouds`: how much of the cloud is shaded (0–1, 0 none). Default 0.45. */
-  shade?: number
-  /** `clouds`: shade in `"dots"` (default) or `"lines"`. */
-  shading?: "dots" | "lines"
-  /** `clouds`: each shading dot's length. Default 0.12mm. */
-  dot?: Length
-  /** `isoline-blobs`: field level for patches and coverage (0–1). Default 0.25. */
-  threshold?: number
-  /**
-   * `growth`: dendritic branches grown toward a field of attractor points
-   * (space colonization) — river deltas, veins, cracks, roots, lichen;
-   * `spacing` is the gap between neighbouring twigs. How many roots it
-   * grows from. Default: one per `root_spacing`.
-   */
+  /** The joint between pieces, in mm: 0 draws single joint lines, each once; more draws every piece as its own outline, this far from its neighbours. Unset: 0.18 × width for setts, 0.1 × width for tiles, 0 for the rest. */
+  gap?: Length
+  /** How far elements wander from their place, 0 to 1. Default 0. */
+  jitter?: number
+  /** A CAD hatch instead of a motif: a built-in name (ANSI31, ANSI32, ANSI33, ANSI37, BRICK, HERRINGBONE, BASKET, PARQUET, EARTH, CROSS, DASH, STAIRS, GRATE, ANGLE) or the text of a `.pat` definition. One pattern unit is `spacing` mm. */
+  pat?: string
+}
+
+/** `waves`: Wavy parallel lines: sine, scallops, zigzag teeth, curling crests or a flowing swell; doubled into a net with `cross: 2`. */
+interface WavesOptions {
+  /** How the lines wave: `sine`, the smooth classic; `scallop`, shallow arcs dipping between sharp cusps; `zigzag`, sharp straight teeth (amphibolite, schist); `curl`, crests that roll over into a spiral hook; `flow`, long swells the lines bunch and spread over, broken into strokes like a printed textile. Default `"sine"`. */
+  shape?: "sine" | "scallop" | "zigzag" | "curl" | "flow"
+  /** The length of one wave along the line, in mm. Default by shape, × spacing: sine 4 (3.6 with `cross: 2`), scallop 1.35, zigzag 1, curl 1.35, flow 13. */
+  wavelength?: Length
+  /** How far a line swings away from its row, in mm: a sine's or zigzag's peak, a scallop's dip, a curl's crest, a swell's height. Default by shape, × spacing: sine 0.25 (0.5 with `cross: 2`, so the net closes), scallop 0.35, zigzag 0.3, curl 0.27, flow 2.6. */
+  amplitude?: Length
+  /** 1 one family of lines; 2 a net. Sine, zigzag and scallop add every row's mirror image, so crest meets trough and the lines close into cells (the ogee net, diamonds, eyes); curl and flow add a second family at right angles. Default 1. */
+  cross?: 1 | 2
+  /** Sine, scallop, zigzag and curl: shift every other row along by this share of a wavelength (0.5 sets the cusps of one row over the middles of the next). Default 0. */
+  stagger?: number
+  /** Turn the waves over: curls break the other way, scallops bulge up between downward cusps. Default false. */
+  flip?: boolean
+  /** Scallop: the arc's shape, below 1 fuller and rounder, above 1 drawn to a point. Default 0.8. */
+  round?: number
+  /** Curl: the size of the hook as a share of the amplitude. 1 rolls down onto the next wave's trough; smaller hooks hang above it. Default 1. */
+  curl?: number
+  /** Curl: how far each hook winds in, in turns (1 is one full turn). Default 0.95. */
+  turns?: number
+  /** Flow: how fast the swell's height and phase change from line to line across the sea (0 keeps one swell everywhere). Default 1. */
+  drift?: number
+  /** Flow: how broken the lines are, 0 (unbroken) to 1 (short strokes). Default 0.5. */
+  breaks?: number
+}
+
+/** `rings`: Rings from the boundary inward, a spacing apart: concentric with the outline, offset from every edge, or one continuous spiral. */
+interface RingsOptions {
+  /** What the rings follow: `outline`, the outer edge inset again and again (holes stop the rings; thin parts get a centreline); `edges`, every edge, holes included, each pushing rings of its own (a network of streets round blocks fills evenly). Default `"outline"`. */
+  from?: "outline" | "edges"
+  /** One continuous path winding inward a spacing per lap, instead of closed rings: the fewest pen lifts. Follows the outline; holes cut it. Default false. */
+  spiral?: boolean
+}
+
+/** `scribble`: Hand shading with a fine pen: loose zigzag strokes with rounded turns, in overlapping patches, layered at different angles. */
+interface ScribbleOptions {
+  /** Layers of scribble, each turned about 50° from the first: 1 a light shade, 3 the darkest. Default 2. */
+  layers?: 1 | 2 | 3
+  /** How messy, 0 (tidy, even zigzags) to 1 (wandering ends, uneven passes, tilted patches). Default 0.5. */
+  loose?: number
+  /** The length of one pass of the pen, end to end, in mm. Default 9 × spacing. */
+  length?: Length
+  /** The tone across the area: even, denser toward the edge, toward the centre, in noisy patches, or along a gradient toward `toward` degrees. Default `"even"`. */
+  density?: "even" | "edge" | "centre" | "noise" | "gradient"
+  /** How far the tone swings, 0 (none) to 1 (from full to nothing). Default 0.8. */
+  contrast?: number
+  /** The scale of the tone: the width of the edge band, the size of noise patches, in mm. Default 8 × spacing. */
+  feature?: Length
+  /** With `density: "gradient"`: the direction the tone gets denser, in page degrees (90: down the page). Default 90. */
+  toward?: number
+}
+
+/** `hilbert`: One unbroken space-filling Hilbert curve visiting the whole area cell by cell; cells between half a spacing and a spacing. */
+interface HilbertOptions {
+}
+
+/** `truchet`: Truchet tiles: square cells a spacing wide, each with two quarter arcs turned at random, chaining into long winding paths. */
+interface TruchetOptions {
+}
+
+/** `honeycomb`: Hexagonal cells a spacing across (flat to flat), each wall drawn once, or doubled `walls` apart. */
+interface HoneycombOptions {
+  /** Draw every wall twice, this far apart, in mm (0: single walls, the hexagons touching). Default 0. */
+  walls?: Length
+}
+
+/** `scales`: Fish scales: rows of half circles a spacing apart, each row resting on the tips of the one below; roof tiles and drawn water. */
+interface ScalesOptions {
+}
+
+/** `sunburst`: Rays from a centre, about a spacing apart at every radius: new rays join in rings where the gaps open, so the centre never crowds. */
+interface SunburstOptions {
+  /** Where the rays come from, `[x, y]` in page mm. Default: the middle of the shape. Give the same centre to neighbouring areas and they share one burst. */
+  centre?: Length | [Length, Length]
+}
+
+/** `wood`: Wood grain: long lines a spacing apart running along the angle, wandering slowly and flowing round knots. */
+interface WoodOptions {
+  /** How many knots the grain flows round, on average per square of 30 spacings (0: straight grain). Default 1. */
+  knots?: number
+}
+
+/** `marble`: Marble: veins about a spacing apart drifting across the slab at the angle, warped by turbulence, each drawn as its two edges so it pinches and swells. */
+interface MarbleOptions {
+}
+
+/** `swells`: Overlapping swells or dunes: crest lines layered back to front, each hiding the ones behind and filled with lines that follow its slope. */
+interface SwellsOptions {
+}
+
+/** `eddies`: Currents: evenly spaced streamlines of a flow that undulates and winds into spiral eddies. */
+interface EddiesOptions {
+}
+
+/** `ripples`: Ripples: rows of broken wavy strokes a spacing apart, their crests bending together over a slow swell. */
+interface RipplesOptions {
+}
+
+/** `canopy`: Tree canopies from above: clusters of wobbly lobes, a dot at each lobe's heart, trees a spacing apart. */
+interface CanopyOptions {
+}
+
+/** `twigs`: Scattered twigs a spacing apart: a kinked stick with short side shoots at acute angles; brushwood, scrub, forest litter. */
+interface TwigsOptions {
+}
+
+/** `doodle-trees`: Trees as a hand doodles them on a sketch map: each crown (a spacing across) one curly stroke round a lumpy circle, with a crescent of shade; nearer crowns hide those behind. */
+interface DoodleTreesOptions {
+  /** The share of places that get a tree, 0 to 1: lower leaves clearings. Default 0.85. */
+  coverage?: number
+  /** How many curls run round each crown's rim, as a multiple of the usual count. Default 1. */
+  loops?: number
+  /** The share of crowns with a crescent of shade on the side away from the light. Default 0.8. */
+  shadow?: number
+  /** Where the light comes from, in page degrees (0: from the right, 90: from below; 225, the map maker's top left). Default 225. */
+  light_angle?: number
+}
+
+/** `growth`: Branches grown toward the space they have to fill (space colonisation): river deltas, veins, roots, cracks, lichen; twigs a spacing apart. */
+interface GrowthOptions {
+  /** How many roots the branches grow from (0: one per `root_spacing`). Default 0. */
   roots?: number
-  /** `growth`: roots this far apart, each draining its own basin. Default ~12× `spacing`. */
+  /** Roots about this far apart, each draining its own basin, in mm. Default 12 × spacing. */
   root_spacing?: Length
-  /** `growth`: how much trees differ in size (0–1): uneven root spacing, big crowns next to saplings. Default 0.35. */
-  variation?: number
-  /** `growth`: most pen passes on a trunk; thick near the roots, hairline at the twigs. Default 3. */
-  trunk?: number
-  /** `growth`: how far a branch advances per step, in mm. Default ~0.16× `spacing`. */
+  /** How far a branch advances per step, in mm. Default 0.16 × spacing. */
   step?: Length
-  /** `growth`: an attractor beyond this from every branch tip pulls nothing. Default ~3.2× `spacing`. */
+  /** A point farther than this from every branch tip pulls nothing, in mm. Default 3.2 × spacing. */
   reach?: Length
-  /** `growth`: an attractor this close to a tip is consumed, in mm. Default ~0.4× `spacing`. */
+  /** A point this close to a tip is reached and stops pulling, in mm. Default 0.4 × spacing. */
   kill?: Length
-  /** `growth`: a hard cap on growth steps, so a pathological shape cannot hang. Default 20000. */
+  /** How much each step wobbles off its course, 0 (straight) up. Default 0.1. */
+  jitter?: number
+  /** The pen's width in mm: a trunk's extra passes sit this far apart, side by side (0 draws every branch as one line). Default 0.15. */
+  pen?: Length
+  /** Most extra passes either side of a trunk: thick near the roots, a hairline at the twigs. Default 3. */
+  trunk?: number
+  /** How far each tree reaches toward its neighbours, 0 to 1: below 1 leaves gaps between them. Default 1. */
+  coverage?: number
+  /** How much trees differ in size, 0 (alike) to 1 (saplings beside big crowns). Default 0.35. */
+  variation?: number
+  /** A cap on growth steps, so a pathological shape cannot hang. Default 20000. */
   max_steps?: number
 }
+
+/** `isoline-stack`: Tree crowns drawn as stacked contour tiers, lit from one side; `spacing` is a crown's diameter, and the crowns are the mask. */
+interface IsolineStackOptions {
+  /** Shade the crowns with hatching on the side away from the light, for an engraved look. Changes the defaults: `light` 0.85, `hatch` 0.45 mm, `ticks` 0.65. Default false. */
+  hatched?: boolean
+  /** How patchy the crowns are, 0 to 1: low leaves clearings, 1 fills everywhere the shape allows. Default 0.6. */
+  coverage?: number
+  /** The size of a leaf cluster on a crown's rim, in mm: smaller is lumpier. Default 0.15 × spacing. */
+  bubble?: Length
+  /** Contour tiers through a crown: more draws more rings. Default 9. */
+  slices?: number
+  /** How ragged the contours are: 0 smooth boughs, 1.1 crisp leaves, 1.5 and up deep serrations. Default 1.1. */
+  jitter?: number
+  /** The length of the contours' serration: lower is finer teeth, higher broad reaches. Default 0.68. */
+  jitter_period?: number
+  /** Short slope ticks across the contours at bough clefts and in shade, 0 (none) to 1.5. Default 0.42; 0.65 when `hatched` or with a `hatch`. */
+  ticks?: number
+  /** How drawn out the crowns are, as if wind-swept, 0 (round) to 1. Default 0.18. */
+  elongation?: number
+  /** How deep the clefts between boughs are, and how much a crown splits into sub-crowns. Default 1. */
+  lobes?: number
+  /** How strong the sunlight is, 0 (none: every side alike) to 1: lit sides open up, shaded sides close in. Default 0.82; 0.85 when `hatched`. */
+  light?: number
+  /** Where the light comes from, in page degrees (0: from the right, 90: from below; 225, the map maker's top left). Default 225. */
+  light_angle?: number
+  /** How high the sun stands, in degrees: lower casts longer shade. Default 35. */
+  light_elevation?: number
+  /** The shading hatch's spacing in mm, 0 for none. Default 0; 0.45 when `hatched`. */
+  hatch?: Length
+}
+
+/** `isoline-blobs`: Blobs a spacing apart, each filled with nested contour rings like a height map; the blobs are the mask. */
+interface IsolineBlobsOptions {
+  /** The distance between nested contour lines inside a blob, in mm. Default 0.045 × spacing. */
+  contour?: Length
+  /** How much the field curls and drifts, 0 (round blobs) up. Default 0.45. */
+  warp?: number
+  /** The size of the warp's waves: lower is finer, higher broader. Default 1. */
+  warp_period?: number
+  /** Where ink begins on the field: higher keeps only the tallest blobs, lower fuses them into larger masses. Default 0.15. */
+  threshold?: number
+}
+
+/** `clouds`: Cumulus seen from above: puffs a spacing across heaped on bodies that rise and fall, shaded away from the sun; the clouds are the mask. */
+interface CloudsOptions {
+  /** The size of the cloud masses and the clear sky between them, in mm. Default 8 × spacing. */
+  cell?: Length
+  /** The share of the sky that is cloud. Default 0.5. */
+  coverage?: number
+  /** How much the masses curl and drift, 0 (plain blobs) to 1. Default 0.25. */
+  warp?: number
+  /** How closely the puffs crowd: about 0.6 few and round, 2 many and lumpy. Default 1. */
+  puffs?: number
+  /** How drawn out each puff is along the run of its cloud, 0 (round) to 1. Default 0.35. */
+  elongate?: number
+  /** How far the masses are drawn out along the wind (toward cloud streets). Default 0.25. */
+  stretch?: number
+  /** The wind's direction on the page, in degrees (0: left to right). Default 15. */
+  wind?: number
+  /** Where the sun is, in page degrees (0: from the right, 90: from below; 225, the top left). Default 225. */
+  light_angle?: number
+  /** How high the sun stands, in degrees: lower shades more of each heap. Default 30. */
+  light_elevation?: number
+  /** How tall the clouds heap up against their width: 1 a cumulus, 0.3 a flat sheet. Default 1. */
+  height?: number
+  /** How much of the cloud is shaded, 0 (none) to 1. Default 0.45. */
+  shade?: number
+  /** The shade's spacing at its deepest, between dots or lines, in mm. Default 0.45. */
+  hatch?: Length
+  /** Shade in stippled `dots` (denser where deeper) or hatched `lines`. Default `"dots"`. */
+  shading?: "dots" | "lines"
+  /** Each shading dot's length, in mm (a pen's dot is a short stroke). Default 0.12. */
+  dot?: Length
+}
+
+/** `solid`: A flat fill with no pen strokes: the host paints the area (an SVG fill, a screen preview); plotters draw nothing. Its mask is the whole area. */
+interface SolidOptions {
+}
+
+/** Each pattern with the options it takes. */
+type PatternOptions =
+  | ({ pattern: "scallops" } & WavesOptions)
+  | ({ pattern: "curls" } & WavesOptions)
+  | ({ pattern: "currents" } & WavesOptions)
+  | ({ pattern: "wave-net" } & WavesOptions)
+  | ({ pattern: "shore-lines" } & HatchOptions)
+  | ({ pattern: "shallows" } & ScatterOptions)
+  | ({ pattern: "marsh" } & ScatterOptions)
+  | ({ pattern: "grass" } & ScatterOptions)
+  | ({ pattern: "meadow" } & ScatterOptions)
+  | ({ pattern: "scrub" } & ScatterOptions)
+  | ({ pattern: "woodland" } & ScatterOptions)
+  | ({ pattern: "forest" } & ScatterOptions)
+  | ({ pattern: "conifers" } & ScatterOptions)
+  | ({ pattern: "orchard" } & ScatterOptions)
+  | ({ pattern: "vineyard" } & ScatterOptions)
+  | ({ pattern: "fields" } & HatchOptions)
+  | ({ pattern: "garden" } & ScatterOptions)
+  | ({ pattern: "sprouts" } & ScatterOptions)
+  | ({ pattern: "leaves" } & ScatterOptions)
+  | ({ pattern: "sand" } & ScatterOptions)
+  | ({ pattern: "dunes" } & ScatterOptions)
+  | ({ pattern: "soil" } & ScatterOptions)
+  | ({ pattern: "gravel" } & CellsOptions)
+  | ({ pattern: "pebbles" } & ScatterOptions)
+  | ({ pattern: "boulders" } & CellsOptions)
+  | ({ pattern: "scree" } & ScatterOptions)
+  | ({ pattern: "cracked-earth" } & CellsOptions)
+  | ({ pattern: "dry-mud" } & CellsOptions)
+  | ({ pattern: "clay" } & HatchOptions)
+  | ({ pattern: "silt" } & HatchOptions)
+  | ({ pattern: "peat" } & HatchOptions)
+  | ({ pattern: "layered-soil" } & HatchOptions)
+  | ({ pattern: "chalky-soil" } & CellsOptions)
+  | ({ pattern: "sandstone" } & ScatterOptions)
+  | ({ pattern: "siltstone" } & HatchOptions & ScatterOptions)
+  | ({ pattern: "shale" } & HatchOptions)
+  | ({ pattern: "limestone" } & TileOptions)
+  | ({ pattern: "chalk" } & TileOptions & ScatterOptions)
+  | ({ pattern: "conglomerate" } & ScatterOptions)
+  | ({ pattern: "breccia" } & ScatterOptions)
+  | ({ pattern: "coal" } & HatchOptions)
+  | ({ pattern: "granite" } & ScatterOptions)
+  | ({ pattern: "basalt" } & ScatterOptions)
+  | ({ pattern: "tuff" } & ScatterOptions)
+  | ({ pattern: "gneiss" } & HatchOptions)
+  | ({ pattern: "schist" } & WavesOptions)
+  | ({ pattern: "salt" } & HatchOptions)
+  | ({ pattern: "brick" } & TileOptions)
+  | ({ pattern: "herringbone" } & TileOptions)
+  | ({ pattern: "basket" } & TileOptions)
+  | ({ pattern: "parquet" } & TileOptions)
+  | ({ pattern: "setts" } & TileOptions)
+  | ({ pattern: "flagstones" } & TileOptions)
+  | ({ pattern: "tiles" } & TileOptions)
+  | ({ pattern: "hexagons" } & TileOptions)
+  | ({ pattern: "stairs" } & TileOptions)
+  | ({ pattern: "grate" } & TileOptions)
+  | ({ pattern: "chess" } & TileOptions)
+  | ({ pattern: "cobbles" } & CellsOptions)
+  | ({ pattern: "terrazzo" } & CellsOptions)
+  | ({ pattern: "cemetery" } & ScatterOptions)
+  | ({ pattern: "lines" } & HatchOptions)
+  | ({ pattern: "crosshatch" } & HatchOptions)
+  | ({ pattern: "triad" } & HatchOptions)
+  | ({ pattern: "serpentine" } & HatchOptions)
+  | ({ pattern: "dashes" } & HatchOptions)
+  | ({ pattern: "dots" } & ScatterOptions)
+  | ({ pattern: "stipple" } & ScatterOptions)
+  | ({ pattern: "concentric" } & RingsOptions)
+  | ({ pattern: "offsets" } & RingsOptions)
+  | ({ pattern: "spiral" } & RingsOptions)
+  | ({ pattern: "hatch" } & HatchOptions)
+  | ({ pattern: "scatter" } & ScatterOptions)
+  | ({ pattern: "cells" } & CellsOptions)
+  | ({ pattern: "tile" } & TileOptions)
+  | ({ pattern: "waves" } & WavesOptions)
+  | ({ pattern: "rings" } & RingsOptions)
+  | ({ pattern: "scribble" } & ScribbleOptions)
+  | ({ pattern: "hilbert" } & HilbertOptions)
+  | ({ pattern: "truchet" } & TruchetOptions)
+  | ({ pattern: "honeycomb" } & HoneycombOptions)
+  | ({ pattern: "scales" } & ScalesOptions)
+  | ({ pattern: "sunburst" } & SunburstOptions)
+  | ({ pattern: "wood" } & WoodOptions)
+  | ({ pattern: "marble" } & MarbleOptions)
+  | ({ pattern: "swells" } & SwellsOptions)
+  | ({ pattern: "eddies" } & EddiesOptions)
+  | ({ pattern: "ripples" } & RipplesOptions)
+  | ({ pattern: "canopy" } & CanopyOptions)
+  | ({ pattern: "twigs" } & TwigsOptions)
+  | ({ pattern: "doodle-trees" } & DoodleTreesOptions)
+  | ({ pattern: "growth" } & GrowthOptions)
+  | ({ pattern: "isoline-stack" } & IsolineStackOptions)
+  | ({ pattern: "isoline-blobs" } & IsolineBlobsOptions)
+  | ({ pattern: "clouds" } & CloudsOptions)
+  | ({ pattern: "solid" } & SolidOptions)
+
+// ── catalog:end ──
 
 /** `solid`, `dash`, `dotted`, `none`, or an object: the dashes' sizes and the ink (`color`, `width` in mm, `cap`). */
 type Stroke =

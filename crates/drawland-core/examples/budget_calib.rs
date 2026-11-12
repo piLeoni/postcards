@@ -1,5 +1,7 @@
-//! Live-heap peak of a whole run with one fill, per generator and spacing,
-//! next to what `budget::cost` predicts, and the `(a, b)` that fit it.
+//! Live-heap peak of a whole run with one fill, for patterns of every kind at
+//! their own spacing and at half of it, next to the points and strokes
+//! `budget::sample` counts; and the bytes per point and per stroke that fit
+//! them (least squares), for `budget::PER_POINT` / `PER_STROKE`.
 //!
 //! Run: cargo run --release -p drawland-core --example budget_calib
 
@@ -49,9 +51,23 @@ fn main() {
         tile_zoom: None,
     };
     let output = drawland_core::output::Output::new(&spec, (0.0, 0.0));
-    for g in drawland_core::fill::GENERATORS {
-        let mut peaks = Vec::new();
-        for s in [0.5, 1.0] {
+    const NAMES: &[&str] = &[
+        "lines", "crosshatch", "serpentine", "dashes", "dots", "stipple", "sand", "shallows", "grass", "meadow", "woodland",
+        "forest", "conifers", "sprouts", "gravel", "boulders", "cracked-earth", "terrazzo", "brick", "setts", "flagstones",
+        "waves", "currents", "scallops", "curls", "scribble", "marble", "wood", "swells", "granite", "shale", "concentric",
+        "isoline-stack", "clouds", "growth",
+    ];
+    let mut rows: Vec<(f64, f64, f64)> = Vec::new(); // (points/mm², strokes/mm², peak bytes/mm²)
+    // `CALIB=dots,gravel` measures only those.
+    let only = std::env::var("CALIB").ok();
+    for g in NAMES.iter().filter(|g| only.as_deref().is_none_or(|o| o.split(',').any(|n| n == **g))) {
+        let base = penfill::catalog::default_spacing(g).unwrap_or(1.0);
+        for s in [base, base / 2.0] {
+            let fill = drawland_core::profile::FillSpec { generator: Some((*g).into()), ..drawland_core::profile::FillSpec::spacing(s) };
+            let Some((pts, strokes)) = drawland_core::budget::sample(&fill) else {
+                println!("{g:<14} {s}: no sample");
+                continue;
+            };
             let text = format!(
                 r#"{{
               "output": {{ "width": "{w}mm", "height": "{h}mm", "scale": 10000 }},
@@ -62,30 +78,37 @@ fn main() {
             }}"#
             );
             let Ok(grammar) = drawland_core::grammar::Grammar::from_json(&text) else { continue };
-            let base = LIVE.load(Ordering::Relaxed);
-            PEAK.store(base, Ordering::Relaxed);
+            let base_live = LIVE.load(Ordering::Relaxed);
+            PEAK.store(base_live, Ordering::Relaxed);
             let t = std::time::Instant::now();
             let Ok(out) = run(&grammar, &output, Inputs { features: vec![], tiles: vec![], sources: &Default::default(), terrain: None, memory_budget: None, google_fonts: BTreeMap::new(), stroke_fonts: BTreeMap::new(), data: BTreeMap::new(), views: Vec::new() }) else {
-                println!("{g:<12} {s}: failed");
+                println!("{g:<14} {s}: failed");
                 continue;
             };
-            let peak = PEAK.load(Ordering::Relaxed) - base;
-            let est = drawland_core::budget::cost(w * h, g, s);
+            let peak = (PEAK.load(Ordering::Relaxed) - base_live) as f64;
+            let est = drawland_core::budget::cost(w * h, &fill);
             println!(
-                "{g:<12} {s:>4}  peak {:>7.1} MB  est {:>8.1} MB  strokes {:>8}  svg {:>6.1} MB  {:.1}s",
-                peak as f64 / 1e6,
+                "{g:<14} {s:>5.2}  peak {:>7.1} MB  est {:>7.1} MB  ({:>5.2}×)  pts/mm² {pts:>7.2}  strokes/mm² {strokes:>6.3}  strokes {:>8}  {:.1}s",
+                peak / 1e6,
                 est.bytes as f64 / 1e6,
+                est.bytes as f64 / peak.max(1.0),
                 out.groups[0].1,
-                out.svg.len() as f64 / 1e6,
                 t.elapsed().as_secs_f64()
             );
-            peaks.push(peak as f64 / (w * h));
-        }
-        // bytes per mm² = a + b / s², through the two spacings.
-        if let [p05, p1] = peaks[..] {
-            let b = ((p05 - p1) / 3.0).max(0.0);
-            let (a, b) = if p1 < b { (0.0, (p05 / 4.0).max(p1)) } else { (p1 - b, b) };
-            println!("FIT {g:<12} a {a:>8.1}  b {b:>8.1}");
+            rows.push((pts, strokes, peak / (w * h)));
         }
     }
+    // peak/mm² ≈ P·points/mm² + Q·strokes/mm²: least squares for P and Q.
+    let (mut xx, mut xy, mut yy, mut xz, mut yz) = (0.0, 0.0, 0.0, 0.0, 0.0);
+    for (x, y, z) in &rows {
+        xx += x * x;
+        xy += x * y;
+        yy += y * y;
+        xz += x * z;
+        yz += y * z;
+    }
+    let det = xx * yy - xy * xy;
+    let p = (xz * yy - yz * xy) / det;
+    let q = (yz * xx - xz * xy) / det;
+    println!("FIT  PER_POINT {p:.1}  PER_STROKE {q:.1}");
 }

@@ -35,12 +35,12 @@ const NAME_KEYS = ["name", "l_aroff", "NAME", "title", "label"]
 const BLACK = "#1b1b1b"
 const RED = "#d02a1e"
 
-/** @type {Omit<FillOptions, "in">} */
+/** @type {FillStyle} */
 const FILL_WATER = { pattern: "lines", spacing: "0.7mm", angle: 0 }
-/** @type {Omit<FillOptions, "in">} */
+/** @type {FillStyle} */
 const FILL_PARK = { pattern: "dots", spacing: "0.9mm", mark: "0.15mm" }
 // One hatch per polygon, so neighbours read apart where they share an edge.
-/** @type {Omit<FillOptions, "in">} */
+/** @type {FillStyle} */
 const FILL_DATA = { pattern: "lines", spacing: "2.2mm", angle: 45, per: "feature" }
 const POINT_R = "0.8mm"
 const FONT = "futural"

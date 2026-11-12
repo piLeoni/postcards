@@ -91,7 +91,8 @@ The `/docs` page is built from code it is checked against:
 | Reference | `drawland.d.ts` → `web/src/docs/library-reference.json` | `node web/scripts/build-reference.mjs` (`npm test` fails when stale) |
 | Tutorial, lite styles | `web/src/docs/examples/*.js` (type-checked by `npm test`) | `web/scripts/render-docs.sh examples` |
 | Gallery | `web/src/presets/*.js` | `web/scripts/render-docs.sh gallery` |
-| Pattern swatches | the `Pattern` type in `drawland.d.ts` | `web/scripts/render-docs.sh patterns` |
+| Patterns page, swatches | penfill's catalogue (`../penfill`) | `web/scripts/render-docs.sh patterns` |
+| Pattern types in `drawland.d.ts` | penfill's catalogue | `cargo run -p drawland-script --example write_dts` (`cargo test` fails when stale) |
 
 `web/scripts/render-docs.sh` with no argument draws every picture with the CLI
 into `web/public/docs/` (`OFFLINE=1` draws from the cache only). Run it after a

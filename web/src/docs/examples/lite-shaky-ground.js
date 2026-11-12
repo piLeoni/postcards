@@ -32,7 +32,7 @@ const DEPTH = [
   { min: 70, max: 300, color: "#e0a02a" },
   { min: 300, max: 1000, color: "#3f6fa8" }, // deep: slabs sinking under trenches
 ]
-/** @type {Omit<FillOptions, "in">} */
+/** @type {FillStyle} */
 const FILL_DOT = { pattern: "concentric", spacing: "0.22mm" }
 
 // ── 2. Data & geometry ──────────────────────────────────────────────────

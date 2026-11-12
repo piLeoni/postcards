@@ -611,7 +611,10 @@ fn eval_op<'a>(
             Value::Area(geom::intersection(base, keep))
         }
         Op::FillHoles(n) => Value::Area(geom::fill_holes(area(n)?)),
-        Op::FillCover(f) => Value::Area(crate::fill::cover(area(&f.in_area)?, &f.spec).map_err(|e| e.to_string())?),
+        Op::FillCover(f) => {
+            let spec = with_motif(f, |n| lines(n))?;
+            Value::Area(crate::fill::cover(area(&f.in_area)?, &spec).map_err(|e| e.to_string())?)
+        }
         Op::LabelArea(p) => Value::Area(label_pick(done, p)?),
         Op::LabelLines(p) => Value::Lines(label_lines(done, p)?),
         Op::Grow(g) => Value::Area(geom::buffer(area(&g.of)?, g.by.0)),
@@ -745,17 +748,18 @@ fn eval_op<'a>(
         // A fill another def reads, made whole (see `evaluate`).
         Op::Fill(f) => {
             let region = area(&f.in_area)?;
+            let spec = with_motif(f, |n| lines(n))?;
             let made = if let Some(content) = &f.content {
                 Ok(fill::fill_with(region, lines(content)?))
             } else if f.per_feature {
                 region
                     .0
                     .par_iter()
-                    .map(|p| fill::fill_polygon(p, &f.spec, engine.sources))
+                    .map(|p| fill::fill_polygon(p, &spec, engine.sources))
                     .collect::<Result<Vec<Lines>, _>>()
                     .map(|v| v.into_iter().flatten().collect())
             } else {
-                fill::fill(region, &f.spec, engine.sources)
+                fill::fill(region, &spec, engine.sources)
             };
             Value::Lines(made.map_err(|e| e.to_string())?)
         }
@@ -858,6 +862,19 @@ fn select(sel: &Selector, features: &[Feature]) -> Vec<Feature> {
     features.iter().filter(|f| sel.keeps(f)).cloned().collect()
 }
 
+/// `f`'s spec with its `motif` reference, if any, resolved into polylines
+/// around the origin.
+fn with_motif<'a>(
+    f: &crate::grammar::Fill,
+    lines: impl Fn(&Name) -> Result<&'a Lines, String>,
+) -> Result<crate::profile::FillSpec, String> {
+    let mut spec = f.spec.clone();
+    if let Some(m) = &f.motif {
+        spec.options.insert("motif".into(), fill::motif_polylines(lines(m)?));
+    }
+    Ok(spec)
+}
+
 /// What the fills need to be made in their group: the evaluated defs, the
 /// SVG sources, the host's memory ceiling, and the task their rows go under.
 struct Fills<'a> {
@@ -875,6 +892,15 @@ const PIECES_AT_ONCE: usize = 256;
 /// `per: feature`.
 fn run_fill(def: &Def, spec: &crate::grammar::Fill, fills: &Fills, sink: &mut GroupSink) -> Result<(), RunError> {
     let name = def.reference();
+    let resolved;
+    let spec = if spec.motif.is_some() {
+        let s = with_motif(spec, |n| fills.values.get(n).ok_or_else(|| format!("missing motif {n}"))?.lines(n).map_err(|e| e.to_string()))
+            .map_err(RunError::Plan)?;
+        resolved = crate::grammar::Fill { spec: s, motif: None, ..spec.clone() };
+        &resolved
+    } else {
+        spec
+    };
     let task = fills.task.child(&format!("fill:{name}"), &name.to_string(), 0, "pieces");
     let area = fills
         .values
@@ -886,7 +912,10 @@ fn run_fill(def: &Def, spec: &crate::grammar::Fill, fills: &Fills, sink: &mut Gr
     let check_budget = |generator: &str| -> Result<(), String> {
         if let Some(budget) = fills.budget {
             let spacing = fill::spacing_mm(&spec.spec).unwrap_or(0.5);
-            let estimate = crate::budget::cost(area_area(area), generator, spacing);
+            // A fill drawn in tiles holds one tile's strokes (and the seams
+            // of a row) at a time, whatever its area.
+            let held = if fill::streams(&spec.spec) { area_area(area).min(2.0 * fill::TILE_MM * fill::TILE_MM) } else { area_area(area) };
+            let estimate = crate::budget::cost(held, &spec.spec);
             if estimate.bytes > budget {
                 return Err(format!(
                     "{name}: this fill needs {}, more than the {} the page has. It covers {} mm² of paper \

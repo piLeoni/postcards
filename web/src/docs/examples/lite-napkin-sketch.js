@@ -12,11 +12,11 @@ const pen = (k) => PEN * k
 const INK = { style: "solid", width: pen(1), cap: "round" }
 
 // The sea: rows of scallops, one stroke a row, fraying out toward the shore.
-/** @type {Omit<FillOptions, "in">} */
-const SEA = { pattern: "scallop-waves", spacing: pen(14), wavelength: 1.35, depth: 0.35, stagger: 0.5, fray: pen(10) }
-/** @type {Omit<FillOptions, "in">} */
-const SCRIBBLE = { per: "feature", pattern: "scribble", inset: pen(3), spacing: pen(8), angle: 40 }
-/** @type {Omit<FillOptions, "in">} */
+/** @type {FillStyle} */
+const SEA = { pattern: "scallops", spacing: pen(14), stagger: 0.5, fray: pen(10) }
+/** @type {FillStyle} */
+const SCRIBBLE = { per: "feature", pattern: "scribble", inset: pen(3), spacing: pen(11), angle: 40 }
+/** @type {FillStyle} */
 const TREES = { pattern: "doodle-trees", spacing: pen(20), coverage: 0.8, edge: "inside", seed: 9 }
 
 // One seed for every hand, so strokes that meet in different layers tremble together.

@@ -134,10 +134,12 @@ drawland-script = { path = "../drawland/crates/drawland-script" }   # to run a J
           ['Reference', <C key="1">crates/drawland-script/drawland.d.ts</C>, <C key="1b">web/scripts/build-reference.mjs; npm test fails when stale</C>],
           ['Tutorial and lite styles', <C key="2">web/src/docs/examples/*.js</C>, <C key="2b">npm test type-checks them; render-docs.sh draws them</C>],
           ['Gallery pictures', <C key="3">web/src/presets/*.js</C>, <C key="3b">web/scripts/render-docs.sh gallery</C>],
-          ['Pattern swatches', <C key="4">the Pattern type in drawland.d.ts</C>, <C key="4b">web/scripts/render-docs.sh patterns</C>],
+          ['Patterns page and swatches', <C key="4">penfill's catalogue</C>, <C key="4b">web/scripts/render-docs.sh patterns</C>],
+          ['Pattern types in drawland.d.ts', <C key="5">penfill's catalogue</C>, <C key="5b">cargo run -p drawland-script --example write_dts; cargo test fails when stale</C>],
         ]}
       />
-      <Code lang="bash">{`node web/scripts/build-reference.mjs     # after a change to drawland.d.ts
+      <Code lang="bash">{`cargo run -p drawland-script --example write_dts   # after a pattern change in penfill
+node web/scripts/build-reference.mjs     # after a change to drawland.d.ts
 web/scripts/render-docs.sh                # every picture, with the CLI (OFFLINE=1: cache only)
 web/scripts/render-docs.sh examples tutorial-04   # one section, the files whose name starts so`}</Code>
       <P>

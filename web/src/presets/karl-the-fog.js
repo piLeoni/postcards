@@ -121,21 +121,21 @@ const ROAD_OPTIONS = {
 // 1d. Surface Fill Patterns
 // Note: no `inset` on nature/garden/court fills so adjacent patches (e.g.
 // garden beds inside a park) meet seamlessly without a white exclusion halo.
-/** @type {Omit<FillOptions, "in">} */
+/** @type {FillStyle} */
 const FILL_BUILDINGS = { per: "feature", pattern: "lines", inset: pen(1.3), spacing: pen(2.5), angle: 45 }
-/** @type {Omit<FillOptions, "in">} */
+/** @type {FillStyle} */
 const FILL_WATER     = { pattern: "waves", spacing: pen(3.75) }
-/** @type {Omit<FillOptions, "in">} */
+/** @type {FillStyle} */
 const FILL_DOTS      = { pattern: "dots", spacing: pen(3.75), mark: pen(1.1), angle: 30 }
-/** @type {Omit<FillOptions, "in">} */
+/** @type {FillStyle} */
 const FILL_LAWN      = { ...FILL_DOTS, spacing: pen(3) }
-/** @type {Omit<FillOptions, "in">} */
+/** @type {FillStyle} */
 const FILL_FLOWERBED = { ...FILL_DOTS, spacing: pen(2.25) }
-/** @type {Omit<FillOptions, "in">} */
-const FILL_STIPPLE   = { ...FILL_DOTS, pattern: "stipple-edge" }
-/** @type {Omit<FillOptions, "in">} */
-const FILL_COURT     = { pattern: "dots", lattice: "square", spacing: pen(2.75), mark: pen(1), angle: 0 }
-/** @type {Omit<FillOptions, "in">} */
+/** @type {FillStyle} */
+const FILL_STIPPLE   = { ...FILL_DOTS, pattern: "stipple", density: "edge", contrast: 0.9, feature: "8mm" }
+/** @type {FillStyle} */
+const FILL_COURT     = { pattern: "dots", arrange: "square", spacing: pen(2.75), mark: pen(1), angle: 0 }
+/** @type {FillStyle} */
 const FILL_TRACK     = { ...FILL_COURT, spacing: pen(2.25) }
 
 // 1e. 3D Foliage Canopy Tiers (`pattern: "isoline-stack"`, penfill isoline_stack)
@@ -149,12 +149,12 @@ const FILL_TRACK     = { ...FILL_COURT, spacing: pen(2.25) }
 //   light           sun strength; light_angle / light_elevation aim the sun
 //   bubble          leaf-tuft scale in mm (omit → ~0.3× crown)
 // Distribution (per tier — spacing, coverage, slices):
-//   spacing    typical crown size, on the ground (`ground(m)`), so crowns keep
+//   spacing    a crown's diameter, on the ground (`ground(m)`), so crowns keep
 //              their real size at any scale
 //   coverage   grove density (0–1); lower → more clearings
 //   slices     vertical tiers per crown (default 9)
 //   edge/overflow  dense forest: overflow bulge past polygon edge
-/** @type {Omit<FillOptions, "in">} */
+/** @type {FillStyle} */
 const CANOPY_BASE = {
   pattern: "isoline-stack",
   seed: 7,
@@ -167,11 +167,11 @@ const CANOPY_BASE = {
   edge: "inside",
   lobes: 1.0,
   elongation: 0.18,
-  spacing: ground(30),
+  spacing: ground(60),
   slices: 9,
 }
 // Short period + high intensity (penfill `isoline_blobs_demo` panel 3C).
-/** @type {Omit<FillOptions, "in">} */
+/** @type {FillStyle} */
 const CANOPY_SHORT_PERIOD = {
   ...CANOPY_BASE,
   seed: 27,
@@ -184,27 +184,27 @@ const CANOPY_SHORT_PERIOD = {
   // bubble ≈ 0.19× crown (demo: 1.15 mm @ 6.0 mm crown); scales with `spacing` below.
   bubble: ground(5.8),
 }
-/** @type {Omit<FillOptions, "in">} */
+/** @type {FillStyle} */
 const CANOPY_DENSE_SPEC = {
   ...CANOPY_SHORT_PERIOD,
   edge: "overflow",
   overflow: ground(3.4),
-  spacing: ground(30),
+  spacing: ground(60),
   coverage: 0.82,
   bubble: ground(5.8),
 }
-/** @type {Omit<FillOptions, "in">} */
+/** @type {FillStyle} */
 const CANOPY_PARK_SPEC = {
   ...CANOPY_BASE,
-  spacing: ground(25),
+  spacing: ground(50),
   coverage: 0.58,
   jitter_period: 0.78,
   ticks: 0.32,
 }
-/** @type {Omit<FillOptions, "in">} */
+/** @type {FillStyle} */
 const CANOPY_SHRUB_SPEC = {
   ...CANOPY_BASE,
-  spacing: ground(20),
+  spacing: ground(40),
   coverage: 0.52,
   slices: 7,
   jitter_period: 0.85,
@@ -259,7 +259,7 @@ const LABEL_RULES = [
  *   relief: boolean
  *   canopy: "dense" | "scattered" | "shrub" | "open" | false
  *   ring?: boolean
- *   fill: Omit<FillOptions, "in">
+ *   fill: FillStyle
  *   area?: Area
  *   visible?: Area
  * }>}
@@ -623,7 +623,7 @@ compose.linesort({ except: ["lines_labels"] })
 // a body that rises and falls, stippled where it turns from the sun. What
 // they cover clears the map under them; the same footprint, moved down-sun,
 // is their shadow, stippled over the city.
-/** @type {Omit<FillOptions, "in">} */
+/** @type {FillStyle} */
 const CLOUDS = {
   pattern: "clouds",
   spacing: pen(25),        // a puff: 5 mm
@@ -635,7 +635,7 @@ const CLOUDS = {
 }
 /** How far the shadow falls from its cloud, mm: the clouds' height above the ground. */
 const SHADOW_DROP = pen(40)
-/** @type {Omit<FillOptions, "in">} */
+/** @type {FillStyle} */
 const FILL_SHADOW = { pattern: "stipple", spacing: pen(2.6), mark: pen(0.6) }
 
 const sky = engine.frame()

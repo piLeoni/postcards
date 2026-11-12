@@ -58,9 +58,9 @@ const DEPTH = [
   { id: "deep", min: 300, max: 1000, color: "#3f6fa8", label: "300+ km" },
 ]
 
-/** @type {Omit<FillOptions, "in">} */
+/** @type {FillStyle} */
 const FILL_DOT = { pattern: "concentric", spacing: "0.22mm" }
-/** @type {Omit<FillOptions, "in">} */
+/** @type {FillStyle} */
 const FILL_SEA = { pattern: "lines", spacing: "1.1mm", angle: 0 }
 const GRID_STEP = 30
 const LABEL_MIN_MAG = 6.5

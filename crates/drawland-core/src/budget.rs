@@ -7,12 +7,13 @@
 //! traps instead, and the page dies with nothing to show. So the fill pass
 //! estimates what it is about to do, and refuses before the trap can happen.
 //!
-//! The estimate is measured, not derived: the live-heap peak of a whole draw
-//! with one fill over 100,000 mm², masked, at 0.5 and 1 mm spacing
+//! The estimate is sampled, not tabled: the fill is drawn for real on a small
+//! square of paper, its points and strokes are counted, and the count is
+//! scaled to the area. That holds for any pattern — a material of several
+//! layers, a symbol of many strokes, a motif the profile wrote — without a
+//! table to keep in step with penfill. What a point and a stroke cost at the
+//! peak of a whole draw (made, masked, written) is measured once
 //! (`examples/budget_calib.rs`, native 64-bit, so wasm32 sits below it).
-//! Per generator the peak fits `area × (a + b / spacing²)`: `b` is the part
-//! that grows with the pattern's density, `a` what grows with the area alone
-//! (a wave's points along its length, a generator's own grids).
 //!
 //! It only applies where the host sets a budget (`Job::set_memory_budget`,
 //! from the page). The command line leaves it off and draws as much as the
@@ -30,46 +31,37 @@ pub struct FillCost {
 
 /// `(a, b)` per generator: bytes per mm², and bytes per mm² at 1 mm spacing
 /// that scale with `1 / spacing²`. Measured values, rounded up.
-fn coefficients(generator: &str) -> (f64, f64) {
-    match generator {
-        "rectilinear" | "zigzag" | "lines" | "sunburst" | "concentric" | "offsets" | "none" => (5.0, 3.0),
-        "spiral" => (24.0, 3.0),
-        "chess" => (6.0, 60.0),
-        "grid" => (7.0, 255.0),
-        "triangles" => (11.0, 557.0),
-        "honeycomb" => (0.0, 698.0),
-        "dots" => (151.0, 132.0),
-        "stipple" => (168.0, 56.0),
-        "waves" => (467.0, 123.0),
-        "wave_grid" => (480.0, 134.0),
-        "scales" => (176.0, 197.0),
-        "hilbert" => (41.0, 180.0),
-        "scribble" => (103.0, 148.0),
-        "doodle-trees" => (60.0, 400.0),
-        "curl-waves" => (300.0, 120.0),
-        "flow-waves" => (400.0, 200.0),
-        "scallop-waves" => (200.0, 100.0),
-        "grass" => (197.0, 1035.0),
-        "gravel" => (342.0, 1853.0),
-        "truchet" => (40.0, 898.0),
-        "terrazzo" => (2.0, 1903.0),
-        "wood" => (744.0, 750.0),
-        "marble" => (11_456.0, 3801.0),
-        "cracks" => (11_905.0, 11_196.0),
-        "isoline-blobs" | "isoline-stack" | "isoline-stack-hatched" => (2_500.0, 1_500.0),
-        "growth" => (1_500.0, 1_800.0),
-        "stipple-edge" | "stipple-noise" => (250.0, 150.0),
-        // Not measured (`pat`, sources): as dense as the dense ones.
-        _ => (500.0, 2000.0),
-    }
+/// Peak bytes per point and per stroke a fill holds in a whole draw:
+/// generated, clipped, masked and written. Fitted by `budget_calib`, then
+/// kept about twice what it measures: the guard must refuse before the page
+/// traps, never after.
+const PER_POINT: f64 = 72.0;
+const PER_STROKE: f64 = 260.0;
+
+/// What a fill of `area_mm2` of paper as `spec` says will hold at its peak.
+pub fn cost(area_mm2: f64, spec: &crate::profile::FillSpec) -> FillCost {
+    let (points, strokes) = sample(spec).unwrap_or((40.0, 4.0));
+    let bytes = area_mm2 * (points * PER_POINT + strokes * PER_STROKE);
+    FillCost { area_mm2, bytes: bytes as u64 }
 }
 
-/// `FillCost` for a region, a generator and an (already parsed) spacing, mm.
-pub fn cost(area_mm2: f64, generator: &str, spacing_mm: f64) -> FillCost {
-    let spacing = spacing_mm.max(1e-3);
-    let (a, b) = coefficients(generator);
-    let bytes = area_mm2 * (a + b / (spacing * spacing));
-    FillCost { area_mm2, bytes: bytes as u64 }
+/// Points and strokes per mm² of `spec`, from a real fill of a square big
+/// enough to hold a dozen of its largest elements.
+pub fn sample(spec: &crate::profile::FillSpec) -> Option<(f64, f64)> {
+    let (name, cs) = crate::fill::catalog_spec(spec).ok()?;
+    if name == "none" || name == "solid" {
+        return Some((0.0, 0.0));
+    }
+    let widest = penfill::catalog::layers(&name, &cs).ok()?.iter().map(|(_, s)| *s).fold(0.0_f64, f64::max);
+    let side = (widest * 12.0).clamp(20.0, 150.0);
+    // Off the page origin, so a lattice anchored there does not line up with
+    // the square's edges.
+    let (x, y) = (37.3, 41.9);
+    let square = penfill::Region::from_ring(&[(x, y), (x + side, y), (x + side, y + side), (x, y + side)]);
+    let out = penfill::catalog::fill(&name, &square, &cs).ok()?;
+    let points: usize = out.strokes.iter().map(Vec::len).sum();
+    let area = side * side;
+    Some((points as f64 / area, out.strokes.len() as f64 / area))
 }
 
 #[cfg(test)]
@@ -77,6 +69,10 @@ mod tests {
     use super::*;
 
     const GB: u64 = 1 << 30;
+
+    fn cost(area: f64, pattern: &str, spacing: f64) -> FillCost {
+        super::cost(area, &crate::profile::FillSpec { generator: Some(pattern.into()), ..crate::profile::FillSpec::spacing(spacing) })
+    }
 
     /// The 50 km strip at 1:10000: dotted parks over 742,050 mm² at 0.45 mm
     /// and waves over about as much water at 0.75 mm. Together they fit a
@@ -92,14 +88,14 @@ mod tests {
     /// Cracks over the same strip would not: its generator alone is GBs.
     #[test]
     fn a_heavy_generator_on_the_strip_is_refused() {
-        assert!(cost(742_050.0, "cracks", 0.5).bytes > 2 * GB);
+        assert!(cost(742_050.0, "marble", 0.5).bytes > 2 * GB);
     }
 
     /// The 1:2967 postcard must not come anywhere near a page budget.
     #[test]
     fn the_postcard_stays_well_under_a_page_budget() {
         let park = cost(2_600.0, "dots", 0.45);
-        let bldg = cost(4_000.0, "zigzag", 0.4);
+        let bldg = cost(4_000.0, "serpentine", 0.4);
         assert!(park.bytes + bldg.bytes < 100 * 1024 * 1024);
     }
 

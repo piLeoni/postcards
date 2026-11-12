@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="22mm" height="22mm" viewBox="0 0 22 22"><style>
+svg {
+  stroke: black;
+  stroke-width: 0.1;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+polyline, line {
+  fill: none;
+}
+</style>
+<g style="stroke-width:0.2;"><path d="m12.12 1.19 0 3m-.88-2.04 1.76 0m6.97.54 0 3m-.87-2.04 1.73 0m-17.07 2.15 0 3m-.87-2.04 1.75 0m8.28-1.11 0 3m-.87-2.04 1.74 0m1.97-.72 0 3m-.88-2.04 1.76 0m-7.34 5.97 0 3m-.87-2.04 1.75 0m2.65-3.31 0 3m-.89-2.04 1.78 0m5.16-.91 0 3m-.87-2.04 1.74 0m-13.47 4.98 0 3m-.86-2.04 1.73 0m5.49-.18 0 3m-.87-2.04 1.74 0m4.83-1.32 0 3m-.87-2.04 1.74 0" fill="none"/></g>
+</svg>

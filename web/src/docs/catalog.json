@@ -1,0 +1,2916 @@
+{
+ "generators": [
+  {
+   "name": "hatch",
+   "about": "Parallel lines; crossed into a grid or a triad, joined into serpentines, dashed, bent, unevenly spaced, or thinned by tone.",
+   "spacing": 0.6,
+   "angle": 0,
+   "ownMask": false,
+   "options": [
+    {
+     "key": "cross",
+     "kind": {
+      "type": "count",
+      "min": 1,
+      "max": 3
+     },
+     "default": 1,
+     "doc": "Families of lines: 1 parallel lines, 2 a grid (crossing at right angles), 3 a triad (at 60°)."
+    },
+    {
+     "key": "join",
+     "kind": {
+      "type": "flag"
+     },
+     "default": false,
+     "doc": "Join the lines end to end into serpentines, so the pen lifts as little as possible (one family, no dashes)."
+    },
+    {
+     "key": "dash",
+     "kind": {
+      "type": "lengths"
+     },
+     "default": null,
+     "doc": "Break the lines into dashes: `[on, off]` in mm."
+    },
+    {
+     "key": "dash_jitter",
+     "kind": {
+      "type": "number",
+      "min": 0,
+      "max": 1
+     },
+     "default": 0,
+     "doc": "How much dash and gap lengths differ, and how far each row's dashes are offset, 0 to 1."
+    },
+    {
+     "key": "wobble",
+     "kind": {
+      "type": "length"
+     },
+     "default": 0,
+     "doc": "How far the lines bend away from straight, in mm. Neighbouring lines bend together, like bedding."
+    },
+    {
+     "key": "wobble_length",
+     "kind": {
+      "type": "length"
+     },
+     "default": {
+      "timesSpacing": 14
+     },
+     "doc": "The length of one bend along the lines, in mm."
+    },
+    {
+     "key": "vary",
+     "kind": {
+      "type": "number",
+      "min": 0,
+      "max": 1
+     },
+     "default": 0,
+     "doc": "How uneven the gaps between lines are, 0 (even) to 1: layered soil, worn bedding."
+    },
+    {
+     "key": "density",
+     "kind": {
+      "type": "choice",
+      "values": [
+       "even",
+       "edge",
+       "centre",
+       "noise",
+       "gradient"
+      ]
+     },
+     "default": "even",
+     "doc": "The tone across the area: even, denser toward the edge, toward the centre, in noisy patches, or along a gradient toward `toward` degrees."
+    },
+    {
+     "key": "contrast",
+     "kind": {
+      "type": "number",
+      "min": 0,
+      "max": 1
+     },
+     "default": 0.8,
+     "doc": "How far the tone swings, 0 (none) to 1 (from full to nothing)."
+    },
+    {
+     "key": "feature",
+     "kind": {
+      "type": "length"
+     },
+     "default": {
+      "timesSpacing": 8
+     },
+     "doc": "The scale of the tone: the width of the edge band, the size of noise patches, in mm."
+    },
+    {
+     "key": "toward",
+     "kind": {
+      "type": "number",
+      "min": -360,
+      "max": 360
+     },
+     "default": 90,
+     "doc": "With `density: \"gradient\"`: the direction the tone gets denser, in page degrees (90: down the page)."
+    }
+   ]
+  },
+  {
+   "name": "scatter",
+   "about": "One mark at each of many places: dots, strokes, stones, plants or a symbol of your own, evenly scattered, on a lattice, in rows or in clusters, thinned by tone.",
+   "spacing": 1,
+   "angle": 0,
+   "ownMask": true,
+   "options": [
+    {
+     "key": "arrange",
+     "kind": {
+      "type": "choice",
+      "values": [
+       "blue",
+       "hex",
+       "square",
+       "rows",
+       "clusters"
+      ]
+     },
+     "default": "blue",
+     "doc": "Where the marks go: blue (even but irregular, like a stipple by hand), hex or square (a lattice; add jitter to loosen it), rows (along the angle, wandering only along their row: an orchard, a vineyard), clusters (small groups)."
+    },
+    {
+     "key": "motif",
+     "kind": {
+      "type": "motif",
+      "values": [
+       "dot",
+       "tick",
+       "dash",
+       "plus",
+       "cross",
+       "ring",
+       "ring-dot",
+       "pebble",
+       "blob",
+       "shard",
+       "rock",
+       "tee",
+       "vee",
+       "bracket",
+       "tuft",
+       "reed",
+       "tree",
+       "conifer",
+       "shrub",
+       "sprout",
+       "leaf",
+       "vine",
+       "flower",
+       "grave"
+      ]
+     },
+     "default": "dot",
+     "doc": "The mark: a symbol by name, or your own polylines in mm around the origin (up is negative y), drawn at their own size."
+    },
+    {
+     "key": "mark",
+     "kind": {
+      "type": "length"
+     },
+     "default": {
+      "timesSpacing": 0.35
+     },
+     "doc": "The size of one element: a dot's length, a symbol's height, in mm."
+    },
+    {
+     "key": "rotate",
+     "kind": {
+      "type": "numberOr",
+      "values": [
+       "random",
+       "aligned",
+       "upright"
+      ]
+     },
+     "default": "random",
+     "doc": "How marks turn: random (every mark its own way), aligned (with the pattern's angle), upright (standing up on the page whatever the angle: trees, reeds, crosses), or a number of degrees added to the pattern's angle."
+    },
+    {
+     "key": "vary",
+     "kind": {
+      "type": "number",
+      "min": 0,
+      "max": 1
+     },
+     "default": 0,
+     "doc": "How much element sizes differ, 0 (all alike) to 1."
+    },
+    {
+     "key": "jitter",
+     "kind": {
+      "type": "number",
+      "min": 0,
+      "max": 1
+     },
+     "default": 0,
+     "doc": "How far elements wander from their place, 0 to 1."
+    },
+    {
+     "key": "overlap",
+     "kind": {
+      "type": "flag"
+     },
+     "default": false,
+     "doc": "Let marks overlap their neighbours. Off, a mark that would touch a neighbour gives way to it, as an engraver leaves symbols apart."
+    },
+    {
+     "key": "density",
+     "kind": {
+      "type": "choice",
+      "values": [
+       "even",
+       "edge",
+       "centre",
+       "noise",
+       "gradient"
+      ]
+     },
+     "default": "even",
+     "doc": "The tone across the area: even, denser toward the edge, toward the centre, in noisy patches, or along a gradient toward `toward` degrees."
+    },
+    {
+     "key": "contrast",
+     "kind": {
+      "type": "number",
+      "min": 0,
+      "max": 1
+     },
+     "default": 0.8,
+     "doc": "How far the tone swings, 0 (none) to 1 (from full to nothing)."
+    },
+    {
+     "key": "feature",
+     "kind": {
+      "type": "length"
+     },
+     "default": {
+      "timesSpacing": 8
+     },
+     "doc": "The scale of the tone: the width of the edge band, the size of noise patches, in mm."
+    },
+    {
+     "key": "toward",
+     "kind": {
+      "type": "number",
+      "min": -360,
+      "max": 360
+     },
+     "default": 90,
+     "doc": "With `density: \"gradient\"`: the direction the tone gets denser, in page degrees (90: down the page)."
+    }
+   ]
+  },
+  {
+   "name": "cells",
+   "about": "Irregular cells: rounded stones apart from each other, a net of shared walls, or plates with wide cracks; with marks inside, sizes from even to mixed, thinned by tone.",
+   "spacing": 2,
+   "angle": 0,
+   "ownMask": true,
+   "options": [
+    {
+     "key": "style",
+     "kind": {
+      "type": "choice",
+      "values": [
+       "stones",
+       "net",
+       "cracks"
+      ]
+     },
+     "default": "stones",
+     "doc": "`stones`: every cell its own rounded outline, apart from its neighbours (gravel, cobbles, pebble beds). `net`: the shared walls, drawn once (cell nets, mud cracks seen from above, crazing). `cracks`: angular plates with wide cracks between them (dry cracked earth)."
+    },
+    {
+     "key": "gap",
+     "kind": {
+      "type": "length"
+     },
+     "default": null,
+     "doc": "The space between neighbouring cells, in mm. Unset: 0.14 × spacing for stones, 0.24 × spacing for cracks; for a net, the break left where walls meet (unset: none, the walls join)."
+    },
+    {
+     "key": "round",
+     "kind": {
+      "type": "number",
+      "min": 0,
+      "max": 1
+     },
+     "default": null,
+     "doc": "How rounded the corners are, 0 (sharp) to 1 (as round as the cell allows). Unset: 0.7 for stones, 0.25 for cracks."
+    },
+    {
+     "key": "vary",
+     "kind": {
+      "type": "number",
+      "min": 0,
+      "max": 1
+     },
+     "default": 0,
+     "doc": "How much element sizes differ, 0 (all alike) to 1."
+    },
+    {
+     "key": "jitter",
+     "kind": {
+      "type": "number",
+      "min": 0,
+      "max": 1
+     },
+     "default": 0,
+     "doc": "How far elements wander from their place, 0 to 1."
+    },
+    {
+     "key": "inner",
+     "kind": {
+      "type": "choice",
+      "values": [
+       "none",
+       "dots",
+       "hatch",
+       "ring",
+       "mixed"
+      ]
+     },
+     "default": "none",
+     "doc": "A mark inside each cell: `dots` (a few specks: chalky soil), `hatch` (lines at each stone's own angle), `ring` (an inner outline: a rimmed pebble), `mixed` (terrazzo: some chips hatched, a few dense, most left plain)."
+    },
+    {
+     "key": "density",
+     "kind": {
+      "type": "choice",
+      "values": [
+       "even",
+       "edge",
+       "centre",
+       "noise",
+       "gradient"
+      ]
+     },
+     "default": "even",
+     "doc": "The tone across the area: even, denser toward the edge, toward the centre, in noisy patches, or along a gradient toward `toward` degrees."
+    },
+    {
+     "key": "contrast",
+     "kind": {
+      "type": "number",
+      "min": 0,
+      "max": 1
+     },
+     "default": 0.8,
+     "doc": "How far the tone swings, 0 (none) to 1 (from full to nothing)."
+    },
+    {
+     "key": "feature",
+     "kind": {
+      "type": "length"
+     },
+     "default": {
+      "timesSpacing": 8
+     },
+     "doc": "The scale of the tone: the width of the edge band, the size of noise patches, in mm."
+    },
+    {
+     "key": "toward",
+     "kind": {
+      "type": "number",
+      "min": -360,
+      "max": 360
+     },
+     "default": 90,
+     "doc": "With `density: \"gradient\"`: the direction the tone gets denser, in page degrees (90: down the page)."
+    }
+   ]
+  },
+  {
+   "name": "tile",
+   "about": "A motif laid on a lattice: brick, herringbone, basket weave, parquet, setts, flagstones, tiles, hexagons, stairs, grating, chess; your own polylines; or a CAD .pat hatch.",
+   "spacing": 2,
+   "angle": 0,
+   "ownMask": false,
+   "options": [
+    {
+     "key": "motif",
+     "kind": {
+      "type": "motif",
+      "values": [
+       "brick",
+       "herringbone",
+       "basket",
+       "parquet",
+       "setts",
+       "flagstones",
+       "tiles",
+       "hexagons",
+       "stairs",
+       "grate",
+       "chess"
+      ]
+     },
+     "default": "brick",
+     "doc": "What is laid: `brick` (running bond), `herringbone` (pavers at right angles in a zigzag), `basket` (pairs of pavers, alternating direction), `parquet` (square blocks of boards, alternating), `setts` (small stones in staggered courses), `flagstones` (random rectangular paving: course heights and stone lengths vary, joints staggered), `tiles` (square tiles with a grout joint), `hexagons` (hexagonal pavers), `stairs` (stone steps seen from above), `grate` (bar grating), `chess` (squares, alternate ones hatched); or your own polylines in mm around the origin."
+    },
+    {
+     "key": "size",
+     "kind": {
+      "type": "lengths"
+     },
+     "default": null,
+     "doc": "One piece, `[length, width]` in mm. Unset, at spacing s: brick [3s, s], herringbone and basket [2s, s], parquet [4s, 0.8s] (a block of five boards), setts [1.15s, s], flagstones [3s, 2s], tiles and chess [3s, 3s], hexagons 2.5s across, stairs [6s, 1.5s] (slab length, tread depth), grate [3s, 0.5s] (cross bar pitch, bar pitch). For your own polylines: the tile box, centred on the origin (unset: the lines' extent)."
+    },
+    {
+     "key": "stagger",
+     "kind": {
+      "type": "number",
+      "min": 0,
+      "max": 1
+     },
+     "default": 0,
+     "doc": "For your own motif: how far each row is shifted along, as a share of the tile width (0.5: brick bond)."
+    },
+    {
+     "key": "gap",
+     "kind": {
+      "type": "length"
+     },
+     "default": null,
+     "doc": "The joint between pieces, in mm: 0 draws single joint lines, each once; more draws every piece as its own outline, this far from its neighbours. Unset: 0.18 × width for setts, 0.1 × width for tiles, 0 for the rest."
+    },
+    {
+     "key": "jitter",
+     "kind": {
+      "type": "number",
+      "min": 0,
+      "max": 1
+     },
+     "default": 0,
+     "doc": "How far elements wander from their place, 0 to 1."
+    },
+    {
+     "key": "pat",
+     "kind": {
+      "type": "text"
+     },
+     "default": null,
+     "doc": "A CAD hatch instead of a motif: a built-in name (ANSI31, ANSI32, ANSI33, ANSI37, BRICK, HERRINGBONE, BASKET, PARQUET, EARTH, CROSS, DASH, STAIRS, GRATE, ANGLE) or the text of a `.pat` definition. One pattern unit is `spacing` mm."
+    }
+   ]
+  },
+  {
+   "name": "waves",
+   "about": "Wavy parallel lines: sine, scallops, zigzag teeth, curling crests or a flowing swell; doubled into a net with `cross: 2`.",
+   "spacing": 1,
+   "angle": 0,
+   "ownMask": false,
+   "options": [
+    {
+     "key": "shape",
+     "kind": {
+      "type": "choice",
+      "values": [
+       "sine",
+       "scallop",
+       "zigzag",
+       "curl",
+       "flow"
+      ]
+     },
+     "default": "sine",
+     "doc": "How the lines wave: `sine`, the smooth classic; `scallop`, shallow arcs dipping between sharp cusps; `zigzag`, sharp straight teeth (amphibolite, schist); `curl`, crests that roll over into a spiral hook; `flow`, long swells the lines bunch and spread over, broken into strokes like a printed textile."
+    },
+    {
+     "key": "wavelength",
+     "kind": {
+      "type": "length"
+     },
+     "default": null,
+     "doc": "The length of one wave along the line, in mm. Default by shape, × spacing: sine 4 (3.6 with `cross: 2`), scallop 1.35, zigzag 1, curl 1.35, flow 13."
+    },
+    {
+     "key": "amplitude",
+     "kind": {
+      "type": "length"
+     },
+     "default": null,
+     "doc": "How far a line swings away from its row, in mm: a sine's or zigzag's peak, a scallop's dip, a curl's crest, a swell's height. Default by shape, × spacing: sine 0.25 (0.5 with `cross: 2`, so the net closes), scallop 0.35, zigzag 0.3, curl 0.27, flow 2.6."
+    },
+    {
+     "key": "cross",
+     "kind": {
+      "type": "count",
+      "min": 1,
+      "max": 2
+     },
+     "default": 1,
+     "doc": "1 one family of lines; 2 a net. Sine, zigzag and scallop add every row's mirror image, so crest meets trough and the lines close into cells (the ogee net, diamonds, eyes); curl and flow add a second family at right angles."
+    },
+    {
+     "key": "stagger",
+     "kind": {
+      "type": "number",
+      "min": 0,
+      "max": 1
+     },
+     "default": 0,
+     "doc": "Sine, scallop, zigzag and curl: shift every other row along by this share of a wavelength (0.5 sets the cusps of one row over the middles of the next)."
+    },
+    {
+     "key": "flip",
+     "kind": {
+      "type": "flag"
+     },
+     "default": false,
+     "doc": "Turn the waves over: curls break the other way, scallops bulge up between downward cusps."
+    },
+    {
+     "key": "round",
+     "kind": {
+      "type": "number",
+      "min": 0.3,
+      "max": 2
+     },
+     "default": 0.8,
+     "doc": "Scallop: the arc's shape, below 1 fuller and rounder, above 1 drawn to a point."
+    },
+    {
+     "key": "curl",
+     "kind": {
+      "type": "number",
+      "min": 0.3,
+      "max": 1.5
+     },
+     "default": 1,
+     "doc": "Curl: the size of the hook as a share of the amplitude. 1 rolls down onto the next wave's trough; smaller hooks hang above it."
+    },
+    {
+     "key": "turns",
+     "kind": {
+      "type": "number",
+      "min": 0.3,
+      "max": 3
+     },
+     "default": 0.95,
+     "doc": "Curl: how far each hook winds in, in turns (1 is one full turn)."
+    },
+    {
+     "key": "drift",
+     "kind": {
+      "type": "number",
+      "min": 0,
+      "max": 5
+     },
+     "default": 1,
+     "doc": "Flow: how fast the swell's height and phase change from line to line across the sea (0 keeps one swell everywhere)."
+    },
+    {
+     "key": "breaks",
+     "kind": {
+      "type": "number",
+      "min": 0,
+      "max": 1
+     },
+     "default": 0.5,
+     "doc": "Flow: how broken the lines are, 0 (unbroken) to 1 (short strokes)."
+    }
+   ]
+  },
+  {
+   "name": "rings",
+   "about": "Rings from the boundary inward, a spacing apart: concentric with the outline, offset from every edge, or one continuous spiral.",
+   "spacing": 0.8,
+   "angle": 0,
+   "ownMask": false,
+   "options": [
+    {
+     "key": "from",
+     "kind": {
+      "type": "choice",
+      "values": [
+       "outline",
+       "edges"
+      ]
+     },
+     "default": "outline",
+     "doc": "What the rings follow: `outline`, the outer edge inset again and again (holes stop the rings; thin parts get a centreline); `edges`, every edge, holes included, each pushing rings of its own (a network of streets round blocks fills evenly)."
+    },
+    {
+     "key": "spiral",
+     "kind": {
+      "type": "flag"
+     },
+     "default": false,
+     "doc": "One continuous path winding inward a spacing per lap, instead of closed rings: the fewest pen lifts. Follows the outline; holes cut it."
+    }
+   ]
+  },
+  {
+   "name": "scribble",
+   "about": "Hand shading with a fine pen: loose zigzag strokes with rounded turns, in overlapping patches, layered at different angles.",
+   "spacing": 1,
+   "angle": 30,
+   "ownMask": false,
+   "options": [
+    {
+     "key": "layers",
+     "kind": {
+      "type": "count",
+      "min": 1,
+      "max": 3
+     },
+     "default": 2,
+     "doc": "Layers of scribble, each turned about 50° from the first: 1 a light shade, 3 the darkest."
+    },
+    {
+     "key": "loose",
+     "kind": {
+      "type": "number",
+      "min": 0,
+      "max": 1
+     },
+     "default": 0.5,
+     "doc": "How messy, 0 (tidy, even zigzags) to 1 (wandering ends, uneven passes, tilted patches)."
+    },
+    {
+     "key": "length",
+     "kind": {
+      "type": "length"
+     },
+     "default": {
+      "timesSpacing": 9
+     },
+     "doc": "The length of one pass of the pen, end to end, in mm."
+    },
+    {
+     "key": "density",
+     "kind": {
+      "type": "choice",
+      "values": [
+       "even",
+       "edge",
+       "centre",
+       "noise",
+       "gradient"
+      ]
+     },
+     "default": "even",
+     "doc": "The tone across the area: even, denser toward the edge, toward the centre, in noisy patches, or along a gradient toward `toward` degrees."
+    },
+    {
+     "key": "contrast",
+     "kind": {
+      "type": "number",
+      "min": 0,
+      "max": 1
+     },
+     "default": 0.8,
+     "doc": "How far the tone swings, 0 (none) to 1 (from full to nothing)."
+    },
+    {
+     "key": "feature",
+     "kind": {
+      "type": "length"
+     },
+     "default": {
+      "timesSpacing": 8
+     },
+     "doc": "The scale of the tone: the width of the edge band, the size of noise patches, in mm."
+    },
+    {
+     "key": "toward",
+     "kind": {
+      "type": "number",
+      "min": -360,
+      "max": 360
+     },
+     "default": 90,
+     "doc": "With `density: \"gradient\"`: the direction the tone gets denser, in page degrees (90: down the page)."
+    }
+   ]
+  },
+  {
+   "name": "hilbert",
+   "about": "One unbroken space-filling Hilbert curve visiting the whole area cell by cell; cells between half a spacing and a spacing.",
+   "spacing": 1,
+   "angle": 0,
+   "ownMask": false,
+   "options": []
+  },
+  {
+   "name": "truchet",
+   "about": "Truchet tiles: square cells a spacing wide, each with two quarter arcs turned at random, chaining into long winding paths.",
+   "spacing": 2,
+   "angle": 0,
+   "ownMask": false,
+   "options": []
+  },
+  {
+   "name": "honeycomb",
+   "about": "Hexagonal cells a spacing across (flat to flat), each wall drawn once, or doubled `walls` apart.",
+   "spacing": 2,
+   "angle": 0,
+   "ownMask": false,
+   "options": [
+    {
+     "key": "walls",
+     "kind": {
+      "type": "length"
+     },
+     "default": 0,
+     "doc": "Draw every wall twice, this far apart, in mm (0: single walls, the hexagons touching)."
+    }
+   ]
+  },
+  {
+   "name": "scales",
+   "about": "Fish scales: rows of half circles a spacing apart, each row resting on the tips of the one below; roof tiles and drawn water.",
+   "spacing": 1.5,
+   "angle": 0,
+   "ownMask": false,
+   "options": []
+  },
+  {
+   "name": "sunburst",
+   "about": "Rays from a centre, about a spacing apart at every radius: new rays join in rings where the gaps open, so the centre never crowds.",
+   "spacing": 1,
+   "angle": 0,
+   "ownMask": false,
+   "options": [
+    {
+     "key": "centre",
+     "kind": {
+      "type": "lengths"
+     },
+     "default": null,
+     "doc": "Where the rays come from, `[x, y]` in page mm. Default: the middle of the shape. Give the same centre to neighbouring areas and they share one burst."
+    }
+   ]
+  },
+  {
+   "name": "wood",
+   "about": "Wood grain: long lines a spacing apart running along the angle, wandering slowly and flowing round knots.",
+   "spacing": 1,
+   "angle": 0,
+   "ownMask": false,
+   "options": [
+    {
+     "key": "knots",
+     "kind": {
+      "type": "number",
+      "min": 0,
+      "max": 4
+     },
+     "default": 1,
+     "doc": "How many knots the grain flows round, on average per square of 30 spacings (0: straight grain)."
+    }
+   ]
+  },
+  {
+   "name": "marble",
+   "about": "Marble: veins about a spacing apart drifting across the slab at the angle, warped by turbulence, each drawn as its two edges so it pinches and swells.",
+   "spacing": 2,
+   "angle": 30,
+   "ownMask": false,
+   "options": []
+  },
+  {
+   "name": "swells",
+   "about": "Overlapping swells or dunes: crest lines layered back to front, each hiding the ones behind and filled with lines that follow its slope.",
+   "spacing": 0.5,
+   "angle": 0,
+   "ownMask": false,
+   "options": []
+  },
+  {
+   "name": "eddies",
+   "about": "Currents: evenly spaced streamlines of a flow that undulates and winds into spiral eddies.",
+   "spacing": 0.8,
+   "angle": 0,
+   "ownMask": false,
+   "options": []
+  },
+  {
+   "name": "ripples",
+   "about": "Ripples: rows of broken wavy strokes a spacing apart, their crests bending together over a slow swell.",
+   "spacing": 1,
+   "angle": 0,
+   "ownMask": false,
+   "options": []
+  },
+  {
+   "name": "canopy",
+   "about": "Tree canopies from above: clusters of wobbly lobes, a dot at each lobe's heart, trees a spacing apart.",
+   "spacing": 3,
+   "angle": 0,
+   "ownMask": true,
+   "options": []
+  },
+  {
+   "name": "twigs",
+   "about": "Scattered twigs a spacing apart: a kinked stick with short side shoots at acute angles; brushwood, scrub, forest litter.",
+   "spacing": 2.5,
+   "angle": 0,
+   "ownMask": false,
+   "options": []
+  },
+  {
+   "name": "doodle-trees",
+   "about": "Trees as a hand doodles them on a sketch map: each crown (a spacing across) one curly stroke round a lumpy circle, with a crescent of shade; nearer crowns hide those behind.",
+   "spacing": 4,
+   "angle": 0,
+   "ownMask": true,
+   "options": [
+    {
+     "key": "coverage",
+     "kind": {
+      "type": "number",
+      "min": 0,
+      "max": 1
+     },
+     "default": 0.85,
+     "doc": "The share of places that get a tree, 0 to 1: lower leaves clearings."
+    },
+    {
+     "key": "loops",
+     "kind": {
+      "type": "number",
+      "min": 0.2,
+      "max": 3
+     },
+     "default": 1,
+     "doc": "How many curls run round each crown's rim, as a multiple of the usual count."
+    },
+    {
+     "key": "shadow",
+     "kind": {
+      "type": "number",
+      "min": 0,
+      "max": 1
+     },
+     "default": 0.8,
+     "doc": "The share of crowns with a crescent of shade on the side away from the light."
+    },
+    {
+     "key": "light_angle",
+     "kind": {
+      "type": "number",
+      "min": -360,
+      "max": 360
+     },
+     "default": 225,
+     "doc": "Where the light comes from, in page degrees (0: from the right, 90: from below; 225, the map maker's top left)."
+    }
+   ]
+  },
+  {
+   "name": "growth",
+   "about": "Branches grown toward the space they have to fill (space colonisation): river deltas, veins, roots, cracks, lichen; twigs a spacing apart.",
+   "spacing": 1,
+   "angle": 0,
+   "ownMask": true,
+   "options": [
+    {
+     "key": "roots",
+     "kind": {
+      "type": "count",
+      "min": 0,
+      "max": 10000
+     },
+     "default": 0,
+     "doc": "How many roots the branches grow from (0: one per `root_spacing`)."
+    },
+    {
+     "key": "root_spacing",
+     "kind": {
+      "type": "length"
+     },
+     "default": {
+      "timesSpacing": 12
+     },
+     "doc": "Roots about this far apart, each draining its own basin, in mm."
+    },
+    {
+     "key": "step",
+     "kind": {
+      "type": "length"
+     },
+     "default": {
+      "timesSpacing": 0.16
+     },
+     "doc": "How far a branch advances per step, in mm."
+    },
+    {
+     "key": "reach",
+     "kind": {
+      "type": "length"
+     },
+     "default": {
+      "timesSpacing": 3.2
+     },
+     "doc": "A point farther than this from every branch tip pulls nothing, in mm."
+    },
+    {
+     "key": "kill",
+     "kind": {
+      "type": "length"
+     },
+     "default": {
+      "timesSpacing": 0.4
+     },
+     "doc": "A point this close to a tip is reached and stops pulling, in mm."
+    },
+    {
+     "key": "jitter",
+     "kind": {
+      "type": "number",
+      "min": 0,
+      "max": 2
+     },
+     "default": 0.1,
+     "doc": "How much each step wobbles off its course, 0 (straight) up."
+    },
+    {
+     "key": "pen",
+     "kind": {
+      "type": "length"
+     },
+     "default": 0.15,
+     "doc": "The pen's width in mm: a trunk's extra passes sit this far apart, side by side (0 draws every branch as one line)."
+    },
+    {
+     "key": "trunk",
+     "kind": {
+      "type": "count",
+      "min": 0,
+      "max": 8
+     },
+     "default": 3,
+     "doc": "Most extra passes either side of a trunk: thick near the roots, a hairline at the twigs."
+    },
+    {
+     "key": "coverage",
+     "kind": {
+      "type": "number",
+      "min": 0,
+      "max": 1
+     },
+     "default": 1,
+     "doc": "How far each tree reaches toward its neighbours, 0 to 1: below 1 leaves gaps between them."
+    },
+    {
+     "key": "variation",
+     "kind": {
+      "type": "number",
+      "min": 0,
+      "max": 1
+     },
+     "default": 0.35,
+     "doc": "How much trees differ in size, 0 (alike) to 1 (saplings beside big crowns)."
+    },
+    {
+     "key": "max_steps",
+     "kind": {
+      "type": "count",
+      "min": 1,
+      "max": 1000000
+     },
+     "default": 20000,
+     "doc": "A cap on growth steps, so a pathological shape cannot hang."
+    }
+   ]
+  },
+  {
+   "name": "isoline-stack",
+   "about": "Tree crowns drawn as stacked contour tiers, lit from one side; `spacing` is a crown's diameter, and the crowns are the mask.",
+   "spacing": 8,
+   "angle": 0,
+   "ownMask": true,
+   "options": [
+    {
+     "key": "hatched",
+     "kind": {
+      "type": "flag"
+     },
+     "default": false,
+     "doc": "Shade the crowns with hatching on the side away from the light, for an engraved look. Changes the defaults: `light` 0.85, `hatch` 0.45 mm, `ticks` 0.65."
+    },
+    {
+     "key": "coverage",
+     "kind": {
+      "type": "number",
+      "min": 0,
+      "max": 1
+     },
+     "default": 0.6,
+     "doc": "How patchy the crowns are, 0 to 1: low leaves clearings, 1 fills everywhere the shape allows."
+    },
+    {
+     "key": "bubble",
+     "kind": {
+      "type": "length"
+     },
+     "default": {
+      "timesSpacing": 0.15
+     },
+     "doc": "The size of a leaf cluster on a crown's rim, in mm: smaller is lumpier."
+    },
+    {
+     "key": "slices",
+     "kind": {
+      "type": "count",
+      "min": 2,
+      "max": 18
+     },
+     "default": 9,
+     "doc": "Contour tiers through a crown: more draws more rings."
+    },
+    {
+     "key": "jitter",
+     "kind": {
+      "type": "number",
+      "min": 0,
+      "max": 2.5
+     },
+     "default": 1.1,
+     "doc": "How ragged the contours are: 0 smooth boughs, 1.1 crisp leaves, 1.5 and up deep serrations."
+    },
+    {
+     "key": "jitter_period",
+     "kind": {
+      "type": "number",
+      "min": 0.2,
+      "max": 4
+     },
+     "default": 0.68,
+     "doc": "The length of the contours' serration: lower is finer teeth, higher broad reaches."
+    },
+    {
+     "key": "ticks",
+     "kind": {
+      "type": "number",
+      "min": 0,
+      "max": 1.5
+     },
+     "default": null,
+     "doc": "Short slope ticks across the contours at bough clefts and in shade, 0 (none) to 1.5. Default 0.42; 0.65 when `hatched` or with a `hatch`."
+    },
+    {
+     "key": "elongation",
+     "kind": {
+      "type": "number",
+      "min": 0,
+      "max": 1
+     },
+     "default": 0.18,
+     "doc": "How drawn out the crowns are, as if wind-swept, 0 (round) to 1."
+    },
+    {
+     "key": "lobes",
+     "kind": {
+      "type": "number",
+      "min": 0,
+      "max": 2.5
+     },
+     "default": 1,
+     "doc": "How deep the clefts between boughs are, and how much a crown splits into sub-crowns."
+    },
+    {
+     "key": "light",
+     "kind": {
+      "type": "number",
+      "min": 0,
+      "max": 1
+     },
+     "default": null,
+     "doc": "How strong the sunlight is, 0 (none: every side alike) to 1: lit sides open up, shaded sides close in. Default 0.82; 0.85 when `hatched`."
+    },
+    {
+     "key": "light_angle",
+     "kind": {
+      "type": "number",
+      "min": -360,
+      "max": 360
+     },
+     "default": 225,
+     "doc": "Where the light comes from, in page degrees (0: from the right, 90: from below; 225, the map maker's top left)."
+    },
+    {
+     "key": "light_elevation",
+     "kind": {
+      "type": "number",
+      "min": 5,
+      "max": 90
+     },
+     "default": 35,
+     "doc": "How high the sun stands, in degrees: lower casts longer shade."
+    },
+    {
+     "key": "hatch",
+     "kind": {
+      "type": "length"
+     },
+     "default": null,
+     "doc": "The shading hatch's spacing in mm, 0 for none. Default 0; 0.45 when `hatched`."
+    }
+   ]
+  },
+  {
+   "name": "isoline-blobs",
+   "about": "Blobs a spacing apart, each filled with nested contour rings like a height map; the blobs are the mask.",
+   "spacing": 10,
+   "angle": 0,
+   "ownMask": true,
+   "options": [
+    {
+     "key": "contour",
+     "kind": {
+      "type": "length"
+     },
+     "default": {
+      "timesSpacing": 0.045
+     },
+     "doc": "The distance between nested contour lines inside a blob, in mm."
+    },
+    {
+     "key": "warp",
+     "kind": {
+      "type": "number",
+      "min": 0,
+      "max": 2
+     },
+     "default": 0.45,
+     "doc": "How much the field curls and drifts, 0 (round blobs) up."
+    },
+    {
+     "key": "warp_period",
+     "kind": {
+      "type": "number",
+      "min": 0.2,
+      "max": 4
+     },
+     "default": 1,
+     "doc": "The size of the warp's waves: lower is finer, higher broader."
+    },
+    {
+     "key": "threshold",
+     "kind": {
+      "type": "number",
+      "min": 0,
+      "max": 1
+     },
+     "default": 0.15,
+     "doc": "Where ink begins on the field: higher keeps only the tallest blobs, lower fuses them into larger masses."
+    }
+   ]
+  },
+  {
+   "name": "clouds",
+   "about": "Cumulus seen from above: puffs a spacing across heaped on bodies that rise and fall, shaded away from the sun; the clouds are the mask.",
+   "spacing": 5,
+   "angle": 0,
+   "ownMask": true,
+   "options": [
+    {
+     "key": "cell",
+     "kind": {
+      "type": "length"
+     },
+     "default": {
+      "timesSpacing": 8
+     },
+     "doc": "The size of the cloud masses and the clear sky between them, in mm."
+    },
+    {
+     "key": "coverage",
+     "kind": {
+      "type": "number",
+      "min": 0,
+      "max": 1
+     },
+     "default": 0.5,
+     "doc": "The share of the sky that is cloud."
+    },
+    {
+     "key": "warp",
+     "kind": {
+      "type": "number",
+      "min": 0,
+      "max": 1
+     },
+     "default": 0.25,
+     "doc": "How much the masses curl and drift, 0 (plain blobs) to 1."
+    },
+    {
+     "key": "puffs",
+     "kind": {
+      "type": "number",
+      "min": 0.3,
+      "max": 3
+     },
+     "default": 1,
+     "doc": "How closely the puffs crowd: about 0.6 few and round, 2 many and lumpy."
+    },
+    {
+     "key": "elongate",
+     "kind": {
+      "type": "number",
+      "min": 0,
+      "max": 1
+     },
+     "default": 0.35,
+     "doc": "How drawn out each puff is along the run of its cloud, 0 (round) to 1."
+    },
+    {
+     "key": "stretch",
+     "kind": {
+      "type": "number",
+      "min": 0,
+      "max": 0.95
+     },
+     "default": 0.25,
+     "doc": "How far the masses are drawn out along the wind (toward cloud streets)."
+    },
+    {
+     "key": "wind",
+     "kind": {
+      "type": "number",
+      "min": -360,
+      "max": 360
+     },
+     "default": 15,
+     "doc": "The wind's direction on the page, in degrees (0: left to right)."
+    },
+    {
+     "key": "light_angle",
+     "kind": {
+      "type": "number",
+      "min": -360,
+      "max": 360
+     },
+     "default": 225,
+     "doc": "Where the sun is, in page degrees (0: from the right, 90: from below; 225, the top left)."
+    },
+    {
+     "key": "light_elevation",
+     "kind": {
+      "type": "number",
+      "min": 5,
+      "max": 90
+     },
+     "default": 30,
+     "doc": "How high the sun stands, in degrees: lower shades more of each heap."
+    },
+    {
+     "key": "height",
+     "kind": {
+      "type": "number",
+      "min": 0,
+      "max": 2
+     },
+     "default": 1,
+     "doc": "How tall the clouds heap up against their width: 1 a cumulus, 0.3 a flat sheet."
+    },
+    {
+     "key": "shade",
+     "kind": {
+      "type": "number",
+      "min": 0,
+      "max": 1
+     },
+     "default": 0.45,
+     "doc": "How much of the cloud is shaded, 0 (none) to 1."
+    },
+    {
+     "key": "hatch",
+     "kind": {
+      "type": "length"
+     },
+     "default": 0.45,
+     "doc": "The shade's spacing at its deepest, between dots or lines, in mm."
+    },
+    {
+     "key": "shading",
+     "kind": {
+      "type": "choice",
+      "values": [
+       "dots",
+       "lines"
+      ]
+     },
+     "default": "dots",
+     "doc": "Shade in stippled `dots` (denser where deeper) or hatched `lines`."
+    },
+    {
+     "key": "dot",
+     "kind": {
+      "type": "length"
+     },
+     "default": 0.12,
+     "doc": "Each shading dot's length, in mm (a pen's dot is a short stroke)."
+    }
+   ]
+  },
+  {
+   "name": "solid",
+   "about": "A flat fill with no pen strokes: the host paints the area (an SVG fill, a screen preview); plotters draw nothing. Its mask is the whole area.",
+   "spacing": 1,
+   "angle": 0,
+   "ownMask": false,
+   "options": []
+  }
+ ],
+ "groups": [
+  {
+   "id": "water",
+   "title": "Water",
+   "about": "Seas, lakes, rivers and wet ground."
+  },
+  {
+   "id": "vegetation",
+   "title": "Vegetation",
+   "about": "Grass, woods, crops and gardens, in the symbols maps use for them."
+  },
+  {
+   "id": "ground",
+   "title": "Ground and soil",
+   "about": "Sand, soil, gravel and bare earth."
+  },
+  {
+   "id": "rock",
+   "title": "Rock",
+   "about": "Rock in the conventions of geological maps: the symbols a geologist reads at a glance."
+  },
+  {
+   "id": "built",
+   "title": "Built",
+   "about": "Paving, brickwork, tiles and the textures of built surfaces."
+  },
+  {
+   "id": "sky",
+   "title": "Sky",
+   "about": "Clouds seen from above, and their shadows."
+  },
+  {
+   "id": "plain",
+   "title": "Plain hatches",
+   "about": "Lines, grids, dots and rings: abstract hatches for anything."
+  }
+ ],
+ "materials": [
+  {
+   "name": "waves",
+   "group": "water",
+   "about": "Even sine waves: the classic water fill.",
+   "spacing": 1,
+   "alias": true,
+   "layers": []
+  },
+  {
+   "name": "scallops",
+   "group": "water",
+   "about": "Rows of scallops, arcs dipping between sharp points: a decorative sea.",
+   "spacing": 1,
+   "alias": false,
+   "layers": [
+    {
+     "generator": "waves",
+     "set": {
+      "shape": "scallop"
+     }
+    }
+   ]
+  },
+  {
+   "name": "curls",
+   "group": "water",
+   "about": "Waves with curling crests, like an old chart's sea.",
+   "spacing": 1.2,
+   "alias": false,
+   "layers": [
+    {
+     "generator": "waves",
+     "set": {
+      "shape": "curl"
+     }
+    }
+   ]
+  },
+  {
+   "name": "currents",
+   "group": "water",
+   "about": "Long swell lines that bunch and spread without crossing, broken into strokes: open sea.",
+   "spacing": 0.8,
+   "alias": false,
+   "layers": [
+    {
+     "generator": "waves",
+     "set": {
+      "shape": "flow"
+     }
+    }
+   ]
+  },
+  {
+   "name": "wave-net",
+   "group": "water",
+   "about": "Two families of waves crossing into a net.",
+   "spacing": 1.2,
+   "alias": false,
+   "layers": [
+    {
+     "generator": "waves",
+     "set": {
+      "cross": 2
+     }
+    }
+   ]
+  },
+  {
+   "name": "swells",
+   "group": "water",
+   "about": "Overlapping swells, each a bundle of curves: a lively sea.",
+   "spacing": 0.5,
+   "alias": true,
+   "layers": []
+  },
+  {
+   "name": "eddies",
+   "group": "water",
+   "about": "Flowing lines round small whirls.",
+   "spacing": 0.8,
+   "alias": true,
+   "layers": []
+  },
+  {
+   "name": "ripples",
+   "group": "water",
+   "about": "Short broken ripple lines.",
+   "spacing": 1,
+   "alias": true,
+   "layers": []
+  },
+  {
+   "name": "shore-lines",
+   "group": "water",
+   "about": "Engraved water lines, close along the shore and thinning out to open water.",
+   "spacing": 0.6,
+   "alias": false,
+   "layers": [
+    {
+     "generator": "hatch",
+     "set": {
+      "density": "edge",
+      "contrast": 1,
+      "feature": {
+       "timesSpacing": 12
+      },
+      "inset": 0.1
+     }
+    }
+   ]
+  },
+  {
+   "name": "shallows",
+   "group": "water",
+   "about": "Stipple dense along the shore, fading out to open water.",
+   "spacing": 0.55,
+   "alias": false,
+   "layers": [
+    {
+     "generator": "scatter",
+     "set": {
+      "mark": {
+       "timesSpacing": 0.3
+      },
+      "density": "edge",
+      "contrast": 0.95,
+      "feature": {
+       "timesSpacing": 16
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "marsh",
+   "group": "water",
+   "about": "The marsh symbol: tufts of reeds over short water lines.",
+   "spacing": 3.2,
+   "alias": false,
+   "layers": [
+    {
+     "generator": "scatter",
+     "set": {
+      "motif": "reed",
+      "rotate": "upright",
+      "mark": {
+       "timesSpacing": 0.5
+      },
+      "vary": 0.3,
+      "jitter": 0.6
+     }
+    }
+   ]
+  },
+  {
+   "name": "grass",
+   "group": "vegetation",
+   "about": "Scattered grass tufts.",
+   "spacing": 3.2,
+   "alias": false,
+   "layers": [
+    {
+     "generator": "scatter",
+     "set": {
+      "motif": "tuft",
+      "rotate": "upright",
+      "mark": {
+       "timesSpacing": 0.6
+      },
+      "vary": 0.4,
+      "jitter": 0.7
+     }
+    }
+   ]
+  },
+  {
+   "name": "meadow",
+   "group": "vegetation",
+   "about": "Grass tufts in patches with seed dots between: rough grassland.",
+   "spacing": 3,
+   "alias": false,
+   "layers": [
+    {
+     "generator": "scatter",
+     "set": {
+      "motif": "tuft",
+      "rotate": "upright",
+      "mark": {
+       "timesSpacing": 0.65
+      },
+      "vary": 0.4,
+      "jitter": 0.6,
+      "density": "noise",
+      "contrast": 0.85,
+      "feature": {
+       "timesSpacing": 5
+      }
+     }
+    },
+    {
+     "generator": "scatter",
+     "set": {
+      "spacing": {
+       "timesSpacing": 0.45
+      },
+      "mark": {
+       "timesSpacing": 0.06
+      },
+      "density": "noise",
+      "contrast": 0.7,
+      "feature": {
+       "timesSpacing": 4
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "scrub",
+   "group": "vegetation",
+   "about": "Low bushes scattered close: heath, scrub, brush.",
+   "spacing": 1.6,
+   "alias": false,
+   "layers": [
+    {
+     "generator": "scatter",
+     "set": {
+      "motif": "shrub",
+      "rotate": "upright",
+      "mark": {
+       "timesSpacing": 0.62
+      },
+      "vary": 0.4,
+      "jitter": 0.6
+     }
+    }
+   ]
+  },
+  {
+   "name": "woodland",
+   "group": "vegetation",
+   "about": "The topographic woodland symbol: broadleaf trees standing apart.",
+   "spacing": 2.6,
+   "alias": false,
+   "layers": [
+    {
+     "generator": "scatter",
+     "set": {
+      "motif": "tree",
+      "rotate": "upright",
+      "mark": {
+       "timesSpacing": 0.75
+      },
+      "vary": 0.35,
+      "jitter": 0.5
+     }
+    }
+   ]
+  },
+  {
+   "name": "forest",
+   "group": "vegetation",
+   "about": "Broadleaf trees close enough to touch: dense forest.",
+   "spacing": 2,
+   "alias": false,
+   "layers": [
+    {
+     "generator": "scatter",
+     "set": {
+      "motif": "tree",
+      "rotate": "upright",
+      "mark": {
+       "timesSpacing": 0.95
+      },
+      "vary": 0.4,
+      "jitter": 0.5,
+      "overlap": true
+     }
+    }
+   ]
+  },
+  {
+   "name": "conifers",
+   "group": "vegetation",
+   "about": "The conifer symbol: narrow firs standing apart.",
+   "spacing": 2.4,
+   "alias": false,
+   "layers": [
+    {
+     "generator": "scatter",
+     "set": {
+      "motif": "conifer",
+      "rotate": "upright",
+      "mark": {
+       "timesSpacing": 0.8
+      },
+      "vary": 0.35,
+      "jitter": 0.5
+     }
+    }
+   ]
+  },
+  {
+   "name": "orchard",
+   "group": "vegetation",
+   "about": "Trees planted in rows.",
+   "spacing": 3.2,
+   "alias": false,
+   "layers": [
+    {
+     "generator": "scatter",
+     "set": {
+      "motif": "tree",
+      "arrange": "rows",
+      "rotate": "upright",
+      "mark": {
+       "timesSpacing": 0.55
+      },
+      "jitter": 0.15
+     }
+    }
+   ]
+  },
+  {
+   "name": "vineyard",
+   "group": "vegetation",
+   "about": "Vines trained in close rows.",
+   "spacing": 1.6,
+   "alias": false,
+   "layers": [
+    {
+     "generator": "scatter",
+     "set": {
+      "motif": "vine",
+      "arrange": "rows",
+      "rotate": "upright",
+      "mark": {
+       "timesSpacing": 0.62
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "fields",
+   "group": "vegetation",
+   "about": "Furrows: long broken rows, as ploughed land or crops are drawn.",
+   "spacing": 1,
+   "alias": false,
+   "layers": [
+    {
+     "generator": "hatch",
+     "set": {
+      "dash": {
+       "timesSpacing": [
+        5,
+        0.6
+       ]
+      },
+      "dash_jitter": 0.5,
+      "wobble": {
+       "timesSpacing": 0.12
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "garden",
+   "group": "vegetation",
+   "about": "Flowers scattered over sparse grass.",
+   "spacing": 3,
+   "alias": false,
+   "layers": [
+    {
+     "generator": "scatter",
+     "set": {
+      "motif": "flower",
+      "rotate": "random",
+      "mark": {
+       "timesSpacing": 0.42
+      },
+      "vary": 0.4,
+      "jitter": 0.6
+     }
+    },
+    {
+     "generator": "scatter",
+     "set": {
+      "spacing": {
+       "timesSpacing": 0.8
+      },
+      "motif": "tuft",
+      "rotate": "upright",
+      "mark": {
+       "timesSpacing": 0.3
+      },
+      "vary": 0.4
+     }
+    }
+   ]
+  },
+  {
+   "name": "sprouts",
+   "group": "vegetation",
+   "about": "Seedlings, two leaves each: young crops, nurseries.",
+   "spacing": 2,
+   "alias": false,
+   "layers": [
+    {
+     "generator": "scatter",
+     "set": {
+      "motif": "sprout",
+      "rotate": "upright",
+      "mark": {
+       "timesSpacing": 0.45
+      },
+      "vary": 0.3,
+      "jitter": 0.5
+     }
+    }
+   ]
+  },
+  {
+   "name": "leaves",
+   "group": "vegetation",
+   "about": "Fallen leaves turned every way: leaf litter, a woodland floor.",
+   "spacing": 1.8,
+   "alias": false,
+   "layers": [
+    {
+     "generator": "scatter",
+     "set": {
+      "motif": "leaf",
+      "mark": {
+       "timesSpacing": 0.55
+      },
+      "vary": 0.4,
+      "jitter": 0.5
+     }
+    }
+   ]
+  },
+  {
+   "name": "isoline-stack",
+   "group": "vegetation",
+   "about": "Tree crowns from above, as stacked contour slices with light and shade.",
+   "spacing": 8,
+   "alias": true,
+   "layers": []
+  },
+  {
+   "name": "canopy",
+   "group": "vegetation",
+   "about": "Lobed crowns packed together: a canopy seen from above.",
+   "spacing": 3,
+   "alias": true,
+   "layers": []
+  },
+  {
+   "name": "doodle-trees",
+   "group": "vegetation",
+   "about": "Loose doodled crowns with a shade crescent.",
+   "spacing": 4,
+   "alias": true,
+   "layers": []
+  },
+  {
+   "name": "twigs",
+   "group": "vegetation",
+   "about": "Small branching twigs.",
+   "spacing": 2.5,
+   "alias": true,
+   "layers": []
+  },
+  {
+   "name": "growth",
+   "group": "vegetation",
+   "about": "Branches grown toward the light: roots, veins, river deltas.",
+   "spacing": 1,
+   "alias": true,
+   "layers": []
+  },
+  {
+   "name": "sand",
+   "group": "ground",
+   "about": "Fine even stipple.",
+   "spacing": 0.5,
+   "alias": false,
+   "layers": [
+    {
+     "generator": "scatter",
+     "set": {
+      "mark": {
+       "timesSpacing": 0.28
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "dunes",
+   "group": "ground",
+   "about": "Stipple in drifts, dense and sparse: dunes, beaches, deserts.",
+   "spacing": 0.5,
+   "alias": false,
+   "layers": [
+    {
+     "generator": "scatter",
+     "set": {
+      "mark": {
+       "timesSpacing": 0.3
+      },
+      "density": "noise",
+      "contrast": 0.92,
+      "feature": {
+       "timesSpacing": 24
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "soil",
+   "group": "ground",
+   "about": "Grains and short ticks: bare soil, earth.",
+   "spacing": 1.2,
+   "alias": false,
+   "layers": [
+    {
+     "generator": "scatter",
+     "set": {
+      "spacing": {
+       "timesSpacing": 0.55
+      },
+      "mark": {
+       "timesSpacing": 0.12
+      }
+     }
+    },
+    {
+     "generator": "scatter",
+     "set": {
+      "spacing": {
+       "timesSpacing": 1.3
+      },
+      "motif": "tick",
+      "mark": {
+       "timesSpacing": 0.4
+      },
+      "vary": 0.5
+     }
+    }
+   ]
+  },
+  {
+   "name": "gravel",
+   "group": "ground",
+   "about": "Small rounded stones packed together.",
+   "spacing": 1.6,
+   "alias": false,
+   "layers": [
+    {
+     "generator": "cells",
+     "set": {}
+    }
+   ]
+  },
+  {
+   "name": "pebbles",
+   "group": "ground",
+   "about": "Pebbles lying apart, each its own outline.",
+   "spacing": 2,
+   "alias": false,
+   "layers": [
+    {
+     "generator": "scatter",
+     "set": {
+      "motif": "pebble",
+      "mark": {
+       "timesSpacing": 0.6
+      },
+      "vary": 0.5,
+      "jitter": 0.5,
+      "edge": "inside"
+     }
+    }
+   ]
+  },
+  {
+   "name": "boulders",
+   "group": "ground",
+   "about": "Rocks of every size, big boulders among small stones.",
+   "spacing": 2.4,
+   "alias": false,
+   "layers": [
+    {
+     "generator": "cells",
+     "set": {
+      "vary": 1
+     }
+    }
+   ]
+  },
+  {
+   "name": "scree",
+   "group": "ground",
+   "about": "Angular fragments and grit: scree, talus, broken rock.",
+   "spacing": 1.6,
+   "alias": false,
+   "layers": [
+    {
+     "generator": "scatter",
+     "set": {
+      "motif": "shard",
+      "mark": {
+       "timesSpacing": 0.6
+      },
+      "vary": 0.6,
+      "jitter": 0.5
+     }
+    },
+    {
+     "generator": "scatter",
+     "set": {
+      "spacing": {
+       "timesSpacing": 0.45
+      },
+      "mark": {
+       "timesSpacing": 0.1
+      },
+      "density": "noise",
+      "contrast": 0.6
+     }
+    }
+   ]
+  },
+  {
+   "name": "cracked-earth",
+   "group": "ground",
+   "about": "A net of cracks seen from above: dried mud, salt flats.",
+   "spacing": 3,
+   "alias": false,
+   "layers": [
+    {
+     "generator": "cells",
+     "set": {
+      "style": "net",
+      "gap": {
+       "timesSpacing": 0.12
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "dry-mud",
+   "group": "ground",
+   "about": "Mud dried into rounded plates with wide cracks between.",
+   "spacing": 3.5,
+   "alias": false,
+   "layers": [
+    {
+     "generator": "cells",
+     "set": {
+      "style": "cracks"
+     }
+    }
+   ]
+  },
+  {
+   "name": "clay",
+   "group": "ground",
+   "about": "Long dashes in uneven rows: clay, alluvium.",
+   "spacing": 0.8,
+   "alias": false,
+   "layers": [
+    {
+     "generator": "hatch",
+     "set": {
+      "dash": {
+       "timesSpacing": [
+        2.6,
+        0.5
+       ]
+      },
+      "dash_jitter": 0.5,
+      "vary": 0.3
+     }
+    }
+   ]
+  },
+  {
+   "name": "silt",
+   "group": "ground",
+   "about": "Short fine dashes: silt, loess.",
+   "spacing": 0.7,
+   "alias": false,
+   "layers": [
+    {
+     "generator": "hatch",
+     "set": {
+      "dash": {
+       "timesSpacing": [
+        0.7,
+        0.55
+       ]
+      },
+      "dash_jitter": 0.7
+     }
+    }
+   ]
+  },
+  {
+   "name": "peat",
+   "group": "ground",
+   "about": "Broken wavering dashes: peat, bog, organic soil.",
+   "spacing": 1,
+   "alias": false,
+   "layers": [
+    {
+     "generator": "hatch",
+     "set": {
+      "dash": {
+       "timesSpacing": [
+        1.4,
+        0.8
+       ]
+      },
+      "dash_jitter": 0.8,
+      "wobble": {
+       "timesSpacing": 0.3
+      },
+      "vary": 0.5
+     }
+    }
+   ]
+  },
+  {
+   "name": "layered-soil",
+   "group": "ground",
+   "about": "Uneven bands that bend together: a soil profile, sediment in section.",
+   "spacing": 0.9,
+   "alias": false,
+   "layers": [
+    {
+     "generator": "hatch",
+     "set": {
+      "vary": 1,
+      "wobble": {
+       "timesSpacing": 0.35
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "chalky-soil",
+   "group": "ground",
+   "about": "A net of cells with grains inside: chalky or stony soil.",
+   "spacing": 3.5,
+   "alias": false,
+   "layers": [
+    {
+     "generator": "cells",
+     "set": {
+      "style": "net",
+      "inner": "dots"
+     }
+    }
+   ]
+  },
+  {
+   "name": "sandstone",
+   "group": "rock",
+   "about": "Even dots: sandstone, in the geologist's convention.",
+   "spacing": 1,
+   "alias": false,
+   "layers": [
+    {
+     "generator": "scatter",
+     "set": {
+      "arrange": "hex",
+      "jitter": 0.5,
+      "mark": {
+       "timesSpacing": 0.35
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "siltstone",
+   "group": "rock",
+   "about": "Rows of dashes with dots between: siltstone.",
+   "spacing": 1.4,
+   "alias": false,
+   "layers": [
+    {
+     "generator": "hatch",
+     "set": {
+      "dash": {
+       "timesSpacing": [
+        1,
+        1
+       ]
+      },
+      "dash_jitter": 0.3
+     }
+    },
+    {
+     "generator": "scatter",
+     "set": {
+      "spacing": {
+       "timesSpacing": 0.7
+      },
+      "mark": {
+       "timesSpacing": 0.12
+      },
+      "arrange": "rows",
+      "jitter": 0.6
+     }
+    }
+   ]
+  },
+  {
+   "name": "shale",
+   "group": "rock",
+   "about": "Rows of dashes: shale, mudstone.",
+   "spacing": 0.9,
+   "alias": false,
+   "layers": [
+    {
+     "generator": "hatch",
+     "set": {
+      "dash": {
+       "timesSpacing": [
+        2,
+        0.7
+       ]
+      },
+      "dash_jitter": 0.45
+     }
+    }
+   ]
+  },
+  {
+   "name": "limestone",
+   "group": "rock",
+   "about": "Blocks in brick bond: limestone.",
+   "spacing": 1.4,
+   "alias": false,
+   "layers": [
+    {
+     "generator": "tile",
+     "set": {
+      "motif": "brick"
+     }
+    }
+   ]
+  },
+  {
+   "name": "chalk",
+   "group": "rock",
+   "about": "Wide blocks with fine grains: chalk.",
+   "spacing": 2,
+   "alias": false,
+   "layers": [
+    {
+     "generator": "tile",
+     "set": {
+      "motif": "brick"
+     }
+    },
+    {
+     "generator": "scatter",
+     "set": {
+      "spacing": {
+       "timesSpacing": 0.4
+      },
+      "mark": {
+       "timesSpacing": 0.06
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "conglomerate",
+   "group": "rock",
+   "about": "Rounded pebbles of every size: conglomerate.",
+   "spacing": 1.8,
+   "alias": false,
+   "layers": [
+    {
+     "generator": "scatter",
+     "set": {
+      "motif": "ring",
+      "mark": {
+       "timesSpacing": 0.55
+      },
+      "vary": 0.7,
+      "jitter": 0.6,
+      "edge": "inside"
+     }
+    }
+   ]
+  },
+  {
+   "name": "breccia",
+   "group": "rock",
+   "about": "Angular fragments: breccia.",
+   "spacing": 1.8,
+   "alias": false,
+   "layers": [
+    {
+     "generator": "scatter",
+     "set": {
+      "motif": "shard",
+      "mark": {
+       "timesSpacing": 0.65
+      },
+      "vary": 0.6,
+      "jitter": 0.6
+     }
+    }
+   ]
+  },
+  {
+   "name": "coal",
+   "group": "rock",
+   "about": "Inked solid by a close crosshatch: coal seams.",
+   "spacing": 0.35,
+   "alias": false,
+   "layers": [
+    {
+     "generator": "hatch",
+     "set": {
+      "cross": 2
+     }
+    }
+   ]
+  },
+  {
+   "name": "granite",
+   "group": "rock",
+   "about": "Crosses and ticks scattered every way: granite and other intrusive rock.",
+   "spacing": 1.6,
+   "alias": false,
+   "layers": [
+    {
+     "generator": "scatter",
+     "set": {
+      "motif": "plus",
+      "mark": {
+       "timesSpacing": 0.42
+      },
+      "jitter": 0.5
+     }
+    },
+    {
+     "generator": "scatter",
+     "set": {
+      "spacing": {
+       "timesSpacing": 1.3
+      },
+      "motif": "tick",
+      "mark": {
+       "timesSpacing": 0.32
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "basalt",
+   "group": "rock",
+   "about": "Vees in rows: basalt and other volcanic rock.",
+   "spacing": 1.6,
+   "alias": false,
+   "layers": [
+    {
+     "generator": "scatter",
+     "set": {
+      "motif": "vee",
+      "arrange": "hex",
+      "rotate": "aligned",
+      "mark": {
+       "timesSpacing": 0.45
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "tuff",
+   "group": "rock",
+   "about": "Vees every way with grains between: tuff, volcanic ash.",
+   "spacing": 1.6,
+   "alias": false,
+   "layers": [
+    {
+     "generator": "scatter",
+     "set": {
+      "motif": "vee",
+      "mark": {
+       "timesSpacing": 0.4
+      },
+      "jitter": 0.5
+     }
+    },
+    {
+     "generator": "scatter",
+     "set": {
+      "spacing": {
+       "timesSpacing": 0.5
+      },
+      "mark": {
+       "timesSpacing": 0.08
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "gneiss",
+   "group": "rock",
+   "about": "Long wavering broken bands: gneiss.",
+   "spacing": 1.1,
+   "alias": false,
+   "layers": [
+    {
+     "generator": "hatch",
+     "set": {
+      "wobble": {
+       "timesSpacing": 0.45
+      },
+      "dash": {
+       "timesSpacing": [
+        3,
+        0.6
+       ]
+      },
+      "dash_jitter": 0.6
+     }
+    }
+   ]
+  },
+  {
+   "name": "schist",
+   "group": "rock",
+   "about": "Close zigzag lines: schist.",
+   "spacing": 0.9,
+   "alias": false,
+   "layers": [
+    {
+     "generator": "waves",
+     "set": {
+      "shape": "zigzag"
+     }
+    }
+   ]
+  },
+  {
+   "name": "salt",
+   "group": "rock",
+   "about": "A square crosshatch: rock salt, evaporites.",
+   "spacing": 1.6,
+   "alias": false,
+   "layers": [
+    {
+     "generator": "hatch",
+     "set": {
+      "cross": 2
+     }
+    }
+   ]
+  },
+  {
+   "name": "marble",
+   "group": "rock",
+   "about": "Veined marble.",
+   "spacing": 2,
+   "alias": true,
+   "layers": []
+  },
+  {
+   "name": "brick",
+   "group": "built",
+   "about": "Brickwork in running bond.",
+   "spacing": 1,
+   "alias": false,
+   "layers": [
+    {
+     "generator": "tile",
+     "set": {
+      "motif": "brick"
+     }
+    }
+   ]
+  },
+  {
+   "name": "herringbone",
+   "group": "built",
+   "about": "Pavers in herringbone.",
+   "spacing": 1.2,
+   "alias": false,
+   "layers": [
+    {
+     "generator": "tile",
+     "set": {
+      "motif": "herringbone"
+     }
+    }
+   ]
+  },
+  {
+   "name": "basket",
+   "group": "built",
+   "about": "Pavers in basket weave.",
+   "spacing": 1.2,
+   "alias": false,
+   "layers": [
+    {
+     "generator": "tile",
+     "set": {
+      "motif": "basket"
+     }
+    }
+   ]
+  },
+  {
+   "name": "parquet",
+   "group": "built",
+   "about": "Parquet blocks of boards, alternating.",
+   "spacing": 1.2,
+   "alias": false,
+   "layers": [
+    {
+     "generator": "tile",
+     "set": {
+      "motif": "parquet"
+     }
+    }
+   ]
+  },
+  {
+   "name": "setts",
+   "group": "built",
+   "about": "Small stone setts in staggered courses: cobbled streets.",
+   "spacing": 1.2,
+   "alias": false,
+   "layers": [
+    {
+     "generator": "tile",
+     "set": {
+      "motif": "setts"
+     }
+    }
+   ]
+  },
+  {
+   "name": "flagstones",
+   "group": "built",
+   "about": "Irregular rectangular paving.",
+   "spacing": 2,
+   "alias": false,
+   "layers": [
+    {
+     "generator": "tile",
+     "set": {
+      "motif": "flagstones"
+     }
+    }
+   ]
+  },
+  {
+   "name": "tiles",
+   "group": "built",
+   "about": "Square tiles with a joint.",
+   "spacing": 1.6,
+   "alias": false,
+   "layers": [
+    {
+     "generator": "tile",
+     "set": {
+      "motif": "tiles"
+     }
+    }
+   ]
+  },
+  {
+   "name": "hexagons",
+   "group": "built",
+   "about": "Hexagonal paving.",
+   "spacing": 1.6,
+   "alias": false,
+   "layers": [
+    {
+     "generator": "tile",
+     "set": {
+      "motif": "hexagons"
+     }
+    }
+   ]
+  },
+  {
+   "name": "stairs",
+   "group": "built",
+   "about": "Steps: treads and risers.",
+   "spacing": 1,
+   "alias": false,
+   "layers": [
+    {
+     "generator": "tile",
+     "set": {
+      "motif": "stairs"
+     }
+    }
+   ]
+  },
+  {
+   "name": "grate",
+   "group": "built",
+   "about": "A grating of bars.",
+   "spacing": 1,
+   "alias": false,
+   "layers": [
+    {
+     "generator": "tile",
+     "set": {
+      "motif": "grate"
+     }
+    }
+   ]
+  },
+  {
+   "name": "chess",
+   "group": "built",
+   "about": "A chessboard, alternate squares hatched.",
+   "spacing": 1.2,
+   "alias": false,
+   "layers": [
+    {
+     "generator": "tile",
+     "set": {
+      "motif": "chess"
+     }
+    }
+   ]
+  },
+  {
+   "name": "cobbles",
+   "group": "built",
+   "about": "Rounded cobbles laid close.",
+   "spacing": 1.4,
+   "alias": false,
+   "layers": [
+    {
+     "generator": "cells",
+     "set": {
+      "round": 0.9,
+      "gap": {
+       "timesSpacing": 0.12
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "terrazzo",
+   "group": "built",
+   "about": "Stone chips of every size, some hatched, some inked.",
+   "spacing": 2.2,
+   "alias": false,
+   "layers": [
+    {
+     "generator": "cells",
+     "set": {
+      "vary": 0.9,
+      "inner": "mixed",
+      "gap": {
+       "timesSpacing": 0.3
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "cemetery",
+   "group": "built",
+   "about": "The cemetery symbol: crosses in rows.",
+   "spacing": 2.4,
+   "alias": false,
+   "layers": [
+    {
+     "generator": "scatter",
+     "set": {
+      "motif": "grave",
+      "arrange": "rows",
+      "rotate": "upright",
+      "mark": {
+       "timesSpacing": 0.55
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "wood",
+   "group": "built",
+   "about": "Wood grain flowing round knots: planks, boards, timber.",
+   "spacing": 1,
+   "alias": true,
+   "layers": []
+  },
+  {
+   "name": "clouds",
+   "group": "sky",
+   "about": "Cumulus seen from above, shaded where they turn from the sun.",
+   "spacing": 5,
+   "alias": true,
+   "layers": []
+  },
+  {
+   "name": "lines",
+   "group": "plain",
+   "about": "Parallel lines: the plain hatch.",
+   "spacing": 0.6,
+   "alias": false,
+   "layers": [
+    {
+     "generator": "hatch",
+     "set": {}
+    }
+   ]
+  },
+  {
+   "name": "crosshatch",
+   "group": "plain",
+   "about": "Two families of lines crossing at right angles.",
+   "spacing": 0.8,
+   "alias": false,
+   "layers": [
+    {
+     "generator": "hatch",
+     "set": {
+      "cross": 2
+     }
+    }
+   ]
+  },
+  {
+   "name": "triad",
+   "group": "plain",
+   "about": "Three families of lines at 60°: a triangular grid.",
+   "spacing": 1,
+   "alias": false,
+   "layers": [
+    {
+     "generator": "hatch",
+     "set": {
+      "cross": 3
+     }
+    }
+   ]
+  },
+  {
+   "name": "serpentine",
+   "group": "plain",
+   "about": "Parallel lines joined end to end into one long stroke: the fastest hatch to plot.",
+   "spacing": 0.6,
+   "alias": false,
+   "layers": [
+    {
+     "generator": "hatch",
+     "set": {
+      "join": true,
+      "angle": 45
+     }
+    }
+   ]
+  },
+  {
+   "name": "dashes",
+   "group": "plain",
+   "about": "Rows of even dashes.",
+   "spacing": 0.8,
+   "alias": false,
+   "layers": [
+    {
+     "generator": "hatch",
+     "set": {
+      "dash": {
+       "timesSpacing": [
+        1.6,
+        0.8
+       ]
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "dots",
+   "group": "plain",
+   "about": "Dots on a hexagonal lattice.",
+   "spacing": 0.6,
+   "alias": false,
+   "layers": [
+    {
+     "generator": "scatter",
+     "set": {
+      "arrange": "hex",
+      "mark": {
+       "timesSpacing": 0.25
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "stipple",
+   "group": "plain",
+   "about": "Dots placed evenly but irregularly, like a stipple by hand.",
+   "spacing": 0.55,
+   "alias": false,
+   "layers": [
+    {
+     "generator": "scatter",
+     "set": {
+      "mark": {
+       "timesSpacing": 0.3
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "concentric",
+   "group": "plain",
+   "about": "Rings inward from the outline; holes stop them.",
+   "spacing": 0.6,
+   "alias": false,
+   "layers": [
+    {
+     "generator": "rings",
+     "set": {}
+    }
+   ]
+  },
+  {
+   "name": "offsets",
+   "group": "plain",
+   "about": "Rings from every edge, holes included, so networks such as streets fill evenly.",
+   "spacing": 0.6,
+   "alias": false,
+   "layers": [
+    {
+     "generator": "rings",
+     "set": {
+      "from": "edges"
+     }
+    }
+   ]
+  },
+  {
+   "name": "spiral",
+   "group": "plain",
+   "about": "One continuous spiral inward.",
+   "spacing": 0.6,
+   "alias": false,
+   "layers": [
+    {
+     "generator": "rings",
+     "set": {
+      "spiral": true
+     }
+    }
+   ]
+  },
+  {
+   "name": "scribble",
+   "group": "plain",
+   "about": "Loose hand scribble-hatching.",
+   "spacing": 1,
+   "alias": true,
+   "layers": []
+  },
+  {
+   "name": "hilbert",
+   "group": "plain",
+   "about": "A Hilbert curve: one unbroken space-filling line.",
+   "spacing": 1,
+   "alias": true,
+   "layers": []
+  },
+  {
+   "name": "truchet",
+   "group": "plain",
+   "about": "Truchet arcs: a random maze of curves.",
+   "spacing": 2,
+   "alias": true,
+   "layers": []
+  },
+  {
+   "name": "honeycomb",
+   "group": "plain",
+   "about": "Hexagonal cells.",
+   "spacing": 2,
+   "alias": true,
+   "layers": []
+  },
+  {
+   "name": "scales",
+   "group": "plain",
+   "about": "Overlapping scales.",
+   "spacing": 1.5,
+   "alias": true,
+   "layers": []
+  },
+  {
+   "name": "sunburst",
+   "group": "plain",
+   "about": "Rays from a centre.",
+   "spacing": 1,
+   "alias": true,
+   "layers": []
+  },
+  {
+   "name": "isoline-blobs",
+   "group": "plain",
+   "about": "Contoured blobs, like a topographic map of islands.",
+   "spacing": 10,
+   "alias": true,
+   "layers": []
+  },
+  {
+   "name": "solid",
+   "group": "plain",
+   "about": "Solid ink.",
+   "spacing": 1,
+   "alias": true,
+   "layers": []
+  }
+ ]
+}

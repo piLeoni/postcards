@@ -1,927 +1,1727 @@
 [
  {
-  "name": "lines",
-  "file": "lines",
-  "group": "lines",
-  "groupTitle": "Lines and hatches",
-  "options": {}
- },
- {
-  "name": "zigzag",
-  "file": "zigzag",
-  "group": "lines",
-  "groupTitle": "Lines and hatches",
-  "options": {}
- },
- {
-  "name": "rectilinear",
-  "file": "rectilinear",
-  "group": "lines",
-  "groupTitle": "Lines and hatches",
-  "options": {}
- },
- {
-  "name": "grid",
-  "file": "grid",
-  "group": "lines",
-  "groupTitle": "Lines and hatches",
-  "options": {}
- },
- {
-  "name": "triangles",
-  "file": "triangles",
-  "group": "lines",
-  "groupTitle": "Lines and hatches",
-  "options": {
-   "spacing": "1mm"
-  }
- },
- {
-  "name": "fill",
-  "file": "fill",
-  "group": "lines",
-  "groupTitle": "Lines and hatches",
-  "options": {
-   "spacing": "0.8mm"
-  }
- },
- {
-  "name": "concentric",
-  "file": "concentric",
-  "group": "lines",
-  "groupTitle": "Lines and hatches",
-  "options": {}
- },
- {
-  "name": "offsets",
-  "file": "offsets",
-  "group": "lines",
-  "groupTitle": "Lines and hatches",
-  "options": {}
- },
- {
-  "name": "spiral",
-  "file": "spiral",
-  "group": "lines",
-  "groupTitle": "Lines and hatches",
-  "options": {
-   "centre": "[x, y]"
-  }
- },
- {
-  "name": "sunburst",
-  "file": "sunburst",
-  "group": "lines",
-  "groupTitle": "Lines and hatches",
-  "options": {
-   "centre": "[x, y]"
-  }
- },
- {
-  "name": "pat",
-  "file": "pat",
-  "group": "lines",
-  "groupTitle": "Lines and hatches",
-  "options": {
-   "name": "BRICK"
-  }
- },
- {
-  "name": "dots",
-  "file": "dots",
-  "group": "dots",
-  "groupTitle": "Dots and stipple",
-  "options": {}
- },
- {
-  "name": "stipple",
-  "file": "stipple",
-  "group": "dots",
-  "groupTitle": "Dots and stipple",
-  "options": {}
- },
- {
-  "name": "stipple-noise",
-  "file": "stipple-noise",
-  "group": "dots",
-  "groupTitle": "Dots and stipple",
-  "options": {}
- },
- {
-  "name": "stipple-edge",
-  "file": "stipple-edge",
-  "group": "dots",
-  "groupTitle": "Dots and stipple",
-  "options": {}
- },
- {
-  "name": "scribble",
-  "file": "scribble",
-  "group": "dots",
-  "groupTitle": "Dots and stipple",
-  "options": {}
- },
- {
+  "file": "m-waves",
+  "kind": "material",
   "name": "waves",
-  "file": "waves",
-  "group": "waves",
-  "groupTitle": "Waves and water",
-  "options": {}
- },
- {
-  "name": "curl-waves",
-  "file": "curl-waves",
-  "group": "waves",
-  "groupTitle": "Waves and water",
-  "options": {
-   "spacing": "1mm"
-  }
- },
- {
-  "name": "flow-waves",
-  "file": "flow-waves",
-  "group": "waves",
-  "groupTitle": "Waves and water",
-  "options": {}
- },
- {
-  "name": "scallop-waves",
-  "file": "scallop-waves",
-  "group": "waves",
-  "groupTitle": "Waves and water",
-  "options": {}
- },
- {
-  "name": "wave-grid",
-  "file": "wave-grid",
-  "group": "waves",
-  "groupTitle": "Waves and water",
+  "pattern": "waves",
   "options": {},
-  "alias": "wave_grid"
+  "group": "water"
  },
  {
-  "name": "ripples",
-  "file": "ripples",
-  "group": "waves",
-  "groupTitle": "Waves and water",
-  "options": {}
+  "file": "m-scallops",
+  "kind": "material",
+  "name": "scallops",
+  "pattern": "scallops",
+  "options": {},
+  "group": "water"
  },
  {
+  "file": "m-curls",
+  "kind": "material",
+  "name": "curls",
+  "pattern": "curls",
+  "options": {},
+  "group": "water"
+ },
+ {
+  "file": "m-currents",
+  "kind": "material",
+  "name": "currents",
+  "pattern": "currents",
+  "options": {},
+  "group": "water"
+ },
+ {
+  "file": "m-wave-net",
+  "kind": "material",
+  "name": "wave-net",
+  "pattern": "wave-net",
+  "options": {},
+  "group": "water"
+ },
+ {
+  "file": "m-swells",
+  "kind": "material",
   "name": "swells",
-  "file": "swells",
-  "group": "waves",
-  "groupTitle": "Waves and water",
-  "options": {}
+  "pattern": "swells",
+  "options": {},
+  "group": "water"
  },
  {
+  "file": "m-eddies",
+  "kind": "material",
   "name": "eddies",
-  "file": "eddies",
-  "group": "waves",
-  "groupTitle": "Waves and water",
-  "options": {}
+  "pattern": "eddies",
+  "options": {},
+  "group": "water"
  },
  {
-  "name": "lily-pads",
-  "file": "lily-pads",
-  "group": "waves",
-  "groupTitle": "Waves and water",
-  "options": {
-   "spacing": "1mm"
-  }
+  "file": "m-ripples",
+  "kind": "material",
+  "name": "ripples",
+  "pattern": "ripples",
+  "options": {},
+  "group": "water"
  },
  {
+  "file": "m-shore-lines",
+  "kind": "material",
+  "name": "shore-lines",
+  "pattern": "shore-lines",
+  "options": {},
+  "group": "water"
+ },
+ {
+  "file": "m-shallows",
+  "kind": "material",
+  "name": "shallows",
+  "pattern": "shallows",
+  "options": {},
+  "group": "water"
+ },
+ {
+  "file": "m-marsh",
+  "kind": "material",
+  "name": "marsh",
+  "pattern": "marsh",
+  "options": {},
+  "group": "water"
+ },
+ {
+  "file": "m-grass",
+  "kind": "material",
   "name": "grass",
-  "file": "grass",
-  "group": "nature",
-  "groupTitle": "Nature",
-  "options": {
-   "spacing": "1.6mm"
-  }
+  "pattern": "grass",
+  "options": {},
+  "group": "vegetation"
  },
  {
-  "name": "fluid-grass",
-  "file": "fluid-grass",
-  "group": "nature",
-  "groupTitle": "Nature",
-  "options": {}
+  "file": "m-meadow",
+  "kind": "material",
+  "name": "meadow",
+  "pattern": "meadow",
+  "options": {},
+  "group": "vegetation"
  },
  {
-  "name": "tufts",
-  "file": "tufts",
-  "group": "nature",
-  "groupTitle": "Nature",
-  "options": {}
+  "file": "m-scrub",
+  "kind": "material",
+  "name": "scrub",
+  "pattern": "scrub",
+  "options": {},
+  "group": "vegetation"
  },
  {
+  "file": "m-woodland",
+  "kind": "material",
+  "name": "woodland",
+  "pattern": "woodland",
+  "options": {},
+  "group": "vegetation"
+ },
+ {
+  "file": "m-forest",
+  "kind": "material",
+  "name": "forest",
+  "pattern": "forest",
+  "options": {},
+  "group": "vegetation"
+ },
+ {
+  "file": "m-conifers",
+  "kind": "material",
+  "name": "conifers",
+  "pattern": "conifers",
+  "options": {},
+  "group": "vegetation"
+ },
+ {
+  "file": "m-orchard",
+  "kind": "material",
+  "name": "orchard",
+  "pattern": "orchard",
+  "options": {},
+  "group": "vegetation"
+ },
+ {
+  "file": "m-vineyard",
+  "kind": "material",
+  "name": "vineyard",
+  "pattern": "vineyard",
+  "options": {},
+  "group": "vegetation"
+ },
+ {
+  "file": "m-fields",
+  "kind": "material",
+  "name": "fields",
+  "pattern": "fields",
+  "options": {},
+  "group": "vegetation"
+ },
+ {
+  "file": "m-garden",
+  "kind": "material",
+  "name": "garden",
+  "pattern": "garden",
+  "options": {},
+  "group": "vegetation"
+ },
+ {
+  "file": "m-sprouts",
+  "kind": "material",
   "name": "sprouts",
-  "file": "sprouts",
-  "group": "nature",
-  "groupTitle": "Nature",
-  "options": {}
+  "pattern": "sprouts",
+  "options": {},
+  "group": "vegetation"
  },
  {
-  "name": "twigs",
-  "file": "twigs",
-  "group": "nature",
-  "groupTitle": "Nature",
-  "options": {}
+  "file": "m-leaves",
+  "kind": "material",
+  "name": "leaves",
+  "pattern": "leaves",
+  "options": {},
+  "group": "vegetation"
  },
  {
-  "name": "vines",
-  "file": "vines",
-  "group": "nature",
-  "groupTitle": "Nature",
-  "options": {}
- },
- {
-  "name": "canopy",
-  "file": "canopy",
-  "group": "nature",
-  "groupTitle": "Nature",
-  "options": {}
- },
- {
-  "name": "doodle-trees",
-  "file": "doodle-trees",
-  "group": "nature",
-  "groupTitle": "Nature",
-  "options": {
-   "spacing": "4mm"
-  }
- },
- {
-  "name": "wood",
-  "file": "wood",
-  "group": "nature",
-  "groupTitle": "Nature",
-  "options": {}
- },
- {
-  "name": "granite",
-  "file": "granite",
-  "group": "stone",
-  "groupTitle": "Stone and soil",
-  "options": {}
- },
- {
-  "name": "granite-x",
-  "file": "granite-x",
-  "group": "stone",
-  "groupTitle": "Stone and soil",
-  "options": {}
- },
- {
-  "name": "diorite",
-  "file": "diorite",
-  "group": "stone",
-  "groupTitle": "Stone and soil",
-  "options": {}
- },
- {
-  "name": "gabbro",
-  "file": "gabbro",
-  "group": "stone",
-  "groupTitle": "Stone and soil",
-  "options": {}
- },
- {
-  "name": "diabase",
-  "file": "diabase",
-  "group": "stone",
-  "groupTitle": "Stone and soil",
-  "options": {}
- },
- {
-  "name": "ophitic",
-  "file": "ophitic",
-  "group": "stone",
-  "groupTitle": "Stone and soil",
-  "options": {}
- },
- {
-  "name": "dacite",
-  "file": "dacite",
-  "group": "stone",
-  "groupTitle": "Stone and soil",
-  "options": {
-   "spacing": "1mm"
-  }
- },
- {
-  "name": "feldspar",
-  "file": "feldspar",
-  "group": "stone",
-  "groupTitle": "Stone and soil",
-  "options": {
-   "spacing": "1mm"
-  }
- },
- {
-  "name": "hornblende",
-  "file": "hornblende",
-  "group": "stone",
-  "groupTitle": "Stone and soil",
-  "options": {
-   "spacing": "1mm"
-  }
- },
- {
-  "name": "amphibolite",
-  "file": "amphibolite",
-  "group": "stone",
-  "groupTitle": "Stone and soil",
-  "options": {}
- },
- {
-  "name": "gneiss",
-  "file": "gneiss",
-  "group": "stone",
-  "groupTitle": "Stone and soil",
-  "options": {}
- },
- {
-  "name": "marble",
-  "file": "marble",
-  "group": "stone",
-  "groupTitle": "Stone and soil",
-  "options": {}
- },
- {
-  "name": "lava",
-  "file": "lava",
-  "group": "stone",
-  "groupTitle": "Stone and soil",
-  "options": {}
- },
- {
-  "name": "ferrous",
-  "file": "ferrous",
-  "group": "stone",
-  "groupTitle": "Stone and soil",
-  "options": {
-   "spacing": "0.8mm"
-  }
- },
- {
-  "name": "breccia",
-  "file": "breccia",
-  "group": "stone",
-  "groupTitle": "Stone and soil",
-  "options": {}
- },
- {
-  "name": "breccia-blobs",
-  "file": "breccia-blobs",
-  "group": "stone",
-  "groupTitle": "Stone and soil",
-  "options": {}
- },
- {
-  "name": "conglomerate",
-  "file": "conglomerate",
-  "group": "stone",
-  "groupTitle": "Stone and soil",
-  "options": {}
- },
- {
-  "name": "conglomerate-flat",
-  "file": "conglomerate-flat",
-  "group": "stone",
-  "groupTitle": "Stone and soil",
-  "options": {}
- },
- {
-  "name": "arena",
-  "file": "arena",
-  "group": "stone",
-  "groupTitle": "Stone and soil",
-  "options": {}
- },
- {
-  "name": "beds",
-  "file": "beds",
-  "group": "stone",
-  "groupTitle": "Stone and soil",
-  "options": {}
- },
- {
-  "name": "laminae",
-  "file": "laminae",
-  "group": "stone",
-  "groupTitle": "Stone and soil",
-  "options": {}
- },
- {
-  "name": "coal",
-  "file": "coal",
-  "group": "stone",
-  "groupTitle": "Stone and soil",
-  "options": {}
- },
- {
-  "name": "bentonite",
-  "file": "bentonite",
-  "group": "stone",
-  "groupTitle": "Stone and soil",
-  "options": {}
- },
- {
-  "name": "diatom",
-  "file": "diatom",
-  "group": "stone",
-  "groupTitle": "Stone and soil",
-  "options": {
-   "spacing": "0.8mm"
-  }
- },
- {
-  "name": "coquina",
-  "file": "coquina",
-  "group": "stone",
-  "groupTitle": "Stone and soil",
-  "options": {}
- },
- {
-  "name": "shards",
-  "file": "shards",
-  "group": "stone",
-  "groupTitle": "Stone and soil",
-  "options": {}
- },
- {
-  "name": "drift",
-  "file": "drift",
-  "group": "stone",
-  "groupTitle": "Stone and soil",
-  "options": {}
- },
- {
-  "name": "brackets",
-  "file": "brackets",
-  "group": "stone",
-  "groupTitle": "Stone and soil",
-  "options": {}
- },
- {
-  "name": "masonry",
-  "file": "masonry",
-  "group": "stone",
-  "groupTitle": "Stone and soil",
-  "options": {}
- },
- {
-  "name": "gravel",
-  "file": "gravel",
-  "group": "stone",
-  "groupTitle": "Stone and soil",
-  "options": {
-   "spacing": "1mm"
-  }
- },
- {
-  "name": "gravel-clipped",
-  "file": "gravel-clipped",
-  "group": "stone",
-  "groupTitle": "Stone and soil",
-  "options": {}
- },
- {
-  "name": "fine-gravel",
-  "file": "fine-gravel",
-  "group": "stone",
-  "groupTitle": "Stone and soil",
-  "options": {}
- },
- {
-  "name": "pebbles",
-  "file": "pebbles",
-  "group": "stone",
-  "groupTitle": "Stone and soil",
-  "options": {}
- },
- {
-  "name": "pebble-scatter",
-  "file": "pebble-scatter",
-  "group": "stone",
-  "groupTitle": "Stone and soil",
-  "options": {}
- },
- {
-  "name": "stone-cluster",
-  "file": "stone-cluster",
-  "group": "stone",
-  "groupTitle": "Stone and soil",
-  "options": {
-   "spacing": "1mm"
-  }
- },
- {
-  "name": "coarse-stone",
-  "file": "coarse-stone",
-  "group": "stone",
-  "groupTitle": "Stone and soil",
-  "options": {}
- },
- {
-  "name": "mixed-rocks",
-  "file": "mixed-rocks",
-  "group": "stone",
-  "groupTitle": "Stone and soil",
-  "options": {}
- },
- {
-  "name": "terrazzo",
-  "file": "terrazzo",
-  "group": "stone",
-  "groupTitle": "Stone and soil",
-  "options": {
-   "spacing": "1.5mm"
-  }
- },
- {
-  "name": "sandy-soil",
-  "file": "sandy-soil",
-  "group": "stone",
-  "groupTitle": "Stone and soil",
-  "options": {
-   "spacing": "1mm"
-  }
- },
- {
-  "name": "silty-soil",
-  "file": "silty-soil",
-  "group": "stone",
-  "groupTitle": "Stone and soil",
-  "options": {
-   "spacing": "1.5mm"
-  }
- },
- {
-  "name": "clay-soil",
-  "file": "clay-soil",
-  "group": "stone",
-  "groupTitle": "Stone and soil",
-  "options": {}
- },
- {
-  "name": "loose-soil",
-  "file": "loose-soil",
-  "group": "stone",
-  "groupTitle": "Stone and soil",
-  "options": {}
- },
- {
-  "name": "compacted-soil",
-  "file": "compacted-soil",
-  "group": "stone",
-  "groupTitle": "Stone and soil",
-  "options": {
-   "spacing": "4mm"
-  }
- },
- {
-  "name": "grainy-soil",
-  "file": "grainy-soil",
-  "group": "stone",
-  "groupTitle": "Stone and soil",
-  "options": {
-   "spacing": "1mm"
-  }
- },
- {
-  "name": "chalky-soil",
-  "file": "chalky-soil",
-  "group": "stone",
-  "groupTitle": "Stone and soil",
-  "options": {
-   "spacing": "1mm"
-  }
- },
- {
-  "name": "gravelly-soil",
-  "file": "gravelly-soil",
-  "group": "stone",
-  "groupTitle": "Stone and soil",
-  "options": {
-   "spacing": "0.8mm"
-  }
- },
- {
-  "name": "pebbled-soil",
-  "file": "pebbled-soil",
-  "group": "stone",
-  "groupTitle": "Stone and soil",
-  "options": {
-   "spacing": "1mm"
-  }
- },
- {
-  "name": "layered-soil",
-  "file": "layered-soil",
-  "group": "stone",
-  "groupTitle": "Stone and soil",
-  "options": {
-   "spacing": "1.5mm"
-  }
- },
- {
-  "name": "debris-soil",
-  "file": "debris-soil",
-  "group": "stone",
-  "groupTitle": "Stone and soil",
-  "options": {}
- },
- {
-  "name": "mulch",
-  "file": "mulch",
-  "group": "stone",
-  "groupTitle": "Stone and soil",
-  "options": {
-   "spacing": "1mm"
-  }
- },
- {
-  "name": "mulched-soil",
-  "file": "mulched-soil",
-  "group": "stone",
-  "groupTitle": "Stone and soil",
-  "options": {
-   "spacing": "3mm"
-  }
- },
- {
-  "name": "organic-topsoil",
-  "file": "organic-topsoil",
-  "group": "stone",
-  "groupTitle": "Stone and soil",
-  "options": {}
- },
- {
-  "name": "cracked-earth",
-  "file": "cracked-earth",
-  "group": "stone",
-  "groupTitle": "Stone and soil",
-  "options": {
-   "spacing": "1mm"
-  }
- },
- {
-  "name": "dry-cracked-soil",
-  "file": "dry-cracked-soil",
-  "group": "stone",
-  "groupTitle": "Stone and soil",
-  "options": {
-   "spacing": "1mm"
-  }
- },
- {
-  "name": "cracks",
-  "file": "cracks",
-  "group": "stone",
-  "groupTitle": "Stone and soil",
-  "options": {}
- },
- {
-  "name": "cell-net",
-  "file": "cell-net",
-  "group": "stone",
-  "groupTitle": "Stone and soil",
-  "options": {}
- },
- {
-  "name": "erosion-lines",
-  "file": "erosion-lines",
-  "group": "stone",
-  "groupTitle": "Stone and soil",
-  "options": {
-   "spacing": "1mm"
-  }
- },
- {
-  "name": "hilbert",
-  "file": "hilbert",
-  "group": "geometric",
-  "groupTitle": "Geometric and space-filling",
-  "options": {}
- },
- {
-  "name": "honeycomb",
-  "file": "honeycomb",
-  "group": "geometric",
-  "groupTitle": "Geometric and space-filling",
-  "options": {
-   "spacing": "0.8mm"
-  }
- },
- {
-  "name": "truchet",
-  "file": "truchet",
-  "group": "geometric",
-  "groupTitle": "Geometric and space-filling",
-  "options": {
-   "spacing": "1mm"
-  }
- },
- {
-  "name": "scales",
-  "file": "scales",
-  "group": "geometric",
-  "groupTitle": "Geometric and space-filling",
-  "options": {}
- },
- {
-  "name": "chess",
-  "file": "chess",
-  "group": "geometric",
-  "groupTitle": "Geometric and space-filling",
-  "options": {
-   "spacing": "2mm"
-  }
- },
- {
-  "name": "clouds",
-  "file": "clouds",
-  "group": "special",
-  "groupTitle": "Special",
-  "options": {}
- },
- {
-  "name": "isoline-blobs",
-  "file": "isoline-blobs",
-  "group": "special",
-  "groupTitle": "Special",
-  "options": {
-   "spacing": "6mm",
-   "contour": "0.4mm",
-   "threshold": 0.1,
-   "coverage": 1
-  }
- },
- {
+  "file": "m-isoline-stack",
+  "kind": "material",
   "name": "isoline-stack",
-  "file": "isoline-stack",
-  "group": "special",
-  "groupTitle": "Special",
-  "options": {
-   "spacing": "3mm"
-  }
+  "pattern": "isoline-stack",
+  "options": {},
+  "group": "vegetation"
  },
  {
-  "name": "isoline-stack-hatched",
-  "file": "isoline-stack-hatched",
-  "group": "special",
-  "groupTitle": "Special",
-  "options": {
-   "spacing": "3mm"
-  }
+  "file": "m-canopy",
+  "kind": "material",
+  "name": "canopy",
+  "pattern": "canopy",
+  "options": {},
+  "group": "vegetation"
  },
  {
+  "file": "m-doodle-trees",
+  "kind": "material",
+  "name": "doodle-trees",
+  "pattern": "doodle-trees",
+  "options": {},
+  "group": "vegetation"
+ },
+ {
+  "file": "m-twigs",
+  "kind": "material",
+  "name": "twigs",
+  "pattern": "twigs",
+  "options": {},
+  "group": "vegetation"
+ },
+ {
+  "file": "m-growth",
+  "kind": "material",
   "name": "growth",
-  "file": "growth",
-  "group": "special",
-  "groupTitle": "Special",
-  "options": {}
+  "pattern": "growth",
+  "options": {},
+  "group": "vegetation"
  },
  {
+  "file": "m-sand",
+  "kind": "material",
+  "name": "sand",
+  "pattern": "sand",
+  "options": {},
+  "group": "ground"
+ },
+ {
+  "file": "m-dunes",
+  "kind": "material",
+  "name": "dunes",
+  "pattern": "dunes",
+  "options": {},
+  "group": "ground"
+ },
+ {
+  "file": "m-soil",
+  "kind": "material",
+  "name": "soil",
+  "pattern": "soil",
+  "options": {},
+  "group": "ground"
+ },
+ {
+  "file": "m-gravel",
+  "kind": "material",
+  "name": "gravel",
+  "pattern": "gravel",
+  "options": {},
+  "group": "ground"
+ },
+ {
+  "file": "m-pebbles",
+  "kind": "material",
+  "name": "pebbles",
+  "pattern": "pebbles",
+  "options": {},
+  "group": "ground"
+ },
+ {
+  "file": "m-boulders",
+  "kind": "material",
+  "name": "boulders",
+  "pattern": "boulders",
+  "options": {},
+  "group": "ground"
+ },
+ {
+  "file": "m-scree",
+  "kind": "material",
+  "name": "scree",
+  "pattern": "scree",
+  "options": {},
+  "group": "ground"
+ },
+ {
+  "file": "m-cracked-earth",
+  "kind": "material",
+  "name": "cracked-earth",
+  "pattern": "cracked-earth",
+  "options": {},
+  "group": "ground"
+ },
+ {
+  "file": "m-dry-mud",
+  "kind": "material",
+  "name": "dry-mud",
+  "pattern": "dry-mud",
+  "options": {},
+  "group": "ground"
+ },
+ {
+  "file": "m-clay",
+  "kind": "material",
+  "name": "clay",
+  "pattern": "clay",
+  "options": {},
+  "group": "ground"
+ },
+ {
+  "file": "m-silt",
+  "kind": "material",
+  "name": "silt",
+  "pattern": "silt",
+  "options": {},
+  "group": "ground"
+ },
+ {
+  "file": "m-peat",
+  "kind": "material",
+  "name": "peat",
+  "pattern": "peat",
+  "options": {},
+  "group": "ground"
+ },
+ {
+  "file": "m-layered-soil",
+  "kind": "material",
+  "name": "layered-soil",
+  "pattern": "layered-soil",
+  "options": {},
+  "group": "ground"
+ },
+ {
+  "file": "m-chalky-soil",
+  "kind": "material",
+  "name": "chalky-soil",
+  "pattern": "chalky-soil",
+  "options": {},
+  "group": "ground"
+ },
+ {
+  "file": "m-sandstone",
+  "kind": "material",
+  "name": "sandstone",
+  "pattern": "sandstone",
+  "options": {},
+  "group": "rock"
+ },
+ {
+  "file": "m-siltstone",
+  "kind": "material",
+  "name": "siltstone",
+  "pattern": "siltstone",
+  "options": {},
+  "group": "rock"
+ },
+ {
+  "file": "m-shale",
+  "kind": "material",
+  "name": "shale",
+  "pattern": "shale",
+  "options": {},
+  "group": "rock"
+ },
+ {
+  "file": "m-limestone",
+  "kind": "material",
+  "name": "limestone",
+  "pattern": "limestone",
+  "options": {},
+  "group": "rock"
+ },
+ {
+  "file": "m-chalk",
+  "kind": "material",
+  "name": "chalk",
+  "pattern": "chalk",
+  "options": {},
+  "group": "rock"
+ },
+ {
+  "file": "m-conglomerate",
+  "kind": "material",
+  "name": "conglomerate",
+  "pattern": "conglomerate",
+  "options": {},
+  "group": "rock"
+ },
+ {
+  "file": "m-breccia",
+  "kind": "material",
+  "name": "breccia",
+  "pattern": "breccia",
+  "options": {},
+  "group": "rock"
+ },
+ {
+  "file": "m-coal",
+  "kind": "material",
+  "name": "coal",
+  "pattern": "coal",
+  "options": {},
+  "group": "rock"
+ },
+ {
+  "file": "m-granite",
+  "kind": "material",
+  "name": "granite",
+  "pattern": "granite",
+  "options": {},
+  "group": "rock"
+ },
+ {
+  "file": "m-basalt",
+  "kind": "material",
+  "name": "basalt",
+  "pattern": "basalt",
+  "options": {},
+  "group": "rock"
+ },
+ {
+  "file": "m-tuff",
+  "kind": "material",
+  "name": "tuff",
+  "pattern": "tuff",
+  "options": {},
+  "group": "rock"
+ },
+ {
+  "file": "m-gneiss",
+  "kind": "material",
+  "name": "gneiss",
+  "pattern": "gneiss",
+  "options": {},
+  "group": "rock"
+ },
+ {
+  "file": "m-schist",
+  "kind": "material",
+  "name": "schist",
+  "pattern": "schist",
+  "options": {},
+  "group": "rock"
+ },
+ {
+  "file": "m-salt",
+  "kind": "material",
+  "name": "salt",
+  "pattern": "salt",
+  "options": {},
+  "group": "rock"
+ },
+ {
+  "file": "m-marble",
+  "kind": "material",
+  "name": "marble",
+  "pattern": "marble",
+  "options": {},
+  "group": "rock"
+ },
+ {
+  "file": "m-brick",
+  "kind": "material",
+  "name": "brick",
+  "pattern": "brick",
+  "options": {},
+  "group": "built"
+ },
+ {
+  "file": "m-herringbone",
+  "kind": "material",
+  "name": "herringbone",
+  "pattern": "herringbone",
+  "options": {},
+  "group": "built"
+ },
+ {
+  "file": "m-basket",
+  "kind": "material",
+  "name": "basket",
+  "pattern": "basket",
+  "options": {},
+  "group": "built"
+ },
+ {
+  "file": "m-parquet",
+  "kind": "material",
+  "name": "parquet",
+  "pattern": "parquet",
+  "options": {},
+  "group": "built"
+ },
+ {
+  "file": "m-setts",
+  "kind": "material",
+  "name": "setts",
+  "pattern": "setts",
+  "options": {},
+  "group": "built"
+ },
+ {
+  "file": "m-flagstones",
+  "kind": "material",
+  "name": "flagstones",
+  "pattern": "flagstones",
+  "options": {},
+  "group": "built"
+ },
+ {
+  "file": "m-tiles",
+  "kind": "material",
+  "name": "tiles",
+  "pattern": "tiles",
+  "options": {},
+  "group": "built"
+ },
+ {
+  "file": "m-hexagons",
+  "kind": "material",
+  "name": "hexagons",
+  "pattern": "hexagons",
+  "options": {},
+  "group": "built"
+ },
+ {
+  "file": "m-stairs",
+  "kind": "material",
+  "name": "stairs",
+  "pattern": "stairs",
+  "options": {},
+  "group": "built"
+ },
+ {
+  "file": "m-grate",
+  "kind": "material",
+  "name": "grate",
+  "pattern": "grate",
+  "options": {},
+  "group": "built"
+ },
+ {
+  "file": "m-chess",
+  "kind": "material",
+  "name": "chess",
+  "pattern": "chess",
+  "options": {},
+  "group": "built"
+ },
+ {
+  "file": "m-cobbles",
+  "kind": "material",
+  "name": "cobbles",
+  "pattern": "cobbles",
+  "options": {},
+  "group": "built"
+ },
+ {
+  "file": "m-terrazzo",
+  "kind": "material",
+  "name": "terrazzo",
+  "pattern": "terrazzo",
+  "options": {},
+  "group": "built"
+ },
+ {
+  "file": "m-cemetery",
+  "kind": "material",
+  "name": "cemetery",
+  "pattern": "cemetery",
+  "options": {},
+  "group": "built"
+ },
+ {
+  "file": "m-wood",
+  "kind": "material",
+  "name": "wood",
+  "pattern": "wood",
+  "options": {},
+  "group": "built"
+ },
+ {
+  "file": "m-clouds",
+  "kind": "material",
+  "name": "clouds",
+  "pattern": "clouds",
+  "options": {},
+  "group": "sky"
+ },
+ {
+  "file": "m-lines",
+  "kind": "material",
+  "name": "lines",
+  "pattern": "lines",
+  "options": {},
+  "group": "plain"
+ },
+ {
+  "file": "m-crosshatch",
+  "kind": "material",
+  "name": "crosshatch",
+  "pattern": "crosshatch",
+  "options": {},
+  "group": "plain"
+ },
+ {
+  "file": "m-triad",
+  "kind": "material",
+  "name": "triad",
+  "pattern": "triad",
+  "options": {},
+  "group": "plain"
+ },
+ {
+  "file": "m-serpentine",
+  "kind": "material",
+  "name": "serpentine",
+  "pattern": "serpentine",
+  "options": {},
+  "group": "plain"
+ },
+ {
+  "file": "m-dashes",
+  "kind": "material",
+  "name": "dashes",
+  "pattern": "dashes",
+  "options": {},
+  "group": "plain"
+ },
+ {
+  "file": "m-dots",
+  "kind": "material",
+  "name": "dots",
+  "pattern": "dots",
+  "options": {},
+  "group": "plain"
+ },
+ {
+  "file": "m-stipple",
+  "kind": "material",
+  "name": "stipple",
+  "pattern": "stipple",
+  "options": {},
+  "group": "plain"
+ },
+ {
+  "file": "m-concentric",
+  "kind": "material",
+  "name": "concentric",
+  "pattern": "concentric",
+  "options": {},
+  "group": "plain"
+ },
+ {
+  "file": "m-offsets",
+  "kind": "material",
+  "name": "offsets",
+  "pattern": "offsets",
+  "options": {},
+  "group": "plain"
+ },
+ {
+  "file": "m-spiral",
+  "kind": "material",
+  "name": "spiral",
+  "pattern": "spiral",
+  "options": {},
+  "group": "plain"
+ },
+ {
+  "file": "m-scribble",
+  "kind": "material",
+  "name": "scribble",
+  "pattern": "scribble",
+  "options": {},
+  "group": "plain"
+ },
+ {
+  "file": "m-hilbert",
+  "kind": "material",
+  "name": "hilbert",
+  "pattern": "hilbert",
+  "options": {},
+  "group": "plain"
+ },
+ {
+  "file": "m-truchet",
+  "kind": "material",
+  "name": "truchet",
+  "pattern": "truchet",
+  "options": {},
+  "group": "plain"
+ },
+ {
+  "file": "m-honeycomb",
+  "kind": "material",
+  "name": "honeycomb",
+  "pattern": "honeycomb",
+  "options": {},
+  "group": "plain"
+ },
+ {
+  "file": "m-scales",
+  "kind": "material",
+  "name": "scales",
+  "pattern": "scales",
+  "options": {},
+  "group": "plain"
+ },
+ {
+  "file": "m-sunburst",
+  "kind": "material",
+  "name": "sunburst",
+  "pattern": "sunburst",
+  "options": {},
+  "group": "plain"
+ },
+ {
+  "file": "m-isoline-blobs",
+  "kind": "material",
+  "name": "isoline-blobs",
+  "pattern": "isoline-blobs",
+  "options": {},
+  "group": "plain"
+ },
+ {
+  "file": "m-solid",
+  "kind": "material",
   "name": "solid",
-  "file": "solid",
-  "group": "special",
-  "groupTitle": "Special",
+  "pattern": "solid",
+  "options": {},
+  "group": "plain"
+ },
+ {
+  "file": "g-hatch-0",
+  "kind": "generator",
+  "name": "hatch",
+  "pattern": "hatch",
   "options": {}
  },
  {
-  "name": "none",
-  "file": "none",
-  "group": "special",
-  "groupTitle": "Special",
+  "file": "g-hatch-1",
+  "kind": "generator",
+  "name": "hatch",
+  "pattern": "hatch",
+  "options": {
+   "cross": 2
+  }
+ },
+ {
+  "file": "g-hatch-2",
+  "kind": "generator",
+  "name": "hatch",
+  "pattern": "hatch",
+  "options": {
+   "cross": 3,
+   "spacing": 0.9
+  }
+ },
+ {
+  "file": "g-hatch-3",
+  "kind": "generator",
+  "name": "hatch",
+  "pattern": "hatch",
+  "options": {
+   "join": true,
+   "angle": 45
+  }
+ },
+ {
+  "file": "g-hatch-4",
+  "kind": "generator",
+  "name": "hatch",
+  "pattern": "hatch",
+  "options": {
+   "dash": [
+    1.2,
+    0.6
+   ],
+   "dash_jitter": 0.6
+  }
+ },
+ {
+  "file": "g-hatch-5",
+  "kind": "generator",
+  "name": "hatch",
+  "pattern": "hatch",
+  "options": {
+   "wobble": 0.8,
+   "spacing": 0.9
+  }
+ },
+ {
+  "file": "g-hatch-6",
+  "kind": "generator",
+  "name": "hatch",
+  "pattern": "hatch",
+  "options": {
+   "vary": 1,
+   "spacing": 0.9
+  }
+ },
+ {
+  "file": "g-hatch-7",
+  "kind": "generator",
+  "name": "hatch",
+  "pattern": "hatch",
+  "options": {
+   "density": "edge",
+   "contrast": 1
+  }
+ },
+ {
+  "file": "g-hatch-8",
+  "kind": "generator",
+  "name": "hatch",
+  "pattern": "hatch",
+  "options": {
+   "cross": 3,
+   "density": "gradient",
+   "contrast": 1,
+   "spacing": 0.9
+  }
+ },
+ {
+  "file": "g-scatter-0",
+  "kind": "generator",
+  "name": "scatter",
+  "pattern": "scatter",
   "options": {}
  },
  {
-  "name": "pat",
-  "file": "pat-BRICK",
-  "group": "pat",
-  "groupTitle": "pat hatches",
+  "file": "g-scatter-1",
+  "kind": "generator",
+  "name": "scatter",
+  "pattern": "scatter",
   "options": {
-   "name": "BRICK"
+   "arrange": "hex",
+   "mark": 0.3
   }
  },
  {
-  "name": "pat",
-  "file": "pat-HERRINGBONE",
-  "group": "pat",
-  "groupTitle": "pat hatches",
+  "file": "g-scatter-2",
+  "kind": "generator",
+  "name": "scatter",
+  "pattern": "scatter",
   "options": {
-   "name": "HERRINGBONE"
+   "density": "gradient",
+   "contrast": 1,
+   "spacing": 0.6,
+   "mark": 0.3
   }
  },
  {
-  "name": "pat",
-  "file": "pat-BASKET",
-  "group": "pat",
-  "groupTitle": "pat hatches",
+  "file": "g-scatter-3",
+  "kind": "generator",
+  "name": "scatter",
+  "pattern": "scatter",
   "options": {
-   "name": "BASKET"
+   "motif": "tree",
+   "rotate": "upright",
+   "mark": 2,
+   "spacing": 2.6,
+   "vary": 0.35,
+   "jitter": 0.5
   }
  },
  {
-  "name": "pat",
-  "file": "pat-PARQUET",
-  "group": "pat",
-  "groupTitle": "pat hatches",
+  "file": "g-scatter-4",
+  "kind": "generator",
+  "name": "scatter",
+  "pattern": "scatter",
   "options": {
-   "name": "PARQUET"
+   "motif": "conifer",
+   "rotate": "upright",
+   "arrange": "rows",
+   "mark": 1.8,
+   "spacing": 2.4
   }
  },
  {
-  "name": "pat",
-  "file": "pat-ANSI31",
-  "group": "pat",
-  "groupTitle": "pat hatches",
+  "file": "g-scatter-5",
+  "kind": "generator",
+  "name": "scatter",
+  "pattern": "scatter",
   "options": {
-   "name": "ANSI31"
+   "motif": "ring",
+   "mark": 1,
+   "spacing": 1.8,
+   "vary": 0.7,
+   "jitter": 0.6
   }
  },
  {
-  "name": "pat",
-  "file": "pat-ANSI32",
-  "group": "pat",
-  "groupTitle": "pat hatches",
+  "file": "g-scatter-6",
+  "kind": "generator",
+  "name": "scatter",
+  "pattern": "scatter",
   "options": {
-   "name": "ANSI32"
+   "motif": "shard",
+   "mark": 1.2,
+   "spacing": 1.8,
+   "vary": 0.6,
+   "density": "noise",
+   "contrast": 0.9
   }
  },
  {
-  "name": "pat",
-  "file": "pat-ANSI33",
-  "group": "pat",
-  "groupTitle": "pat hatches",
+  "file": "g-scatter-7",
+  "kind": "generator",
+  "name": "scatter",
+  "pattern": "scatter",
   "options": {
-   "name": "ANSI33"
+   "motif": [
+    [
+     [
+      0,
+      -1.2
+     ],
+     [
+      0.35,
+      -0.35
+     ],
+     [
+      1.2,
+      0
+     ],
+     [
+      0.35,
+      0.35
+     ],
+     [
+      0,
+      1.2
+     ],
+     [
+      -0.35,
+      0.35
+     ],
+     [
+      -1.2,
+      0
+     ],
+     [
+      -0.35,
+      -0.35
+     ],
+     [
+      0,
+      -1.2
+     ]
+    ]
+   ],
+   "rotate": "random",
+   "spacing": 3.5
   }
  },
  {
-  "name": "pat",
-  "file": "pat-ANSI37",
-  "group": "pat",
-  "groupTitle": "pat hatches",
+  "file": "g-cells-0",
+  "kind": "generator",
+  "name": "cells",
+  "pattern": "cells",
+  "options": {}
+ },
+ {
+  "file": "g-cells-1",
+  "kind": "generator",
+  "name": "cells",
+  "pattern": "cells",
   "options": {
-   "name": "ANSI37"
+   "vary": 1,
+   "spacing": 2.4
   }
  },
  {
-  "name": "pat",
-  "file": "pat-EARTH",
-  "group": "pat",
-  "groupTitle": "pat hatches",
+  "file": "g-cells-2",
+  "kind": "generator",
+  "name": "cells",
+  "pattern": "cells",
   "options": {
-   "name": "EARTH",
-   "spacing": "1.5mm"
+   "style": "net",
+   "spacing": 3
   }
  },
  {
-  "name": "pat",
-  "file": "pat-CROSS",
-  "group": "pat",
-  "groupTitle": "pat hatches",
+  "file": "g-cells-3",
+  "kind": "generator",
+  "name": "cells",
+  "pattern": "cells",
   "options": {
-   "name": "CROSS"
+   "style": "cracks",
+   "spacing": 3.5
   }
  },
  {
-  "name": "pat",
-  "file": "pat-DASH",
-  "group": "pat",
-  "groupTitle": "pat hatches",
+  "file": "g-cells-4",
+  "kind": "generator",
+  "name": "cells",
+  "pattern": "cells",
   "options": {
-   "name": "DASH"
+   "inner": "mixed",
+   "vary": 0.9,
+   "spacing": 2.4
   }
  },
  {
-  "name": "pat",
-  "file": "pat-STAIRS",
-  "group": "pat",
-  "groupTitle": "pat hatches",
+  "file": "g-cells-5",
+  "kind": "generator",
+  "name": "cells",
+  "pattern": "cells",
   "options": {
-   "name": "STAIRS"
+   "style": "net",
+   "inner": "dots",
+   "spacing": 3.5
   }
  },
  {
-  "name": "pat",
-  "file": "pat-GRATE",
-  "group": "pat",
-  "groupTitle": "pat hatches",
+  "file": "g-cells-6",
+  "kind": "generator",
+  "name": "cells",
+  "pattern": "cells",
   "options": {
-   "name": "GRATE",
-   "spacing": "1mm"
+   "density": "noise",
+   "contrast": 0.9
   }
  },
  {
-  "name": "pat",
-  "file": "pat-ANGLE",
-  "group": "pat",
-  "groupTitle": "pat hatches",
+  "file": "g-tile-0",
+  "kind": "generator",
+  "name": "tile",
+  "pattern": "tile",
   "options": {
-   "name": "ANGLE"
+   "motif": "brick"
+  }
+ },
+ {
+  "file": "g-tile-1",
+  "kind": "generator",
+  "name": "tile",
+  "pattern": "tile",
+  "options": {
+   "motif": "herringbone"
+  }
+ },
+ {
+  "file": "g-tile-2",
+  "kind": "generator",
+  "name": "tile",
+  "pattern": "tile",
+  "options": {
+   "motif": "basket"
+  }
+ },
+ {
+  "file": "g-tile-3",
+  "kind": "generator",
+  "name": "tile",
+  "pattern": "tile",
+  "options": {
+   "motif": "parquet"
+  }
+ },
+ {
+  "file": "g-tile-4",
+  "kind": "generator",
+  "name": "tile",
+  "pattern": "tile",
+  "options": {
+   "motif": "setts"
+  }
+ },
+ {
+  "file": "g-tile-5",
+  "kind": "generator",
+  "name": "tile",
+  "pattern": "tile",
+  "options": {
+   "motif": "flagstones"
+  }
+ },
+ {
+  "file": "g-tile-6",
+  "kind": "generator",
+  "name": "tile",
+  "pattern": "tile",
+  "options": {
+   "motif": "tiles"
+  }
+ },
+ {
+  "file": "g-tile-7",
+  "kind": "generator",
+  "name": "tile",
+  "pattern": "tile",
+  "options": {
+   "motif": "hexagons"
+  }
+ },
+ {
+  "file": "g-tile-8",
+  "kind": "generator",
+  "name": "tile",
+  "pattern": "tile",
+  "options": {
+   "motif": "stairs"
+  }
+ },
+ {
+  "file": "g-tile-9",
+  "kind": "generator",
+  "name": "tile",
+  "pattern": "tile",
+  "options": {
+   "motif": "grate"
+  }
+ },
+ {
+  "file": "g-tile-10",
+  "kind": "generator",
+  "name": "tile",
+  "pattern": "tile",
+  "options": {
+   "motif": "chess"
+  }
+ },
+ {
+  "file": "g-tile-11",
+  "kind": "generator",
+  "name": "tile",
+  "pattern": "tile",
+  "options": {
+   "pat": "ANSI37"
+  }
+ },
+ {
+  "file": "g-tile-12",
+  "kind": "generator",
+  "name": "tile",
+  "pattern": "tile",
+  "options": {
+   "motif": [
+    [
+     [
+      0,
+      -1.2
+     ],
+     [
+      0.35,
+      -0.35
+     ],
+     [
+      1.2,
+      0
+     ],
+     [
+      0.35,
+      0.35
+     ],
+     [
+      0,
+      1.2
+     ],
+     [
+      -0.35,
+      0.35
+     ],
+     [
+      -1.2,
+      0
+     ],
+     [
+      -0.35,
+      -0.35
+     ],
+     [
+      0,
+      -1.2
+     ]
+    ]
+   ],
+   "size": [
+    3,
+    3
+   ],
+   "stagger": 0.5
+  }
+ },
+ {
+  "file": "g-waves-0",
+  "kind": "generator",
+  "name": "waves",
+  "pattern": "waves",
+  "options": {}
+ },
+ {
+  "file": "g-waves-1",
+  "kind": "generator",
+  "name": "waves",
+  "pattern": "waves",
+  "options": {
+   "shape": "scallop"
+  }
+ },
+ {
+  "file": "g-waves-2",
+  "kind": "generator",
+  "name": "waves",
+  "pattern": "waves",
+  "options": {
+   "shape": "zigzag"
+  }
+ },
+ {
+  "file": "g-waves-3",
+  "kind": "generator",
+  "name": "waves",
+  "pattern": "waves",
+  "options": {
+   "shape": "curl",
+   "spacing": 2
+  }
+ },
+ {
+  "file": "g-waves-4",
+  "kind": "generator",
+  "name": "waves",
+  "pattern": "waves",
+  "options": {
+   "shape": "flow"
+  }
+ },
+ {
+  "file": "g-waves-5",
+  "kind": "generator",
+  "name": "waves",
+  "pattern": "waves",
+  "options": {
+   "cross": 2,
+   "spacing": 1.6
+  }
+ },
+ {
+  "file": "g-rings-0",
+  "kind": "generator",
+  "name": "rings",
+  "pattern": "rings",
+  "options": {}
+ },
+ {
+  "file": "g-rings-1",
+  "kind": "generator",
+  "name": "rings",
+  "pattern": "rings",
+  "options": {
+   "from": "edges"
+  }
+ },
+ {
+  "file": "g-rings-2",
+  "kind": "generator",
+  "name": "rings",
+  "pattern": "rings",
+  "options": {
+   "spiral": true
+  }
+ },
+ {
+  "file": "g-scribble-0",
+  "kind": "generator",
+  "name": "scribble",
+  "pattern": "scribble",
+  "options": {
+   "layers": 1
+  }
+ },
+ {
+  "file": "g-scribble-1",
+  "kind": "generator",
+  "name": "scribble",
+  "pattern": "scribble",
+  "options": {}
+ },
+ {
+  "file": "g-scribble-2",
+  "kind": "generator",
+  "name": "scribble",
+  "pattern": "scribble",
+  "options": {
+   "layers": 3,
+   "loose": 0.8
+  }
+ },
+ {
+  "file": "g-hilbert-0",
+  "kind": "generator",
+  "name": "hilbert",
+  "pattern": "hilbert",
+  "options": {}
+ },
+ {
+  "file": "g-truchet-0",
+  "kind": "generator",
+  "name": "truchet",
+  "pattern": "truchet",
+  "options": {}
+ },
+ {
+  "file": "g-honeycomb-0",
+  "kind": "generator",
+  "name": "honeycomb",
+  "pattern": "honeycomb",
+  "options": {}
+ },
+ {
+  "file": "g-scales-0",
+  "kind": "generator",
+  "name": "scales",
+  "pattern": "scales",
+  "options": {}
+ },
+ {
+  "file": "g-sunburst-0",
+  "kind": "generator",
+  "name": "sunburst",
+  "pattern": "sunburst",
+  "options": {}
+ },
+ {
+  "file": "g-wood-0",
+  "kind": "generator",
+  "name": "wood",
+  "pattern": "wood",
+  "options": {}
+ },
+ {
+  "file": "g-marble-0",
+  "kind": "generator",
+  "name": "marble",
+  "pattern": "marble",
+  "options": {}
+ },
+ {
+  "file": "g-swells-0",
+  "kind": "generator",
+  "name": "swells",
+  "pattern": "swells",
+  "options": {}
+ },
+ {
+  "file": "g-eddies-0",
+  "kind": "generator",
+  "name": "eddies",
+  "pattern": "eddies",
+  "options": {}
+ },
+ {
+  "file": "g-ripples-0",
+  "kind": "generator",
+  "name": "ripples",
+  "pattern": "ripples",
+  "options": {}
+ },
+ {
+  "file": "g-canopy-0",
+  "kind": "generator",
+  "name": "canopy",
+  "pattern": "canopy",
+  "options": {}
+ },
+ {
+  "file": "g-twigs-0",
+  "kind": "generator",
+  "name": "twigs",
+  "pattern": "twigs",
+  "options": {}
+ },
+ {
+  "file": "g-doodle-trees-0",
+  "kind": "generator",
+  "name": "doodle-trees",
+  "pattern": "doodle-trees",
+  "options": {}
+ },
+ {
+  "file": "g-growth-0",
+  "kind": "generator",
+  "name": "growth",
+  "pattern": "growth",
+  "options": {}
+ },
+ {
+  "file": "g-isoline-stack-0",
+  "kind": "generator",
+  "name": "isoline-stack",
+  "pattern": "isoline-stack",
+  "options": {}
+ },
+ {
+  "file": "g-isoline-blobs-0",
+  "kind": "generator",
+  "name": "isoline-blobs",
+  "pattern": "isoline-blobs",
+  "options": {}
+ },
+ {
+  "file": "g-clouds-0",
+  "kind": "generator",
+  "name": "clouds",
+  "pattern": "clouds",
+  "options": {}
+ },
+ {
+  "file": "g-solid-0",
+  "kind": "generator",
+  "name": "solid",
+  "pattern": "solid",
+  "options": {}
+ },
+ {
+  "file": "k-dot",
+  "kind": "mark",
+  "name": "dot",
+  "pattern": "scatter",
+  "options": {
+   "motif": "dot",
+   "mark": 3,
+   "spacing": 5.5,
+   "rotate": "upright",
+   "edge": "inside"
+  }
+ },
+ {
+  "file": "k-tick",
+  "kind": "mark",
+  "name": "tick",
+  "pattern": "scatter",
+  "options": {
+   "motif": "tick",
+   "mark": 3,
+   "spacing": 5.5,
+   "rotate": "upright",
+   "edge": "inside"
+  }
+ },
+ {
+  "file": "k-dash",
+  "kind": "mark",
+  "name": "dash",
+  "pattern": "scatter",
+  "options": {
+   "motif": "dash",
+   "mark": 3,
+   "spacing": 5.5,
+   "rotate": "upright",
+   "edge": "inside"
+  }
+ },
+ {
+  "file": "k-plus",
+  "kind": "mark",
+  "name": "plus",
+  "pattern": "scatter",
+  "options": {
+   "motif": "plus",
+   "mark": 3,
+   "spacing": 5.5,
+   "rotate": "upright",
+   "edge": "inside"
+  }
+ },
+ {
+  "file": "k-cross",
+  "kind": "mark",
+  "name": "cross",
+  "pattern": "scatter",
+  "options": {
+   "motif": "cross",
+   "mark": 3,
+   "spacing": 5.5,
+   "rotate": "upright",
+   "edge": "inside"
+  }
+ },
+ {
+  "file": "k-ring",
+  "kind": "mark",
+  "name": "ring",
+  "pattern": "scatter",
+  "options": {
+   "motif": "ring",
+   "mark": 3,
+   "spacing": 5.5,
+   "rotate": "upright",
+   "edge": "inside"
+  }
+ },
+ {
+  "file": "k-ring-dot",
+  "kind": "mark",
+  "name": "ring-dot",
+  "pattern": "scatter",
+  "options": {
+   "motif": "ring-dot",
+   "mark": 3,
+   "spacing": 5.5,
+   "rotate": "upright",
+   "edge": "inside"
+  }
+ },
+ {
+  "file": "k-pebble",
+  "kind": "mark",
+  "name": "pebble",
+  "pattern": "scatter",
+  "options": {
+   "motif": "pebble",
+   "mark": 3,
+   "spacing": 5.5,
+   "rotate": "upright",
+   "edge": "inside"
+  }
+ },
+ {
+  "file": "k-blob",
+  "kind": "mark",
+  "name": "blob",
+  "pattern": "scatter",
+  "options": {
+   "motif": "blob",
+   "mark": 3,
+   "spacing": 5.5,
+   "rotate": "upright",
+   "edge": "inside"
+  }
+ },
+ {
+  "file": "k-shard",
+  "kind": "mark",
+  "name": "shard",
+  "pattern": "scatter",
+  "options": {
+   "motif": "shard",
+   "mark": 3,
+   "spacing": 5.5,
+   "rotate": "upright",
+   "edge": "inside"
+  }
+ },
+ {
+  "file": "k-rock",
+  "kind": "mark",
+  "name": "rock",
+  "pattern": "scatter",
+  "options": {
+   "motif": "rock",
+   "mark": 3,
+   "spacing": 5.5,
+   "rotate": "upright",
+   "edge": "inside"
+  }
+ },
+ {
+  "file": "k-tee",
+  "kind": "mark",
+  "name": "tee",
+  "pattern": "scatter",
+  "options": {
+   "motif": "tee",
+   "mark": 3,
+   "spacing": 5.5,
+   "rotate": "upright",
+   "edge": "inside"
+  }
+ },
+ {
+  "file": "k-vee",
+  "kind": "mark",
+  "name": "vee",
+  "pattern": "scatter",
+  "options": {
+   "motif": "vee",
+   "mark": 3,
+   "spacing": 5.5,
+   "rotate": "upright",
+   "edge": "inside"
+  }
+ },
+ {
+  "file": "k-bracket",
+  "kind": "mark",
+  "name": "bracket",
+  "pattern": "scatter",
+  "options": {
+   "motif": "bracket",
+   "mark": 3,
+   "spacing": 5.5,
+   "rotate": "upright",
+   "edge": "inside"
+  }
+ },
+ {
+  "file": "k-tuft",
+  "kind": "mark",
+  "name": "tuft",
+  "pattern": "scatter",
+  "options": {
+   "motif": "tuft",
+   "mark": 3,
+   "spacing": 5.5,
+   "rotate": "upright",
+   "edge": "inside"
+  }
+ },
+ {
+  "file": "k-reed",
+  "kind": "mark",
+  "name": "reed",
+  "pattern": "scatter",
+  "options": {
+   "motif": "reed",
+   "mark": 3,
+   "spacing": 5.5,
+   "rotate": "upright",
+   "edge": "inside"
+  }
+ },
+ {
+  "file": "k-tree",
+  "kind": "mark",
+  "name": "tree",
+  "pattern": "scatter",
+  "options": {
+   "motif": "tree",
+   "mark": 3,
+   "spacing": 5.5,
+   "rotate": "upright",
+   "edge": "inside"
+  }
+ },
+ {
+  "file": "k-conifer",
+  "kind": "mark",
+  "name": "conifer",
+  "pattern": "scatter",
+  "options": {
+   "motif": "conifer",
+   "mark": 3,
+   "spacing": 5.5,
+   "rotate": "upright",
+   "edge": "inside"
+  }
+ },
+ {
+  "file": "k-shrub",
+  "kind": "mark",
+  "name": "shrub",
+  "pattern": "scatter",
+  "options": {
+   "motif": "shrub",
+   "mark": 3,
+   "spacing": 5.5,
+   "rotate": "upright",
+   "edge": "inside"
+  }
+ },
+ {
+  "file": "k-sprout",
+  "kind": "mark",
+  "name": "sprout",
+  "pattern": "scatter",
+  "options": {
+   "motif": "sprout",
+   "mark": 3,
+   "spacing": 5.5,
+   "rotate": "upright",
+   "edge": "inside"
+  }
+ },
+ {
+  "file": "k-leaf",
+  "kind": "mark",
+  "name": "leaf",
+  "pattern": "scatter",
+  "options": {
+   "motif": "leaf",
+   "mark": 3,
+   "spacing": 5.5,
+   "rotate": "upright",
+   "edge": "inside"
+  }
+ },
+ {
+  "file": "k-vine",
+  "kind": "mark",
+  "name": "vine",
+  "pattern": "scatter",
+  "options": {
+   "motif": "vine",
+   "mark": 3,
+   "spacing": 5.5,
+   "rotate": "upright",
+   "edge": "inside"
+  }
+ },
+ {
+  "file": "k-flower",
+  "kind": "mark",
+  "name": "flower",
+  "pattern": "scatter",
+  "options": {
+   "motif": "flower",
+   "mark": 3,
+   "spacing": 5.5,
+   "rotate": "upright",
+   "edge": "inside"
+  }
+ },
+ {
+  "file": "k-grave",
+  "kind": "mark",
+  "name": "grave",
+  "pattern": "scatter",
+  "options": {
+   "motif": "grave",
+   "mark": 3,
+   "spacing": 5.5,
+   "rotate": "upright",
+   "edge": "inside"
   }
  }
 ]

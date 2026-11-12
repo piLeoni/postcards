@@ -12,7 +12,7 @@ const pen = (k) => PEN * k
 /** @type {Stroke} */
 const INK = { style: "solid", width: pen(1), cap: "round" }
 
-/** @type {Omit<FillOptions, "in">} */
+/** @type {FillStyle} */
 const CLOUDS = {
   pattern: "clouds",
   spacing: pen(25),     // one puff: 5 mm
@@ -23,11 +23,11 @@ const CLOUDS = {
   seed: 4,
 }
 const SHADOW_DROP = pen(40)  // how far a shadow falls from its cloud: the clouds' height
-/** @type {Omit<FillOptions, "in">} */
+/** @type {FillStyle} */
 const SHADOW = { pattern: "stipple", spacing: pen(2.6), mark: pen(0.6) }
-/** @type {Omit<FillOptions, "in">} */
+/** @type {FillStyle} */
 const PARK = { pattern: "dots", spacing: pen(3.75), mark: pen(1.1), angle: 30 }
-/** @type {Omit<FillOptions, "in">} */
+/** @type {FillStyle} */
 const SEA = { pattern: "waves", spacing: pen(3.75) }
 
 // ── 2. Data & geometry: the city ────────────────────────────────────────

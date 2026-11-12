@@ -33,7 +33,7 @@ const INK = "#1b1b1b"
 // the next one. One pattern for all, its spacing the only thing that changes:
 // the higher, the closer the lines.
 // Across the Sierra, not along it: the belts read as steps, not stripes.
-/** @type {Omit<FillOptions, "in">} */
+/** @type {FillStyle} */
 const PATTERN = { pattern: "lines", angle: -45 }
 const BELTS = [
   { from: -100, spacing: 3.2 },

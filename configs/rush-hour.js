@@ -33,7 +33,7 @@ const NIB = 0.2
 /** Passes that build a thick mark (bars, trains) sit this far apart: separate lines you can see, not one smear. */
 const STEP = 0.3
 /** Letters are filled with diagonal lines this far apart: a hatch you can see, not a solid. */
-/** @type {Omit<FillOptions, "in">} */
+/** @type {FillStyle} */
 const LETTER_HATCH = { pattern: "lines", spacing: 0.4, angle: 45 }
 /** @param {string} color @returns {Stroke} */
 const pen = (color) => ({ color, width: NIB, cap: "round" })
@@ -59,7 +59,7 @@ const TRAIN_HALO = 0.45
 /** Downtown, where the lines bunch up: no line names here. */
 const DOWNTOWN = { lat: 42.3555, lng: -71.0605 }
 const DOWNTOWN_R = "28mm"
-/** @type {Omit<FillOptions, "in">} */
+/** @type {FillStyle} */
 const SOLID = { pattern: "concentric", spacing: STEP }
 
 /** @param {number} weight @returns {GoogleFont} */

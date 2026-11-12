@@ -1,170 +1,277 @@
 import { useState } from 'react'
-import { C, H, Note, P, T, Table } from './Bits.jsx'
-import patterns from './pattern-swatches.json'
+import catalog from './catalog.json'
+import swatches from './pattern-swatches.json'
+import { C, Code, H, LI, Note, P, T, Table, UL } from './Bits.jsx'
 
 /**
- * The pattern catalogue: a swatch for every penfill pattern, each a 22 mm
- * square drawn by the CLI with a 0.2 mm pen. `web/scripts/render-patterns.mjs`
- * writes the swatches (`public/docs/patterns/<file>.svg`) and `pattern-swatches.json`
- * from the `Pattern` union in `drawland.d.ts`, with the options a swatch
- * needed; the per-pattern options table at the end is written by hand from
- * `FillOptions`' docs.
+ * The patterns, from penfill's own description of its catalogue
+ * (`catalog.json`) and swatches drawn by the CLI (`pattern-swatches.json`,
+ * `public/docs/patterns/`), both written by `web/scripts/render-patterns.mjs`.
+ * Nothing here lists a pattern by hand: a new material, generator or symbol
+ * appears once the script is run.
  */
+const GROUPS = catalog.groups.filter((g) => catalog.materials.some((m) => m.group === g.id))
 
-/** The catalogue's groups, in the order the script wrote them. */
-const GROUPS = (() => {
-  const out = []
-  for (const p of patterns) {
-    let g = out.find((x) => x.id === p.group)
-    if (!g) out.push((g = { id: p.group, title: p.groupTitle, items: [] }))
-    g.items.push(p)
-  }
-  return out
-})()
-
-const groupId = (g) => `patterns-${g}`
-
-/** For the left index (`nav.js`): the catalogue's group and its sections. */
 export const PATTERNS_NAV = {
   id: 'patterns',
   title: 'Patterns',
-  sub: [...GROUPS.map((g) => groupId(g.id)), 'patterns-options'],
+  sub: [...GROUPS.map((g) => `patterns-${g.id}`), 'patterns-generators', 'patterns-symbols', 'patterns-custom'],
 }
 
-/** The index's titles for those sections. */
 export const PATTERNS_TITLES = {
-  ...Object.fromEntries(GROUPS.map((g) => [groupId(g.id), g.title])),
-  'patterns-options': 'Pattern options',
+  ...Object.fromEntries(GROUPS.map((g) => [`patterns-${g.id}`, g.title])),
+  'patterns-generators': 'Generators',
+  'patterns-symbols': 'Symbols',
+  'patterns-custom': 'Make your own',
 }
 
-/** An option's value as a profile writes it; `centre` stays a placeholder. */
-function value(key, v) {
-  if (key === 'centre' && typeof v === 'string') return v
-  return JSON.stringify(v)
-}
-
-/** `pattern: "pat", name: "BRICK"`: the options a swatch was drawn with. */
-function args(p) {
-  return [`pattern: "${p.name}"`, ...Object.entries(p.options).map(([k, v]) => `${k}: ${value(k, v)}`)].join(', ')
-}
-
-function Swatch({ p }) {
-  const [copied, setCopied] = useState(false)
-  const call = `fills.fill({ in: area, ${args(p)} })`
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(call)
-    } catch {
-      return
-    }
-    setCopied(true)
-    setTimeout(() => setCopied(false), 1200)
-  }
-  return (
-    <figure className="m-0 flex min-w-0 flex-col">
-      {/* Not a <button>: the page's buttons have a fixed height. */}
-      <div
-        role="button"
-        tabIndex={0}
-        onClick={copy}
-        onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), copy())}
-        title={`Copy ${call}`}
-        className="cursor-copy border border-black/30 bg-white"
-      >
-        <img
-          src={`/docs/patterns/${p.file}.svg`}
-          alt={`The ${p.name} pattern`}
-          loading="lazy"
-          className="block aspect-square h-auto w-full"
-        />
-      </div>
-      <figcaption className="mt-[0.25lh] min-w-0">
-        <div className="font-bold">
-          {p.group === 'pat' ? p.options.name : p.name}
-          {copied ? <span className="ml-[1ch] font-normal opacity-60">copied</span> : null}
-        </div>
-        {p.alias ? <div className="text-[11px] opacity-60">alias: {p.alias}</div> : null}
-        <code className="block text-[11px] leading-snug break-words opacity-70">{`{ ${args(p)} }`}</code>
-      </figcaption>
-    </figure>
-  )
-}
-
-/** Options that belong to one pattern (or a few), from `FillOptions`. */
-const OPTION_ROWS = [
-  ['dots', <><C>mark</C> dot size (default 0.2mm); <C>lattice</C> <C>"square"</C> or <C>"hexagonal"</C></>],
-  ['stipple', <><C>mark</C> dot size (default 0.2mm)</>],
-  ['honeycomb', <><C>line_width</C> doubles the walls this far apart</>],
-  ['terrazzo', <><C>hatch</C> the hatch inside the stones</>],
-  ['chess', <><C>cell</C> the size of a square</>],
-  ['pat', <><C>name</C> which hatch (<C>BRICK</C>, <C>HERRINGBONE</C>, <C>BASKET</C>, <C>PARQUET</C>, <C>ANSI31</C>, <C>ANSI32</C>, <C>ANSI33</C>, <C>ANSI37</C>, <C>EARTH</C>, <C>CROSS</C>, <C>DASH</C>, <C>STAIRS</C>, <C>GRATE</C>, <C>ANGLE</C>); <C>scale</C> the hatch's size</>],
-  ['sunburst, spiral', <><C>centre</C> where the pattern centres, in output millimetres</>],
-  ['waves', <><C>inset</C> defaults to 0.1mm</>],
-  ['curl-waves', <><C>spacing</C> is the gap between rows; <C>wavelength</C> distance between waves along a row, × spacing (1.35); <C>curl</C> radius of each curl, × the wavelength (0.2); <C>turns</C> how far each curl winds in (0.95); <C>stagger</C> shift every other row (0–1, 0); <C>flip</C> 1 breaks the other way</>],
-  ['flow-waves', <><C>spacing</C> is the gap between lines; <C>wavelength</C> one swell's length, × spacing (13); <C>amplitude</C> swell height, × spacing (2.6); <C>drift</C> how fast height and phase change (1); <C>breaks</C> how broken the lines are (0–1, 0.5)</>],
-  ['scallop-waves', <><C>spacing</C> is the gap between rows; <C>wavelength</C> scallop width × spacing (1.35); <C>depth</C> how far each scallop dips, × spacing (0.35); <C>round</C> below 1 rounder, above 1 more pointed (0.8)</>],
-  ['doodle-trees', <><C>spacing</C> is the crown diameter; <C>loops</C> curls round each rim, × the default (1); <C>shadow</C> share of crowns with a shade crescent (0.8); <C>light_angle</C> side the shadow scribble avoids (225)</>],
-  ['isoline-stack', <><C>edge</C> <C>"clip"</C> / <C>"inside"</C> / <C>"overflow"</C> (and <C>overflow</C>, how far past, ~0.4× spacing); <C>coverage</C> how patchy the crowns are (0–1, 0.6); <C>bubble</C> typical bubble radius (~0.3× spacing); <C>slices</C> rings (9); <C>jitter</C> contour displacement (0–2.5, 1.1); <C>jitter_period</C> / <C>period</C> control points per contour (0.2–4, 0.68); <C>ticks</C> slope ticks at clefts (0–1.5, 0.42); <C>elongation</C> wind sweep (0–1, 0.18); <C>lobes</C> cleft depth and lobing (0–2.5, 1); <C>light</C> sun strength (0–1, 0.82) with <C>light_angle</C> (−45), <C>light_elevation</C> (35) and <C>hatch</C> shading spacing (0.4, 0 for none). <C>isoline-stack-hatched</C> is the same, lit and hatched by default.</>],
-  ['isoline-blobs', <><C>coverage</C> how patchy (0–1, 0.6); <C>contour</C> distance between contour lines (~0.045× spacing); <C>warp</C> domain warp of the field (0–1, 0.45); <C>threshold</C> field level for patches (0–1, 0.25)</>],
-  ['clouds', <><C>spacing</C> is a puff's size; <C>coverage</C> share of sky; <C>cell</C> scale of the masses (8 puffs); <C>elongate</C> puffs drawn out along the run (0.35); <C>stretch</C> masses drawn out along the wind (0–0.95, 0.25); <C>wind</C> direction in degrees (15); <C>warp</C> curl and drift (0–1, 0.25); <C>height</C> 1 cumulus, 0.3 a flat sheet (1); <C>shade</C> how much is shaded (0–1, 0.45); <C>shading</C> <C>"dots"</C> or <C>"lines"</C>; <C>dot</C> dot length (0.12mm); <C>light_angle</C> (225, from the top left), <C>light_elevation</C> (30); <C>hatch</C> shade spacing at its deepest</>],
-  ['growth', <><C>spacing</C> is the gap between neighbouring twigs; <C>roots</C> how many roots; <C>root_spacing</C> roots this far apart (~12× spacing); <C>variation</C> how much trees differ (0–1, 0.35); <C>trunk</C> most pen passes on a trunk (3); <C>line_width</C> the pen width, so passes sit side by side (0.15); <C>step</C> advance per step (~0.16× spacing); <C>reach</C> attractor range (~3.2× spacing); <C>kill</C> attractor consumed this close (~0.4× spacing); <C>jitter</C> steering wobble (0.1); <C>max_steps</C> a hard cap (20000)</>],
-]
+const byFile = Object.fromEntries(swatches.map((s) => [s.file, s]))
 
 export default function Patterns() {
   return (
     <>
       <H id="patterns">Patterns</H>
       <P>
-        <C>fills.fill(&#123; in: area, pattern, ... &#125;)</C> fills an area with one of penfill's patterns, as
-        lines ready to draw. Every pattern is below, drawn by <C>drawland map</C> in a 22 mm square with a 0.2 mm
-        pen; the line under each is the options it was drawn with. Click a swatch to copy the call.
+        A fill's <C>pattern</C> is a <T>material</T> or a <T>generator</T>. A material is a named recipe, chosen
+        by what it is for: <C>gravel</C>, <C>marsh</C>, <C>limestone</C>, <C>orchard</C>. A generator is the
+        algorithm under it: <C>hatch</C>, <C>scatter</C>, <C>cells</C>, <C>tile</C>, <C>waves</C>, and a few with
+        a look of their own. Pick a material to get a look; drop to its generator to change anything about it.
+        Every swatch below is drawn by the engine at the pattern's own spacing; click one to copy its call.
       </P>
-      <P>
-        What every pattern reads: <T>spacing</T>, the distance between lines, rows or dots (default 0.5mm);{' '}
-        <T>angle</T> in degrees (most patterns default to 0; zigzag and lines to 45); <T>mark</T>, the dot or mark
-        size for <C>dots</C> and <C>stipple</C> (0.2mm); <T>inset</T>, which shrinks the area first; <T>fray</T>, a
-        perimeter-aware edge fade: lines break into shorter dashes and dots and disappear before the boundary;{' '}
-        <T>seed</T>, for the random patterns: the same seed draws the same lines; <T>anchor</T>,{' '}
-        <C>"global"</C> (default) so neighbouring areas share one grid, or <C>"local"</C> for each shape on its
-        own; <T>shift</T>, which moves the grid across and down; and <T>per: "feature"</T>, one pattern per polygon
-        (each building hatched on its own) instead of one over the union.
-      </P>
+      <P>Every pattern reads the same few options the same way:</P>
+      <UL>
+        <LI>
+          <T>spacing</T>: the distance between neighbouring elements, centre to centre (lines, marks, cells), in
+          paper millimetres. Each pattern has its own default; on a material it scales the whole recipe.
+        </LI>
+        <LI>
+          <T>angle</T>, <T>seed</T>, <T>inset</T>, <T>fray</T>, and <T>edge</T>: <C>clip</C> cuts at the
+          border, <C>inside</C> keeps every mark whole inside it, <C>overflow</C> lets the pattern bulge past.
+        </LI>
+        <LI>
+          <T>anchor</T>: global by default, so neighbouring areas share one pattern without a seam, and a card
+          moved over the map keeps its marks where they were.
+        </LI>
+        <LI>
+          <T>mark</T>, <T>jitter</T>, <T>vary</T>: the size of one element, how far elements wander, how much
+          their sizes differ.
+        </LI>
+        <LI>
+          <T>density</T> with <C>contrast</C> and <C>feature</C>: the tone across the area (<C>edge</C>,{' '}
+          <C>centre</C>, <C>noise</C>, <C>gradient</C>). A pen cannot draw grey, so tone is drawn by thinning:
+          fewer marks, broken lines, cross layers that drop out.
+        </LI>
+      </UL>
       <Note>
-        The swatches are drawn at true size and shown larger. Where a pattern's default reads poorly in a small
-        square (the soils at 0.5mm ink nearly solid, a crown or a puff wants room), the swatch sets its own{' '}
-        <C>spacing</C>; the option is shown. <C>solid</C> is a flat SVG fill, not pen strokes, and <C>none</C> draws
-        nothing.
+        A mistake says what to write: an option a pattern does not take is an error naming the ones it does,
+        and a value out of range gives the range. The editor checks the same thing as you type: with{' '}
+        <C>pattern: "scatter"</C> it offers exactly scatter's options.
       </Note>
 
       {GROUPS.map((g) => (
         <section key={g.id}>
-          <H id={groupId(g.id)} level={3}>
+          <H id={`patterns-${g.id}`} level={3}>
             {g.title}
           </H>
-          {g.id === 'pat' ? (
-            <P>
-              <C>pattern: "pat"</C> draws a built-in hatch, chosen with <C>name</C>.
-            </P>
-          ) : null}
-          <div className="my-[1lh] grid grid-cols-[repeat(auto-fill,minmax(9rem,1fr))] gap-x-[2ch] gap-y-[1lh]">
-            {g.items.map((p) => (
-              <Swatch key={p.file} p={p} />
-            ))}
-          </div>
+          <P>{g.about}</P>
+          <Grid>
+            {catalog.materials
+              .filter((m) => m.group === g.id)
+              .map((m) => (
+                <Swatch key={m.name} file={`m-${m.name}`} title={m.name} about={m.about} call={{ pattern: m.name }} recipe={recipe(m)} />
+              ))}
+          </Grid>
         </section>
       ))}
 
-      <H id="patterns-options" level={3}>
-        Pattern options
+      <H id="patterns-generators" level={3}>
+        Generators
       </H>
       <P>
-        Options only some patterns read; a default is in brackets. Lengths take a unit (<C>"2mm"</C>) or a number of
-        millimetres; the multiples (× spacing) are plain numbers.
+        Each generator with what its options do, and every option it takes. Lengths are millimetres on paper;
+        a default written <C>× spacing</C> follows the spacing.
       </P>
-      <Table
-        head={['pattern', 'options']}
-        rows={OPTION_ROWS.map(([name, opts]) => [<span className="whitespace-nowrap">{name}</span>, opts])}
-      />
+      {catalog.generators.map((g) => (
+        <Generator key={g.name} g={g} />
+      ))}
+
+      <H id="patterns-symbols" level={3}>
+        Symbols
+      </H>
+      <P>
+        The marks <C>scatter</C> places by name (<C>motif</C>), drawn as a careful map engraver would at 1–3 mm.
+        Each instance varies a little, so a field of them does not look stamped. With{' '}
+        <C>rotate: "upright"</C> trees, reeds and graves stand up whatever the pattern's angle.
+      </P>
+      <Grid small>
+        {swatches
+          .filter((s) => s.kind === 'mark')
+          .map((s) => (
+            <Swatch key={s.file} file={s.file} title={s.name} call={{ pattern: 'scatter', motif: s.name }} />
+          ))}
+      </Grid>
+
+      <Custom />
+    </>
+  )
+}
+
+/** A material's recipe, as one line: the generator and what it sets. */
+function recipe(m) {
+  if (m.alias) return `the ${m.name} generator`
+  return m.layers
+    .map((l) => {
+      const set = Object.entries(l.set)
+        .map(([k, v]) => `${k}: ${typeof v === 'object' && v && 'timesSpacing' in v ? `${fmt(v.timesSpacing)}×` : JSON.stringify(v)}`)
+        .join(', ')
+      return set ? `${l.generator} { ${set} }` : l.generator
+    })
+    .join(' + ')
+}
+
+const fmt = (v) => (Array.isArray(v) ? `[${v.join(', ')}]` : String(v))
+
+function Generator({ g }) {
+  const variants = swatches.filter((s) => s.kind === 'generator' && s.name === g.name)
+  return (
+    <section className="my-[2lh]">
+      <h4 id={`gen-${g.name}`} className="scroll-mt-[2lh] font-bold">
+        <C>{g.name}</C>
+      </h4>
+      <P>
+        {g.about} Default spacing {g.spacing} mm.
+      </P>
+      <Grid>
+        {variants.map((s) => (
+          <Swatch key={s.file} file={s.file} title={label(s.options)} call={{ pattern: g.name, ...s.options }} />
+        ))}
+      </Grid>
+      {g.options.length ? (
+        <Table
+          head={['option', 'takes', 'default', 'what it does']}
+          rows={g.options.map((o) => [<C key="k">{o.key}</C>, kind(o.kind), deflt(o.default), o.doc])}
+        />
+      ) : null}
+    </section>
+  )
+}
+
+function label(options) {
+  const parts = Object.entries(options).map(([k, v]) => `${k}: ${Array.isArray(v) && Array.isArray(v[0]) ? 'polylines' : JSON.stringify(v)}`)
+  return parts.length ? parts.join(', ') : 'defaults'
+}
+
+function kind(k) {
+  switch (k.type) {
+    case 'length':
+      return 'length'
+    case 'lengths':
+      return 'length, or [a, b]'
+    case 'number':
+      return `${k.min}–${k.max}`
+    case 'count':
+      return `${k.min}–${k.max}, whole`
+    case 'flag':
+      return 'true / false'
+    case 'choice':
+      return k.values.map((v) => `"${v}"`).join(' ')
+    case 'motif':
+      return k.values.length > 12 ? 'a symbol name, or polylines' : `${k.values.map((v) => `"${v}"`).join(' ')}, or polylines`
+    case 'numberOr':
+      return `degrees, or ${k.values.map((v) => `"${v}"`).join(' ')}`
+    default:
+      return 'text'
+  }
+}
+
+function deflt(d) {
+  if (d === null || d === undefined) return '—'
+  if (typeof d === 'object' && 'timesSpacing' in d) return `${fmt(d.timesSpacing)} × spacing`
+  return JSON.stringify(d)
+}
+
+function Grid({ children, small = false }) {
+  return (
+    <div className={`my-[1lh] grid max-w-[120ch] gap-[1.5ch] ${small ? 'grid-cols-[repeat(auto-fill,minmax(14ch,1fr))]' : 'grid-cols-[repeat(auto-fill,minmax(20ch,1fr))]'}`}>
+      {children}
+    </div>
+  )
+}
+
+/** One swatch: the picture on white, its name, what it is, and a click that copies its call. */
+function Swatch({ file, title, about, call, recipe }) {
+  const [copied, setCopied] = useState(false)
+  const text = `fills.fill({ in: area, ${Object.entries(call)
+    .map(([k, v]) => `${k}: ${JSON.stringify(v)}`)
+    .join(', ')} })`
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1200)
+    } catch {
+      setCopied(false)
+    }
+  }
+  if (!byFile[file]) return null
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={copy}
+      onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && copy()}
+      title={`Copy ${text}`}
+      className="thin flex cursor-pointer flex-col gap-[0.25lh] hover:opacity-80"
+    >
+      <img src={`/docs/patterns/${file}.svg`} alt={title} loading="lazy" className="block aspect-square w-full border border-black/30 bg-white" />
+      <span className="font-bold">{copied ? 'copied' : title}</span>
+      {about ? <span className="leading-snug opacity-70">{about}</span> : null}
+      {recipe ? <span className="text-[0.85em] leading-snug opacity-50">{recipe}</span> : null}
+    </div>
+  )
+}
+
+function Custom() {
+  return (
+    <>
+      <H id="patterns-custom" level={3}>
+        Make your own
+      </H>
+      <P>
+        Most new looks are a new combination of options, not new code: every generator's options are open,
+        and two fills drawn into the same area layer like a material's recipe. Beyond that, a profile can bring
+        its own shapes.
+      </P>
+      <P>
+        <T>Your own symbol.</T> <C>motif</C> takes polylines in millimetres around the origin, or any lines drawn
+        with <C>lines.*</C> (a shape, a word in a stroke font), which the engine centres for you:
+      </P>
+      <Code>{`// A star, written out: one closed polyline.
+const star = [[[0, -1.2], [0.35, -0.35], [1.2, 0], [0.35, 0.35], [0, 1.2], [-0.35, 0.35], [-1.2, 0], [-0.35, -0.35], [0, -1.2]]]
+draw({ id: "stars", from: fills.fill({ in: sky, pattern: "scatter", motif: star, spacing: 4, rotate: "random", vary: 0.3 }) })
+
+// Anything lines.* draws: a shape, or a letter in a stroke font.
+const triangle = lines.shape({ sides: 3, r: 1 })
+draw({ id: "marks", from: fills.fill({ in: meadow, pattern: "scatter", motif: triangle, spacing: 4, rotate: "random" }) })`}</Code>
+      <P>
+        <T>Your own tile.</T> <C>tile</C> repeats a motif on a lattice: <C>size</C> is its box, <C>stagger</C>{' '}
+        shifts every other row (0.5 is a brick bond). Or give it a CAD hatch in the <C>.pat</C> format, by
+        built-in name or written out:
+      </P>
+      <Code>{`fills.fill({ in: yard, pattern: "tile", motif: [[[-1, 0], [1, 0]], [[0, -1], [0, 1]]], size: [3, 3], stagger: 0.5 })
+
+// .pat: angle, x, y, dx, dy, then dashes (pen down positive, up negative)
+fills.fill({ in: plot, pattern: "tile", spacing: 1, pat: "*MINE\\n45, 0,0, 0,3, 2,-1\\n135, 0,0, 0,3, 2,-1" })`}</Code>
+      <P>
+        <T>Lines made elsewhere.</T> <C>content</C> fills an area with any lines (a burin terrain, contours, a
+        pattern drawn for another area), cut to it; <C>source</C> fills it with an SVG file.
+      </P>
+      <P>
+        <T>In code.</T> penfill's own Rust, Python and Node APIs take a function as a pattern: it gets the area,
+        the parameters and a toolkit (anchored lattices, blue-noise scatter, Voronoi cells, isolines of any
+        field, the symbol library) and returns lines. That is how every generator above is written; see{' '}
+        <a href="https://github.com/pileoni/penfill#build-your-own-pattern">penfill's guide</a>.
+      </P>
     </>
   )
 }

@@ -434,12 +434,15 @@ fn graticule_size() -> Mm {
 
 /// A penfill run. `per: feature` runs one pattern per polygon instead of one
 /// on the union. `content` fills the area with lines made elsewhere (burin's,
-/// or any `$lines`), cut to it, instead of a pattern.
+/// or any `$lines`), cut to it, instead of a pattern. `motif` is lines drawn
+/// elsewhere (`lines.text`, `lines.shape`) used as the pattern's motif: the
+/// runner centres them on the origin and hands them to penfill as polylines.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Fill {
     pub in_area: Name,
     pub per_feature: bool,
     pub content: Option<Name>,
+    pub motif: Option<Name>,
     pub spec: FillSpec,
 }
 
@@ -601,7 +604,7 @@ impl Op {
             Op::Graticule(g) | Op::GraticuleArea(g) => vec![g.in_area.clone()],
             Op::LabelLines(p) | Op::LabelArea(p) => vec![p.of.clone()],
             Op::Fill(f) | Op::FillCover(f) => {
-                std::iter::once(f.in_area.clone()).chain(f.content.iter().cloned()).collect()
+                std::iter::once(f.in_area.clone()).chain(f.content.iter().cloned()).chain(f.motif.iter().cloned()).collect()
             }
         }
     }
@@ -1658,7 +1661,20 @@ fn parse_op(raw: RawOp, section: Section) -> Result<Op, GrammarError> {
             if content.as_ref().is_some_and(|c| c.section != Section::Lines) {
                 return Err(GrammarError::Invalid("tools_fill: content must be $lines".into()));
             }
-            let fill = Fill { in_area: refname(&raw.in_area)?, per_feature, content, spec: raw.spec };
+            // A motif given as `$lines.…` is a reference, resolved when the fill
+            // runs; polylines or a symbol name stay in the spec as they are.
+            let motif = match raw.spec.options.get("motif") {
+                Some(Value::String(s)) if s.starts_with('$') => {
+                    let name = refname(s)?;
+                    if name.section != Section::Lines {
+                        return Err(GrammarError::Invalid("tools_fill: motif must be $lines, polylines or a symbol name".into()));
+                    }
+                    raw.spec.options.remove("motif");
+                    Some(name)
+                }
+                _ => None,
+            };
+            let fill = Fill { in_area: refname(&raw.in_area)?, per_feature, content, motif, spec: raw.spec };
             if key == "tools_fill" {
                 Op::Fill(fill)
             } else if fill.per_feature || fill.content.is_some() {
@@ -2091,11 +2107,17 @@ pub fn op_to_json(op: &Op) -> Value {
             if let Some(c) = &f.content {
                 body["content"] = Value::String(c.to_string());
             }
+            if let Some(m) = &f.motif {
+                body["motif"] = Value::String(m.to_string());
+            }
             ("tools_fill", body)
         }
         Op::FillCover(f) => {
             let mut body = serde_json::to_value(&f.spec).unwrap_or_else(|_| json!({}));
             body["in"] = Value::String(f.in_area.to_string());
+            if let Some(m) = &f.motif {
+                body["motif"] = Value::String(m.to_string());
+            }
             ("tools_fill_cover", body)
         }
         Op::Module(m) => {

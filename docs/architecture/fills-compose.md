@@ -7,13 +7,16 @@ Turn areas into pen paths (patterns or outlines) and emit grouped SVG in millime
 ## Fills (`fill.rs`)
 
 - Input: `FillSpec` from profile + `MultiPolygon` region in mm.
-- Backed by **penfill** (`Region`, `fill_by_name` / `FillParams`, optional SVG `source`). Profile options map in `fill_penfill.rs` (draw.land hyphen names → registry names, gallery spacing scales).
-- Generator names in `GENERATORS` (must stay in sync with d.ts / penfill). `edge`, `fray`, and pattern-specific keys become `FillParams` + `custom`; canopy / growth / isoline-blobs still use coverage-aware paths in `fill.rs`.
+- Backed by **penfill's catalogue** (`penfill::catalog`): every pattern is a *material* (named recipe: `gravel`, `marsh`, `limestone`) or a *generator* (`hatch`, `scatter`, `cells`, `tile`, `waves`, specialists). penfill owns the names, every option's kind/default/doc, validation and dispatch; see penfill `docs/architecture/catalog.md`.
+- `fill.rs` only translates (`catalog_spec`): lengths (`"0.5mm"`) → mm, `[[x, y], …]` → polylines (custom `motif`), `anchor`/`shift` → `Anchor` (global by default), `edge`/`overflow` → `EdgeMode`, `fray`. Unknown options and bad values are the catalogue's errors (`FillError::Catalog`), which name the valid keys. draw.land keeps only what is its own: SVG `source`, `solid` (flat colour), `none`, and the `COVERED` cache.
+- `motif` given as a `Lines` handle (`lines.shape`, `lines.text`) is a graph reference (`Fill.motif`); `grammar_run::with_motif` resolves it and `fill::motif_polylines` centres it on the origin before the fill runs.
+- Footprint-aware patterns (`catalog::own_mask`: crowns, clouds, stones, scattered marks) feed `fills.cover`: `fill::cover` returns the run's mask, and the run is cached so the matching `fills.fill` reuses it.
 - Output: `geom::Lines` (same type as hand-drawn linework).
+- The pattern part of `drawland.d.ts` (between the `catalog:begin` / `catalog:end` markers: `Pattern`, `Material`, `Generator`, `Mark`, one `…Options` interface per generator, `PatternOptions`) is generated from the catalogue: `cargo run -p drawland-script --example write_dts`; `drawland-script` tests fail when it is stale. `FillOptions` is `FillBase & PatternOptions | content | source`; `FillStyle` is its distributive "without `in`" for style constants.
 
 Per-feature fills (`per: "feature"`) iterate features for placement.
 
-Fill budget / memory: WASM sets `Job.memoryBudget` from WASM memory max; oversized fills fail with `RunError::TooLarge` rather than trapping.
+Fill budget / memory (`budget.rs`): before a fill runs inside a page, its cost is **sampled** — the pattern is drawn on a small square (12× its widest layer spacing, 20–150 mm), its points and strokes per mm² counted and scaled to the area, at `PER_POINT` / `PER_STROKE` bytes fitted by `examples/budget_calib.rs`. It holds for any material, symbol or custom motif without a per-name table. WASM sets `Job.memoryBudget` from WASM memory max; oversized fills fail with `RunError::TooLarge` rather than trapping.
 
 ## Strokes
 
@@ -37,4 +40,4 @@ Lengths in profiles parse to mm (`"0.5mm"`, `"6in"`, etc.). Internal geometry is
 
 Pattern behaviour changes belong in **penfill** when general; draw.land only wires specs and regions.
 
-**Isoline** fills (`isoline-blobs`, `isoline-stack`) also publish what they cover: `fills.cover(options)` is a `$areas` def (`tools_fill_cover`, `fill::cover`) to mask other groups with, sharing one generator run with the matching `fills.fill`. See [isoline-blob-fills.md](isoline-blob-fills.md).
+Footprint-aware fills (isoline crowns, clouds, stones, scattered marks) publish what they cover: `fills.cover(options)` is a `$areas` def (`tools_fill_cover`, `fill::cover`) to mask other groups with, sharing one generator run with the matching `fills.fill`. See [isoline-blob-fills.md](isoline-blob-fills.md).

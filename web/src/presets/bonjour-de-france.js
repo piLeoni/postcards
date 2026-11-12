@@ -55,7 +55,7 @@ const GREET = { font: sans(700), size: 3.4, above: 4.2 }
 const pen = (color) => ({ color, width: 0.2, cap: "round" })
 const RED = "#ff4f3a"
 /** Letters inked solid: diagonal lines just under the nib apart, counters left open. */
-/** @type {Omit<FillOptions, "in">} */
+/** @type {FillStyle} */
 const SOLID_HATCH = { pattern: "lines", spacing: "0.24mm", angle: 45 }
 // Paper kept clear round every letter of the title and the greeting.
 const TITLE_CLEAR = "1.2mm"

@@ -15,15 +15,15 @@ const SOLID = inked({ style: "solid" })
 const DOTTED = inked({ style: "dotted", mark: pen(1.5), gap: pen(6.5) })  // soft edges
 const DASHED = inked({ style: "dash", dash: pen(1.75), gap: pen(4) })      // wide roads' centre lines
 
-/** @type {Omit<FillOptions, "in">} */
+/** @type {FillStyle} */
 const FILL_BUILDINGS = { per: "feature", pattern: "lines", inset: pen(1.3), spacing: pen(2.5), angle: 45 }
-/** @type {Omit<FillOptions, "in">} */
+/** @type {FillStyle} */
 const FILL_WATER = { pattern: "waves", spacing: pen(3.75) }
-/** @type {Omit<FillOptions, "in">} */
+/** @type {FillStyle} */
 const FILL_NATURE = { pattern: "dots", spacing: pen(3.75), mark: pen(1.1), angle: 30 }
 // Tree crowns: stacked, jittered contours lit from the top left; `spacing` is
 // a crown's real size (30 m), `coverage` how much of the park is under trees.
-/** @type {Omit<FillOptions, "in">} */
+/** @type {FillStyle} */
 const CROWNS = { pattern: "isoline-stack", spacing: ground(30), coverage: 0.6, slices: 9, jitter: 1.1, lobes: 1, ticks: 0.4, light_angle: 225, edge: "inside", seed: 7 }
 
 // ── 2. Data & geometry ──────────────────────────────────────────────────

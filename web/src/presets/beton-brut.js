@@ -112,18 +112,18 @@ const LANE_CUT = NIB * 1.2
 
 // 1d. Fills
 /** Water: swells in the fine nib, fraying into broken strokes toward the shore. */
-/** @type {Omit<FillOptions, "in">} */
+/** @type {FillStyle} */
 const FILL_WATER     = { pattern: "swells", spacing: pen(1.6), fray: pen(10) }
 /** Buildings: solid black, as the roads — rings in from every edge, courtyards too, a little under a nib apart. */
-/** @type {Omit<FillOptions, "in">} */
+/** @type {FillStyle} */
 const FILL_BUILDINGS = { pattern: "offsets", spacing: PASS_STEP }
 /** Trees: dendritic growth, one nib per branch. */
-/** @type {Omit<FillOptions, "in">} */
+/** @type {FillStyle} */
 const FILL_TREES     = {
   pattern: "growth", seed: 11,
   spacing: metres(9),          // twigs ~9 m apart: open crowns, paper between the branches
   root_spacing: metres(28),    // one tree per ~28 m: crowns at their real size, as in City grain
-  line_width: FINE, trunk: 1, variation: 0.6, jitter: 0.12, inset: metres(1.5),
+  pen: FINE, trunk: 1, variation: 0.6, jitter: 0.12, inset: metres(1.5),
 }
 /** Trees are left out once a crown would be under 1.6 mm on paper (past about 1:17500). */
 const SHOW_TREES = metres(28) >= 1.6
@@ -155,8 +155,8 @@ const LABEL_SMALL    = pen(5.2)    // 2.6 mm: the smallest at which both edges o
 const CLEAR_BIG      = pen(3.2)    // paper kept clear round district letters (1.6 mm)
 const CLEAR_SMALL    = pen(1.2)    // and round street and park names (0.6 mm)
 /** Letters inked solid: a zigzag packed tighter than the fine nib, inside each outline. */
-/** @type {Omit<FillOptions, "in">} */
-const FILL_LETTERS   = { pattern: "zigzag", spacing: pen(0.4), angle: 45 }
+/** @type {FillStyle} */
+const FILL_LETTERS   = { pattern: "serpentine", spacing: pen(0.4), angle: 45 }
 /** @type {LabelRule[]} */
 const LABEL_RULES = [
   { id: "district", tags: { "tiles:layer": "place" }, size: LABEL_BIG, minSize: LABEL_BIG },

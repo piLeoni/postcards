@@ -12,7 +12,7 @@ output({
 
 // Parks. Each kind claims its area minus the kinds before it, so a garden
 // inside a park is dotted once.
-/** @type {Omit<FillOptions, "in">} */
+/** @type {FillStyle} */
 const dots = { pattern: "dots", spacing: "0.45mm", mark: "0.2mm", angle: 45 }
 const kinds = {
   g: { leisure: "garden" },
@@ -59,7 +59,7 @@ const road = [
 ]
 const building = [
   draw({ id: "bldg_wall", from: sharedWalls, stroke: "solid" }),
-  draw({ id: "bldg_fill", from: fills.fill({ in: footprints, per: "feature", pattern: "zigzag", spacing: "0.5mm", angle: 45 }) }),
+  draw({ id: "bldg_fill", from: fills.fill({ in: footprints, per: "feature", pattern: "serpentine", spacing: "0.5mm", angle: 45 }) }),
   draw({ id: "bldg_ring", from: lines.join(lines.rings(dissolved), lines.of(bldg)), stroke: "solid" }),
 ]
 

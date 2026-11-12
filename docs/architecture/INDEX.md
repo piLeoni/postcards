@@ -22,7 +22,7 @@ See [pipeline.md](pipeline.md).
 | Map data & CLI I/O | [cli-data.md](cli-data.md) | `drawland-cli/`, `osm.rs`, `tiles.rs`, `osm_cache.rs`, `geojson.rs` |
 | Web & WASM | [web.md](web.md) | `web/`, `drawland-wasm/`, `drawland-script-wasm/` |
 | User docs (`/docs`) | [web.md#docs-srcdocs](web.md#docs-srcdocs) | `web/src/docs/`, `web/scripts/render-docs.sh`, `build-reference.mjs`, `render-patterns.mjs` |
-| Fills & strokes | [fills-compose.md](fills-compose.md) | `fill.rs`, `optimize.rs`, `profile.rs`, `svg.rs`, penfill |
+| Fills & strokes | [fills-compose.md](fills-compose.md) | `fill.rs`, `budget.rs`, `optimize.rs`, `profile.rs`, `svg.rs`, penfill catalogue, `drawland-script/src/catalog_dts.rs` |
 | Isoline blob fills (design) | [isoline-blob-fills.md](isoline-blob-fills.md) | penfill (new generator), `fill.rs`, compose masks |
 | Terrain (burin) | [terrain-burin.md](terrain-burin.md) | `terrain.rs`, `burin.*` in profiles |
 | Labels & text | [labels.md](labels.md) | `labels.rs`, `text.rs`, `stroke_font.rs`, `google_fonts.rs`, `graticule.rs` |

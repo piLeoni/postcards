@@ -1701,152 +1701,14 @@
       ]
     },
     {
-      "name": "Pattern",
-      "kind": "type",
-      "doc": [
-        {
-          "kind": "p",
-          "text": "A penfill pattern. `concentric`: rings inward from the outer edge; a hole stops them. `offsets`: rings from every edge, holes included, so a network (streets round blocks) fills evenly; `spacing` apart, sharp corners."
-        }
-      ],
-      "text": "\"amphibolite\" | \"arena\" | \"beds\" | \"bentonite\" | \"brackets\" | \"breccia\" | \"breccia-blobs\" | \"canopy\" | \"cell-net\" | \"chalky-soil\" | \"chess\" | \"clay-soil\" | \"clouds\" | \"coal\" | \"coarse-stone\" | \"compacted-soil\" | \"concentric\" | \"conglomerate\" | \"conglomerate-flat\" | \"coquina\" | \"cracked-earth\" | \"cracks\" | \"curl-waves\" | \"dacite\" | \"debris-soil\" | \"diabase\" | \"diatom\" | \"diorite\" | \"doodle-trees\" | \"dots\" | \"drift\" | \"dry-cracked-soil\" | \"eddies\" | \"erosion-lines\" | \"feldspar\" | \"ferrous\" | \"fill\" | \"fine-gravel\" | \"flow-waves\" | \"fluid-grass\" | \"gabbro\" | \"gneiss\" | \"grainy-soil\" | \"granite\" | \"granite-x\" | \"grass\" | \"gravel\" | \"gravel-clipped\" | \"gravelly-soil\" | \"grid\" | \"growth\" | \"hilbert\" | \"honeycomb\" | \"hornblende\" | \"isoline-blobs\" | \"isoline-stack\" | \"isoline-stack-hatched\" | \"laminae\" | \"lava\" | \"layered-soil\" | \"lily-pads\" | \"lines\" | \"loose-soil\" | \"marble\" | \"masonry\" | \"mixed-rocks\" | \"mulch\" | \"mulched-soil\" | \"none\" | \"offsets\" | \"ophitic\" | \"organic-topsoil\" | \"pat\" | \"pebble-scatter\" | \"pebbled-soil\" | \"pebbles\" | \"rectilinear\" | \"ripples\" | \"sandy-soil\" | \"scales\" | \"scallop-waves\" | \"scribble\" | \"shards\" | \"silty-soil\" | \"solid\" | \"spiral\" | \"sprouts\" | \"stipple\" | \"stipple-edge\" | \"stipple-noise\" | \"stone-cluster\" | \"sunburst\" | \"swells\" | \"terrazzo\" | \"triangles\" | \"truchet\" | \"tufts\" | \"twigs\" | \"vines\" | \"wave-grid\" | \"wave_grid\" | \"waves\" | \"wood\" | \"zigzag\"",
-      "values": [
-        "amphibolite",
-        "arena",
-        "beds",
-        "bentonite",
-        "brackets",
-        "breccia",
-        "breccia-blobs",
-        "canopy",
-        "cell-net",
-        "chalky-soil",
-        "chess",
-        "clay-soil",
-        "clouds",
-        "coal",
-        "coarse-stone",
-        "compacted-soil",
-        "concentric",
-        "conglomerate",
-        "conglomerate-flat",
-        "coquina",
-        "cracked-earth",
-        "cracks",
-        "curl-waves",
-        "dacite",
-        "debris-soil",
-        "diabase",
-        "diatom",
-        "diorite",
-        "doodle-trees",
-        "dots",
-        "drift",
-        "dry-cracked-soil",
-        "eddies",
-        "erosion-lines",
-        "feldspar",
-        "ferrous",
-        "fill",
-        "fine-gravel",
-        "flow-waves",
-        "fluid-grass",
-        "gabbro",
-        "gneiss",
-        "grainy-soil",
-        "granite",
-        "granite-x",
-        "grass",
-        "gravel",
-        "gravel-clipped",
-        "gravelly-soil",
-        "grid",
-        "growth",
-        "hilbert",
-        "honeycomb",
-        "hornblende",
-        "isoline-blobs",
-        "isoline-stack",
-        "isoline-stack-hatched",
-        "laminae",
-        "lava",
-        "layered-soil",
-        "lily-pads",
-        "lines",
-        "loose-soil",
-        "marble",
-        "masonry",
-        "mixed-rocks",
-        "mulch",
-        "mulched-soil",
-        "none",
-        "offsets",
-        "ophitic",
-        "organic-topsoil",
-        "pat",
-        "pebble-scatter",
-        "pebbled-soil",
-        "pebbles",
-        "rectilinear",
-        "ripples",
-        "sandy-soil",
-        "scales",
-        "scallop-waves",
-        "scribble",
-        "shards",
-        "silty-soil",
-        "solid",
-        "spiral",
-        "sprouts",
-        "stipple",
-        "stipple-edge",
-        "stipple-noise",
-        "stone-cluster",
-        "sunburst",
-        "swells",
-        "terrazzo",
-        "triangles",
-        "truchet",
-        "tufts",
-        "twigs",
-        "vines",
-        "wave-grid",
-        "wave_grid",
-        "waves",
-        "wood",
-        "zigzag"
-      ]
-    },
-    {
-      "name": "PatName",
-      "kind": "type",
-      "doc": [
-        {
-          "kind": "p",
-          "text": "A built-in hatch for `pattern: \"pat\"`."
-        }
-      ],
-      "text": "\"BRICK\" | \"HERRINGBONE\" | \"BASKET\" | \"PARQUET\" | \"ANSI31\" | \"ANSI32\" | \"ANSI33\" | \"ANSI37\" | \"EARTH\" | \"CROSS\" | \"DASH\" | \"STAIRS\" | \"GRATE\" | \"ANGLE\"",
-      "values": [
-        "BRICK",
-        "HERRINGBONE",
-        "BASKET",
-        "PARQUET",
-        "ANSI31",
-        "ANSI32",
-        "ANSI33",
-        "ANSI37",
-        "EARTH",
-        "CROSS",
-        "DASH",
-        "STAIRS",
-        "GRATE",
-        "ANGLE"
-      ]
-    },
-    {
-      "name": "FillOptions",
+      "name": "FillBase",
       "kind": "interface",
+      "doc": [
+        {
+          "kind": "p",
+          "text": "What every fill takes, whatever its pattern."
+        }
+      ],
       "members": [
         {
           "name": "in",
@@ -1875,36 +1737,6 @@
           ]
         },
         {
-          "name": "pattern",
-          "optional": true,
-          "kind": "property",
-          "type": "Pattern",
-          "types": [
-            "Pattern"
-          ],
-          "doc": [
-            {
-              "kind": "p",
-              "text": "The pattern; or leave it out and give a `source` or a `content`."
-            }
-          ]
-        },
-        {
-          "name": "content",
-          "optional": true,
-          "kind": "property",
-          "type": "Lines",
-          "types": [
-            "Lines"
-          ],
-          "doc": [
-            {
-              "kind": "p",
-              "text": "Lines to fill the area with, cut to it: a burin document, or any `lines.*`."
-            }
-          ]
-        },
-        {
           "name": "spacing",
           "optional": true,
           "kind": "property",
@@ -1915,7 +1747,7 @@
           "doc": [
             {
               "kind": "p",
-              "text": "Distance between lines, rows or dots. Default 0.5mm."
+              "text": "Distance between neighbouring elements, centre to centre: the pitch of lines, of marks, the size of cells. Every pattern has its own default; giving one to a material scales the whole recipe."
             }
           ]
         },
@@ -1927,22 +1759,19 @@
           "doc": [
             {
               "kind": "p",
-              "text": "Degrees; most patterns default to 0 (zigzag and lines to 45)."
+              "text": "Degrees: the pattern turned on the page. A material turns all its layers together."
             }
           ]
         },
         {
-          "name": "mark",
+          "name": "seed",
           "optional": true,
           "kind": "property",
-          "type": "Length",
-          "types": [
-            "Length"
-          ],
+          "type": "number",
           "doc": [
             {
               "kind": "p",
-              "text": "Dot or mark size, for `dots` and `stipple`. Default 0.2mm."
+              "text": "For the patterns with randomness: the same seed draws the same lines."
             }
           ]
         },
@@ -1957,187 +1786,7 @@
           "doc": [
             {
               "kind": "p",
-              "text": "Shrink the area first. `waves` default to 0.1mm."
-            }
-          ]
-        },
-        {
-          "name": "fray",
-          "optional": true,
-          "kind": "property",
-          "type": "Length",
-          "types": [
-            "Length"
-          ],
-          "doc": [
-            {
-              "kind": "p",
-              "text": "Perimeter-aware edge fade width: lines break into shorter dashes/dots and disappear before the boundary."
-            }
-          ]
-        },
-        {
-          "name": "seed",
-          "optional": true,
-          "kind": "property",
-          "type": "number",
-          "doc": [
-            {
-              "kind": "p",
-              "text": "For the random patterns: the same seed draws the same lines."
-            }
-          ]
-        },
-        {
-          "name": "anchor",
-          "optional": true,
-          "kind": "property",
-          "type": "\"global\" | \"local\"",
-          "doc": [
-            {
-              "kind": "p",
-              "text": "`\"global\"` (default): neighbouring areas share one grid. `\"local\"`: each shape on its own."
-            }
-          ]
-        },
-        {
-          "name": "shift",
-          "optional": true,
-          "kind": "property",
-          "type": "[Length, Length]",
-          "types": [
-            "Length"
-          ],
-          "doc": [
-            {
-              "kind": "p",
-              "text": "Move the grid, across and down."
-            }
-          ]
-        },
-        {
-          "name": "centre",
-          "optional": true,
-          "kind": "property",
-          "type": "[Length, Length]",
-          "types": [
-            "Length"
-          ],
-          "doc": [
-            {
-              "kind": "p",
-              "text": "Centre the pattern here, in output millimetres (sunburst, spiral)."
-            }
-          ]
-        },
-        {
-          "name": "lattice",
-          "optional": true,
-          "kind": "property",
-          "type": "\"square\" | \"hexagonal\"",
-          "doc": [
-            {
-              "kind": "p",
-              "text": "`dots`: a square or a hexagonal lattice."
-            }
-          ]
-        },
-        {
-          "name": "line_width",
-          "optional": true,
-          "kind": "property",
-          "type": "Length",
-          "types": [
-            "Length"
-          ],
-          "doc": [
-            {
-              "kind": "p",
-              "text": "`honeycomb`: double the walls this far apart. `growth`: the pen width, so trunk passes sit side by side. Default 0.15 for `growth`."
-            }
-          ]
-        },
-        {
-          "name": "hatch",
-          "optional": true,
-          "kind": "property",
-          "type": "Length",
-          "types": [
-            "Length"
-          ],
-          "doc": [
-            {
-              "kind": "p",
-              "text": "`terrazzo`: the hatch inside the stones. `isoline-stack` with `light`: shading hatch spacing in mm, `0` for none. Default 0.4."
-            }
-          ]
-        },
-        {
-          "name": "cell",
-          "optional": true,
-          "kind": "property",
-          "type": "Length",
-          "types": [
-            "Length"
-          ],
-          "doc": [
-            {
-              "kind": "p",
-              "text": "`chess`: the size of a square."
-            }
-          ]
-        },
-        {
-          "name": "name",
-          "optional": true,
-          "kind": "property",
-          "type": "PatName",
-          "types": [
-            "PatName"
-          ],
-          "doc": [
-            {
-              "kind": "p",
-              "text": "`pat`: which hatch."
-            }
-          ]
-        },
-        {
-          "name": "scale",
-          "optional": true,
-          "kind": "property",
-          "type": "Length",
-          "types": [
-            "Length"
-          ],
-          "doc": [
-            {
-              "kind": "p",
-              "text": "`pat`: the hatch's size."
-            }
-          ]
-        },
-        {
-          "name": "source",
-          "optional": true,
-          "kind": "property",
-          "type": "{ file: string; size?: string; position?: string; repeat?: string }",
-          "doc": [
-            {
-              "kind": "p",
-              "text": "An SVG drawn into the area instead of a pattern."
-            }
-          ]
-        },
-        {
-          "name": "background",
-          "optional": true,
-          "kind": "property",
-          "type": "string",
-          "doc": [
-            {
-              "kind": "p",
-              "text": "Screen-style flat colour under the hatch (SVG fill, not pen ink)."
+              "text": "Shrink the area first."
             }
           ]
         },
@@ -2149,7 +1798,7 @@
           "doc": [
             {
               "kind": "p",
-              "text": "`isoline-stack`: `clip` cuts at the border; `inside` closes inside it; `overflow` bulges past. Default `clip`."
+              "text": "How the pattern meets the edge: `clip` cuts at the border, `inside` keeps every mark whole inside it, `overflow` lets it bulge past. Default `clip`."
             }
           ]
         },
@@ -2164,24 +1813,12 @@
           "doc": [
             {
               "kind": "p",
-              "text": "`isoline-stack` with `edge: \"overflow\"`: how far past the border, in mm. Default ~0.4× `spacing`."
+              "text": "With `edge: \"overflow\"`: how far past the border. Default 0.4 × spacing."
             }
           ]
         },
         {
-          "name": "coverage",
-          "optional": true,
-          "kind": "property",
-          "type": "number",
-          "doc": [
-            {
-              "kind": "p",
-              "text": "`isoline-stack` / `isoline-blobs`: how patchy the crowns are (0–1), not “this fraction of the polygon’s area”. Low values leave more clearings; `1` fills everywhere the generator allows. Default 0.6."
-            }
-          ]
-        },
-        {
-          "name": "bubble",
+          "name": "fray",
           "optional": true,
           "kind": "property",
           "type": "Length",
@@ -2191,19 +1828,564 @@
           "doc": [
             {
               "kind": "p",
-              "text": "`isoline-stack`: typical bubble radius in mm; smaller is lumpier. Default ~0.3× `spacing`."
+              "text": "A fading edge this wide: lines break into shorter pieces and marks thin out before the border."
             }
           ]
         },
         {
-          "name": "slices",
+          "name": "anchor",
+          "optional": true,
+          "kind": "property",
+          "type": "\"global\" | \"local\"",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "`\"global\"` (default): one lattice for the whole page, so neighbouring areas meet without a seam and a moved card keeps its marks. `\"local\"`: each shape on its own."
+            }
+          ]
+        },
+        {
+          "name": "shift",
+          "optional": true,
+          "kind": "property",
+          "type": "[Length, Length]",
+          "types": [
+            "Length"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Move the lattice, across and down."
+            }
+          ]
+        },
+        {
+          "name": "background",
+          "optional": true,
+          "kind": "property",
+          "type": "string",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Screen-style flat colour under the hatch (SVG fill, not pen ink)."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "FillOptions",
+      "kind": "type",
+      "doc": [
+        {
+          "kind": "p",
+          "text": "A fill: a pattern and its options (`pattern: \"gravel\"`, or a generator such as `pattern: \"scatter\"` with every option open), lines made elsewhere (`content`), or an SVG (`source`)."
+        }
+      ],
+      "text": "FillBase & (PatternOptions | { pattern?: undefined; content: Lines } | { pattern?: undefined; source: { file: string; size?: string; position?: string; repeat?: string } } | { pattern: \"none\" })",
+      "types": [
+        "FillBase",
+        "PatternOptions",
+        "Lines"
+      ],
+      "extends": [
+        "FillBase",
+        "(PatternOptions | { pattern?: undefined; content: Lines } | { pattern?: undefined; source: { file: string; size?: string; position?: string; repeat?: string } } | { pattern: \"none\" })"
+      ],
+      "members": [
+        {
+          "name": "pattern",
+          "optional": true,
+          "kind": "property",
+          "type": "undefined"
+        },
+        {
+          "name": "content",
+          "kind": "property",
+          "type": "Lines",
+          "types": [
+            "Lines"
+          ]
+        },
+        {
+          "name": "pattern",
+          "optional": true,
+          "kind": "property",
+          "type": "undefined"
+        },
+        {
+          "name": "source",
+          "kind": "property",
+          "type": "{ file: string; size?: string; position?: string; repeat?: string }"
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"none\""
+        }
+      ]
+    },
+    {
+      "name": "FillStyle",
+      "kind": "type",
+      "doc": [
+        {
+          "kind": "p",
+          "text": "A fill's options without its area: what a style keeps in a constant, `/** @type {FillStyle} *\\/`."
+        }
+      ],
+      "text": "FillOptions extends infer F ? (F extends unknown ? Omit<F, \"in\"> : never) : never",
+      "types": [
+        "FillOptions"
+      ]
+    },
+    {
+      "name": "Pattern",
+      "kind": "type",
+      "doc": [
+        {
+          "kind": "p",
+          "text": "A pattern: a material (a named recipe, chosen by what it is for) or a generator (the algorithm, every option open)."
+        }
+      ],
+      "text": "Material | Generator | \"none\"",
+      "types": [
+        "Material",
+        "Generator"
+      ],
+      "values": [
+        "none"
+      ],
+      "others": [
+        "Material",
+        "Generator"
+      ]
+    },
+    {
+      "name": "Material",
+      "kind": "type",
+      "doc": [
+        {
+          "kind": "p",
+          "text": "The materials, group by group. Each is a recipe over one or more generators; `spacing` scales the whole recipe."
+        }
+      ],
+      "text": "\"waves\" | \"scallops\" | \"curls\" | \"currents\" | \"wave-net\" | \"swells\" | \"eddies\" | \"ripples\" | \"shore-lines\" | \"shallows\" | \"marsh\" | \"grass\" | \"meadow\" | \"scrub\" | \"woodland\" | \"forest\" | \"conifers\" | \"orchard\" | \"vineyard\" | \"fields\" | \"garden\" | \"sprouts\" | \"leaves\" | \"isoline-stack\" | \"canopy\" | \"doodle-trees\" | \"twigs\" | \"growth\" | \"sand\" | \"dunes\" | \"soil\" | \"gravel\" | \"pebbles\" | \"boulders\" | \"scree\" | \"cracked-earth\" | \"dry-mud\" | \"clay\" | \"silt\" | \"peat\" | \"layered-soil\" | \"chalky-soil\" | \"sandstone\" | \"siltstone\" | \"shale\" | \"limestone\" | \"chalk\" | \"conglomerate\" | \"breccia\" | \"coal\" | \"granite\" | \"basalt\" | \"tuff\" | \"gneiss\" | \"schist\" | \"salt\" | \"marble\" | \"brick\" | \"herringbone\" | \"basket\" | \"parquet\" | \"setts\" | \"flagstones\" | \"tiles\" | \"hexagons\" | \"stairs\" | \"grate\" | \"chess\" | \"cobbles\" | \"terrazzo\" | \"cemetery\" | \"wood\" | \"clouds\" | \"lines\" | \"crosshatch\" | \"triad\" | \"serpentine\" | \"dashes\" | \"dots\" | \"stipple\" | \"concentric\" | \"offsets\" | \"spiral\" | \"scribble\" | \"hilbert\" | \"truchet\" | \"honeycomb\" | \"scales\" | \"sunburst\" | \"isoline-blobs\" | \"solid\"",
+      "values": [
+        "waves",
+        "scallops",
+        "curls",
+        "currents",
+        "wave-net",
+        "swells",
+        "eddies",
+        "ripples",
+        "shore-lines",
+        "shallows",
+        "marsh",
+        "grass",
+        "meadow",
+        "scrub",
+        "woodland",
+        "forest",
+        "conifers",
+        "orchard",
+        "vineyard",
+        "fields",
+        "garden",
+        "sprouts",
+        "leaves",
+        "isoline-stack",
+        "canopy",
+        "doodle-trees",
+        "twigs",
+        "growth",
+        "sand",
+        "dunes",
+        "soil",
+        "gravel",
+        "pebbles",
+        "boulders",
+        "scree",
+        "cracked-earth",
+        "dry-mud",
+        "clay",
+        "silt",
+        "peat",
+        "layered-soil",
+        "chalky-soil",
+        "sandstone",
+        "siltstone",
+        "shale",
+        "limestone",
+        "chalk",
+        "conglomerate",
+        "breccia",
+        "coal",
+        "granite",
+        "basalt",
+        "tuff",
+        "gneiss",
+        "schist",
+        "salt",
+        "marble",
+        "brick",
+        "herringbone",
+        "basket",
+        "parquet",
+        "setts",
+        "flagstones",
+        "tiles",
+        "hexagons",
+        "stairs",
+        "grate",
+        "chess",
+        "cobbles",
+        "terrazzo",
+        "cemetery",
+        "wood",
+        "clouds",
+        "lines",
+        "crosshatch",
+        "triad",
+        "serpentine",
+        "dashes",
+        "dots",
+        "stipple",
+        "concentric",
+        "offsets",
+        "spiral",
+        "scribble",
+        "hilbert",
+        "truchet",
+        "honeycomb",
+        "scales",
+        "sunburst",
+        "isoline-blobs",
+        "solid"
+      ]
+    },
+    {
+      "name": "Generator",
+      "kind": "type",
+      "doc": [
+        {
+          "kind": "p",
+          "text": "The generators: the algorithms under every material."
+        }
+      ],
+      "text": "\"hatch\" | \"scatter\" | \"cells\" | \"tile\" | \"waves\" | \"rings\" | \"scribble\" | \"hilbert\" | \"truchet\" | \"honeycomb\" | \"scales\" | \"sunburst\" | \"wood\" | \"marble\" | \"swells\" | \"eddies\" | \"ripples\" | \"canopy\" | \"twigs\" | \"doodle-trees\" | \"growth\" | \"isoline-stack\" | \"isoline-blobs\" | \"clouds\" | \"solid\"",
+      "values": [
+        "hatch",
+        "scatter",
+        "cells",
+        "tile",
+        "waves",
+        "rings",
+        "scribble",
+        "hilbert",
+        "truchet",
+        "honeycomb",
+        "scales",
+        "sunburst",
+        "wood",
+        "marble",
+        "swells",
+        "eddies",
+        "ripples",
+        "canopy",
+        "twigs",
+        "doodle-trees",
+        "growth",
+        "isoline-stack",
+        "isoline-blobs",
+        "clouds",
+        "solid"
+      ]
+    },
+    {
+      "name": "Mark",
+      "kind": "type",
+      "doc": [
+        {
+          "kind": "p",
+          "text": "A symbol `scatter` can place by name."
+        }
+      ],
+      "text": "\"dot\" | \"tick\" | \"dash\" | \"plus\" | \"cross\" | \"ring\" | \"ring-dot\" | \"pebble\" | \"blob\" | \"shard\" | \"rock\" | \"tee\" | \"vee\" | \"bracket\" | \"tuft\" | \"reed\" | \"tree\" | \"conifer\" | \"shrub\" | \"sprout\" | \"leaf\" | \"vine\" | \"flower\" | \"grave\"",
+      "values": [
+        "dot",
+        "tick",
+        "dash",
+        "plus",
+        "cross",
+        "ring",
+        "ring-dot",
+        "pebble",
+        "blob",
+        "shard",
+        "rock",
+        "tee",
+        "vee",
+        "bracket",
+        "tuft",
+        "reed",
+        "tree",
+        "conifer",
+        "shrub",
+        "sprout",
+        "leaf",
+        "vine",
+        "flower",
+        "grave"
+      ]
+    },
+    {
+      "name": "Polylines",
+      "kind": "type",
+      "doc": [
+        {
+          "kind": "p",
+          "text": "Polylines in mm around the origin, for your own motif: one `[[x, y], …]` or several."
+        }
+      ],
+      "text": "[number, number][] | [number, number][][]",
+      "others": [
+        "[number, number][]",
+        "[number, number][][]"
+      ]
+    },
+    {
+      "name": "HatchOptions",
+      "kind": "interface",
+      "doc": [
+        {
+          "kind": "p",
+          "text": "`hatch`: Parallel lines; crossed into a grid or a triad, joined into serpentines, dashed, bent, unevenly spaced, or thinned by tone."
+        }
+      ],
+      "members": [
+        {
+          "name": "cross",
+          "optional": true,
+          "kind": "property",
+          "type": "1 | 2 | 3",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Families of lines: 1 parallel lines, 2 a grid (crossing at right angles), 3 a triad (at 60°). Default 1."
+            }
+          ]
+        },
+        {
+          "name": "join",
+          "optional": true,
+          "kind": "property",
+          "type": "boolean",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Join the lines end to end into serpentines, so the pen lifts as little as possible (one family, no dashes). Default false."
+            }
+          ]
+        },
+        {
+          "name": "dash",
+          "optional": true,
+          "kind": "property",
+          "type": "Length | [Length, Length]",
+          "types": [
+            "Length"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Break the lines into dashes: `[on, off]` in mm."
+            }
+          ]
+        },
+        {
+          "name": "dash_jitter",
           "optional": true,
           "kind": "property",
           "type": "number",
           "doc": [
             {
               "kind": "p",
-              "text": "`isoline-stack`: horizontal slices through the stack; more rings. Default 9."
+              "text": "How much dash and gap lengths differ, and how far each row's dashes are offset, 0 to 1. Default 0."
+            }
+          ]
+        },
+        {
+          "name": "wobble",
+          "optional": true,
+          "kind": "property",
+          "type": "Length",
+          "types": [
+            "Length"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "How far the lines bend away from straight, in mm. Neighbouring lines bend together, like bedding. Default 0."
+            }
+          ]
+        },
+        {
+          "name": "wobble_length",
+          "optional": true,
+          "kind": "property",
+          "type": "Length",
+          "types": [
+            "Length"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "The length of one bend along the lines, in mm. Default 14 × spacing."
+            }
+          ]
+        },
+        {
+          "name": "vary",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "How uneven the gaps between lines are, 0 (even) to 1: layered soil, worn bedding. Default 0."
+            }
+          ]
+        },
+        {
+          "name": "density",
+          "optional": true,
+          "kind": "property",
+          "type": "\"even\" | \"edge\" | \"centre\" | \"noise\" | \"gradient\"",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "The tone across the area: even, denser toward the edge, toward the centre, in noisy patches, or along a gradient toward `toward` degrees. Default `\"even\"`."
+            }
+          ]
+        },
+        {
+          "name": "contrast",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "How far the tone swings, 0 (none) to 1 (from full to nothing). Default 0.8."
+            }
+          ]
+        },
+        {
+          "name": "feature",
+          "optional": true,
+          "kind": "property",
+          "type": "Length",
+          "types": [
+            "Length"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "The scale of the tone: the width of the edge band, the size of noise patches, in mm. Default 8 × spacing."
+            }
+          ]
+        },
+        {
+          "name": "toward",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "With `density: \"gradient\"`: the direction the tone gets denser, in page degrees (90: down the page). Default 90."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "ScatterOptions",
+      "kind": "interface",
+      "doc": [
+        {
+          "kind": "p",
+          "text": "`scatter`: One mark at each of many places: dots, strokes, stones, plants or a symbol of your own, evenly scattered, on a lattice, in rows or in clusters, thinned by tone."
+        }
+      ],
+      "members": [
+        {
+          "name": "arrange",
+          "optional": true,
+          "kind": "property",
+          "type": "\"blue\" | \"hex\" | \"square\" | \"rows\" | \"clusters\"",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Where the marks go: blue (even but irregular, like a stipple by hand), hex or square (a lattice; add jitter to loosen it), rows (along the angle, wandering only along their row: an orchard, a vineyard), clusters (small groups). Default `\"blue\"`."
+            }
+          ]
+        },
+        {
+          "name": "motif",
+          "optional": true,
+          "kind": "property",
+          "type": "Mark | Lines | Polylines",
+          "types": [
+            "Mark",
+            "Lines",
+            "Polylines"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "The mark: a symbol by name, or your own polylines in mm around the origin (up is negative y), drawn at their own size. Default `\"dot\"`."
+            }
+          ]
+        },
+        {
+          "name": "mark",
+          "optional": true,
+          "kind": "property",
+          "type": "Length",
+          "types": [
+            "Length"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "The size of one element: a dot's length, a symbol's height, in mm. Default 0.35 × spacing."
+            }
+          ]
+        },
+        {
+          "name": "rotate",
+          "optional": true,
+          "kind": "property",
+          "type": "number | \"random\" | \"aligned\" | \"upright\"",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "How marks turn: random (every mark its own way), aligned (with the pattern's angle), upright (standing up on the page whatever the angle: trees, reeds, crosses), or a number of degrees added to the pattern's angle. Default `\"random\"`."
+            }
+          ]
+        },
+        {
+          "name": "vary",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "How much element sizes differ, 0 (all alike) to 1. Default 0."
             }
           ]
         },
@@ -2215,175 +2397,109 @@
           "doc": [
             {
               "kind": "p",
-              "text": "`isoline-stack`: contour displacement intensity (`jaggedness`, 0–2.5). `growth`: steering wobble (0–1ish). Default 1.1 for `isoline-stack`, 0.1 for `growth`."
+              "text": "How far elements wander from their place, 0 to 1. Default 0."
             }
           ]
         },
         {
-          "name": "jitter_period",
+          "name": "overlap",
+          "optional": true,
+          "kind": "property",
+          "type": "boolean",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Let marks overlap their neighbours. Off, a mark that would touch a neighbour gives way to it, as an engraver leaves symbols apart. Default false."
+            }
+          ]
+        },
+        {
+          "name": "density",
+          "optional": true,
+          "kind": "property",
+          "type": "\"even\" | \"edge\" | \"centre\" | \"noise\" | \"gradient\"",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "The tone across the area: even, denser toward the edge, toward the centre, in noisy patches, or along a gradient toward `toward` degrees. Default `\"even\"`."
+            }
+          ]
+        },
+        {
+          "name": "contrast",
           "optional": true,
           "kind": "property",
           "type": "number",
           "doc": [
             {
               "kind": "p",
-              "text": "`isoline-stack`: jitter wavelength — how many control points sit on each contour (0.2–4; lower = finer serration). Alias: `period`. Default 0.68."
+              "text": "How far the tone swings, 0 (none) to 1 (from full to nothing). Default 0.8."
             }
           ]
         },
         {
-          "name": "period",
+          "name": "feature",
+          "optional": true,
+          "kind": "property",
+          "type": "Length",
+          "types": [
+            "Length"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "The scale of the tone: the width of the edge band, the size of noise patches, in mm. Default 8 × spacing."
+            }
+          ]
+        },
+        {
+          "name": "toward",
           "optional": true,
           "kind": "property",
           "type": "number",
           "doc": [
             {
               "kind": "p",
-              "text": "Alias for `jitter_period`."
+              "text": "With `density: \"gradient\"`: the direction the tone gets denser, in page degrees (90: down the page). Default 90."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "CellsOptions",
+      "kind": "interface",
+      "doc": [
+        {
+          "kind": "p",
+          "text": "`cells`: Irregular cells: rounded stones apart from each other, a net of shared walls, or plates with wide cracks; with marks inside, sizes from even to mixed, thinned by tone."
+        }
+      ],
+      "members": [
+        {
+          "name": "style",
+          "optional": true,
+          "kind": "property",
+          "type": "\"stones\" | \"net\" | \"cracks\"",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "`stones`: every cell its own rounded outline, apart from its neighbours (gravel, cobbles, pebble beds). `net`: the shared walls, drawn once (cell nets, mud cracks seen from above, crazing). `cracks`: angular plates with wide cracks between them (dry cracked earth). Default `\"stones\"`."
             }
           ]
         },
         {
-          "name": "ticks",
+          "name": "gap",
           "optional": true,
           "kind": "property",
-          "type": "number",
+          "type": "Length",
+          "types": [
+            "Length"
+          ],
           "doc": [
             {
               "kind": "p",
-              "text": "`isoline-stack`: short cross-contour slope ticks at bough clefts and shadowed tiers (0–1.5). Default 0.42."
-            }
-          ]
-        },
-        {
-          "name": "elongation",
-          "optional": true,
-          "kind": "property",
-          "type": "number",
-          "doc": [
-            {
-              "kind": "p",
-              "text": "`isoline-stack`: crown elliptical elongation / wind sweep (0–1). Default 0.18."
-            }
-          ]
-        },
-        {
-          "name": "lobes",
-          "optional": true,
-          "kind": "property",
-          "type": "number",
-          "doc": [
-            {
-              "kind": "p",
-              "text": "`isoline-stack`: bough cleft depth and compound sub-crown lobing (0–2.5). Default 1.0."
-            }
-          ]
-        },
-        {
-          "name": "light",
-          "optional": true,
-          "kind": "property",
-          "type": "number",
-          "doc": [
-            {
-              "kind": "p",
-              "text": "`isoline-stack`: directional sun strength (0–1). Default 0.82. Lit-side arcs, shadow-side density; use `ticks` for cross-contour hachures."
-            }
-          ]
-        },
-        {
-          "name": "light_angle",
-          "optional": true,
-          "kind": "property",
-          "type": "number",
-          "doc": [
-            {
-              "kind": "p",
-              "text": "`isoline-stack` with `light`: degrees the light comes *from* (0 = +x, 90 = +y). Default -45. `doodle-trees`: side the shadow scribble avoids. Default 225."
-            }
-          ]
-        },
-        {
-          "name": "loops",
-          "optional": true,
-          "kind": "property",
-          "type": "number",
-          "doc": [
-            {
-              "kind": "p",
-              "text": "`doodle-trees` (`spacing` = crown diameter): curls round each crown's rim, as a multiple of the default. Default 1."
-            }
-          ]
-        },
-        {
-          "name": "shadow",
-          "optional": true,
-          "kind": "property",
-          "type": "number",
-          "doc": [
-            {
-              "kind": "p",
-              "text": "`doodle-trees`: share of crowns (0–1) with a shade crescent. Default 0.8."
-            }
-          ]
-        },
-        {
-          "name": "wavelength",
-          "optional": true,
-          "kind": "property",
-          "type": "number",
-          "doc": [
-            {
-              "kind": "p",
-              "text": "`curl-waves` (`spacing` = gap between rows): distance between waves along a row, × `spacing`. Default 1.35. `flow-waves` (`spacing` = gap between lines): length of one swell, × `spacing`. Default 13."
-            }
-          ]
-        },
-        {
-          "name": "amplitude",
-          "optional": true,
-          "kind": "property",
-          "type": "number",
-          "doc": [
-            {
-              "kind": "p",
-              "text": "`flow-waves`: swell height, × `spacing`. Default 2.6."
-            }
-          ]
-        },
-        {
-          "name": "drift",
-          "optional": true,
-          "kind": "property",
-          "type": "number",
-          "doc": [
-            {
-              "kind": "p",
-              "text": "`flow-waves`: how fast the swell's height and phase change across the sea. Default 1."
-            }
-          ]
-        },
-        {
-          "name": "breaks",
-          "optional": true,
-          "kind": "property",
-          "type": "number",
-          "doc": [
-            {
-              "kind": "p",
-              "text": "`flow-waves`: how broken the lines are (0–1, 0 = unbroken). Default 0.5."
-            }
-          ]
-        },
-        {
-          "name": "depth",
-          "optional": true,
-          "kind": "property",
-          "type": "number",
-          "doc": [
-            {
-              "kind": "p",
-              "text": "`scallop-waves` (`spacing` = gap between rows; `wavelength` = scallop width × spacing, default 1.35): how far each scallop dips, × `spacing`. Default 0.35."
+              "text": "The space between neighbouring cells, in mm. Unset: 0.14 × spacing for stones, 0.24 × spacing for cracks; for a net, the break left where walls meet (unset: none, the walls join)."
             }
           ]
         },
@@ -2395,31 +2511,137 @@
           "doc": [
             {
               "kind": "p",
-              "text": "`scallop-waves`: arc shape, below 1 rounder, above 1 more pointed. Default 0.8."
+              "text": "How rounded the corners are, 0 (sharp) to 1 (as round as the cell allows). Unset: 0.7 for stones, 0.25 for cracks."
             }
           ]
         },
         {
-          "name": "curl",
+          "name": "vary",
           "optional": true,
           "kind": "property",
           "type": "number",
           "doc": [
             {
               "kind": "p",
-              "text": "`curl-waves`: radius of each curl, × the wavelength. Default 0.2."
+              "text": "How much element sizes differ, 0 (all alike) to 1. Default 0."
             }
           ]
         },
         {
-          "name": "turns",
+          "name": "jitter",
           "optional": true,
           "kind": "property",
           "type": "number",
           "doc": [
             {
               "kind": "p",
-              "text": "`curl-waves`: how far each curl winds in (1 = one full turn). Default 0.95."
+              "text": "How far elements wander from their place, 0 to 1. Default 0."
+            }
+          ]
+        },
+        {
+          "name": "inner",
+          "optional": true,
+          "kind": "property",
+          "type": "\"none\" | \"dots\" | \"hatch\" | \"ring\" | \"mixed\"",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "A mark inside each cell: `dots` (a few specks: chalky soil), `hatch` (lines at each stone's own angle), `ring` (an inner outline: a rimmed pebble), `mixed` (terrazzo: some chips hatched, a few dense, most left plain). Default `\"none\"`."
+            }
+          ]
+        },
+        {
+          "name": "density",
+          "optional": true,
+          "kind": "property",
+          "type": "\"even\" | \"edge\" | \"centre\" | \"noise\" | \"gradient\"",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "The tone across the area: even, denser toward the edge, toward the centre, in noisy patches, or along a gradient toward `toward` degrees. Default `\"even\"`."
+            }
+          ]
+        },
+        {
+          "name": "contrast",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "How far the tone swings, 0 (none) to 1 (from full to nothing). Default 0.8."
+            }
+          ]
+        },
+        {
+          "name": "feature",
+          "optional": true,
+          "kind": "property",
+          "type": "Length",
+          "types": [
+            "Length"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "The scale of the tone: the width of the edge band, the size of noise patches, in mm. Default 8 × spacing."
+            }
+          ]
+        },
+        {
+          "name": "toward",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "With `density: \"gradient\"`: the direction the tone gets denser, in page degrees (90: down the page). Default 90."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "TileOptions",
+      "kind": "interface",
+      "doc": [
+        {
+          "kind": "p",
+          "text": "`tile`: A motif laid on a lattice: brick, herringbone, basket weave, parquet, setts, flagstones, tiles, hexagons, stairs, grating, chess; your own polylines; or a CAD .pat hatch."
+        }
+      ],
+      "members": [
+        {
+          "name": "motif",
+          "optional": true,
+          "kind": "property",
+          "type": "\"brick\" | \"herringbone\" | \"basket\" | \"parquet\" | \"setts\" | \"flagstones\" | \"tiles\" | \"hexagons\" | \"stairs\" | \"grate\" | \"chess\" | Lines | Polylines",
+          "types": [
+            "Lines",
+            "Polylines"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "What is laid: `brick` (running bond), `herringbone` (pavers at right angles in a zigzag), `basket` (pairs of pavers, alternating direction), `parquet` (square blocks of boards, alternating), `setts` (small stones in staggered courses), `flagstones` (random rectangular paving: course heights and stone lengths vary, joints staggered), `tiles` (square tiles with a grout joint), `hexagons` (hexagonal pavers), `stairs` (stone steps seen from above), `grate` (bar grating), `chess` (squares, alternate ones hatched); or your own polylines in mm around the origin. Default `\"brick\"`."
+            }
+          ]
+        },
+        {
+          "name": "size",
+          "optional": true,
+          "kind": "property",
+          "type": "Length | [Length, Length]",
+          "types": [
+            "Length"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "One piece, `[length, width]` in mm. Unset, at spacing s: brick [3s, s], herringbone and basket [2s, s], parquet [4s, 0.8s] (a block of five boards), setts [1.15s, s], flagstones [3s, 2s], tiles and chess [3s, 3s], hexagons 2.5s across, stairs [6s, 1.5s] (slab length, tread depth), grate [3s, 0.5s] (cross bar pitch, bar pitch). For your own polylines: the tile box, centred on the origin (unset: the lines' extent)."
             }
           ]
         },
@@ -2431,7 +2653,124 @@
           "doc": [
             {
               "kind": "p",
-              "text": "`curl-waves`: shift every other row by this share of a wave (0–1). Default 0."
+              "text": "For your own motif: how far each row is shifted along, as a share of the tile width (0.5: brick bond). Default 0."
+            }
+          ]
+        },
+        {
+          "name": "gap",
+          "optional": true,
+          "kind": "property",
+          "type": "Length",
+          "types": [
+            "Length"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "The joint between pieces, in mm: 0 draws single joint lines, each once; more draws every piece as its own outline, this far from its neighbours. Unset: 0.18 × width for setts, 0.1 × width for tiles, 0 for the rest."
+            }
+          ]
+        },
+        {
+          "name": "jitter",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "How far elements wander from their place, 0 to 1. Default 0."
+            }
+          ]
+        },
+        {
+          "name": "pat",
+          "optional": true,
+          "kind": "property",
+          "type": "string",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "A CAD hatch instead of a motif: a built-in name (ANSI31, ANSI32, ANSI33, ANSI37, BRICK, HERRINGBONE, BASKET, PARQUET, EARTH, CROSS, DASH, STAIRS, GRATE, ANGLE) or the text of a `.pat` definition. One pattern unit is `spacing` mm."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "WavesOptions",
+      "kind": "interface",
+      "doc": [
+        {
+          "kind": "p",
+          "text": "`waves`: Wavy parallel lines: sine, scallops, zigzag teeth, curling crests or a flowing swell; doubled into a net with `cross: 2`."
+        }
+      ],
+      "members": [
+        {
+          "name": "shape",
+          "optional": true,
+          "kind": "property",
+          "type": "\"sine\" | \"scallop\" | \"zigzag\" | \"curl\" | \"flow\"",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "How the lines wave: `sine`, the smooth classic; `scallop`, shallow arcs dipping between sharp cusps; `zigzag`, sharp straight teeth (amphibolite, schist); `curl`, crests that roll over into a spiral hook; `flow`, long swells the lines bunch and spread over, broken into strokes like a printed textile. Default `\"sine\"`."
+            }
+          ]
+        },
+        {
+          "name": "wavelength",
+          "optional": true,
+          "kind": "property",
+          "type": "Length",
+          "types": [
+            "Length"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "The length of one wave along the line, in mm. Default by shape, × spacing: sine 4 (3.6 with `cross: 2`), scallop 1.35, zigzag 1, curl 1.35, flow 13."
+            }
+          ]
+        },
+        {
+          "name": "amplitude",
+          "optional": true,
+          "kind": "property",
+          "type": "Length",
+          "types": [
+            "Length"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "How far a line swings away from its row, in mm: a sine's or zigzag's peak, a scallop's dip, a curl's crest, a swell's height. Default by shape, × spacing: sine 0.25 (0.5 with `cross: 2`, so the net closes), scallop 0.35, zigzag 0.3, curl 0.27, flow 2.6."
+            }
+          ]
+        },
+        {
+          "name": "cross",
+          "optional": true,
+          "kind": "property",
+          "type": "1 | 2",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "1 one family of lines; 2 a net. Sine, zigzag and scallop add every row's mirror image, so crest meets trough and the lines close into cells (the ogee net, diamonds, eyes); curl and flow add a second family at right angles. Default 1."
+            }
+          ]
+        },
+        {
+          "name": "stagger",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Sine, scallop, zigzag and curl: shift every other row along by this share of a wavelength (0.5 sets the cusps of one row over the middles of the next). Default 0."
             }
           ]
         },
@@ -2439,28 +2778,148 @@
           "name": "flip",
           "optional": true,
           "kind": "property",
-          "type": "number",
+          "type": "boolean",
           "doc": [
             {
               "kind": "p",
-              "text": "`curl-waves`: 1 mirrors the waves so they break the other way. Default 0."
+              "text": "Turn the waves over: curls break the other way, scallops bulge up between downward cusps. Default false."
             }
           ]
         },
         {
-          "name": "light_elevation",
+          "name": "round",
           "optional": true,
           "kind": "property",
           "type": "number",
           "doc": [
             {
               "kind": "p",
-              "text": "`isoline-stack` with `light`: sun height in degrees; lower casts longer shadows. Default 35."
+              "text": "Scallop: the arc's shape, below 1 fuller and rounder, above 1 drawn to a point. Default 0.8."
             }
           ]
         },
         {
-          "name": "contour",
+          "name": "curl",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Curl: the size of the hook as a share of the amplitude. 1 rolls down onto the next wave's trough; smaller hooks hang above it. Default 1."
+            }
+          ]
+        },
+        {
+          "name": "turns",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Curl: how far each hook winds in, in turns (1 is one full turn). Default 0.95."
+            }
+          ]
+        },
+        {
+          "name": "drift",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Flow: how fast the swell's height and phase change from line to line across the sea (0 keeps one swell everywhere). Default 1."
+            }
+          ]
+        },
+        {
+          "name": "breaks",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Flow: how broken the lines are, 0 (unbroken) to 1 (short strokes). Default 0.5."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "RingsOptions",
+      "kind": "interface",
+      "doc": [
+        {
+          "kind": "p",
+          "text": "`rings`: Rings from the boundary inward, a spacing apart: concentric with the outline, offset from every edge, or one continuous spiral."
+        }
+      ],
+      "members": [
+        {
+          "name": "from",
+          "optional": true,
+          "kind": "property",
+          "type": "\"outline\" | \"edges\"",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "What the rings follow: `outline`, the outer edge inset again and again (holes stop the rings; thin parts get a centreline); `edges`, every edge, holes included, each pushing rings of its own (a network of streets round blocks fills evenly). Default `\"outline\"`."
+            }
+          ]
+        },
+        {
+          "name": "spiral",
+          "optional": true,
+          "kind": "property",
+          "type": "boolean",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "One continuous path winding inward a spacing per lap, instead of closed rings: the fewest pen lifts. Follows the outline; holes cut it. Default false."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "ScribbleOptions",
+      "kind": "interface",
+      "doc": [
+        {
+          "kind": "p",
+          "text": "`scribble`: Hand shading with a fine pen: loose zigzag strokes with rounded turns, in overlapping patches, layered at different angles."
+        }
+      ],
+      "members": [
+        {
+          "name": "layers",
+          "optional": true,
+          "kind": "property",
+          "type": "1 | 2 | 3",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Layers of scribble, each turned about 50° from the first: 1 a light shade, 3 the darkest. Default 2."
+            }
+          ]
+        },
+        {
+          "name": "loose",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "How messy, 0 (tidy, even zigzags) to 1 (wandering ends, uneven passes, tilted patches). Default 0.5."
+            }
+          ]
+        },
+        {
+          "name": "length",
           "optional": true,
           "kind": "property",
           "type": "Length",
@@ -2470,108 +2929,36 @@
           "doc": [
             {
               "kind": "p",
-              "text": "`isoline-blobs`: distance between contour lines in mm. Default ~0.045× `spacing`."
+              "text": "The length of one pass of the pen, end to end, in mm. Default 9 × spacing."
             }
           ]
         },
         {
-          "name": "warp",
+          "name": "density",
+          "optional": true,
+          "kind": "property",
+          "type": "\"even\" | \"edge\" | \"centre\" | \"noise\" | \"gradient\"",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "The tone across the area: even, denser toward the edge, toward the centre, in noisy patches, or along a gradient toward `toward` degrees. Default `\"even\"`."
+            }
+          ]
+        },
+        {
+          "name": "contrast",
           "optional": true,
           "kind": "property",
           "type": "number",
           "doc": [
             {
               "kind": "p",
-              "text": "`isoline-blobs`: domain warp of the field (0–1). Default 0.45. `clouds`: how much the masses curl and drift (0–1). Default 0.25."
+              "text": "How far the tone swings, 0 (none) to 1 (from full to nothing). Default 0.8."
             }
           ]
         },
         {
-          "name": "puffs",
-          "optional": true,
-          "kind": "property",
-          "type": "number",
-          "doc": [
-            {
-              "kind": "p",
-              "text": "`clouds` — cumulus seen from above, heaped from puffs on a body that rises and falls, shaded where it turns from the sun or higher cloud shadows it. `spacing` is a puff's size; `coverage` the share of sky; `cell` the scale of the masses (default 8 puffs); `light_angle` (page degrees, default 225: from the top left) and `light_elevation` (default 30) the sun; `hatch` the shade's spacing at its deepest. `fills.cover` gives the clouds' footprint: mask what lies under them, and `areas.move` it down-sun for their shadow on the ground."
-            }
-          ]
-        },
-        {
-          "name": "elongate",
-          "optional": true,
-          "kind": "property",
-          "type": "number",
-          "doc": [
-            {
-              "kind": "p",
-              "text": "`clouds`: how drawn out each puff is along the cloud's run (0 round). Default 0.35."
-            }
-          ]
-        },
-        {
-          "name": "stretch",
-          "optional": true,
-          "kind": "property",
-          "type": "number",
-          "doc": [
-            {
-              "kind": "p",
-              "text": "`clouds`: how far the masses are drawn out along `wind` (0–0.95). Default 0.25."
-            }
-          ]
-        },
-        {
-          "name": "wind",
-          "optional": true,
-          "kind": "property",
-          "type": "number",
-          "doc": [
-            {
-              "kind": "p",
-              "text": "`clouds`: the wind's direction on the page, degrees. Default 15."
-            }
-          ]
-        },
-        {
-          "name": "height",
-          "optional": true,
-          "kind": "property",
-          "type": "number",
-          "doc": [
-            {
-              "kind": "p",
-              "text": "`clouds`: how tall the cloud heaps up (1 cumulus, 0.3 a flat sheet). Default 1."
-            }
-          ]
-        },
-        {
-          "name": "shade",
-          "optional": true,
-          "kind": "property",
-          "type": "number",
-          "doc": [
-            {
-              "kind": "p",
-              "text": "`clouds`: how much of the cloud is shaded (0–1, 0 none). Default 0.45."
-            }
-          ]
-        },
-        {
-          "name": "shading",
-          "optional": true,
-          "kind": "property",
-          "type": "\"dots\" | \"lines\"",
-          "doc": [
-            {
-              "kind": "p",
-              "text": "`clouds`: shade in `\"dots\"` (default) or `\"lines\"`."
-            }
-          ]
-        },
-        {
-          "name": "dot",
+          "name": "feature",
           "optional": true,
           "kind": "property",
           "type": "Length",
@@ -2581,22 +2968,262 @@
           "doc": [
             {
               "kind": "p",
-              "text": "`clouds`: each shading dot's length. Default 0.12mm."
+              "text": "The scale of the tone: the width of the edge band, the size of noise patches, in mm. Default 8 × spacing."
             }
           ]
         },
         {
-          "name": "threshold",
+          "name": "toward",
           "optional": true,
           "kind": "property",
           "type": "number",
           "doc": [
             {
               "kind": "p",
-              "text": "`isoline-blobs`: field level for patches and coverage (0–1). Default 0.25."
+              "text": "With `density: \"gradient\"`: the direction the tone gets denser, in page degrees (90: down the page). Default 90."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "HilbertOptions",
+      "kind": "interface",
+      "doc": [
+        {
+          "kind": "p",
+          "text": "`hilbert`: One unbroken space-filling Hilbert curve visiting the whole area cell by cell; cells between half a spacing and a spacing."
+        }
+      ]
+    },
+    {
+      "name": "TruchetOptions",
+      "kind": "interface",
+      "doc": [
+        {
+          "kind": "p",
+          "text": "`truchet`: Truchet tiles: square cells a spacing wide, each with two quarter arcs turned at random, chaining into long winding paths."
+        }
+      ]
+    },
+    {
+      "name": "HoneycombOptions",
+      "kind": "interface",
+      "doc": [
+        {
+          "kind": "p",
+          "text": "`honeycomb`: Hexagonal cells a spacing across (flat to flat), each wall drawn once, or doubled `walls` apart."
+        }
+      ],
+      "members": [
+        {
+          "name": "walls",
+          "optional": true,
+          "kind": "property",
+          "type": "Length",
+          "types": [
+            "Length"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Draw every wall twice, this far apart, in mm (0: single walls, the hexagons touching). Default 0."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "ScalesOptions",
+      "kind": "interface",
+      "doc": [
+        {
+          "kind": "p",
+          "text": "`scales`: Fish scales: rows of half circles a spacing apart, each row resting on the tips of the one below; roof tiles and drawn water."
+        }
+      ]
+    },
+    {
+      "name": "SunburstOptions",
+      "kind": "interface",
+      "doc": [
+        {
+          "kind": "p",
+          "text": "`sunburst`: Rays from a centre, about a spacing apart at every radius: new rays join in rings where the gaps open, so the centre never crowds."
+        }
+      ],
+      "members": [
+        {
+          "name": "centre",
+          "optional": true,
+          "kind": "property",
+          "type": "Length | [Length, Length]",
+          "types": [
+            "Length"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Where the rays come from, `[x, y]` in page mm. Default: the middle of the shape. Give the same centre to neighbouring areas and they share one burst."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "WoodOptions",
+      "kind": "interface",
+      "doc": [
+        {
+          "kind": "p",
+          "text": "`wood`: Wood grain: long lines a spacing apart running along the angle, wandering slowly and flowing round knots."
+        }
+      ],
+      "members": [
+        {
+          "name": "knots",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "How many knots the grain flows round, on average per square of 30 spacings (0: straight grain). Default 1."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "MarbleOptions",
+      "kind": "interface",
+      "doc": [
+        {
+          "kind": "p",
+          "text": "`marble`: Marble: veins about a spacing apart drifting across the slab at the angle, warped by turbulence, each drawn as its two edges so it pinches and swells."
+        }
+      ]
+    },
+    {
+      "name": "SwellsOptions",
+      "kind": "interface",
+      "doc": [
+        {
+          "kind": "p",
+          "text": "`swells`: Overlapping swells or dunes: crest lines layered back to front, each hiding the ones behind and filled with lines that follow its slope."
+        }
+      ]
+    },
+    {
+      "name": "EddiesOptions",
+      "kind": "interface",
+      "doc": [
+        {
+          "kind": "p",
+          "text": "`eddies`: Currents: evenly spaced streamlines of a flow that undulates and winds into spiral eddies."
+        }
+      ]
+    },
+    {
+      "name": "RipplesOptions",
+      "kind": "interface",
+      "doc": [
+        {
+          "kind": "p",
+          "text": "`ripples`: Ripples: rows of broken wavy strokes a spacing apart, their crests bending together over a slow swell."
+        }
+      ]
+    },
+    {
+      "name": "CanopyOptions",
+      "kind": "interface",
+      "doc": [
+        {
+          "kind": "p",
+          "text": "`canopy`: Tree canopies from above: clusters of wobbly lobes, a dot at each lobe's heart, trees a spacing apart."
+        }
+      ]
+    },
+    {
+      "name": "TwigsOptions",
+      "kind": "interface",
+      "doc": [
+        {
+          "kind": "p",
+          "text": "`twigs`: Scattered twigs a spacing apart: a kinked stick with short side shoots at acute angles; brushwood, scrub, forest litter."
+        }
+      ]
+    },
+    {
+      "name": "DoodleTreesOptions",
+      "kind": "interface",
+      "doc": [
+        {
+          "kind": "p",
+          "text": "`doodle-trees`: Trees as a hand doodles them on a sketch map: each crown (a spacing across) one curly stroke round a lumpy circle, with a crescent of shade; nearer crowns hide those behind."
+        }
+      ],
+      "members": [
+        {
+          "name": "coverage",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "The share of places that get a tree, 0 to 1: lower leaves clearings. Default 0.85."
             }
           ]
         },
+        {
+          "name": "loops",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "How many curls run round each crown's rim, as a multiple of the usual count. Default 1."
+            }
+          ]
+        },
+        {
+          "name": "shadow",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "The share of crowns with a crescent of shade on the side away from the light. Default 0.8."
+            }
+          ]
+        },
+        {
+          "name": "light_angle",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Where the light comes from, in page degrees (0: from the right, 90: from below; 225, the map maker's top left). Default 225."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "GrowthOptions",
+      "kind": "interface",
+      "doc": [
+        {
+          "kind": "p",
+          "text": "`growth`: Branches grown toward the space they have to fill (space colonisation): river deltas, veins, roots, cracks, lichen; twigs a spacing apart."
+        }
+      ],
+      "members": [
         {
           "name": "roots",
           "optional": true,
@@ -2605,7 +3232,7 @@
           "doc": [
             {
               "kind": "p",
-              "text": "`growth`: dendritic branches grown toward a field of attractor points (space colonization) — river deltas, veins, cracks, roots, lichen; `spacing` is the gap between neighbouring twigs. How many roots it grows from. Default: one per `root_spacing`."
+              "text": "How many roots the branches grow from (0: one per `root_spacing`). Default 0."
             }
           ]
         },
@@ -2620,31 +3247,7 @@
           "doc": [
             {
               "kind": "p",
-              "text": "`growth`: roots this far apart, each draining its own basin. Default ~12× `spacing`."
-            }
-          ]
-        },
-        {
-          "name": "variation",
-          "optional": true,
-          "kind": "property",
-          "type": "number",
-          "doc": [
-            {
-              "kind": "p",
-              "text": "`growth`: how much trees differ in size (0–1): uneven root spacing, big crowns next to saplings. Default 0.35."
-            }
-          ]
-        },
-        {
-          "name": "trunk",
-          "optional": true,
-          "kind": "property",
-          "type": "number",
-          "doc": [
-            {
-              "kind": "p",
-              "text": "`growth`: most pen passes on a trunk; thick near the roots, hairline at the twigs. Default 3."
+              "text": "Roots about this far apart, each draining its own basin, in mm. Default 12 × spacing."
             }
           ]
         },
@@ -2659,7 +3262,7 @@
           "doc": [
             {
               "kind": "p",
-              "text": "`growth`: how far a branch advances per step, in mm. Default ~0.16× `spacing`."
+              "text": "How far a branch advances per step, in mm. Default 0.16 × spacing."
             }
           ]
         },
@@ -2674,7 +3277,7 @@
           "doc": [
             {
               "kind": "p",
-              "text": "`growth`: an attractor beyond this from every branch tip pulls nothing. Default ~3.2× `spacing`."
+              "text": "A point farther than this from every branch tip pulls nothing, in mm. Default 3.2 × spacing."
             }
           ]
         },
@@ -2689,7 +3292,70 @@
           "doc": [
             {
               "kind": "p",
-              "text": "`growth`: an attractor this close to a tip is consumed, in mm. Default ~0.4× `spacing`."
+              "text": "A point this close to a tip is reached and stops pulling, in mm. Default 0.4 × spacing."
+            }
+          ]
+        },
+        {
+          "name": "jitter",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "How much each step wobbles off its course, 0 (straight) up. Default 0.1."
+            }
+          ]
+        },
+        {
+          "name": "pen",
+          "optional": true,
+          "kind": "property",
+          "type": "Length",
+          "types": [
+            "Length"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "The pen's width in mm: a trunk's extra passes sit this far apart, side by side (0 draws every branch as one line). Default 0.15."
+            }
+          ]
+        },
+        {
+          "name": "trunk",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Most extra passes either side of a trunk: thick near the roots, a hairline at the twigs. Default 3."
+            }
+          ]
+        },
+        {
+          "name": "coverage",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "How far each tree reaches toward its neighbours, 0 to 1: below 1 leaves gaps between them. Default 1."
+            }
+          ]
+        },
+        {
+          "name": "variation",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "How much trees differ in size, 0 (alike) to 1 (saplings beside big crowns). Default 0.35."
             }
           ]
         },
@@ -2701,9 +3367,1063 @@
           "doc": [
             {
               "kind": "p",
-              "text": "`growth`: a hard cap on growth steps, so a pathological shape cannot hang. Default 20000."
+              "text": "A cap on growth steps, so a pathological shape cannot hang. Default 20000."
             }
           ]
+        }
+      ]
+    },
+    {
+      "name": "IsolineStackOptions",
+      "kind": "interface",
+      "doc": [
+        {
+          "kind": "p",
+          "text": "`isoline-stack`: Tree crowns drawn as stacked contour tiers, lit from one side; `spacing` is a crown's diameter, and the crowns are the mask."
+        }
+      ],
+      "members": [
+        {
+          "name": "hatched",
+          "optional": true,
+          "kind": "property",
+          "type": "boolean",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Shade the crowns with hatching on the side away from the light, for an engraved look. Changes the defaults: `light` 0.85, `hatch` 0.45 mm, `ticks` 0.65. Default false."
+            }
+          ]
+        },
+        {
+          "name": "coverage",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "How patchy the crowns are, 0 to 1: low leaves clearings, 1 fills everywhere the shape allows. Default 0.6."
+            }
+          ]
+        },
+        {
+          "name": "bubble",
+          "optional": true,
+          "kind": "property",
+          "type": "Length",
+          "types": [
+            "Length"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "The size of a leaf cluster on a crown's rim, in mm: smaller is lumpier. Default 0.15 × spacing."
+            }
+          ]
+        },
+        {
+          "name": "slices",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Contour tiers through a crown: more draws more rings. Default 9."
+            }
+          ]
+        },
+        {
+          "name": "jitter",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "How ragged the contours are: 0 smooth boughs, 1.1 crisp leaves, 1.5 and up deep serrations. Default 1.1."
+            }
+          ]
+        },
+        {
+          "name": "jitter_period",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "The length of the contours' serration: lower is finer teeth, higher broad reaches. Default 0.68."
+            }
+          ]
+        },
+        {
+          "name": "ticks",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Short slope ticks across the contours at bough clefts and in shade, 0 (none) to 1.5. Default 0.42; 0.65 when `hatched` or with a `hatch`."
+            }
+          ]
+        },
+        {
+          "name": "elongation",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "How drawn out the crowns are, as if wind-swept, 0 (round) to 1. Default 0.18."
+            }
+          ]
+        },
+        {
+          "name": "lobes",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "How deep the clefts between boughs are, and how much a crown splits into sub-crowns. Default 1."
+            }
+          ]
+        },
+        {
+          "name": "light",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "How strong the sunlight is, 0 (none: every side alike) to 1: lit sides open up, shaded sides close in. Default 0.82; 0.85 when `hatched`."
+            }
+          ]
+        },
+        {
+          "name": "light_angle",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Where the light comes from, in page degrees (0: from the right, 90: from below; 225, the map maker's top left). Default 225."
+            }
+          ]
+        },
+        {
+          "name": "light_elevation",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "How high the sun stands, in degrees: lower casts longer shade. Default 35."
+            }
+          ]
+        },
+        {
+          "name": "hatch",
+          "optional": true,
+          "kind": "property",
+          "type": "Length",
+          "types": [
+            "Length"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "The shading hatch's spacing in mm, 0 for none. Default 0; 0.45 when `hatched`."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "IsolineBlobsOptions",
+      "kind": "interface",
+      "doc": [
+        {
+          "kind": "p",
+          "text": "`isoline-blobs`: Blobs a spacing apart, each filled with nested contour rings like a height map; the blobs are the mask."
+        }
+      ],
+      "members": [
+        {
+          "name": "contour",
+          "optional": true,
+          "kind": "property",
+          "type": "Length",
+          "types": [
+            "Length"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "The distance between nested contour lines inside a blob, in mm. Default 0.045 × spacing."
+            }
+          ]
+        },
+        {
+          "name": "warp",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "How much the field curls and drifts, 0 (round blobs) up. Default 0.45."
+            }
+          ]
+        },
+        {
+          "name": "warp_period",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "The size of the warp's waves: lower is finer, higher broader. Default 1."
+            }
+          ]
+        },
+        {
+          "name": "threshold",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Where ink begins on the field: higher keeps only the tallest blobs, lower fuses them into larger masses. Default 0.15."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "CloudsOptions",
+      "kind": "interface",
+      "doc": [
+        {
+          "kind": "p",
+          "text": "`clouds`: Cumulus seen from above: puffs a spacing across heaped on bodies that rise and fall, shaded away from the sun; the clouds are the mask."
+        }
+      ],
+      "members": [
+        {
+          "name": "cell",
+          "optional": true,
+          "kind": "property",
+          "type": "Length",
+          "types": [
+            "Length"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "The size of the cloud masses and the clear sky between them, in mm. Default 8 × spacing."
+            }
+          ]
+        },
+        {
+          "name": "coverage",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "The share of the sky that is cloud. Default 0.5."
+            }
+          ]
+        },
+        {
+          "name": "warp",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "How much the masses curl and drift, 0 (plain blobs) to 1. Default 0.25."
+            }
+          ]
+        },
+        {
+          "name": "puffs",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "How closely the puffs crowd: about 0.6 few and round, 2 many and lumpy. Default 1."
+            }
+          ]
+        },
+        {
+          "name": "elongate",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "How drawn out each puff is along the run of its cloud, 0 (round) to 1. Default 0.35."
+            }
+          ]
+        },
+        {
+          "name": "stretch",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "How far the masses are drawn out along the wind (toward cloud streets). Default 0.25."
+            }
+          ]
+        },
+        {
+          "name": "wind",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "The wind's direction on the page, in degrees (0: left to right). Default 15."
+            }
+          ]
+        },
+        {
+          "name": "light_angle",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Where the sun is, in page degrees (0: from the right, 90: from below; 225, the top left). Default 225."
+            }
+          ]
+        },
+        {
+          "name": "light_elevation",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "How high the sun stands, in degrees: lower shades more of each heap. Default 30."
+            }
+          ]
+        },
+        {
+          "name": "height",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "How tall the clouds heap up against their width: 1 a cumulus, 0.3 a flat sheet. Default 1."
+            }
+          ]
+        },
+        {
+          "name": "shade",
+          "optional": true,
+          "kind": "property",
+          "type": "number",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "How much of the cloud is shaded, 0 (none) to 1. Default 0.45."
+            }
+          ]
+        },
+        {
+          "name": "hatch",
+          "optional": true,
+          "kind": "property",
+          "type": "Length",
+          "types": [
+            "Length"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "The shade's spacing at its deepest, between dots or lines, in mm. Default 0.45."
+            }
+          ]
+        },
+        {
+          "name": "shading",
+          "optional": true,
+          "kind": "property",
+          "type": "\"dots\" | \"lines\"",
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Shade in stippled `dots` (denser where deeper) or hatched `lines`. Default `\"dots\"`."
+            }
+          ]
+        },
+        {
+          "name": "dot",
+          "optional": true,
+          "kind": "property",
+          "type": "Length",
+          "types": [
+            "Length"
+          ],
+          "doc": [
+            {
+              "kind": "p",
+              "text": "Each shading dot's length, in mm (a pen's dot is a short stroke). Default 0.12."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "SolidOptions",
+      "kind": "interface",
+      "doc": [
+        {
+          "kind": "p",
+          "text": "`solid`: A flat fill with no pen strokes: the host paints the area (an SVG fill, a screen preview); plotters draw nothing. Its mask is the whole area."
+        }
+      ]
+    },
+    {
+      "name": "PatternOptions",
+      "kind": "type",
+      "doc": [
+        {
+          "kind": "p",
+          "text": "Each pattern with the options it takes."
+        }
+      ],
+      "text": "({ pattern: \"scallops\" } & WavesOptions) | ({ pattern: \"curls\" } & WavesOptions) | ({ pattern: \"currents\" } & WavesOptions) | ({ pattern: \"wave-net\" } & WavesOptions) | ({ pattern: \"shore-lines\" } & HatchOptions) | ({ pattern: \"shallows\" } & ScatterOptions) | ({ pattern: \"marsh\" } & ScatterOptions) | ({ pattern: \"grass\" } & ScatterOptions) | ({ pattern: \"meadow\" } & ScatterOptions) | ({ pattern: \"scrub\" } & ScatterOptions) | ({ pattern: \"woodland\" } & ScatterOptions) | ({ pattern: \"forest\" } & ScatterOptions) | ({ pattern: \"conifers\" } & ScatterOptions) | ({ pattern: \"orchard\" } & ScatterOptions) | ({ pattern: \"vineyard\" } & ScatterOptions) | ({ pattern: \"fields\" } & HatchOptions) | ({ pattern: \"garden\" } & ScatterOptions) | ({ pattern: \"sprouts\" } & ScatterOptions) | ({ pattern: \"leaves\" } & ScatterOptions) | ({ pattern: \"sand\" } & ScatterOptions) | ({ pattern: \"dunes\" } & ScatterOptions) | ({ pattern: \"soil\" } & ScatterOptions) | ({ pattern: \"gravel\" } & CellsOptions) | ({ pattern: \"pebbles\" } & ScatterOptions) | ({ pattern: \"boulders\" } & CellsOptions) | ({ pattern: \"scree\" } & ScatterOptions) | ({ pattern: \"cracked-earth\" } & CellsOptions) | ({ pattern: \"dry-mud\" } & CellsOptions) | ({ pattern: \"clay\" } & HatchOptions) | ({ pattern: \"silt\" } & HatchOptions) | ({ pattern: \"peat\" } & HatchOptions) | ({ pattern: \"layered-soil\" } & HatchOptions) | ({ pattern: \"chalky-soil\" } & CellsOptions) | ({ pattern: \"sandstone\" } & ScatterOptions) | ({ pattern: \"siltstone\" } & HatchOptions & ScatterOptions) | ({ pattern: \"shale\" } & HatchOptions) | ({ pattern: \"limestone\" } & TileOptions) | ({ pattern: \"chalk\" } & TileOptions & ScatterOptions) | ({ pattern: \"conglomerate\" } & ScatterOptions) | ({ pattern: \"breccia\" } & ScatterOptions) | ({ pattern: \"coal\" } & HatchOptions) | ({ pattern: \"granite\" } & ScatterOptions) | ({ pattern: \"basalt\" } & ScatterOptions) | ({ pattern: \"tuff\" } & ScatterOptions) | ({ pattern: \"gneiss\" } & HatchOptions) | ({ pattern: \"schist\" } & WavesOptions) | ({ pattern: \"salt\" } & HatchOptions) | ({ pattern: \"brick\" } & TileOptions) | ({ pattern: \"herringbone\" } & TileOptions) | ({ pattern: \"basket\" } & TileOptions) | ({ pattern: \"parquet\" } & TileOptions) | ({ pattern: \"setts\" } & TileOptions) | ({ pattern: \"flagstones\" } & TileOptions) | ({ pattern: \"tiles\" } & TileOptions) | ({ pattern: \"hexagons\" } & TileOptions) | ({ pattern: \"stairs\" } & TileOptions) | ({ pattern: \"grate\" } & TileOptions) | ({ pattern: \"chess\" } & TileOptions) | ({ pattern: \"cobbles\" } & CellsOptions) | ({ pattern: \"terrazzo\" } & CellsOptions) | ({ pattern: \"cemetery\" } & ScatterOptions) | ({ pattern: \"lines\" } & HatchOptions) | ({ pattern: \"crosshatch\" } & HatchOptions) | ({ pattern: \"triad\" } & HatchOptions) | ({ pattern: \"serpentine\" } & HatchOptions) | ({ pattern: \"dashes\" } & HatchOptions) | ({ pattern: \"dots\" } & ScatterOptions) | ({ pattern: \"stipple\" } & ScatterOptions) | ({ pattern: \"concentric\" } & RingsOptions) | ({ pattern: \"offsets\" } & RingsOptions) | ({ pattern: \"spiral\" } & RingsOptions) | ({ pattern: \"hatch\" } & HatchOptions) | ({ pattern: \"scatter\" } & ScatterOptions) | ({ pattern: \"cells\" } & CellsOptions) | ({ pattern: \"tile\" } & TileOptions) | ({ pattern: \"waves\" } & WavesOptions) | ({ pattern: \"rings\" } & RingsOptions) | ({ pattern: \"scribble\" } & ScribbleOptions) | ({ pattern: \"hilbert\" } & HilbertOptions) | ({ pattern: \"truchet\" } & TruchetOptions) | ({ pattern: \"honeycomb\" } & HoneycombOptions) | ({ pattern: \"scales\" } & ScalesOptions) | ({ pattern: \"sunburst\" } & SunburstOptions) | ({ pattern: \"wood\" } & WoodOptions) | ({ pattern: \"marble\" } & MarbleOptions) | ({ pattern: \"swells\" } & SwellsOptions) | ({ pattern: \"eddies\" } & EddiesOptions) | ({ pattern: \"ripples\" } & RipplesOptions) | ({ pattern: \"canopy\" } & CanopyOptions) | ({ pattern: \"twigs\" } & TwigsOptions) | ({ pattern: \"doodle-trees\" } & DoodleTreesOptions) | ({ pattern: \"growth\" } & GrowthOptions) | ({ pattern: \"isoline-stack\" } & IsolineStackOptions) | ({ pattern: \"isoline-blobs\" } & IsolineBlobsOptions) | ({ pattern: \"clouds\" } & CloudsOptions) | ({ pattern: \"solid\" } & SolidOptions)",
+      "types": [
+        "WavesOptions",
+        "HatchOptions",
+        "ScatterOptions",
+        "CellsOptions",
+        "TileOptions",
+        "RingsOptions",
+        "ScribbleOptions",
+        "HilbertOptions",
+        "TruchetOptions",
+        "HoneycombOptions",
+        "ScalesOptions",
+        "SunburstOptions",
+        "WoodOptions",
+        "MarbleOptions",
+        "SwellsOptions",
+        "EddiesOptions",
+        "RipplesOptions",
+        "CanopyOptions",
+        "TwigsOptions",
+        "DoodleTreesOptions",
+        "GrowthOptions",
+        "IsolineStackOptions",
+        "IsolineBlobsOptions",
+        "CloudsOptions",
+        "SolidOptions"
+      ],
+      "others": [
+        "({ pattern: \"scallops\" } & WavesOptions)",
+        "({ pattern: \"curls\" } & WavesOptions)",
+        "({ pattern: \"currents\" } & WavesOptions)",
+        "({ pattern: \"wave-net\" } & WavesOptions)",
+        "({ pattern: \"shore-lines\" } & HatchOptions)",
+        "({ pattern: \"shallows\" } & ScatterOptions)",
+        "({ pattern: \"marsh\" } & ScatterOptions)",
+        "({ pattern: \"grass\" } & ScatterOptions)",
+        "({ pattern: \"meadow\" } & ScatterOptions)",
+        "({ pattern: \"scrub\" } & ScatterOptions)",
+        "({ pattern: \"woodland\" } & ScatterOptions)",
+        "({ pattern: \"forest\" } & ScatterOptions)",
+        "({ pattern: \"conifers\" } & ScatterOptions)",
+        "({ pattern: \"orchard\" } & ScatterOptions)",
+        "({ pattern: \"vineyard\" } & ScatterOptions)",
+        "({ pattern: \"fields\" } & HatchOptions)",
+        "({ pattern: \"garden\" } & ScatterOptions)",
+        "({ pattern: \"sprouts\" } & ScatterOptions)",
+        "({ pattern: \"leaves\" } & ScatterOptions)",
+        "({ pattern: \"sand\" } & ScatterOptions)",
+        "({ pattern: \"dunes\" } & ScatterOptions)",
+        "({ pattern: \"soil\" } & ScatterOptions)",
+        "({ pattern: \"gravel\" } & CellsOptions)",
+        "({ pattern: \"pebbles\" } & ScatterOptions)",
+        "({ pattern: \"boulders\" } & CellsOptions)",
+        "({ pattern: \"scree\" } & ScatterOptions)",
+        "({ pattern: \"cracked-earth\" } & CellsOptions)",
+        "({ pattern: \"dry-mud\" } & CellsOptions)",
+        "({ pattern: \"clay\" } & HatchOptions)",
+        "({ pattern: \"silt\" } & HatchOptions)",
+        "({ pattern: \"peat\" } & HatchOptions)",
+        "({ pattern: \"layered-soil\" } & HatchOptions)",
+        "({ pattern: \"chalky-soil\" } & CellsOptions)",
+        "({ pattern: \"sandstone\" } & ScatterOptions)",
+        "({ pattern: \"siltstone\" } & HatchOptions & ScatterOptions)",
+        "({ pattern: \"shale\" } & HatchOptions)",
+        "({ pattern: \"limestone\" } & TileOptions)",
+        "({ pattern: \"chalk\" } & TileOptions & ScatterOptions)",
+        "({ pattern: \"conglomerate\" } & ScatterOptions)",
+        "({ pattern: \"breccia\" } & ScatterOptions)",
+        "({ pattern: \"coal\" } & HatchOptions)",
+        "({ pattern: \"granite\" } & ScatterOptions)",
+        "({ pattern: \"basalt\" } & ScatterOptions)",
+        "({ pattern: \"tuff\" } & ScatterOptions)",
+        "({ pattern: \"gneiss\" } & HatchOptions)",
+        "({ pattern: \"schist\" } & WavesOptions)",
+        "({ pattern: \"salt\" } & HatchOptions)",
+        "({ pattern: \"brick\" } & TileOptions)",
+        "({ pattern: \"herringbone\" } & TileOptions)",
+        "({ pattern: \"basket\" } & TileOptions)",
+        "({ pattern: \"parquet\" } & TileOptions)",
+        "({ pattern: \"setts\" } & TileOptions)",
+        "({ pattern: \"flagstones\" } & TileOptions)",
+        "({ pattern: \"tiles\" } & TileOptions)",
+        "({ pattern: \"hexagons\" } & TileOptions)",
+        "({ pattern: \"stairs\" } & TileOptions)",
+        "({ pattern: \"grate\" } & TileOptions)",
+        "({ pattern: \"chess\" } & TileOptions)",
+        "({ pattern: \"cobbles\" } & CellsOptions)",
+        "({ pattern: \"terrazzo\" } & CellsOptions)",
+        "({ pattern: \"cemetery\" } & ScatterOptions)",
+        "({ pattern: \"lines\" } & HatchOptions)",
+        "({ pattern: \"crosshatch\" } & HatchOptions)",
+        "({ pattern: \"triad\" } & HatchOptions)",
+        "({ pattern: \"serpentine\" } & HatchOptions)",
+        "({ pattern: \"dashes\" } & HatchOptions)",
+        "({ pattern: \"dots\" } & ScatterOptions)",
+        "({ pattern: \"stipple\" } & ScatterOptions)",
+        "({ pattern: \"concentric\" } & RingsOptions)",
+        "({ pattern: \"offsets\" } & RingsOptions)",
+        "({ pattern: \"spiral\" } & RingsOptions)",
+        "({ pattern: \"hatch\" } & HatchOptions)",
+        "({ pattern: \"scatter\" } & ScatterOptions)",
+        "({ pattern: \"cells\" } & CellsOptions)",
+        "({ pattern: \"tile\" } & TileOptions)",
+        "({ pattern: \"waves\" } & WavesOptions)",
+        "({ pattern: \"rings\" } & RingsOptions)",
+        "({ pattern: \"scribble\" } & ScribbleOptions)",
+        "({ pattern: \"hilbert\" } & HilbertOptions)",
+        "({ pattern: \"truchet\" } & TruchetOptions)",
+        "({ pattern: \"honeycomb\" } & HoneycombOptions)",
+        "({ pattern: \"scales\" } & ScalesOptions)",
+        "({ pattern: \"sunburst\" } & SunburstOptions)",
+        "({ pattern: \"wood\" } & WoodOptions)",
+        "({ pattern: \"marble\" } & MarbleOptions)",
+        "({ pattern: \"swells\" } & SwellsOptions)",
+        "({ pattern: \"eddies\" } & EddiesOptions)",
+        "({ pattern: \"ripples\" } & RipplesOptions)",
+        "({ pattern: \"canopy\" } & CanopyOptions)",
+        "({ pattern: \"twigs\" } & TwigsOptions)",
+        "({ pattern: \"doodle-trees\" } & DoodleTreesOptions)",
+        "({ pattern: \"growth\" } & GrowthOptions)",
+        "({ pattern: \"isoline-stack\" } & IsolineStackOptions)",
+        "({ pattern: \"isoline-blobs\" } & IsolineBlobsOptions)",
+        "({ pattern: \"clouds\" } & CloudsOptions)",
+        "({ pattern: \"solid\" } & SolidOptions)"
+      ],
+      "members": [
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"scallops\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"curls\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"currents\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"wave-net\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"shore-lines\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"shallows\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"marsh\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"grass\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"meadow\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"scrub\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"woodland\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"forest\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"conifers\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"orchard\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"vineyard\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"fields\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"garden\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"sprouts\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"leaves\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"sand\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"dunes\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"soil\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"gravel\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"pebbles\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"boulders\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"scree\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"cracked-earth\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"dry-mud\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"clay\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"silt\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"peat\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"layered-soil\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"chalky-soil\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"sandstone\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"siltstone\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"shale\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"limestone\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"chalk\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"conglomerate\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"breccia\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"coal\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"granite\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"basalt\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"tuff\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"gneiss\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"schist\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"salt\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"brick\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"herringbone\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"basket\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"parquet\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"setts\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"flagstones\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"tiles\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"hexagons\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"stairs\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"grate\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"chess\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"cobbles\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"terrazzo\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"cemetery\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"lines\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"crosshatch\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"triad\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"serpentine\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"dashes\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"dots\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"stipple\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"concentric\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"offsets\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"spiral\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"hatch\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"scatter\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"cells\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"tile\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"waves\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"rings\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"scribble\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"hilbert\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"truchet\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"honeycomb\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"scales\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"sunburst\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"wood\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"marble\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"swells\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"eddies\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"ripples\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"canopy\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"twigs\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"doodle-trees\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"growth\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"isoline-stack\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"isoline-blobs\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"clouds\""
+        },
+        {
+          "name": "pattern",
+          "kind": "property",
+          "type": "\"solid\""
         }
       ]
     },

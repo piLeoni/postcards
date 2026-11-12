@@ -3,7 +3,6 @@
 pub mod board;
 pub mod budget;
 pub mod fill;
-mod fill_penfill;
 pub mod geojson;
 pub mod geom;
 pub mod google_fonts;

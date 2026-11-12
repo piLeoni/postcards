@@ -524,13 +524,17 @@ fn union(name: &str) -> Vec<String> {
 }
 
 #[test]
-fn the_description_lists_every_pattern_preset_and_hatch() {
-    let patterns: Vec<String> = drawland_core::fill::GENERATORS.iter().map(|s| s.to_string()).collect();
-    assert_eq!(union("Pattern"), patterns);
+fn the_description_lists_every_pattern_and_preset() {
+    // The pattern block is written from penfill's catalogue; a stale one
+    // would let the editor accept a pattern the engine refuses, or the
+    // reverse.
+    let dts = include_str!("../drawland.d.ts");
+    assert!(
+        crate::catalog_dts::rewrite(dts) == dts,
+        "drawland.d.ts's catalogue block is stale: run cargo run -p drawland-script --example write_dts"
+    );
     let presets: Vec<String> = terramask::PRESETS.iter().map(|(n, _)| n.to_string()).collect();
     assert_eq!(union("TilePreset"), presets);
-    let hatches: Vec<String> = penfill::pat::BUILTIN.iter().map(|s| s.to_string()).collect();
-    assert_eq!(union("PatName"), hatches);
 }
 
 #[test]

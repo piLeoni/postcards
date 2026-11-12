@@ -24,7 +24,7 @@ const MADE = {
   },
   'napkin-sketch': {
     how: 'Very little drawn, all of it loosened by compose.hand at the end: single-stroke streets, hatched blocks, curling waves, doodled trees.',
-    uses: ['compose.hand', 'pattern: "scallop-waves"', 'pattern: "doodle-trees"'],
+    uses: ['compose.hand', 'pattern: "scallops"', 'pattern: "doodle-trees"'],
     lite: 'lite-napkin-sketch',
   },
   'salt-and-stone': {

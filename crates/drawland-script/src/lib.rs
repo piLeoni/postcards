@@ -591,4 +591,6 @@ pub fn library_names() -> Result<Vec<String>, ScriptError> {
 }
 
 #[cfg(test)]
+mod catalog_dts;
+#[cfg(test)]
 mod tests;

@@ -15,6 +15,16 @@ const files = dirs.flatMap((d) => readdirSync(d).filter((f) => f.endsWith('.js')
 // The editor's settings (`setUpEditor` in Sidebar.jsx).
 const options = { allowJs: true, checkJs: true, noEmit: true, target: ts.ScriptTarget.ES2020, lib: ['lib.es2020.d.ts'], skipLibCheck: true }
 
+test('drawland.d.ts itself type-checks', () => {
+  // Errors in the library would hide every error in the scripts below.
+  const program = ts.createProgram([library], options)
+  const errors = ts.getPreEmitDiagnostics(program).map((d) => {
+    const at = d.file ? d.file.getLineAndCharacterOfPosition(d.start ?? 0) : null
+    return `${at ? `${at.line + 1}:${at.character + 1} ` : ''}${ts.flattenDiagnosticMessageText(d.messageText, '\n')}`
+  })
+  assert.deepEqual(errors, [])
+})
+
 for (const file of files) {
   test(`${file.slice(root.length + 1)} type-checks`, () => {
     // One script at a time: profiles are scripts, their top-level names would clash.
