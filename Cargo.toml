@@ -58,3 +58,10 @@ inherits = "release"
 opt-level = "z"
 lto = true
 codegen-units = 1
+
+# The sibling libraries are developed alongside draw.land: whatever asks for
+# them from crates.io (burin-map asks for terramask) gets the checkout beside
+# this one, so the build holds one copy of each.
+[patch.crates-io]
+terramask = { path = "../terramask/crates/terramask" }
+penfill = { path = "../penfill" }
