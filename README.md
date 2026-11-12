@@ -20,6 +20,15 @@ down to a page of code, the patterns drawn, and a reference generated from
 `crates/drawland-script/drawland.d.ts`, the library's exact description. Its
 sources are in `web/src/docs/` (see [Documentation](#documentation) below).
 
+The command line installs from crates.io:
+
+```bash
+cargo install drawland-cli
+drawland map --address "Piazza Maggiore, Bologna" -o map.svg
+```
+
+From a checkout:
+
 ```bash
 ./generate.sh "1730 Highland Pl, Berkeley, CA 94709"
 # → exports/1730_highland_pl_berkeley_ca_94709/map.svg
