@@ -50,8 +50,9 @@ impl From<SlicesArg> for SliceExport {
 enum Command {
     /// Build the map SVG for a place.
     Map {
-        /// Profile: a script (.js), or a saved graph (.json).
-        #[arg(default_value = "configs/postcard.js")]
+        /// Profile: a script (.js), a saved graph (.json), or a built-in
+        /// preset by name (`city-grain`, `napkin-sketch`, `karl-the-fog`…).
+        #[arg(default_value = "city-grain")]
         profile: PathBuf,
         /// Print the graph the profile builds, as JSON, and stop.
         #[arg(long)]
@@ -122,8 +123,21 @@ struct Place {
     lng: Option<f64>,
 }
 
-/// The graph a profile builds: a script run, or a saved graph read back.
+/// The graph a profile builds: a script run, a saved graph read back, or a
+/// built-in preset named instead of a file.
 fn load(path: &Path) -> Result<Grammar, String> {
+    if !path.exists() {
+        if let Some(source) = path.to_str().and_then(drawland_script::preset) {
+            return drawland_script::evaluate(source).map_err(|e| format!("{}: {e}", path.display()));
+        }
+        if path.extension().is_none() && path.components().count() == 1 {
+            return Err(format!(
+                "{}: no such file, and no built-in preset by that name ({})",
+                path.display(),
+                drawland_script::preset_ids().join(", ")
+            ));
+        }
+    }
     let text = read(path)?;
     let name = path.to_string_lossy().to_ascii_lowercase();
     let located = |e: String| format!("{}: {e}", path.display());

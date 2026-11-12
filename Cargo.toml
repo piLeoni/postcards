@@ -3,15 +3,15 @@ members = ["crates/drawland-core", "crates/drawland-script", "crates/drawland-cl
 resolver = "2"
 
 [workspace.package]
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 license = "AGPL-3.0-only"
 repository = "https://github.com/piLeoni/postcards"
 homepage = "https://draw.land"
 
 [workspace.dependencies]
-drawland-core = { path = "crates/drawland-core", version = "0.1.0" }
-drawland-script = { path = "crates/drawland-script", version = "0.1.0" }
+drawland-core = { path = "crates/drawland-core", version = "0.1.1" }
+drawland-script = { path = "crates/drawland-script", version = "0.1.1" }
 penfill = { path = "../penfill", version = "0.4.0", default-features = false }
 # Pen-and-ink terrain drawing: its own engine, its own expression trees.
 burin-map-core = { path = "../burin-map/crates/burin-map-core", version = "0.1.0" }

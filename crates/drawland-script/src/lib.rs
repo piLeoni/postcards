@@ -30,6 +30,16 @@ const LIBRARY: &str = include_str!("library.js");
 
 include!(concat!(env!("OUT_DIR"), "/presets.rs"));
 
+/// The script of the built-in preset `id` (`"city-grain"`), if there is one.
+pub fn preset(id: &str) -> Option<&'static str> {
+    PRESETS.iter().find(|(p, _)| *p == id).map(|(_, s)| *s)
+}
+
+/// The built-in presets' ids, sorted.
+pub fn preset_ids() -> Vec<&'static str> {
+    PRESETS.iter().map(|(p, _)| *p).collect()
+}
+
 /// How deep views may nest (a view drawing a preset that has views of its own).
 const VIEW_DEPTH: usize = 4;
 

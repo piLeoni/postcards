@@ -43,7 +43,7 @@ cargo run --release -p drawland-cli -- map web/src/presets/city-grain.js --lat 3
 
 | Argument | Does |
 |---|---|
-| `profile` | The profile script (default `configs/postcard.js`), or a saved graph (`.json`) |
+| `profile` | A profile script (`.js`), a saved graph (`.json`), or a built-in preset by name (`city-grain`, `napkin-sketch`, …); default `city-grain` |
 | `--address` / `--lat --lng` | Where; overrides the profile's `output({...})` |
 | `--dump-graph` | Print the graph the profile builds, as JSON, and stop |
 | `-o` | Output SVG (default `map.svg`) |
@@ -60,7 +60,8 @@ map is and on what paper (`output({...})`), which map data to read
 (`features.tiles("buildings")`, `features.osm({ leisure: "park" })`), what to
 make of it (`areas.*`, `lines.*`, `fills.fill`, `modules.roads()`), and how to
 ink and stack it (`draw`, `compose`). The script only builds a graph; the
-engine runs the graph in Rust. `configs/postcard.js` is the default; the web
+engine runs the graph in Rust. The web page's presets are built into the CLI
+(`drawland map napkin-sketch`), City Grain by default; more profiles are in `configs/`. The web
 page's presets are in `web/src/presets/`. `crates/drawland-script/drawland.d.ts`
 is the library's exact description: the web editor autocompletes and
 type-checks against it, and the docs' reference is generated from it.

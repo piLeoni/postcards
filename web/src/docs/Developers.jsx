@@ -35,7 +35,7 @@ export default function Developers() {
       <Code lang="bash">{`# A profile, and where to put it on the map.
 cargo run --release -p drawland-cli -- map web/src/presets/city-grain.js --lat 37.8771 --lng -122.2562 -o map.svg
 
-# An address, looked up with Nominatim. No profile: configs/postcard.js.
+# An address, looked up with Nominatim. No profile: City Grain; or name a preset (napkin-sketch).
 cargo run --release -p drawland-cli -- map --address "Piazza Maggiore, Bologna" -o map.svg
 
 # The same, into exports/<address>/map.svg.
@@ -46,7 +46,7 @@ cargo run --release -p drawland-cli -- map graph.json -o map.svg`}</Code>
       <Table
         head={['Argument', 'Does']}
         rows={[
-          [<C key="1">profile</C>, 'the profile script (default configs/postcard.js), or a saved graph (.json)'],
+          [<C key="1">profile</C>, 'a profile script (.js), a saved graph (.json), or a built-in preset by name; default city-grain'],
           [<C key="2">--address</C>, "where, looked up with Nominatim; overrides the profile's output"],
           [<C key="3">--lat --lng</C>, "where; overrides the profile's output"],
           [<C key="4">--dump-graph</C>, 'print the graph the profile builds, as JSON, and stop'],
