@@ -388,7 +388,7 @@ export default function Sidebar({
 
   return (
     <aside
-      className={`fixed inset-x-0 bottom-0 z-40 flex h-[85vh] min-h-0 w-full min-w-0 flex-col border-t border-[color:var(--chrome-divider)] bg-[var(--background0)] px-[2ch] pb-[env(safe-area-inset-bottom,0px)] transition-transform duration-200 sm:relative sm:z-30 sm:h-full sm:px-0 sm:pb-0 sm:shadow-[var(--chrome-panel-shadow)] sm:w-[var(--side-w)] sm:shrink-0 sm:translate-y-0 sm:pointer-events-auto sm:border-t-0 sm:border-l sm:border-[color:var(--chrome-divider)] ${
+      className={`fixed inset-x-0 bottom-0 z-40 flex h-[85vh] min-h-0 w-full min-w-0 flex-col border-t border-[color:var(--chrome-divider)] bg-[var(--background0)] pr-[max(2ch,env(safe-area-inset-right))] pl-[max(2ch,env(safe-area-inset-left))] pb-[env(safe-area-inset-bottom,0px)] transition-transform duration-200 sm:relative sm:z-30 sm:h-full sm:px-0 sm:pb-0 sm:shadow-[var(--chrome-panel-shadow)] sm:w-[var(--side-w)] sm:shrink-0 sm:translate-y-0 sm:pointer-events-auto sm:border-t-0 sm:border-l sm:border-[color:var(--chrome-divider)] ${
         open ? 'translate-y-0' : 'pointer-events-none translate-y-full sm:pointer-events-auto sm:translate-y-0'
       } ${dragW == null ? 'sm:transition-[width] sm:duration-200' : ''}`}
       style={{ '--side-w': `${shellW}px` }}
@@ -413,10 +413,12 @@ export default function Sidebar({
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <div
-          className={`flex min-h-0 flex-1 flex-col overflow-hidden pl-[max(2ch,14px)] pr-[2ch] pb-[env(safe-area-inset-bottom,0px)] sm:pb-0 ${
+          // On a phone the sheet scrolls, as wide as the screen; on a wide
+          // screen the column fits its window, and its content keeps
+          // `MIN_WIDTH` (320px) while the column is dragged narrower.
+          className={`flex min-h-0 w-full flex-1 flex-col overflow-y-auto pl-[max(2ch,14px)] pr-[2ch] pb-[env(safe-area-inset-bottom,0px)] sm:w-[max(100%,320px)] sm:overflow-hidden sm:pb-0 ${
             contentHidden ? 'pointer-events-none max-sm:hidden' : ''
           }`}
-          style={{ width: `max(100%, ${MIN_WIDTH}px)` }}
         >
       <Panel
         title="Selection"
@@ -496,7 +498,8 @@ export default function Sidebar({
         collapsible
         open={scriptOpen}
         onOpenChange={setScriptOpen}
-        className={scriptOpen ? 'relative flex min-h-0 flex-1 flex-col' : 'shrink-0'}
+        // On a phone the sheet scrolls: the script takes its own height there.
+        className={scriptOpen ? 'relative flex min-h-0 flex-1 flex-col max-sm:flex-none' : 'shrink-0'}
         aside={(
           <span
             className={`min-w-0 truncate ${dirty || failed ? 'font-bold' : 'opacity-60'}`}
@@ -577,7 +580,7 @@ export default function Sidebar({
         )}
         {/* `overflow: clip` with a margin, not `hidden`: the editor still cannot spill,
             but Monaco's tooltips over the find widget may paint just past the edge. */}
-        <div className="chrome-border relative mt-[0.5lh] min-h-0 flex-1 overflow-clip border pt-[0.5lh] [overflow-clip-margin:2.5rem]">
+        <div className="chrome-border relative mt-[0.5lh] min-h-0 flex-1 overflow-clip border pt-[0.5lh] [overflow-clip-margin:2.5rem] max-sm:h-[60vh] max-sm:flex-none">
           <div className="absolute top-[0.5lh] right-[2ch] z-10 flex gap-[1ch]">
             {dirty && (
               <>

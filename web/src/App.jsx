@@ -783,6 +783,7 @@ export default function App() {
           onDownloadClose={() => setDownloading(false)}
           sidebarOpen={sidebarOpen}
           sidebarColumnDrag={sidebarColumnDrag}
+          onOpenControls={() => setSidebarOpen(true)}
         />
         {dropping && (
           <div className="pointer-events-none absolute inset-0 z-[60] flex items-center justify-center bg-[color:var(--background0)]/70">

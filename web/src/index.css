@@ -236,7 +236,7 @@ aside :is(h1, h2, h3, p, div, header, section) {
   }
 }
 
-/* On a phone the controls are a sheet along the bottom: the tags stand on it. */
+/* On a phone the controls are a bar along the bottom: the tags stand on it. */
 @media (max-width: 639px) {
   .map-chrome-bottom {
     bottom: calc(var(--map-safe-bottom) + var(--map-sheet, 0px));

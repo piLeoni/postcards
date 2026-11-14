@@ -67,9 +67,11 @@ docs are at http://localhost:5173/docs.
   draft and opens the engine's message, underlining the spot it points to.
 - The **output controls** (`src/components/OutputControls.jsx`, pieces in
   `controls.jsx`) sit in the script column, or over the map when the column is
-  closed: a card at the right that fades while the output is under it, or on
-  a phone (`sm` and under) a sheet along the bottom that the output is fitted
-  above (`isSheet` in `MapView.jsx`). They edit the literal `output({...})` call: the place (latitude
+  closed: a card at the right that fades while the output is under it. On a
+  phone (`sm` and under) the map keeps only a bar along the bottom, clear of
+  the safe areas, the output fitted above it; the bar opens the column as a
+  sheet that scrolls, with the selection's controls and the script. They edit
+  the literal `output({...})` call: the place (latitude
   and longitude, bearing, scale, the terrain covered) and the paper (size,
   slices, padding, gutter, overlap, tile zoom). Every label drags its value
   sideways (Shift: bigger steps) and every field takes it typed; lengths take

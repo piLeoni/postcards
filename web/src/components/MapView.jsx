@@ -348,7 +348,7 @@ function mapChromePadding(mapEl, floatEl, sidebarOpen, bottomPx) {
     const mr = mapEl.getBoundingClientRect()
     const pr = floatEl.getBoundingClientRect()
     if (isSheet(mapEl, floatEl)) {
-      // A sheet along the bottom: the output is fitted above it.
+      // The phone's bar along the bottom: the output is fitted above it.
       pad.bottom += Math.round(Math.max(0, mr.bottom - pr.top))
     } else if (pr.left < mr.right - 1) {
       pad.right = Math.round(Math.max(0, mr.right - pr.left))
@@ -358,15 +358,29 @@ function mapChromePadding(mapEl, floatEl, sidebarOpen, bottomPx) {
 }
 
 /**
- * Whether the floating controls are a sheet along the map's bottom (a narrow
- * screen, `sm` and under) rather than a card at its right: a sheet spans the
- * map's width.
+ * Whether the floating controls are the phone's bar along the map's bottom
+ * rather than a card at its right: the bar spans the map's width.
  */
 function isSheet(mapEl, floatEl) {
   if (!mapEl || !floatEl) return false
   const mr = mapEl.getBoundingClientRect()
   const pr = floatEl.getBoundingClientRect()
   return pr.width >= mr.width - 1
+}
+
+/** A phone's screen: Tailwind's `sm` and under, where the script column is a sheet. */
+const NARROW = '(max-width: 639px)'
+
+/** Whether the screen is a phone's (`NARROW`), following rotations and resizes. */
+function useNarrow() {
+  const [narrow, setNarrow] = useState(() => window.matchMedia(NARROW).matches)
+  useEffect(() => {
+    const m = window.matchMedia(NARROW)
+    const on = () => setNarrow(m.matches)
+    m.addEventListener('change', on)
+    return () => m.removeEventListener('change', on)
+  }, [])
+  return narrow
 }
 
 /** The marks on the map tags, the same plain glyphs the transform menu wears. */
@@ -662,7 +676,9 @@ export default function MapView({
   sidebarColumnDrag = false,
   busy = false,
   appReady = true,
+  onOpenControls,
 }) {
+  const narrow = useNarrow()
   const [mapBooted, setMapBooted] = useState(false)
   const [tilesOn] = useState(true)
   const [mapView, setMapView] = useAtom(mapViewAtom)
@@ -876,7 +892,7 @@ export default function MapView({
     const bottomPad = outputRef.current ? handlesH + HANDLE_GAP + KEEP : 0
     const nextPad = mapChromePadding(mapEl, floatWrap, sidebarOpenRef.current, bottomPad)
     applyMapPadding(map, nextPad, skipViewPersistRef)
-    // The status tags along the bottom stand on a sheet, not under it.
+    // The status tags along the bottom stand on the phone's bar, not under it.
     const sheetH = !sidebarOpenRef.current && isSheet(mapEl, floatWrap) ? floatWrap.offsetHeight : 0
     mapEl.parentElement?.style.setProperty('--map-sheet', `${sheetH}px`)
 
@@ -929,8 +945,8 @@ export default function MapView({
     hide(drawEl, showTopChrome)
     hide(downloadEl, showDownload)
     if (floatWrap && !sidebarOpenRef.current) {
-      // A card fades while the output is under it; a sheet stays: the output
-      // is fitted above it, and the map pans to bring it out from under.
+      // A card fades while the output is under it; the phone's bar stays:
+      // the output is fitted above it.
       const under = b && !isSheet(mapEl, floatWrap) && outputOverlapsEl(map, b, floatWrap)
       if (sidebarColumnDragRef.current) {
         floatWrap.style.opacity = '0'
@@ -1737,19 +1753,39 @@ export default function MapView({
           <LoadCard load={load} onMin={onLoadMin && (() => onLoadMin(true))} onStop={busy ? onStop : undefined} />
         </div>
       )}
-      {/* Floating controls only when the script column is fully collapsed (not while dragging it open). */}
-      {!sidebarOpen && output && (
+      {/* On a phone, no card over the map: a bar along the bottom, clear of the
+          rounded corners and the home bar, that opens the script column's
+          sheet — the selection's controls and the script. */}
+      {!sidebarOpen && output && narrow && (
         <div
           ref={floatPanelWrapRef}
-          className="absolute inset-x-0 bottom-0 z-30 flex flex-col transition-opacity duration-200 sm:inset-x-auto sm:top-1/2 sm:right-10 sm:bottom-auto sm:-translate-y-1/2 sm:items-end"
+          className="chrome-surface absolute inset-x-0 bottom-0 z-30 border-t border-[color:var(--chrome-divider)] pt-2 pr-[max(12px,env(safe-area-inset-right))] pb-[max(10px,env(safe-area-inset-bottom))] pl-[max(12px,env(safe-area-inset-left))]"
+        >
+          <button
+            type="button"
+            size-="small"
+            variant-="foreground0"
+            // A thumb's height (44px), not a line's.
+            className="h-11 w-full gap-[1ch]"
+            aria-label="Open the selection and the script"
+            onClick={onOpenControls}
+          >
+            <span aria-hidden>▴</span>
+            <span>selection · script</span>
+          </button>
+        </div>
+      )}
+      {/* Floating controls only when the script column is fully collapsed (not while dragging it open). */}
+      {!sidebarOpen && output && !narrow && (
+        <div
+          ref={floatPanelWrapRef}
+          className="absolute top-1/2 right-10 z-30 flex -translate-y-1/2 flex-col items-end transition-opacity duration-200"
           onPointerDownCapture={holdMenu}
           aria-hidden={sidebarColumnDrag}
         >
           <div
             ref={floatPanelRef}
-            // A narrow screen has it as a sheet along the bottom, scrolled
-            // inside; a wide one as a card at the right.
-            className={`chrome-surface chrome-border flex max-h-[42vh] w-full min-h-0 flex-col overflow-y-auto border-t p-2 font-mono text-[11px] sm:max-h-[78vh] sm:w-[40ch] sm:overflow-hidden sm:border ${RAISED}`}
+            className={`chrome-surface chrome-border flex max-h-[78vh] w-[40ch] min-h-0 flex-col overflow-hidden border p-2 font-mono text-[11px] ${RAISED}`}
           >
             <PlaceSearchPanel lockSizeRef={floatPanelRef} onPick={onSearch}>
               <div className="mb-1.5 flex flex-col gap-1">
