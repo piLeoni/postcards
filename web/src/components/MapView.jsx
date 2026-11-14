@@ -1753,20 +1753,21 @@ export default function MapView({
           <LoadCard load={load} onMin={onLoadMin && (() => onLoadMin(true))} onStop={busy ? onStop : undefined} />
         </div>
       )}
-      {/* On a phone, no card over the map: a bar along the bottom, clear of the
-          rounded corners and the home bar, that opens the script column's
-          sheet — the selection's controls and the script. */}
+      {/* On a phone, no card over the map: one floating key at the bottom,
+          clear of the rounded corners and the home bar, that opens the script
+          column's sheet — the selection's controls and the script. The strip
+          that holds it spans the map (so the output is fitted above it) but
+          lets the map have every touch outside the key. */}
       {!sidebarOpen && output && narrow && (
         <div
           ref={floatPanelWrapRef}
-          className="chrome-surface absolute inset-x-0 bottom-0 z-30 border-t border-[color:var(--chrome-divider)] pt-2 pr-[max(12px,env(safe-area-inset-right))] pb-[max(10px,env(safe-area-inset-bottom))] pl-[max(12px,env(safe-area-inset-left))]"
+          className="pointer-events-none absolute inset-x-0 bottom-0 z-30 flex justify-center pt-2 pr-[max(12px,env(safe-area-inset-right))] pb-[max(14px,env(safe-area-inset-bottom))] pl-[max(12px,env(safe-area-inset-left))]"
         >
           <button
             type="button"
-            size-="small"
-            variant-="foreground0"
-            // A thumb's height (44px), not a line's.
-            className="h-11 w-full gap-[1ch]"
+            // The map's own keys (the style tag, share): square, outlined, the
+            // palette's paper, the chrome's light lift; a thumb's height (44px).
+            className={`chrome-surface chrome-border pointer-events-auto box-border h-11 gap-[1ch] border bg-none px-[2ch] font-mono font-bold ${RAISED}`}
             aria-label="Open the selection and the script"
             onClick={onOpenControls}
           >

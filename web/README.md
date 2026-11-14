@@ -68,9 +68,12 @@ docs are at http://localhost:5173/docs.
 - The **output controls** (`src/components/OutputControls.jsx`, pieces in
   `controls.jsx`) sit in the script column, or over the map when the column is
   closed: a card at the right that fades while the output is under it. On a
-  phone (`sm` and under) the map keeps only a bar along the bottom, clear of
-  the safe areas, the output fitted above it; the bar opens the column as a
-  sheet that scrolls, with the selection's controls and the script. They edit
+  phone (`sm` and under) the map keeps only one key at the bottom, clear of
+  the safe areas, the output fitted above it; the key opens the column as a
+  sheet that scrolls, with the selection's controls and the script. A phone
+  is also told, once a day after it closes the note (`DesktopNote` in
+  `App.jsx`, the time in `localStorage`), that the page is made for a
+  desktop. The controls edit
   the literal `output({...})` call: the place (latitude
   and longitude, bearing, scale, the terrain covered) and the paper (size,
   slices, padding, gutter, overlap, tile zoom). Every label drags its value

@@ -785,6 +785,7 @@ export default function App() {
           sidebarColumnDrag={sidebarColumnDrag}
           onOpenControls={() => setSidebarOpen(true)}
         />
+        <DesktopNote />
         {dropping && (
           <div className="pointer-events-none absolute inset-0 z-[60] flex items-center justify-center bg-[color:var(--background0)]/70">
             <div box-="square" className="chrome-surface px-[2ch] py-[1lh] font-mono text-sm font-bold">
@@ -829,6 +830,66 @@ export default function App() {
           </Suspense>
         </div>
       ) : null}
+    </div>
+  )
+}
+
+/** When the phone's note was last closed (ms), in this browser. */
+const DESKTOP_NOTE_KEY = 'drawland.desktopNoteClosedAt'
+const DAY_MS = 24 * 60 * 60 * 1000
+
+/**
+ * A word on a phone: the page works there, but it is made for a desktop.
+ * A card in the middle of the screen over a scrim, in the map's keys' style,
+ * gone with its one key or a tap beside it. Closed, it stays away for a day:
+ * the time it was closed is kept in the browser's storage. Seen but not
+ * closed, it is there again at the next opening.
+ */
+function DesktopNote() {
+  const [shown, setShown] = useState(() => {
+    if (!window.matchMedia('(max-width: 639px)').matches) return false
+    try {
+      const closed = Number(localStorage.getItem(DESKTOP_NOTE_KEY))
+      return !(closed && Date.now() - closed < DAY_MS)
+    } catch {
+      // No storage (a private window, blocked site data): show it.
+      return true
+    }
+  })
+  const close = () => {
+    try {
+      localStorage.setItem(DESKTOP_NOTE_KEY, String(Date.now()))
+    } catch {
+      // Not kept: it shows again at the next opening.
+    }
+    setShown(false)
+  }
+  if (!shown) return null
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Made for a desktop"
+      className="fixed inset-0 z-[70] flex items-center justify-center bg-[var(--overlay-scrim)] p-[max(16px,env(safe-area-inset-left))]"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) close()
+      }}
+    >
+      <div className="chrome-surface chrome-border chrome-raised flex w-full max-w-[40ch] flex-col items-stretch gap-[1lh] border p-[2ch]">
+        <p className="m-0 font-bold">
+          Small screen, big maps.
+          <br />
+          Do yourself a favour: bring this to a desktop ;-)
+        </p>
+        {/* Solid, like DRAW: the one thing to do here. */}
+        <button
+          type="button"
+          className="map-chip-strong chrome-border box-border h-11 border bg-none px-[2ch] font-mono font-bold"
+          onClick={close}
+        >
+          ok
+        </button>
+      </div>
     </div>
   )
 }
