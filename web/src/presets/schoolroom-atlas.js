@@ -7,7 +7,7 @@ output({
   projection: "webmercator",
   lat: 41.9514459,
   lng: -70.5425285,
-  tileZoom: 9,
+  tileZoom: 10,
   padding: "6mm",
 })
 
@@ -18,23 +18,42 @@ output({
 // blue rivers and lakes, pink towns, red / orange / yellow roads, black rail,
 // and names in an engraved serif.
 //
-// Laid out as an atlas plate, A4 landscape (a school atlas's page turned on
-// its side): the map in a rectangle with a graticule every half degree, a
-// border of black-and-white keys every ten minutes and the degrees round it,
-// the plate's title above, and below it the scale, a key to the tints, and
-// the projection. Move the plate anywhere: the graticule and the scale
-// follow; only the title is written by hand.
+// Laid out as an atlas plate (drawn for A4 landscape, a school atlas's page
+// turned on its side): the map in a rectangle with a graticule, a border of
+// black-and-white keys and the degrees round it, the plate's title above, and
+// below it the scale, a key to the tints, and the projection. The plate is
+// laid out on whatever paper the output is given, its margins and lettering
+// in proportion; the graticule's step follows the scale. Move the plate
+// anywhere, at any scale: the graticule and the scale bars follow; only the
+// title is written by hand.
 
 // ── The plate ───────────────────────────────────────────────────────────
-const PAGE = { w: 297, h: 210 }
-/** The map's rectangle on the page, mm: room above for the title, below for the scale. */
-const MAP = { x0: 17, y0: 27, x1: 280, y1: 178 }
 const TITLE = "CAPE COD AND THE ISLANDS"
 const SUBTITLE = "Massachusetts · physical"
 const PLATE_NO = "Plate 14"
-/** Graticule: a line every 30′, a border key every 10′. */
-const GRID = { step: 30, ticks: 10, band: 1.4, gap: 1.1, size: 1.7 }
 const INK_FRAME = "#2a2420"
+
+// Every length in the collar is written for A4 landscape and multiplied by
+// `K`: the paper's size against A4's, the tighter of its two sides, so the
+// collar fits; within reason, so lettering stays legible on a postcard.
+const paper = engine.paper()
+const PAGE = { w: paper.width, h: paper.height }
+const K = Math.min(Math.max(Math.min(PAGE.w / 297, PAGE.h / 210), 0.55), 2.5)
+/** A4's millimetres on this paper. @param {number} mm */
+const k = (mm) => mm * K
+/** The map's rectangle on the page, mm: room above for the title, below for the scale. */
+const MAP = { x0: k(17), y0: k(27), x1: PAGE.w - k(17), y1: PAGE.h - k(32) }
+
+// The graticule: a line every `step` minutes of arc, a border key every
+// `ticks`. The step is the first that leaves at most `LINES` parallels across
+// the map — 30′ on the 1:750 000 plate, 2′ on a 1:50 000 town — and each
+// step has its keys, a few to a step.
+const LINES = 3
+const STEPS = [[1, 0.25], [2, 0.5], [5, 1], [10, 2], [15, 5], [20, 5], [30, 10], [60, 10], [120, 30], [300, 60], [600, 120], [1200, 300]]
+/** Minutes of latitude down the map: the scale is true north–south at the centre. */
+const spanMinutes = ((MAP.y1 - MAP.y0) * engine.scale()) / 1000 / 1852
+const [step, ticks] = STEPS.find(([m]) => spanMinutes / m <= LINES) ?? STEPS[STEPS.length - 1]
+const GRID = { step, ticks, band: k(1.4), gap: k(1.1), size: k(1.7) }
 
 const plate = areas.shape({ at: [(MAP.x0 + MAP.x1) / 2, (MAP.y0 + MAP.y1) / 2], rect: [MAP.x1 - MAP.x0, MAP.y1 - MAP.y0] })
 // Every map layer is made inside the plate, and the collar round it clears
@@ -103,8 +122,27 @@ const shade = lines.terrain({
 })
 mapDraw({ id: "relief", from: shade, stroke: { color: "#7a5f45", width: 0.1 } })
 
-// ── Towns ───────────────────────────────────────────────────────────────
-const towns = areas.intersect(areas.polygons(features.tiles("landuse:residential,commercial,industrial,retail")), land)
+// ── Towns: the built-up area ────────────────────────────────────────────
+// What a town covers is not what OSM maps as residential: that is patchy
+// (a district here, none there, old centres often missing). The towns are
+// built from everything built — the urban land uses, and the buildings
+// themselves when the plate is large enough to read them — then generalised
+// on the paper the way an atlas draws them: gaps narrower than `close` (the
+// streets, the yards) shut, and pieces narrower than `drop` (a farm, a lone
+// shed) let go. Both are paper lengths, so the towns are as coarse at
+// 1:750 000 as they are fine at 1:50 000.
+const TOWN = {
+  landuse: /** @type {TilePreset} */ ("landuse:residential,commercial,industrial,retail,garages,railway,school,college,university,kindergarten,hospital,bus_station,library,suburb,quarter,neighbourhood"),
+  // Buildings only at large scales: deeper tiles, many more of them.
+  buildingsUpTo: 120000,
+  close: 1.0,
+  drop: 0.45,
+}
+const builtUse = areas.polygons(features.tiles(TOWN.landuse))
+const built = engine.scale() <= TOWN.buildingsUpTo ? areas.union(builtUse, areas.polygons(features.tiles("buildings"))) : builtUse
+/** Morphological close, then open: gaps shut, slivers dropped. @param {Area} a */
+const generalise = (a) => areas.grow(areas.grow(areas.grow(a, TOWN.close), -TOWN.close - TOWN.drop), TOWN.drop)
+const towns = areas.intersect(generalise(built), land)
 mapDraw({ id: "towns", from: fills.fill({ in: towns, pattern: "solid" }), stroke: { color: "#e9b8ab" } })
 mapDraw({ id: "towns_edge", from: lines.rings(towns), stroke: { color: "#c98d80", width: 0.08 } })
 
@@ -119,11 +157,13 @@ const road = (classes) => lines.of(features.tiles(`transportation:${classes}`))
 mapDraw({ id: "road_secondary", from: road("secondary"), stroke: { color: "#e3cc86", width: 0.2 } })
 mapDraw({ id: "road_primary", from: road("trunk,primary"), stroke: { color: "#e2a768", width: 0.28 } })
 mapDraw({ id: "road_motorway", from: road("motorway"), stroke: { color: "#cf7f6f", width: 0.36 } })
-mapDraw({ id: "rail", from: lines.of(features.tiles("transportation:rail/rail")), stroke: { style: "dash", dash: "1mm", gap: "0.5mm", color: "#5a5550", width: 0.13 } })
+// Main lines only: a yard's sidings (`service`) would ink as a black ladder.
+mapDraw({ id: "rail", from: lines.of(features.where(features.tiles("transportation:rail/rail"), { service: false })), stroke: { style: "dash", dash: "1mm", gap: "0.5mm", color: "#5a5550", width: 0.13 } })
 
 // ── Names ───────────────────────────────────────────────────────────────
 // A modern serif (Source Serif 4), set solid with a white halo so names read
-// over any tint, road or relief.
+// over any tint, road or relief; sized with the collar (`k`), as a plate's
+// lettering is.
 /** @param {number} weight @param {boolean} [italic] @returns {GoogleFont} */
 const serif = (weight, italic = false) => ({ origin: "google", family: "Source Serif 4", weight, italic })
 
@@ -143,19 +183,19 @@ mapDraw({ id: "graticule", from: grat.lines, stroke: { color: "#4f6f8c", width: 
 // place gets a dot, its name beside it.
 const places = modules.labels({
   from: [features.tiles("place:city,town"), features.tiles("water_name:*")],
-  in: areas.grow(plate, "-1.5mm"),
+  in: areas.grow(plate, -k(1.5)),
   font: serif(400),
-  size: "2.1mm",
-  minSize: "1.4mm",
-  padding: "0.8mm",
-  marker: "0.55mm",
+  size: k(2.1),
+  minSize: k(1.4),
+  padding: k(0.8),
+  marker: k(0.55),
   rules: [
-    { id: "city", tags: { class: "city" }, font: serif(600), size: "3.6mm", minSize: "1.9mm", upper: true },
+    { id: "city", tags: { class: "city" }, font: serif(600), size: k(3.6), minSize: k(1.9), upper: true },
     { id: "town", tags: { class: "town" } },
-    { id: "sea", tags: { "tiles:layer": "water_name" }, font: serif(400, true), size: "3.4mm", upper: true, marker: 0 },
+    { id: "sea", tags: { "tiles:layer": "water_name" }, font: serif(400, true), size: k(3.4), upper: true, marker: 0 },
   ],
 })
-const HALO = "0.4mm"
+const HALO = k(0.4)
 for (const [id, color] of [["town", "#2c2925"], ["city", "#1f1c19"], ["sea", "#2f6a9c"]]) {
   const shape = places[id].area
   mapDraw({ id: `halo_${id}`, from: fills.fill({ in: areas.grow(shape, HALO), pattern: "solid" }), stroke: { color: "#ffffff" } })
@@ -177,55 +217,55 @@ frameLine("border_inner", lines.rings(plate))
 frameLine("border_band", lines.rings(bandOut))
 draw({ id: "border_keys", from: fills.fill({ in: grat.keys, pattern: "solid" }), stroke: { color: INK_FRAME } })
 draw({ id: "degrees", from: fills.fill({ in: grat.labelArea, pattern: "solid" }), stroke: { color: INK_FRAME } })
-frameLine("border_rule", lines.join(lines.rings(around(rule)), lines.rings(around(rule + 0.45))))
+frameLine("border_rule", lines.join(lines.rings(around(rule)), lines.rings(around(rule + k(0.45)))))
 
 // Title, above the plate.
-const topY = MAP.y0 - rule - 6.5
-draw({ id: "plate_title", from: textFill({ at: [PAGE.w / 2, topY], text: TITLE, size: "4.6mm", font: serif(600) }), stroke: { color: INK_FRAME } })
-draw({ id: "plate_sub", from: textFill({ at: [MAP.x0 + 22, topY], text: SUBTITLE, size: "1.9mm", font: serif(400, true) }), stroke: { color: INK_FRAME } })
-draw({ id: "plate_no", from: textFill({ at: [MAP.x1 - 9, topY], text: PLATE_NO, size: "1.9mm", font: serif(400, true) }), stroke: { color: INK_FRAME } })
+const topY = MAP.y0 - rule - k(6.5)
+draw({ id: "plate_title", from: textFill({ at: [PAGE.w / 2, topY], text: TITLE, size: k(4.6), font: serif(600) }), stroke: { color: INK_FRAME } })
+draw({ id: "plate_sub", from: textFill({ at: [MAP.x0 + k(22), topY], text: SUBTITLE, size: k(1.9), font: serif(400, true) }), stroke: { color: INK_FRAME } })
+draw({ id: "plate_no", from: textFill({ at: [MAP.x1 - k(9), topY], text: PLATE_NO, size: k(1.9), font: serif(400, true) }), stroke: { color: INK_FRAME } })
 
 // The scale: a bar in kilometres and one in miles, at round lengths about
 // `BAR_MM` long on the paper. True at the plate's centre.
-const BAR_MM = 62
+const BAR_MM = k(62)
 const mmPerKm = 1e6 / engine.scale()
 const round = (x) => {
   const p = Math.pow(10, Math.floor(Math.log10(x)))
   return [1, 2, 2.5, 3, 4, 5, 10].map((k) => k * p).filter((v) => v <= x).pop()
 }
-const botY = MAP.y1 + rule + 7
+const botY = MAP.y1 + rule + k(7)
 const BAR_X = PAGE.w / 2 - BAR_MM / 2
 const bar = (y, unitMm, unit, label) => {
   const total = round(BAR_MM / unitMm)
   const parts = 5
   const seg = (total / parts) * unitMm
-  const H = 1.1
+  const H = k(1.1)
   const cells = Array.from({ length: parts }, (_, i) => areas.shape({ at: [BAR_X + seg * (i + 0.5), y], rect: [seg, H] }))
   draw({ id: `scale_${unit}_fill`, from: fills.fill({ in: areas.union(...cells.filter((_, i) => i % 2 === 0)), pattern: "solid" }), stroke: { color: INK_FRAME } })
   frameLine(`scale_${unit}_box`, lines.rings(areas.union(...cells)))
-  const nums = areas.union(...Array.from({ length: parts + 1 }, (_, i) => areas.text({ at: [BAR_X + seg * i, y - H / 2 - 1.6], text: String(+(total / parts * i).toFixed(2)), size: "1.4mm", font: serif(400), counters: "open" })))
+  const nums = areas.union(...Array.from({ length: parts + 1 }, (_, i) => areas.text({ at: [BAR_X + seg * i, y - H / 2 - k(1.6)], text: String(+(total / parts * i).toFixed(2)), size: k(1.4), font: serif(400), counters: "open" })))
   draw({ id: `scale_${unit}_nums`, from: fills.fill({ in: nums, pattern: "solid" }), stroke: { color: INK_FRAME } })
-  draw({ id: `scale_${unit}_unit`, from: textFill({ at: [BAR_X + seg * parts + 9, y], text: label, size: "1.4mm", font: serif(400, true) }), stroke: { color: INK_FRAME } })
+  draw({ id: `scale_${unit}_unit`, from: textFill({ at: [BAR_X + seg * parts + k(9), y], text: label, size: k(1.4), font: serif(400, true) }), stroke: { color: INK_FRAME } })
 }
 bar(botY, mmPerKm, "km", "kilometres")
-bar(botY + 5.6, mmPerKm * 1.609344, "mi", "miles")
+bar(botY + k(5.6), mmPerKm * 1.609344, "mi", "miles")
 const ratio = String(engine.scale()).replace(/\B(?=(\d{3})+(?!\d))/g, " ")
-draw({ id: "scale_ratio", from: textFill({ at: [PAGE.w / 2, botY + 10.6], text: `Scale 1 : ${ratio}`, size: "1.6mm", font: serif(600) }), stroke: { color: INK_FRAME } })
+draw({ id: "scale_ratio", from: textFill({ at: [PAGE.w / 2, botY + k(10.6)], text: `Scale 1 : ${ratio}`, size: k(1.6), font: serif(600) }), stroke: { color: INK_FRAME } })
 
 // The key to the tints, bottom left: land in metres, then the sea's depths.
 const KEY = [...TINTS.slice(0, 6).map((t) => ({ color: t.color, label: t.from <= 0 ? "0" : String(t.from) })), ...SEA.slice(1, 5).map((b) => ({ color: b.color, label: `−${b.depth}` }))]
-const KEY_W = 6.2
-KEY.forEach((k, i) => {
-  const x = MAP.x0 + 2 + KEY_W * (i + 0.5)
-  const cell = areas.shape({ at: [x, botY + 1.5], rect: [KEY_W, 3] })
-  draw({ id: `key_${i}`, from: fills.fill({ in: cell, pattern: "solid" }), stroke: { color: k.color } })
+const KEY_W = k(6.2)
+KEY.forEach((key, i) => {
+  const x = MAP.x0 + k(2) + KEY_W * (i + 0.5)
+  const cell = areas.shape({ at: [x, botY + k(1.5)], rect: [KEY_W, k(3)] })
+  draw({ id: `key_${i}`, from: fills.fill({ in: cell, pattern: "solid" }), stroke: { color: key.color } })
   frameLine(`key_${i}_edge`, lines.rings(cell))
-  draw({ id: `key_${i}_label`, from: textFill({ at: [x, botY + 5.3], text: k.label, size: "1.2mm", font: serif(400) }), stroke: { color: INK_FRAME } })
+  draw({ id: `key_${i}_label`, from: textFill({ at: [x, botY + k(5.3)], text: key.label, size: k(1.2), font: serif(400) }), stroke: { color: INK_FRAME } })
 })
-draw({ id: "key_title", from: textFill({ at: [MAP.x0 + 2 + (KEY_W * KEY.length) / 2, botY - 2.4], text: "Heights and depths in metres", size: "1.3mm", font: serif(400, true) }), stroke: { color: INK_FRAME } })
+draw({ id: "key_title", from: textFill({ at: [MAP.x0 + k(2) + (KEY_W * KEY.length) / 2, botY - k(2.4)], text: "Heights and depths in metres", size: k(1.3), font: serif(400, true) }), stroke: { color: INK_FRAME } })
 
-draw({ id: "projection", from: textFill({ at: [MAP.x1 - 22, botY + 1.5], text: "Web Mercator projection", size: "1.4mm", font: serif(400, true) }), stroke: { color: INK_FRAME } })
-draw({ id: "credit", from: textFill({ at: [MAP.x1 - 22, botY + 5.3], text: "Map data © OpenStreetMap contributors", size: "1.2mm", font: serif(400, true) }), stroke: { color: INK_FRAME } })
+draw({ id: "projection", from: textFill({ at: [MAP.x1 - k(22), botY + k(1.5)], text: "Web Mercator projection", size: k(1.4), font: serif(400, true) }), stroke: { color: INK_FRAME } })
+draw({ id: "credit", from: textFill({ at: [MAP.x1 - k(22), botY + k(5.3)], text: "Map data © OpenStreetMap contributors", size: k(1.2), font: serif(400, true) }), stroke: { color: INK_FRAME } })
 
 // The collar is paper: the map stops at the plate's edge.
 compose.mask({ name: "collar", from: areas.difference(engine.frame(), plate), occludes: mapIds })

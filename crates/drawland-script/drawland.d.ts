@@ -718,6 +718,13 @@ declare const engine: {
    */
   scale(): number
   /**
+   * The paper's size in millimetres, as this script's `output` set it (`"6in"`
+   * is 152.4); inside a view, the view's rectangle. To lay out what goes round
+   * the map — a title, a scale bar, a key — for whatever paper it is given.
+   * Call `output` first.
+   */
+  paper(): { width: number; height: number }
+  /**
    * Open sea from `features.tiles("ocean")`, buffered and extended to the card.
    * Prefer building the same chain yourself with `areas.extendToFrame`.
    */

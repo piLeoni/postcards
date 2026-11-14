@@ -166,3 +166,19 @@ test('the preset outputs are multi-line with an explicit tileZoom', async () => 
 test('values are written as the script would write them', () => {
   assert.equal(jsValue({ columns: 2, gutter: ['1mm', '2mm'], 'odd-key': true }), '{ columns: 2, gutter: ["1mm", "2mm"], "odd-key": true }')
 })
+
+test('a set tile zoom follows a new scale', async () => {
+  const { followScale, tileZoomFor } = await import('./doc.js')
+  // The Atlas plate reads zoom 10 at 1:750 000; a city sheet, 14.
+  assert.equal(tileZoomFor('1:750000', 41.95), 10)
+  assert.equal(tileZoomFor('1:50000', 45.07), 14)
+  assert.equal(tileZoomFor('1:8000', 37.8), 14)
+  assert.equal(tileZoomFor('1:750 000', 41.95), 10)
+  const plate = 'output({\n  scale: "1:750000",\n  lat: 41.95,\n  lng: -70.5,\n  tileZoom: 10,\n})\n'
+  assert.deepEqual(followScale(plate, { scale: '1:50000' }), { scale: '1:50000', tileZoom: 14 })
+  // Set by hand in the same edit, the same scale, or read automatically: left alone.
+  assert.deepEqual(followScale(plate, { scale: '1:50000', tileZoom: 12 }), { scale: '1:50000', tileZoom: 12 })
+  assert.deepEqual(followScale(plate, { scale: '1:750000' }), { scale: '1:750000' })
+  assert.deepEqual(followScale(plate.replace('  tileZoom: 10,\n', ''), { scale: '1:50000' }), { scale: '1:50000' })
+  assert.deepEqual(followScale(plate, { lat: 42 }), { lat: 42 })
+})

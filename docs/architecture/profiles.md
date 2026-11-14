@@ -40,7 +40,7 @@ Common patterns:
 - `modules.graticule({ in, step, ticks, band, gap, size, font })`: an atlas plate's meridians and parallels round a page rectangle (`.lines`), its border keys (`.keys`), and degree labels (`.labels`, `.labelArea`). The script never knows the plate's centre (the page sends lat/lng to the engine), so anything tied to the ground round a paper rectangle has to be computed in the engine, as this is; the Schoolroom atlas uses it.
 - `burin.terrain((b) => …)` — burin-map-script builder; atlas stored on graph
 - `compose.mask({ name, from, occludes: [draw ids…] })`
-- `view({ id, at, size, lat, lng, scale }, "city-grain" | () => {…})` — another place drawn into a rectangle of the page (`configs/bonjour-de-france.js`). The script crate keeps a stack of builders: a function style builds the view's graph in place; a preset name runs that preset (embedded from `web/src/presets` by `build.rs`) in a fresh interpreter. Inside a view, `output()` keeps the view's place and size over the style's own, and returns the effective spec (so `engine.scale()` is the view's)
+- `view({ id, at, size, lat, lng, scale }, "city-grain" | () => {…})` — another place drawn into a rectangle of the page (`configs/sixty-five-north.js`). The script crate keeps a stack of builders: a function style builds the view's graph in place; a preset name runs that preset (embedded from `web/src/presets` by `build.rs`) in a fresh interpreter. Inside a view, `output()` keeps the view's place and size over the style's own, and returns the effective spec, with the paper read into mm as `paper: { width, height }` (so `engine.scale()` and `engine.paper()` are the view's)
 
 ## Web compile path
 

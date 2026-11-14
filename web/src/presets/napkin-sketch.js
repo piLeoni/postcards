@@ -13,8 +13,11 @@ output({
 
 // A map drawn quickly by hand in a sketchbook. Very little is drawn: streets
 // as single loose strokes (main roads doubled), buildings fused into block
-// masses and cross-hatched, the sea as rows of curling waves, and parks as
-// doodled trees, and the hills shaded in quick downhill strokes. Names are
+// masses and cross-hatched, the sea as rows of scallops, and the
+// ground in the quick symbols a sketcher uses: doodled trees in the parks,
+// tufts on the lawns, furrows and vines on the farmland, crosses in the
+// cemeteries, reeds on the salt marsh, a few dots on the sand. The hills are
+// shaded in quick downhill strokes. Names are
 // lettered in a geometric single-stroke face, loosened like the rest.
 // Everything goes through `compose.hand` at the end.
 
@@ -29,6 +32,21 @@ const SOLID = inked({ style: "solid" })
 // like everything else, and frayed toward the shore.
 /** @type {FillStyle} */
 const SEA = { pattern: "scallops", spacing: pen(14), stagger: 0.5, fray: pen(10) }
+
+// The ground, one symbol per kind, ordered bottom to top: each row carves out
+// of the rows below it, so two symbols never stack. `tiles` are OpenMapTiles
+// rules; every fill keeps its marks whole inside the shape (`edge: "inside"`),
+// as a hand would stop short of the line. No outlines: the symbols say it.
+/** @type {{ id: string, tiles: TilePreset[], fill: FillStyle }[]} */
+const NATURE = [
+  { id: "fields",   tiles: ["landcover:farmland,farm,allotments,plant_nursery"], fill: { pattern: "fields", spacing: pen(9), angle: 20 } },
+  { id: "vines",    tiles: ["landcover:vineyard,orchard"],                        fill: { pattern: "vineyard", spacing: pen(16) } },
+  { id: "grass",    tiles: ["landcover:grass,grassland,meadow", "landuse:pitch,playground"], fill: { pattern: "grass", spacing: pen(22) } },
+  { id: "sand",     tiles: ["sand"],                                             fill: { pattern: "sand", spacing: pen(7) } },
+  { id: "marsh",    tiles: ["wetland"],                                          fill: { pattern: "marsh", spacing: pen(20) } },
+  { id: "cemetery", tiles: ["landuse:cemetery"],                                 fill: { pattern: "cemetery", spacing: pen(18) } },
+  { id: "trees",    tiles: ["landcover:park,recreation_ground,village_green", "forest", "landuse:forest"], fill: { pattern: "doodle-trees", spacing: pen(20), coverage: 0.8 } },
+]
 
 // One seed everywhere, so strokes that meet in different layers tremble together.
 /** @type {HandOptions} */
@@ -75,13 +93,16 @@ const ocean = areas.extendToFrame(
 const water = areas.union(areas.polygons(features.tiles("water:lake,river,pond,dock")), ocean)
 const inFrame = areas.grow(frame, pen(-1.5))
 
-// Parks and woods: only trees, no outlines.
-const greens = areas.difference(
-  areas.polygons(features.tiles("landcover:park,recreation_ground,village_green", "forest", "landuse:forest")),
-  water,
-  blocks,
-  majorArea,
-)
+// The ground's symbols, on land only. The tiles call a lagoon's mudflats
+// wetland as well as its salt marshes; the coastline tells them apart — the
+// marsh stands above the water, the flats lie under it — so the reeds grow
+// only where the wetland is land.
+const nature = NATURE.map((n) => ({ ...n, raw: areas.polygons(features.tiles(...n.tiles)) }))
+  .map((n, i, all) => ({
+    ...n,
+    area: areas.difference(areas.intersect(n.raw, frame), water, blocks, majorArea, ...all.slice(i + 1).map((m) => m.raw)),
+  }))
+const greens = areas.union(...nature.map((n) => n.area))
 
 // The hills: burin strokes running downhill, the way water would (angle 90,
 // across the contours), in chiaroscuro — packed on the slopes turned from the
@@ -161,16 +182,16 @@ draw({ id: "lines_streets", from: streets, stroke: SOLID })
 draw({ id: "lines_blocks",  from: lines.rings(blocks), stroke: SOLID })
 draw({ id: "lines_piers",   from: lines.rings(piers), stroke: SOLID })
 draw({ id: "fill_blocks",   from: fills.fill({ in: blocks, per: "feature", pattern: "scribble", inset: pen(3), spacing: pen(11), angle: 40 }), stroke: SOLID })
-draw({ id: "fill_trees",    from: fills.fill({ in: greens, pattern: "doodle-trees", spacing: pen(20), coverage: 0.8, edge: "inside", seed: 9 }), stroke: SOLID })
+const natureIds = nature.map((n) => draw({ id: `fill_${n.id}`, from: fills.fill({ in: n.area, edge: "inside", seed: 9, ...n.fill }), stroke: SOLID }))
 
 draw({ id: "lines_names", from: names.lines, stroke: SOLID })
 
-compose.mask({ name: "mask_major", from: majorArea, occludes: ["lines_streets", "fill_trees", "lines_relief"] })
+compose.mask({ name: "mask_major", from: majorArea, occludes: ["lines_streets", ...natureIds, "lines_relief"] })
 compose.mask({ name: "mask_built", from: areas.union(blocks, greens), occludes: ["lines_relief"] })
 compose.mask({
   name: "mask_names",
   from: namesClear,
-  occludes: ["lines_relief", "lines_shore", "fill_sea", "lines_major", "lines_streets", "lines_blocks", "lines_piers", "fill_blocks", "fill_trees"],
+  occludes: ["lines_relief", "lines_shore", "fill_sea", "lines_major", "lines_streets", "lines_blocks", "lines_piers", "fill_blocks", ...natureIds],
 })
 
 const outlines = ["lines_shore", "lines_major", "lines_streets", "lines_blocks", "lines_piers"]
@@ -180,7 +201,7 @@ compose.simplify(outlines, pen(0.3))
 compose.hand(outlines, HAND)
 compose.hand("fill_sea", HAND_WAVES)
 compose.hand("fill_blocks", HAND_HATCH)
-compose.hand("fill_trees", HAND_TREES)
+compose.hand(natureIds, HAND_TREES)
 compose.hand("lines_names", HAND_LETTERS)
 compose.filter("lines_relief", { minLength: pen(5) })
 compose.simplify("lines_relief", pen(0.15))

@@ -339,6 +339,13 @@
       if (outputScale == null) fail("engine.scale(): call output({ scale }) first");
       return outputScale;
     },
+    // The paper's size in mm, `{ width, height }`: a view's own rectangle
+    // inside a view. To lay out what sits round the map (a title, a scale bar,
+    // a key) for whatever paper the output is given.
+    paper() {
+      if (outputPaper == null) fail("engine.paper(): call output({ width, height }) first");
+      return { width: outputPaper.width, height: outputPaper.height };
+    },
   };
 
   const lines = {
@@ -885,6 +892,8 @@
 
   // The scale the script's own `output` asked for, for sizes on the ground.
   let outputScale = null;
+  // The paper the script's own `output` asked for, in mm.
+  let outputPaper = null;
   const scaleOf = (s) => {
     const n = typeof s === "number" ? s : typeof s === "string" ? Number(s.trim().replace(/^1\s*:\s*/, "")) : NaN;
     return isFinite(n) && n > 0 ? n : null;
@@ -895,6 +904,7 @@
     // output as it will be.
     const effective = dl.output(spec);
     outputScale = scaleOf(effective?.scale) ?? scaleOf(spec.scale) ?? outputScale;
+    outputPaper = effective?.paper ?? outputPaper;
   }
   // Another place, at its own scale, drawn into a rectangle of this page:
   //   view({ id: "beach", at: [0, 0], size: [74, 50], lat, lng, scale: "1:6000" }, "city-grain")
@@ -908,7 +918,9 @@
     if (typeof style === "string") return dl.viewPreset(spec, style);
     if (typeof style !== "function") fail(`view: the style is a preset name ("city-grain") or a function that draws, got ${describe(style)}`);
     const outer = outputScale;
+    const outerPaper = outputPaper;
     outputScale = scaleOf(spec.scale) ?? outer;
+    if (Array.isArray(spec.size)) outputPaper = { width: spec.size[0], height: spec.size[1] };
     dl.viewBegin(spec);
     let ok = false;
     try {
@@ -916,6 +928,7 @@
       ok = true;
     } finally {
       outputScale = outer;
+      outputPaper = outerPaper;
       dl.viewEnd(ok);
     }
     return spec.id;

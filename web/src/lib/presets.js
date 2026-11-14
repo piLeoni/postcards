@@ -12,7 +12,7 @@ import betonBrut from '../presets/beton-brut.js?raw'
 import shakyGround from '../presets/shaky-ground.js?raw'
 import redPencil from '../presets/red-pencil.js?raw'
 import cookieCutter from '../presets/cookie-cutter.js?raw'
-import bonjourDeFrance from '../presets/bonjour-de-france.js?raw'
+import sixtyFiveNorth from '../presets/sixty-five-north.js?raw'
 import rushHour from '../presets/rush-hour.js?raw'
 import karlTheFog from '../presets/karl-the-fog.js?raw'
 import { styleOf, titleOf } from './doc'
@@ -21,7 +21,7 @@ export const PRESETS = [
   { id: 'city-grain', hint: 'burin ground, nature patterns, isoline-stack tree crowns', doc: cityGrain },
   { id: 'karl-the-fog', hint: 'the fog over Golden Gate Park: City Grain under a sky of cumulus (penfill clouds): the clouds clear the map, their shadow stippled down-sun', doc: karlTheFog },
   { id: 'beton-brut', hint: 'heavy nib: parallel-line streets, frayed swells, stipple and growth trees, dotted building masses', doc: betonBrut },
-  { id: 'napkin-sketch', hint: 'hand-drawn: loose streets, hatched blocks, curling waves, doodled trees', doc: napkinSketch },
+  { id: 'napkin-sketch', hint: 'hand-drawn: loose streets, hatched blocks, scalloped waves, and a sketcher\'s symbols for the ground: trees, tufts, furrows, vines, reeds, crosses', doc: napkinSketch },
   { id: 'salt-and-stone', hint: 'pure nature in burin: hand-drawn contours, a soft concentric coast, swirling currents', doc: saltAndStone },
   { id: 'schoolroom-atlas', hint: 'a classic coloured physical map: hypsometric tints, sea depths, relief shading, roads and names (for print, not the pen)', doc: schoolroomAtlas },
   // `ownPlace`: the preset's place and paper are part of it (a world map, a
@@ -30,7 +30,7 @@ export const PRESETS = [
   { id: 'rush-hour', hint: 'live data: the T as a transit map (lines from CTPS GeoJSON), every train on it right now (MBTA API, plain JSON)', doc: rushHour, ownPlace: true },
   { id: 'red-pencil', hint: 'a GeoJSON over a quiet base map; drop your own .geojson on the page', doc: redPencil, ownPlace: true },
   { id: 'cookie-cutter', hint: 'a state\'s silhouette as a 4×6 die-cut card: one ink, one hatch, closer with height, each level outlined', doc: cookieCutter, ownPlace: true },
-  { id: 'bonjour-de-france', hint: 'a postcard of France in four views — Paris, Mont-Saint-Michel, Versailles, Mont Blanc — in City Grain, the name across them', doc: bonjourDeFrance, ownPlace: true },
+  { id: 'sixty-five-north', hint: 'a postcard of Iceland with no names: four views in City Grain — Reykjavík, a fjord, a crater, the ice — each tabbed by its coordinates, the island\'s across them', doc: sixtyFiveNorth, ownPlace: true },
 ].map((p) => ({ ...p, name: titleOf(p.doc) ?? p.id, graph: graphs[p.id] }))
 
 /** The output the app opens on. */

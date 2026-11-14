@@ -377,6 +377,7 @@ fn native_optimize(_: &JsValue, args: &[JsValue], ctx: &mut Context) -> JsResult
 /// `dl.output(spec)` → the output as it will be: inside a view, the view's
 /// place and rectangle win over what the style asks, so a preset drawn in a
 /// view keeps its paper-independent look (pens, patterns) at the view's place.
+/// The paper's size comes back read, in mm, as `paper: { width, height }`.
 fn native_output(_: &JsValue, args: &[JsValue], ctx: &mut Context) -> JsResult<JsValue> {
     let mut spec = json_arg(args, 0, ctx)?;
     if let (Some(obj), Some(keys)) = (spec.as_object_mut(), with(|b| b.view.as_ref().map(|v| v.2.clone()))) {
@@ -386,8 +387,12 @@ fn native_output(_: &JsValue, args: &[JsValue], ctx: &mut Context) -> JsResult<J
         obj.extend(keys);
     }
     let output: OutputSpec = serde_json::from_value(spec.clone()).map_err(|e| fail(ctx, format!("output: {e}")))?;
+    let paper = serde_json::json!({ "width": output.width.0, "height": output.height.0 });
     if with(|b| b.output.replace(output).is_some()) {
         return Err(fail(ctx, "output is set twice"));
+    }
+    if let Some(obj) = spec.as_object_mut() {
+        obj.insert("paper".into(), paper);
     }
     JsValue::from_json(&spec, ctx)
 }

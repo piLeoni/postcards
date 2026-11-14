@@ -347,11 +347,26 @@ function mapChromePadding(mapEl, floatEl, sidebarOpen, bottomPx) {
   if (!sidebarOpen && mapEl && floatEl) {
     const mr = mapEl.getBoundingClientRect()
     const pr = floatEl.getBoundingClientRect()
-    if (pr.left < mr.right - 1) {
+    if (isSheet(mapEl, floatEl)) {
+      // A sheet along the bottom: the output is fitted above it.
+      pad.bottom += Math.round(Math.max(0, mr.bottom - pr.top))
+    } else if (pr.left < mr.right - 1) {
       pad.right = Math.round(Math.max(0, mr.right - pr.left))
     }
   }
   return pad
+}
+
+/**
+ * Whether the floating controls are a sheet along the map's bottom (a narrow
+ * screen, `sm` and under) rather than a card at its right: a sheet spans the
+ * map's width.
+ */
+function isSheet(mapEl, floatEl) {
+  if (!mapEl || !floatEl) return false
+  const mr = mapEl.getBoundingClientRect()
+  const pr = floatEl.getBoundingClientRect()
+  return pr.width >= mr.width - 1
 }
 
 /** The marks on the map tags, the same plain glyphs the transform menu wears. */
@@ -861,6 +876,9 @@ export default function MapView({
     const bottomPad = outputRef.current ? handlesH + HANDLE_GAP + KEEP : 0
     const nextPad = mapChromePadding(mapEl, floatWrap, sidebarOpenRef.current, bottomPad)
     applyMapPadding(map, nextPad, skipViewPersistRef)
+    // The status tags along the bottom stand on a sheet, not under it.
+    const sheetH = !sidebarOpenRef.current && isSheet(mapEl, floatWrap) ? floatWrap.offsetHeight : 0
+    mapEl.parentElement?.style.setProperty('--map-sheet', `${sheetH}px`)
 
     const b = outputRef.current ? outputBox(map, outputRef.current) : null
     const { clientWidth: W, clientHeight: H } = mapEl
@@ -911,7 +929,9 @@ export default function MapView({
     hide(drawEl, showTopChrome)
     hide(downloadEl, showDownload)
     if (floatWrap && !sidebarOpenRef.current) {
-      const under = b && outputOverlapsEl(map, b, floatWrap)
+      // A card fades while the output is under it; a sheet stays: the output
+      // is fitted above it, and the map pans to bring it out from under.
+      const under = b && !isSheet(mapEl, floatWrap) && outputOverlapsEl(map, b, floatWrap)
       if (sidebarColumnDragRef.current) {
         floatWrap.style.opacity = '0'
         floatWrap.style.pointerEvents = 'none'
@@ -1721,13 +1741,15 @@ export default function MapView({
       {!sidebarOpen && output && (
         <div
           ref={floatPanelWrapRef}
-          className="absolute top-1/2 right-10 z-30 flex -translate-y-1/2 flex-col items-end transition-opacity duration-200"
+          className="absolute inset-x-0 bottom-0 z-30 flex flex-col transition-opacity duration-200 sm:inset-x-auto sm:top-1/2 sm:right-10 sm:bottom-auto sm:-translate-y-1/2 sm:items-end"
           onPointerDownCapture={holdMenu}
           aria-hidden={sidebarColumnDrag}
         >
           <div
             ref={floatPanelRef}
-            className={`chrome-surface chrome-border flex max-h-[78vh] w-[40ch] min-h-0 flex-col overflow-hidden border p-2 font-mono text-[11px] ${RAISED}`}
+            // A narrow screen has it as a sheet along the bottom, scrolled
+            // inside; a wide one as a card at the right.
+            className={`chrome-surface chrome-border flex max-h-[42vh] w-full min-h-0 flex-col overflow-y-auto border-t p-2 font-mono text-[11px] sm:max-h-[78vh] sm:w-[40ch] sm:overflow-hidden sm:border ${RAISED}`}
           >
             <PlaceSearchPanel lockSizeRef={floatPanelRef} onPick={onSearch}>
               <div className="mb-1.5 flex flex-col gap-1">

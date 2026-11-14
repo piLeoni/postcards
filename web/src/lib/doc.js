@@ -211,6 +211,47 @@ function reflow(text) {
 }
 
 
+/** The denominator of a scale as a script writes it (`"1:8000"`, `"1:750 000"`, `8000`), or `null`. */
+export function scaleDenominator(scale) {
+  if (typeof scale === 'number') return scale > 0 ? scale : null
+  const m = /^\s*1\s*:\s*([\d\s_]+(?:\.\d+)?)\s*$/.exec(String(scale ?? ''))
+  const n = m ? Number(m[1].replace(/[\s_]/g, '')) : NaN
+  return n > 0 ? n : null
+}
+
+/** How wide a vector tile is on the paper at the zoom `tileZoomFor` picks, mm. */
+const TILE_ON_PAPER_MM = 40
+
+/**
+ * The tile zoom for a scale: the one whose tiles are about `TILE_ON_PAPER_MM`
+ * across on the paper at that latitude, 0 to 14. Coarser data where the
+ * paper shows a region, every building where it shows streets: 10 for a
+ * 1:750 000 plate, 14 for any city sheet.
+ */
+export function tileZoomFor(scale, lat = 0) {
+  const s = scaleDenominator(scale)
+  if (!s) return null
+  const groundMm = 40075016686 * Math.cos((lat * Math.PI) / 180)
+  const z = Math.round(Math.log2(groundMm / (s * TILE_ON_PAPER_MM)))
+  return Math.max(0, Math.min(14, z))
+}
+
+/**
+ * A patch with the tile zoom following a new scale: an output that sets its
+ * `tileZoom` would otherwise keep reading a plate's coarse tiles when it is
+ * zoomed onto a town (no buildings, land use thinned out). Leaves the patch
+ * alone when it sets the zoom itself, the scale does not change, or the
+ * output reads its zoom automatically.
+ */
+export function followScale(text, patch) {
+  if (patch.scale === undefined || 'tileZoom' in patch) return patch
+  const o = outputOf(text)
+  if (o?.kind !== 'literal' || !Number.isInteger(o.value.tileZoom)) return patch
+  if (scaleDenominator(patch.scale) === scaleDenominator(o.value.scale)) return patch
+  const z = tileZoomFor(patch.scale, patch.lat ?? o.value.lat ?? 0)
+  return z == null || z === o.value.tileZoom ? patch : { ...patch, tileZoom: z }
+}
+
 /**
  * Set keys of the literal `output({…})`, e.g. `{ lat, lng }` after the output
  * is dragged: values are plain JS (numbers, strings, lists, objects), `null`

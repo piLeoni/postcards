@@ -780,3 +780,18 @@ fn the_built_in_presets_are_the_web_apps() {
     }
     assert_eq!(n, crate::PRESETS.len(), "a preset is missing from presets/");
 }
+
+#[test]
+fn engine_paper_is_the_outputs_size_in_mm() {
+    // The paper comes back read, whatever the unit: draw a frame inset by a
+    // tenth of it, and the graph carries those millimetres.
+    let ok = evaluate(
+        "output({ width: '6in', height: '100mm', scale: '1:8000', lat: 0, lng: 0 })\n\
+         const p = engine.paper()\n\
+         if (p.width !== 152.4 || p.height !== 100) throw new Error(`paper ${p.width} × ${p.height}`)\n\
+         draw({ id: 'f', from: lines.rings(areas.shape({ at: [p.width / 2, p.height / 2], rect: [p.width * 0.8, p.height * 0.8] })) })\n",
+    );
+    assert!(ok.is_ok(), "{:?}", ok.err());
+    let e = err("const p = engine.paper()\n");
+    assert!(e.to_string().contains("call output"), "{e}");
+}

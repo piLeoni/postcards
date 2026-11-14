@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { C, H, P, T } from './Bits.jsx'
 import { GROUP_OF, NAV, SECTION_IDS, TITLES } from './nav.js'
+import DocSearch from './DocSearch.jsx'
 import Gallery from './Gallery.jsx'
 import Tutorial from './Tutorial.jsx'
 import Lite from './Lite.jsx'
@@ -17,18 +18,23 @@ import Developers from './Developers.jsx'
  * library's own description). The pictures are drawn ahead of time by the CLI
  * (`web/scripts/render-docs.sh`), so they are what the engine draws.
  *
+ * The search field tops the index and opens its results in a sheet over the
+ * page.
+ *
  * `onOpen(script)` puts a profile on the map and leaves the page: every
  * example here is one.
  */
 export default function Docs({ onOpen }) {
   const { group, id } = useScrollSpy(SECTION_IDS)
+  const articleRef = useRef(null)
   return (
     <div className="docs-scroll min-h-0 w-full flex-1 overflow-y-auto">
       <div className="mx-auto flex max-w-[1600px] flex-col lg:flex-row">
         <nav className="docs-scroll shrink-0 border-black px-[2ch] py-[2lh] lg:sticky lg:top-0 lg:max-h-screen lg:w-[30ch] lg:overflow-y-auto lg:border-r">
+          <DocSearch articleRef={articleRef} />
           <Index group={group} active={id} />
         </nav>
-        <article className="min-w-0 flex-1 px-[2ch] py-[3lh] lg:px-[4ch]">
+        <article ref={articleRef} className="min-w-0 flex-1 px-[2ch] py-[3lh] lg:px-[4ch]">
           <Header />
           <Gallery onOpen={onOpen} />
           <Tutorial onOpen={onOpen} />

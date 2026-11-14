@@ -50,6 +50,7 @@ Nothing on the page is hand-maintained against the code:
 | Tutorial steps, lite styles | `docs/examples/tutorial-*.js`, `lite-*.js` (+ `lite.json`) | type-checked by `presets.typecheck.test.js`; imported `?raw` so the page shows the file that runs |
 | Pictures | examples, `src/presets/*.js` | `web/scripts/render-docs.sh` (CLI → `rsvg-convert` → WebP in `public/docs/{examples,gallery}`; before/after loupes `*.detail.webp`) |
 | Pattern swatches | `Pattern` union in `drawland.d.ts` | `web/scripts/render-patterns.mjs` → `public/docs/patterns/*.svg`, `docs/pattern-swatches.json` |
+| Search | the rendered page | `DocSearch.jsx`: a field atop the index opens a sheet over the page (`/`, ⌘K); it reads every `h2`/`h3` with an id and the text under it on the first query; ranking in `src/lib/docSearch.js` (title before text, every word required), tested by `docSearch.test.js` |
 
 Tutorial steps are whole, cumulative profiles; `Tutorial.jsx` shows each step's additions with a line LCS against the previous step (`added()`). After changing the engine, a preset or an example, rerun `render-docs.sh` (section and file-prefix arguments narrow it).
 
@@ -61,7 +62,7 @@ Share URLs: `lib/share.js` (fragments `#js=`, etc.).
 
 ## Views (composite pages)
 
-A graph with `views` (`view(...)`: Bonjour de France, `bonjour-de-france`) is drawn the way the CLI draws it. After the page's own downloads, `gatherViews` in `draw.worker.js` makes a `Job` for each `views[i].graph` at its own place, runs the same pipeline on it (Overpass, tiles, terrain, datasets, Google and stroke fonts), and hands it to the page job with `job.addView(sub)` (wasm moves its inputs out; the sub-job is used up). Each view's progress rows are emitted with ids prefixed `view:<id>:` under a `view <id>` row, so they never collide with the page's. Built-in presets a view names are embedded in the script interpreter (`drawland-script/build.rs`).
+A graph with `views` (`view(...)`: 65°N 18°W, `sixty-five-north`) is drawn the way the CLI draws it. After the page's own downloads, `gatherViews` in `draw.worker.js` makes a `Job` for each `views[i].graph` at its own place, runs the same pipeline on it (Overpass, tiles, terrain, datasets, Google and stroke fonts), and hands it to the page job with `job.addView(sub)` (wasm moves its inputs out; the sub-job is used up). Each view's progress rows are emitted with ids prefixed `view:<id>:` under a `view <id>` row, so they never collide with the page's. Built-in presets a view names are embedded in the script interpreter (`drawland-script/build.rs`).
 
 ## GeoJSON import
 

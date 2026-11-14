@@ -8,7 +8,7 @@ import { loadGoogleFontsForGraph } from './lib/googleFonts'
 import { loadStrokeFontsForGraph } from './lib/strokeFonts'
 import { applyTheme, defaultInkColor, normalizeThemeId } from './lib/themes'
 import { docAtom, sidebarOpenAtom, themeAtom } from './lib/store'
-import { outputComment, outputOf, outputUnit, setOutputComment, setOutputKeys, setTitle } from './lib/doc'
+import { followScale, outputComment, outputOf, outputUnit, setOutputComment, setOutputKeys, setTitle } from './lib/doc'
 import { frameBounds, geojsonBounds, importedDatasets } from './lib/datasets'
 import { PRESETS } from './lib/presets'
 import { compile, literalOutputInfo } from './lib/graph'
@@ -482,7 +482,7 @@ export default function App() {
   }, [graph, here, planTiles])
 
   /**
-   * Write keys of the output, then note beside the scale the terrain that
+   * Write keys of the output (a set tile zoom moving with a new scale), then note beside the scale the terrain that
    * paper × scale comes to: `scale: "1:8000",   // terrain 1.22 × 0.813 km`.
    * The note's unit is the terrain unit from then on; `terrainUnit` is a new
    * one, typed into a terrain field. An output the script computes stays as
@@ -493,7 +493,8 @@ export default function App() {
       if (patch.bearing !== undefined) mapApiRef.current?.setBearing?.(patch.bearing)
       const turnOnly = Object.keys(patch).every((k) => k === 'bearing')
       setDoc((d) => {
-        let text = setOutputKeys(d, patch)
+        // A set tile zoom follows the scale (`followScale`).
+        let text = setOutputKeys(d, followScale(d, patch))
         if (engine && (text !== d || terrainUnit)) {
           try {
             const c = literalOutputInfo(engine, text)

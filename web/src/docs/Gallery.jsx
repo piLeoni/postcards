@@ -23,8 +23,8 @@ const MADE = {
     uses: ['areas.buffer', 'lines.rings', 'fray', 'compose.deoverlap'],
   },
   'napkin-sketch': {
-    how: 'Very little drawn, all of it loosened by compose.hand at the end: single-stroke streets, hatched blocks, curling waves, doodled trees.',
-    uses: ['compose.hand', 'pattern: "scallops"', 'pattern: "doodle-trees"'],
+    how: 'Very little drawn, all of it loosened by compose.hand at the end: single-stroke streets, hatched blocks, scalloped waves, and one quick symbol for each kind of ground, from doodled trees to reeds on the salt marsh.',
+    uses: ['compose.hand', 'pattern: "scallops"', 'pattern: "doodle-trees"', 'pattern: "marsh"'],
     lite: 'lite-napkin-sketch',
   },
   'salt-and-stone': {
@@ -32,8 +32,8 @@ const MADE = {
     uses: ['burin.terrain', 'b.batch', 'b.water', 'b.shore'],
   },
   'schoolroom-atlas': {
-    how: 'A coloured physical map for print: hypsometric tints from elevation bands, depths in blue, a graticule and its keys round an atlas plate.',
-    uses: ['areas.band', 'modules.graticule', 'lines.terrain', 'pattern: "solid"'],
+    how: 'A coloured physical map for print: hypsometric tints from elevation bands, depths in blue, towns generalised from everything built, a graticule and its keys round an atlas plate.',
+    uses: ['areas.band', 'areas.grow', 'modules.graticule', 'lines.terrain'],
   },
   'shaky-ground': {
     how: 'Live data: the USGS feed of the last 30 days of quakes, banded by magnitude into dot sizes and by depth into inks, over Natural Earth countries.',
@@ -52,8 +52,8 @@ const MADE = {
     how: "A state's silhouette as a die-cut card: one pattern for every height belt, closer the higher, and the border on a layer of its own for the knife.",
     uses: ['areas.band', 'fills.fill', 'areas.shape', 'lines.text'],
   },
-  'bonjour-de-france': {
-    how: 'Four places, each at its own scale, drawn in City Grain into four corners of one card, with the name across them knocked out of all four.',
+  'sixty-five-north': {
+    how: 'Four places in Iceland, each at its own scale, drawn in City Grain into four corners of one card: no names anywhere, each corner tabbed by its coordinates, the island\'s knocked out across all four.',
     uses: ['view', 'areas.text', 'compose.mask'],
   },
 }
